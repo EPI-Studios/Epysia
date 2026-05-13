@@ -1,8 +1,14 @@
 package fr.epistudio.epysia.utils;
 
+import fr.epistudio.epysia.components.transforms.Transform2D;
+import fr.epistudio.epysia.components.transforms.Transform3D;
+import fr.epistudio.epysia.components.transforms.TransformAscii;
+import fr.epistudio.epysia.gameobjects.GameObject;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MathTypesTest {
 
@@ -69,5 +75,55 @@ class MathTypesTest {
         assertEquals(source.getX(), restored.getX(), EPSILON);
         assertEquals(source.getY(), restored.getY(), EPSILON);
         assertEquals(source.getZ(), restored.getZ(), EPSILON);
+    }
+
+    @Test
+    void transform2dBuildsConsistentMatrices() {
+        Transform2D transform = new Transform2D(new Vector2f(5.0f, 2.0f), new Vector2f(2.0f, 3.0f), 0.0f, 4);
+        Vector2f point = transform.transformPoint(new Vector2f(1.0f, 1.0f));
+
+        assertEquals(7.0f, point.getX(), EPSILON);
+        assertEquals(5.0f, point.getY(), EPSILON);
+        assertEquals(new Vector2f(1.0f, 1.0f), transform.inverseTransformPoint(point));
+        assertEquals(4, transform.getZIndex());
+    }
+
+    @Test
+    void transform3dRotatesAndTransformsPoints() {
+        Transform3D transform = new Transform3D();
+        transform.setPosition(new Vector3f(1.0f, 0.0f, 0.0f));
+        transform.rotateAxisAngle(Vector3f.UNIT_Y, (float) (Math.PI / 2.0));
+
+        Vector3f forward = transform.getForward();
+        Vector3f transformedPoint = transform.transformPoint(new Vector3f(0.0f, 0.0f, 1.0f));
+
+        assertEquals(1.0f, forward.getX(), EPSILON);
+        assertEquals(0.0f, forward.getY(), EPSILON);
+        assertEquals(0.0f, forward.getZ(), EPSILON);
+        assertEquals(2.0f, transformedPoint.getX(), EPSILON);
+        assertEquals(0.0f, transformedPoint.getY(), EPSILON);
+        assertEquals(0.0f, transformedPoint.getZ(), EPSILON);
+    }
+
+    @Test
+    void transformAsciiSeparatesCellsFromOffsets() {
+        TransformAscii transform = new TransformAscii(new Vector2i(10, 3));
+        transform.translateOffset(0.25f, 0.5f);
+        transform.rotateClockwise();
+
+        assertEquals(new Vector2f(10.25f, 3.5f), transform.getWorldPosition());
+        assertEquals(1, transform.getRotationQuarterTurns());
+        assertEquals((float) (Math.PI / 2.0), transform.getRotationRadians(), EPSILON);
+    }
+
+    @Test
+    void gameObjectAttachmentIsPropagatedToComponents() {
+        GameObject gameObject = new GameObject();
+        Transform2D transform = new Transform2D();
+
+        gameObject.addComponent(transform);
+
+        assertTrue(transform.hasGameObject());
+        assertSame(gameObject, transform.getGameObject());
     }
 }

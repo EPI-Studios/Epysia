@@ -60,6 +60,7 @@ public class GameObject implements IGameObject {
         if (getComponent(component.getClass()) != null) {
             throw new ComponentPresentException(component, this);
         }
+        component.setGameObject(this);
         components.add(component);
         return component;
     }
