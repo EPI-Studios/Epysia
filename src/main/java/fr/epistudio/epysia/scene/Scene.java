@@ -36,7 +36,9 @@ public final class Scene implements IScene {
     }
 
     public void update(float dt){
-
+        for (GameObject object : gameObjects){
+            object.update(dt);
+        }
         onUpdate(dt);
     }
     @Override

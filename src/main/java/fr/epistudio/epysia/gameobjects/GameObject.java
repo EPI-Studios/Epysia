@@ -32,7 +32,9 @@ public class GameObject implements IGameObject {
     }
 
     public final void update(float dt) {
-
+        for (IComponent component : components) {
+            ((Component) component).update(dt);
+        }
         onUpdate(dt);
     }
 
