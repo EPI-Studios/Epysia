@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.gameobjects;
 
+import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.components.transforms.Transform;
 import fr.epistudio.epysia.exceptions.ComponentPresentException;
 
 import java.util.HashSet;
@@ -9,12 +11,17 @@ import java.util.Set;
 public class GameObject implements IGameObject {
 
     private Set<IComponent> components;
+    private String name;
+    private transient Transform transform;
 
-    public GameObject(){
+    public GameObject(String name, Transform transform){
         this.components = new HashSet<>();
+        this.name = name;
+        this.transform = transform;
+        components.add(transform);
     }
 
-    public void Init() {
+    public final void Init() {
 
         onInit();
     }
@@ -24,7 +31,7 @@ public class GameObject implements IGameObject {
 
     }
 
-    public void update(float dt) {
+    public final void update(float dt) {
 
         onUpdate(dt);
     }
@@ -34,8 +41,10 @@ public class GameObject implements IGameObject {
 
     }
 
-    public void destroy() {
-
+    public final void destroy() {
+        for (IComponent component : components){
+            ((Component) component).destroy();
+        }
         onDestroy();
     }
 
@@ -72,5 +81,10 @@ public class GameObject implements IGameObject {
             components.remove(component);
         }
         return component;
+    }
+
+    @Override
+    public String getName() {
+        return name;
     }
 }

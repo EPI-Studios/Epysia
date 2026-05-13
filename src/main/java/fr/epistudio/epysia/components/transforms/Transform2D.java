@@ -10,7 +10,7 @@ import fr.epistudio.epysia.utils.Vector2f;
  * <p>The transform is expressed with a position, scale, rotation in radians, pivot, render order,
  * and visibility flag.
  */
-public class Transform2D extends Component {
+public class Transform2D extends Component implements Transform{
 
     private Vector2f position;
     private Vector2f scale;

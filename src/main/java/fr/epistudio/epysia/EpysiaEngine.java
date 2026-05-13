@@ -1,5 +1,10 @@
 package fr.epistudio.epysia;
 
+import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.scene.Scene;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -13,8 +18,9 @@ public class EpysiaEngine {
     private volatile AtomicLong time = new AtomicLong(0);
     private volatile AtomicBoolean running = new AtomicBoolean(true);
 
-    public void init(){
+    private List<Scene> scenes = new ArrayList<>();
 
+    public void init(){
 
         update();
     }
@@ -26,16 +32,19 @@ public class EpysiaEngine {
             long deltaTime = currentTime - time.get();
             time.set(currentTime);
 
-            // Update game logic here using deltaTime
-
-            // For example, you can print the delta time
-            System.out.println("Delta Time: " + deltaTime + " ms");
+            for (Scene scene : scenes) {
+                scene.update(deltaTime);
+            }
         }
         stop();
     }
 
     private void stop(){
         System.exit(0);
+    }
+
+    public void addScene(Scene scene){
+        scenes.add(scene);
     }
 
 }

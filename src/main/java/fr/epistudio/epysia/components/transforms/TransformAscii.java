@@ -12,7 +12,7 @@ import fr.epistudio.epysia.utils.Vector2i;
  * text-mode rendering systems where logical placement happens on a character grid, while still
  * allowing smooth interpolation.
  */
-public class TransformAscii extends Component {
+public class TransformAscii extends Component implements Transform {
 
     private Vector2i cellPosition;
     private Vector2f offset;

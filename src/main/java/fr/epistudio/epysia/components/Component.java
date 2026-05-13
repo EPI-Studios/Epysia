@@ -7,7 +7,7 @@ public abstract class Component implements IComponent {
 
     protected transient GameObject gameObject;
 
-    public void Init() {
+    public final void Init() {
 
         onInit();
     }
@@ -17,7 +17,7 @@ public abstract class Component implements IComponent {
 
     }
 
-    public void update(float dt) {
+    public final void update(float dt) {
 
         onUpdate(dt);
     }
@@ -27,7 +27,7 @@ public abstract class Component implements IComponent {
 
     }
 
-    public void destroy() {
+    public final void destroy() {
 
         onDestroy();
     }

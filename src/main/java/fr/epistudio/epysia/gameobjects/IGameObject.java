@@ -47,4 +47,5 @@ public interface IGameObject {
      */
     void onDestroy();
 
+    String getName();
 }

@@ -12,7 +12,7 @@ import fr.epistudio.epysia.utils.Vector3f;
  * <p>The transform is expressed with a position, quaternion rotation, scale, visibility flag, and
  * render layer. Euler angles are exposed for convenience and are expressed in radians.
  */
-public class Transform3D extends Component {
+public class Transform3D extends Component implements Transform {
 
     private Vector3f position;
     private Quaternionf rotation;
