@@ -109,7 +109,7 @@ public final class InspectorPanel extends Panel {
         int contentWidth = context.width() - PADDING_X * 2;
         renderObjectHeader(context, selected, contentX, contentY, contentWidth);
         int cursorY = contentY + HEADER_HEIGHT;
-        List<IComponent> components = selected.components();
+        List<IComponent> components = new java.util.ArrayList<>(selected.components());
         for (IComponent component : components) {
             cursorY = renderComponentSection(context, selected, component, contentX, contentWidth, cursorY);
         }
