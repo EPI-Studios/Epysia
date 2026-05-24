@@ -496,6 +496,9 @@ public final class EditorApplication extends Application {
             gameWindow = null;
         }
         if (editorWorld != null) {
+            if (editorWorld.isPlaying()) {
+                editorWorld.togglePlay();
+            }
             editorWorld.playRuntime().shutdown();
         }
         sceneHost.close();

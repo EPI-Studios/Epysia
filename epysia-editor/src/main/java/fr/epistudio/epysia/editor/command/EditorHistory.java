@@ -17,13 +17,28 @@ public final class EditorHistory {
     }
 
     public void execute(EditorCommand command) {
-        EditorCommand inverse = command.invert(context);
-        command.apply(context);
+        EditorCommand inverse;
+        try {
+            inverse = command.invert(context);
+        } catch (RuntimeException error) {
+            System.err.println("[EditorHistory] invert failed for " + command.label() + ": " + error);
+            return;
+        }
+        try {
+            command.apply(context);
+        } catch (RuntimeException error) {
+            System.err.println("[EditorHistory] apply failed for " + command.label() + ": " + error);
+            return;
+        }
         push(command, inverse);
     }
 
     public void executeWithoutHistory(EditorCommand command) {
-        command.apply(context);
+        try {
+            command.apply(context);
+        } catch (RuntimeException error) {
+            System.err.println("[EditorHistory] apply (no history) failed for " + command.label() + ": " + error);
+        }
     }
 
     private void push(EditorCommand forward, EditorCommand inverse) {
@@ -58,7 +73,12 @@ public final class EditorHistory {
             return;
         }
         Entry entry = undoStack.pop();
-        entry.inverse.apply(context);
+        try {
+            entry.inverse.apply(context);
+        } catch (RuntimeException error) {
+            System.err.println("[EditorHistory] undo failed for " + entry.forward.label() + ": " + error);
+            return;
+        }
         redoStack.push(entry);
     }
 
@@ -67,7 +87,12 @@ public final class EditorHistory {
             return;
         }
         Entry entry = redoStack.pop();
-        entry.forward.apply(context);
+        try {
+            entry.forward.apply(context);
+        } catch (RuntimeException error) {
+            System.err.println("[EditorHistory] redo failed for " + entry.forward.label() + ": " + error);
+            return;
+        }
         undoStack.push(entry);
     }
 
