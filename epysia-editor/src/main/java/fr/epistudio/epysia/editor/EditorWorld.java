@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor;
 
 import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorHistory;
+import fr.epistudio.epysia.editor.play.PlayController;
 import fr.epistudio.epysia.editor.selection.EditorSelectionBus;
 import fr.epistudio.epysia.editor.selection.Selection;
 import fr.epistudio.epysia.gameobjects.GameObject;
@@ -21,6 +22,7 @@ public final class EditorWorld {
     private final EditorSelectionBus selectionBus = new EditorSelectionBus();
     private final CommandContext commandContext;
     private final EditorHistory history;
+    private PlayController playController;
     private float playElapsedSeconds;
 
     public EditorWorld(Scene scene, java.util.List<fr.epistudio.epysia.GameSystem> playModeSystems,
@@ -34,6 +36,10 @@ public final class EditorWorld {
 
     public EditorPlayRuntime playRuntime() {
         return playRuntime;
+    }
+
+    public void setPlayController(PlayController controller) {
+        this.playController = controller;
     }
 
     public Scene scene() {
@@ -161,10 +167,22 @@ public final class EditorWorld {
     }
 
     public boolean isPlaying() {
+        if (playController != null) {
+            return playController.isPlaying();
+        }
         return playRuntime.isPlaying();
     }
 
     public void togglePlay() {
+        if (playController != null) {
+            if (playController.isPlaying()) {
+                playController.stop();
+                playElapsedSeconds = 0.0f;
+            } else {
+                playController.play();
+            }
+            return;
+        }
         if (playRuntime.isPlaying()) {
             playRuntime.stop();
             playElapsedSeconds = 0.0f;
