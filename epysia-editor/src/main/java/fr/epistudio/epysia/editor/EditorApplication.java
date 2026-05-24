@@ -69,7 +69,6 @@ public final class EditorApplication extends Application {
     private final Project project;
     private EditorMiryInputState playInputState;
     private EditorWorld editorWorld;
-    private GameWindow gameWindow;
     private final Quaternionf scratchRotation = new Quaternionf();
     private final Vector3f scratchForward = new Vector3f();
     private final Vector3f scratchRight = new Vector3f();
@@ -453,10 +452,6 @@ public final class EditorApplication extends Application {
     protected void onRender(MiryHost host) {
         renderSceneIntoEditorTarget(host);
         renderEditorUiToBackBuffer(host);
-        if (gameWindow != null) {
-            com.miry.graphics.Texture sceneTexture = sceneHost.colorTextureForMiry();
-            gameWindow.render(sceneTexture != null ? sceneTexture.id() : 0);
-        }
     }
 
     private void renderSceneIntoEditorTarget(MiryHost host) {
@@ -491,10 +486,6 @@ public final class EditorApplication extends Application {
 
     @Override
     protected void onShutdown() {
-        if (gameWindow != null) {
-            gameWindow.close();
-            gameWindow = null;
-        }
         if (editorWorld != null) {
             if (editorWorld.isPlaying()) {
                 editorWorld.togglePlay();
