@@ -201,6 +201,10 @@ public final class Window implements RenderSurface {
         return glfwWindowShouldClose(handle);
     }
 
+    public void requestClose() {
+        org.lwjgl.glfw.GLFW.glfwSetWindowShouldClose(handle, true);
+    }
+
     public void pollEvents() {
         glfwPollEvents();
     }
