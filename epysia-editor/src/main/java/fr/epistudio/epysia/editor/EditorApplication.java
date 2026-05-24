@@ -129,6 +129,9 @@ public final class EditorApplication extends Application {
                 systemRegistry);
         editorWorld = new EditorWorld(sceneHost.scene(), systemRegistry.systems(), engineServices,
                 sceneHost.editorCameraObject());
+        fr.epistudio.epysia.editor.play.SubprocessPlayController playController =
+                new fr.epistudio.epysia.editor.play.SubprocessPlayController(sceneHost, project, consolePanel);
+        editorWorld.setPlayController(playController);
         syncCameraStateFromTransform();
         playInputState = new EditorMiryInputState(MiryContext.host());
         sceneTreePanel = new SceneTreePanel(editorWorld, sceneHost);
@@ -249,18 +252,16 @@ public final class EditorApplication extends Application {
         return value;
     }
 
+    private boolean playToastShown;
+
     private void synchronizeGameWindowWithPlayState() {
         boolean playing = editorWorld.isPlaying();
-        if (playing && gameWindow == null) {
-            gameWindow = new GameWindow(epysiaWindow.handle(), project.name());
-            toasts.show("▶ Playing in game window", 2.5f);
-        } else if (!playing && gameWindow != null) {
-            gameWindow.close();
-            gameWindow = null;
-            toasts.show("■ Stopped", 2.0f);
-        }
-        if (gameWindow != null && gameWindow.shouldClose()) {
-            editorWorld.togglePlay();
+        if (playing && !playToastShown) {
+            toasts.show("▶ Playing in subprocess", 2.5f);
+            playToastShown = true;
+        } else if (!playing && playToastShown) {
+            toasts.show("■ Stopped", 1.5f);
+            playToastShown = false;
         }
     }
 
