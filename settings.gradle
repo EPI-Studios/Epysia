@@ -1,1 +1,3 @@
 rootProject.name = 'Epysia'
+
+include 'epysia-editor'
