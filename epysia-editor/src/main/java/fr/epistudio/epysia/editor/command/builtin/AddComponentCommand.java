@@ -12,12 +12,22 @@ public final class AddComponentCommand implements EditorCommand {
     private final GameObject target;
     private final Class<? extends IComponent> componentClass;
     private final Supplier<? extends IComponent> factory;
+    private final IComponent specificInstance;
 
     public AddComponentCommand(GameObject target, Class<? extends IComponent> componentClass,
                                Supplier<? extends IComponent> factory) {
         this.target = target;
         this.componentClass = componentClass;
         this.factory = factory;
+        this.specificInstance = null;
+    }
+
+    public AddComponentCommand(GameObject target, IComponent specificInstance,
+                               Supplier<? extends IComponent> factory) {
+        this.target = target;
+        this.componentClass = specificInstance.getClass();
+        this.factory = factory;
+        this.specificInstance = specificInstance;
     }
 
     @Override
@@ -25,7 +35,8 @@ public final class AddComponentCommand implements EditorCommand {
         if (target.getComponent(componentClass).isPresent()) {
             return;
         }
-        target.addComponent(factory.get());
+        IComponent toAttach = specificInstance != null ? specificInstance : factory.get();
+        target.addComponent(toAttach);
     }
 
     @Override
