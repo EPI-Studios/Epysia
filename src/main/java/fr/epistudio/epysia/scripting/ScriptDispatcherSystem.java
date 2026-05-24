@@ -28,11 +28,11 @@ public final class ScriptDispatcherSystem implements GameSystem {
         collectBehaviours(scene);
         for (Behaviour behaviour : scratchBehaviours) {
             if (startedBehaviours.add(behaviour)) {
-                behaviour.onStart(services);
+                safeOnStart(behaviour);
             }
         }
         for (Behaviour behaviour : scratchBehaviours) {
-            behaviour.onUpdate(input, deltaTimeSeconds);
+            safeOnUpdate(behaviour, input, deltaTimeSeconds);
         }
         invokeDestroyForRemovedBehaviours();
     }
@@ -40,11 +40,40 @@ public final class ScriptDispatcherSystem implements GameSystem {
     @Override
     public void shutdown() {
         for (Behaviour behaviour : startedBehaviours) {
-            behaviour.onDestroy();
+            safeOnDestroy(behaviour);
         }
         startedBehaviours.clear();
         scratchBehaviours.clear();
         services = null;
+    }
+
+    private void safeOnStart(Behaviour behaviour) {
+        try {
+            behaviour.onStart(services);
+        } catch (RuntimeException error) {
+            System.err.println("[ScriptDispatcher] onStart threw in "
+                    + behaviour.getClass().getName() + ": " + error);
+            error.printStackTrace();
+        }
+    }
+
+    private void safeOnUpdate(Behaviour behaviour, InputState input, float deltaTimeSeconds) {
+        try {
+            behaviour.onUpdate(input, deltaTimeSeconds);
+        } catch (RuntimeException error) {
+            System.err.println("[ScriptDispatcher] onUpdate threw in "
+                    + behaviour.getClass().getName() + ": " + error);
+            error.printStackTrace();
+        }
+    }
+
+    private void safeOnDestroy(Behaviour behaviour) {
+        try {
+            behaviour.onDestroy();
+        } catch (RuntimeException error) {
+            System.err.println("[ScriptDispatcher] onDestroy threw in "
+                    + behaviour.getClass().getName() + ": " + error);
+        }
     }
 
     private void collectBehaviours(Scene scene) {
@@ -67,7 +96,7 @@ public final class ScriptDispatcherSystem implements GameSystem {
             if (alive.contains(behaviour)) {
                 return false;
             }
-            behaviour.onDestroy();
+            safeOnDestroy(behaviour);
             return true;
         });
     }

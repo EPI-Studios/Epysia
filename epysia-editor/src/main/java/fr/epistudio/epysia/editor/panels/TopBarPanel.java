@@ -211,7 +211,8 @@ public final class TopBarPanel extends Panel {
     private void performLoad() {
         try {
             serializer.load(sceneHost.scene(), scenePath);
-            world.selectIndex(-1);
+            world.clearSelection();
+            world.history().clear();
             toasts.show("Loaded " + scenePath.getFileName(), 2.5f);
         } catch (IOException exception) {
             toasts.show("Load failed: " + exception.getMessage(), 4.0f);

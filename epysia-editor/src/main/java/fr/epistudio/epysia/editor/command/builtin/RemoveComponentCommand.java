@@ -27,6 +27,10 @@ public final class RemoveComponentCommand implements EditorCommand {
 
     @Override
     public EditorCommand invert(CommandContext context) {
+        IComponent currentInstance = target.getComponent(componentClass).orElse(null);
+        if (currentInstance != null) {
+            return new AddComponentCommand(target, currentInstance, factory);
+        }
         return new AddComponentCommand(target, componentClass, factory);
     }
 

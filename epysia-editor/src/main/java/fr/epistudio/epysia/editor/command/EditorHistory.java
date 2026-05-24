@@ -73,12 +73,20 @@ public final class EditorHistory {
             return;
         }
         Entry entry = undoStack.pop();
+        EditorCommand refreshedForward;
+        try {
+            refreshedForward = entry.inverse.invert(context);
+        } catch (RuntimeException error) {
+            System.err.println("[EditorHistory] invert before undo failed for " + entry.forward.label() + ": " + error);
+            refreshedForward = entry.forward;
+        }
         try {
             entry.inverse.apply(context);
         } catch (RuntimeException error) {
             System.err.println("[EditorHistory] undo failed for " + entry.forward.label() + ": " + error);
             return;
         }
+        entry.forward = refreshedForward;
         redoStack.push(entry);
     }
 
@@ -87,12 +95,20 @@ public final class EditorHistory {
             return;
         }
         Entry entry = redoStack.pop();
+        EditorCommand refreshedInverse;
+        try {
+            refreshedInverse = entry.forward.invert(context);
+        } catch (RuntimeException error) {
+            System.err.println("[EditorHistory] invert before redo failed for " + entry.forward.label() + ": " + error);
+            refreshedInverse = entry.inverse;
+        }
         try {
             entry.forward.apply(context);
         } catch (RuntimeException error) {
             System.err.println("[EditorHistory] redo failed for " + entry.forward.label() + ": " + error);
             return;
         }
+        entry.inverse = refreshedInverse;
         undoStack.push(entry);
     }
 
@@ -119,7 +135,7 @@ public final class EditorHistory {
 
     private static final class Entry {
         EditorCommand forward;
-        final EditorCommand inverse;
+        EditorCommand inverse;
         final String coalesceKey;
         long timestampNanos;
 
