@@ -6,13 +6,11 @@ import java.util.List;
 
 public interface IScene {
 
-    String getName();
-    List<GameObject> getGameObjects();
+    String name();
 
-    void onInit();
-    void onUpdate(float dt);
-    void onDestroy();
+    List<GameObject> gameObjects();
 
-    GameObject removeGameObject(GameObject gameObject);
+    void addGameObject(GameObject gameObject);
 
+    void removeGameObject(GameObject gameObject);
 }
