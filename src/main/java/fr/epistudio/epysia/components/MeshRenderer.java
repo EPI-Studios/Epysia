@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.components;
 
+import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.mesh.UploadedMesh;
 
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 @EpysiaComponent(name = "Mesh Renderer", category = "Rendering")
+@RequiresComponent(Transform3D.class)
 public final class MeshRenderer extends Component {
 
     private UploadedMesh mesh;

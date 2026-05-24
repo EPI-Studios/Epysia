@@ -6,6 +6,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 @EpysiaComponent(name = "Camera 3D", category = "Rendering")
+@RequiresComponent(Transform3D.class)
 public final class Camera3D extends Component {
 
     @Export(label = "FOV", min = 10.0f, max = 170.0f, step = 1.0f)

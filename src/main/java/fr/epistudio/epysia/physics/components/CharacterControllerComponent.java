@@ -3,11 +3,16 @@ package fr.epistudio.epysia.physics.components;
 import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
+import fr.epistudio.epysia.components.RequiresComponent;
+import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.physics.api.BodyHandle;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.rapier.RapierCharacterController;
+import org.joml.Vector3f;
+import org.joml.Vector3fc;
 
 @EpysiaComponent(name = "Character Controller", category = "Physics")
+@RequiresComponent(Transform3D.class)
 public final class CharacterControllerComponent extends Component {
 
     private ShapeDescriptor shape = ColliderShape.capsule(0.4f, 0.9f);
@@ -25,6 +30,8 @@ public final class CharacterControllerComponent extends Component {
     private boolean grounded;
     private BodyHandle bodyHandle = BodyHandle.NONE;
     private RapierCharacterController nativeController;
+    private final Vector3f desiredHorizontalMovement = new Vector3f();
+    private boolean jumpRequested;
 
     public CharacterControllerComponent setShape(ShapeDescriptor shape) {
         this.shape = shape;
@@ -121,5 +128,25 @@ public final class CharacterControllerComponent extends Component {
     public void attachNative(BodyHandle handle, RapierCharacterController controller) {
         this.bodyHandle = handle;
         this.nativeController = controller;
+    }
+
+    public void setDesiredHorizontalMove(Vector3fc movement) {
+        this.desiredHorizontalMovement.set(movement);
+    }
+
+    public Vector3f consumeDesiredHorizontalMove(Vector3f destination) {
+        destination.set(desiredHorizontalMovement);
+        desiredHorizontalMovement.set(0.0f);
+        return destination;
+    }
+
+    public void requestJump() {
+        this.jumpRequested = true;
+    }
+
+    public boolean consumeJumpRequest() {
+        boolean was = jumpRequested;
+        jumpRequested = false;
+        return was;
     }
 }

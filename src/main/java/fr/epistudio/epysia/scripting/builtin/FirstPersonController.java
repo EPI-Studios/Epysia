@@ -3,6 +3,7 @@ package fr.epistudio.epysia.scripting.builtin;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
+import fr.epistudio.epysia.components.RequiresComponent;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.InputState;
@@ -14,6 +15,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 @EpysiaComponent(name = "First Person Controller", category = "Game")
+@RequiresComponent({Transform3D.class, CharacterControllerComponent.class})
 public final class FirstPersonController extends Behaviour {
 
     private static final float MAX_PITCH_RADIANS = (float) Math.toRadians(89.0);
@@ -39,9 +41,10 @@ public final class FirstPersonController extends Behaviour {
 
     @Override
     public void onStart(EngineServices services) {
-        GameObject self = owner().orElseThrow();
-        controller = self.getComponent(CharacterControllerComponent.class).orElseThrow();
-        transform = self.getComponent(Transform3D.class).orElseThrow();
+        owner().ifPresent(self -> {
+            controller = self.getComponent(CharacterControllerComponent.class).orElse(null);
+            transform = self.getComponent(Transform3D.class).orElse(null);
+        });
     }
 
     @Override
