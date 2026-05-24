@@ -141,6 +141,12 @@ public final class ViewportPanel extends Panel {
                 0.0f, 1.0f, 1.0f, 0.0f, 0xFFFFFFFF);
     }
 
+    private boolean gizmoDragLastFrame;
+    private fr.epistudio.epysia.gameobjects.GameObject gizmoDragTarget;
+    private final Vector3f gizmoDragStartPosition = new Vector3f();
+    private final org.joml.Quaternionf gizmoDragStartRotation = new org.joml.Quaternionf();
+    private final Vector3f gizmoDragStartScale = new Vector3f();
+
     private void updateAndRenderGizmo(PanelContext context, int viewportWidth, int viewportHeight) {
         Optional<GameObject> selected = world.selected();
         if (selected.isEmpty()) {
@@ -161,8 +167,42 @@ public final class ViewportPanel extends Panel {
         gizmoOverlay.updateInput(context.ui().input(), viewProjection, cameraPositionScratch,
                 viewportRectX, viewportRectY, viewportWidth, viewportHeight,
                 scaleX, scaleY, gizmoPosition, gizmoEulerDegrees, gizmoScale);
+        boolean dragging = gizmoOverlay.dragging();
+        if (dragging && !gizmoDragLastFrame) {
+            gizmoDragTarget = selected.get();
+            gizmoDragStartPosition.set(transform.position());
+            gizmoDragStartRotation.set(transform.rotation());
+            gizmoDragStartScale.set(transform.scale());
+        }
         applyGizmoBuffersToTransform(transform);
+        if (!dragging && gizmoDragLastFrame && gizmoDragTarget != null) {
+            recordGizmoTransformChange(gizmoDragTarget, transform);
+            gizmoDragTarget = null;
+        }
+        gizmoDragLastFrame = dragging;
         renderGizmoToTexture(context.renderer(), viewProjection, viewportWidth, viewportHeight, scaleX, scaleY);
+    }
+
+    private void recordGizmoTransformChange(fr.epistudio.epysia.gameobjects.GameObject target, Transform3D transform) {
+        boolean positionChanged = !gizmoDragStartPosition.equals(transform.position());
+        boolean rotationChanged = quaternionsDiffer(gizmoDragStartRotation, transform.rotation());
+        boolean scaleChanged = !gizmoDragStartScale.equals(transform.scale());
+        if (!positionChanged && !rotationChanged && !scaleChanged) {
+            return;
+        }
+        Vector3f endPosition = new Vector3f(transform.position());
+        org.joml.Quaternionf endRotation = new org.joml.Quaternionf(transform.rotation());
+        Vector3f endScale = new Vector3f(transform.scale());
+        transform.setPosition(gizmoDragStartPosition.x, gizmoDragStartPosition.y, gizmoDragStartPosition.z);
+        transform.setRotation(gizmoDragStartRotation);
+        transform.setScale(gizmoDragStartScale.x, gizmoDragStartScale.y, gizmoDragStartScale.z);
+        world.history().execute(new fr.epistudio.epysia.editor.command.builtin.TransformCommand(
+                target, endPosition, endRotation, endScale, false));
+    }
+
+    private static boolean quaternionsDiffer(org.joml.Quaternionf a, org.joml.Quaternionf b) {
+        float dot = Math.abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w);
+        return dot < 0.9999f;
     }
 
     private void ensureGizmoOverlay() {
