@@ -16,6 +16,7 @@ import fr.epistudio.epysia.editor.EditorStyle;
 import fr.epistudio.epysia.editor.EditorWorld;
 import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.RemoveComponentCommand;
+import fr.epistudio.epysia.editor.icons.EditorIcons;
 import fr.epistudio.epysia.editor.inspector.InspectorDispatcher;
 import fr.epistudio.epysia.editor.reflection.EditorReflection;
 import fr.epistudio.epysia.editor.reflection.ExportedProperty;
@@ -179,9 +180,42 @@ public final class InspectorPanel extends Panel {
     }
 
     private void drawSectionIcon(UiRenderer renderer, Theme theme, IComponent component, int x, int y) {
-        Icon icon = sectionIconFor(component);
+        String godotIcon = godotIconFor(component);
         float iconY = y + (SECTION_HEADER_HEIGHT - SECTION_ICON_SIZE) / 2.0f;
+        if (godotIcon != null) {
+            EditorIcons.draw(renderer, godotIcon, x + 18, iconY, SECTION_ICON_SIZE, sectionAccentColor(component));
+            return;
+        }
+        Icon icon = sectionIconFor(component);
         theme.icons.draw(renderer, icon, x + 18, iconY, SECTION_ICON_SIZE, sectionAccentColor(component));
+    }
+
+    private String godotIconFor(IComponent component) {
+        if (component instanceof fr.epistudio.epysia.components.transforms.Transform3D) {
+            return EditorIcons.NODE_3D;
+        }
+        if (component instanceof fr.epistudio.epysia.components.Camera3D) {
+            return EditorIcons.CAMERA_3D;
+        }
+        if (component instanceof fr.epistudio.epysia.components.MeshRenderer) {
+            return EditorIcons.MESH_INSTANCE_3D;
+        }
+        if (component instanceof fr.epistudio.epysia.components.DirectionalLight) {
+            return EditorIcons.DIRECTIONAL_LIGHT;
+        }
+        if (component instanceof fr.epistudio.epysia.components.PointLight) {
+            return EditorIcons.OMNI_LIGHT;
+        }
+        if (component instanceof fr.epistudio.epysia.components.SpotLight) {
+            return EditorIcons.SPOT_LIGHT;
+        }
+        if (component instanceof fr.epistudio.epysia.physics.components.CharacterControllerComponent) {
+            return EditorIcons.CHARACTER_BODY_3D;
+        }
+        if (component instanceof fr.epistudio.epysia.scripting.Behaviour) {
+            return EditorIcons.SCRIPT;
+        }
+        return null;
     }
 
     private boolean renderRemoveButton(PanelContext context, GameObject selected, IComponent component,
