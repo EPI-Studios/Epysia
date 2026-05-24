@@ -1,0 +1,117 @@
+package fr.epistudio.epysia.audio;
+
+import fr.epistudio.epysia.components.Component;
+import fr.epistudio.epysia.components.EpysiaComponent;
+
+@EpysiaComponent(name = "Audio Source", category = "Audio")
+public final class AudioSourceComponent extends Component {
+
+    private AudioBuffer buffer;
+    private float gain = 1.0f;
+    private float pitch = 1.0f;
+    private boolean looping;
+    private boolean spatial = true;
+    private boolean playOnStart;
+    private AudioBus bus = AudioBus.AMBIENT;
+    private float referenceDistance = 1.0f;
+    private float maxDistance = 25.0f;
+    private float rolloffFactor = 1.0f;
+    private AudioSource source;
+    private boolean initialized;
+
+    public AudioSourceComponent setBuffer(AudioBuffer buffer) {
+        this.buffer = buffer;
+        return this;
+    }
+
+    public AudioSourceComponent setGain(float gain) {
+        this.gain = gain;
+        return this;
+    }
+
+    public AudioSourceComponent setPitch(float pitch) {
+        this.pitch = pitch;
+        return this;
+    }
+
+    public AudioSourceComponent setLooping(boolean looping) {
+        this.looping = looping;
+        return this;
+    }
+
+    public AudioSourceComponent setSpatial(boolean spatial) {
+        this.spatial = spatial;
+        return this;
+    }
+
+    public AudioSourceComponent setPlayOnStart(boolean playOnStart) {
+        this.playOnStart = playOnStart;
+        return this;
+    }
+
+    public AudioSourceComponent setBus(AudioBus bus) {
+        this.bus = bus;
+        return this;
+    }
+
+    public AudioBus bus() {
+        return bus;
+    }
+
+    public float gain() {
+        return gain;
+    }
+
+    public AudioSourceComponent setDistanceFalloff(float referenceDistance, float maxDistance, float rolloffFactor) {
+        this.referenceDistance = referenceDistance;
+        this.maxDistance = maxDistance;
+        this.rolloffFactor = rolloffFactor;
+        return this;
+    }
+
+    public AudioBuffer buffer() {
+        return buffer;
+    }
+
+    public boolean spatial() {
+        return spatial;
+    }
+
+    public AudioSource source() {
+        return source;
+    }
+
+    public boolean playOnStart() {
+        return playOnStart;
+    }
+
+    public void prepare() {
+        if (initialized || buffer == null) {
+            return;
+        }
+        source = new AudioSource()
+                .setBuffer(buffer)
+                .setGain(gain)
+                .setPitch(pitch)
+                .setLooping(looping)
+                .setSpatial(spatial)
+                .setReferenceDistance(referenceDistance)
+                .setMaxDistance(maxDistance)
+                .setRolloffFactor(rolloffFactor);
+        initialized = true;
+    }
+
+    public void play() {
+        if (source != null) {
+            source.play();
+        }
+    }
+
+    public void destroy() {
+        if (source != null) {
+            source.destroy();
+            source = null;
+        }
+        initialized = false;
+    }
+}
