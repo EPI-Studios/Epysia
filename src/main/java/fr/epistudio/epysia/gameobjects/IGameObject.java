@@ -8,6 +8,8 @@ public interface IGameObject {
 
     String name();
 
+    void setName(String name);
+
     <T extends IComponent> Optional<T> getComponent(Class<T> componentClass);
 
     <T extends IComponent> T addComponent(T component);
