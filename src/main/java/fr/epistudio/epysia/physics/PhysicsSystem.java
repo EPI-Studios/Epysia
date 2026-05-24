@@ -58,6 +58,9 @@ public final class PhysicsSystem implements GameSystem {
         Transform3D transform = gameObject.getComponent(Transform3D.class)
                 .orElseThrow(() -> new EpysiaException("RigidBodyComponent requires Transform3D on " + gameObject.name()));
         if (!rigidBody.isRegistered()) {
+            if (rigidBody.shape() == null) {
+                return;
+            }
             registerRigidBody(rigidBody, transform);
             return;
         }
@@ -69,9 +72,6 @@ public final class PhysicsSystem implements GameSystem {
     }
 
     private void registerRigidBody(RigidBodyComponent rigidBody, Transform3D transform) {
-        if (rigidBody.shape() == null) {
-            throw new EpysiaException("RigidBodyComponent requires a shape before registration.");
-        }
         RigidBodyPose pose = new RigidBodyPose(new Vector3f(transform.position()), new Quaternionf(transform.rotation()));
         BodyHandle handle = switch (rigidBody.kind()) {
             case STATIC -> world.addStaticBody(rigidBody.shape(), pose, rigidBody.collisionMask());

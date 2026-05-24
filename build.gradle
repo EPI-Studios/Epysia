@@ -1,6 +1,9 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
     id 'java'
     id 'application'
+    id 'com.gradleup.shadow' version '8.3.5'
 }
 
 group = 'fr.epistudio'
@@ -47,6 +50,11 @@ repositories {
 ext {
     lwjglVersion = '3.3.6'
     lwjglNatives = 'natives-linux'
+    lwjglJarNatives = (project.findProperty('lwjglJarNatives') ?: 'natives-windows').toString()
+}
+
+configurations {
+    psyhouNatives
 }
 
 dependencies {
@@ -64,6 +72,13 @@ dependencies {
     runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-openal::${lwjglNatives}"
+
+    psyhouNatives platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
+    psyhouNatives "org.lwjgl:lwjgl::${lwjglJarNatives}"
+    psyhouNatives "org.lwjgl:lwjgl-glfw::${lwjglJarNatives}"
+    psyhouNatives "org.lwjgl:lwjgl-opengl::${lwjglJarNatives}"
+    psyhouNatives "org.lwjgl:lwjgl-stb::${lwjglJarNatives}"
+    psyhouNatives "org.lwjgl:lwjgl-openal::${lwjglJarNatives}"
 
     testImplementation platform('org.junit:junit-bom:6.0.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -148,4 +163,28 @@ tasks.register('physicsNativesCrossBuild') {
             }
         }
     }
+}
+
+tasks.register('psyhouJar', ShadowJar) {
+    group = 'distribution'
+    description = 'Builds a runnable fat jar of the Psyhou example for the target platform (default: windows)'
+    archiveBaseName = 'psyhou'
+    archiveClassifier = lwjglJarNatives.replace('natives-', '')
+    from sourceSets.example.output
+    from sourceSets.main.output
+    configurations = [
+            project.configurations.exampleRuntimeClasspath,
+            project.configurations.psyhouNatives
+    ]
+    exclude { details ->
+        def name = details.path
+        def isLwjglNative = name.contains('lwjgl') && (name.endsWith('.so') || name.endsWith('.dylib') || name.endsWith('.dll'))
+        def keep = name.contains(lwjglJarNatives.replace('natives-', ''))
+        return isLwjglNative && !keep
+    }
+    manifest {
+        attributes 'Main-Class': 'com.meekdev.psyhou.game.PsyhouMain'
+    }
+    mergeServiceFiles()
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

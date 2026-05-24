@@ -1,0 +1,55 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'fr.epistudio'
+version = '1.0-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+ext {
+    lwjglVersion = rootProject.ext.lwjglVersion
+    lwjglNatives = rootProject.ext.lwjglNatives
+}
+
+dependencies {
+    implementation rootProject
+    implementation rootProject.sourceSets.example.output
+
+    implementation('com.miry:miry:1.0-SNAPSHOT') {
+        exclude group: 'org.lwjgl'
+    }
+
+    implementation 'org.joml:joml:1.10.8'
+
+    implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
+    implementation 'org.lwjgl:lwjgl'
+    implementation 'org.lwjgl:lwjgl-glfw'
+    implementation 'org.lwjgl:lwjgl-opengl'
+    implementation 'org.lwjgl:lwjgl-stb'
+    runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
+}
+
+application {
+    mainClass = 'fr.epistudio.epysia.editor.launcher.LauncherLauncher'
+}
+
+tasks.named('run', JavaExec) {
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    if (System.getProperty('os.name').toLowerCase().contains('mac')) {
+        jvmArgs += ['-XstartOnFirstThread']
+    }
+}
