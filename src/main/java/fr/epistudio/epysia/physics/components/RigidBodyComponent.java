@@ -2,56 +2,62 @@ package fr.epistudio.epysia.physics.components;
 
 import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.EpysiaComponent;
+import fr.epistudio.epysia.components.Export;
 import fr.epistudio.epysia.physics.api.BodyHandle;
-import fr.epistudio.epysia.physics.api.CollisionMask;
 import fr.epistudio.epysia.physics.api.DynamicProperties;
 import fr.epistudio.epysia.physics.api.RigidBodyKind;
-import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 
 @EpysiaComponent(name = "Rigid Body", category = "Physics")
 public final class RigidBodyComponent extends Component {
 
+    @Export(label = "Kind")
     private RigidBodyKind kind = RigidBodyKind.DYNAMIC;
-    private ShapeDescriptor shape;
-    private DynamicProperties dynamicProperties = DynamicProperties.defaults();
-    private CollisionMask collisionMask = CollisionMask.DEFAULT;
+
+    @Export(label = "Mass", min = 0.0f, step = 0.1f)
+    private float mass = 1.0f;
+
+    @Export(label = "Gravity Scale", step = 0.1f)
+    private float gravityScale = 1.0f;
+
+    @Export(label = "Linear Damping", min = 0.0f, step = 0.05f)
+    private float linearDamping = 0.0f;
+
+    @Export(label = "Angular Damping", min = 0.0f, step = 0.05f)
+    private float angularDamping = 0.0f;
+
+    @Export(label = "Continuous Collision")
+    private boolean continuousCollisionDetection = false;
+
+    @Export(label = "Can Sleep")
+    private boolean canSleep = true;
+
+    @Export(label = "Sleep Threshold", min = 0.0f, step = 0.05f)
+    private float sleepThreshold = 0.5f;
+
+    @Export(label = "Interpolate")
+    private boolean interpolate = false;
+
     private BodyHandle handle = BodyHandle.NONE;
     private boolean registered;
-
-    public RigidBodyComponent setKind(RigidBodyKind kind) {
-        this.kind = kind;
-        return this;
-    }
-
-    public RigidBodyComponent setShape(ShapeDescriptor shape) {
-        this.shape = shape;
-        return this;
-    }
-
-    public RigidBodyComponent setDynamicProperties(DynamicProperties properties) {
-        this.dynamicProperties = properties;
-        return this;
-    }
-
-    public RigidBodyComponent setCollisionMask(CollisionMask mask) {
-        this.collisionMask = mask;
-        return this;
-    }
 
     public RigidBodyKind kind() {
         return kind;
     }
 
-    public ShapeDescriptor shape() {
-        return shape;
+    public boolean canSleep() {
+        return canSleep;
+    }
+
+    public float sleepThreshold() {
+        return sleepThreshold;
+    }
+
+    public boolean interpolate() {
+        return interpolate;
     }
 
     public DynamicProperties dynamicProperties() {
-        return dynamicProperties;
-    }
-
-    public CollisionMask collisionMask() {
-        return collisionMask;
+        return new DynamicProperties(mass, gravityScale, linearDamping, angularDamping, continuousCollisionDetection);
     }
 
     public BodyHandle handle() {
