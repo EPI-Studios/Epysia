@@ -2,5 +2,6 @@ package fr.epistudio.epysia.render.backend;
 
 public enum BlendMode {
     OPAQUE,
-    ALPHA_BLEND
+    ALPHA_BLEND,
+    ADDITIVE
 }
