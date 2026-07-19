@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'fr.epistudio'
-version = '1.0-SNAPSHOT'
+version = (project.findProperty('releaseVersion') ?: '1.0-SNAPSHOT').toString()
 
 java {
     toolchain {
@@ -43,13 +43,47 @@ tasks.named('run', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runForest', JavaExec) {
+    group = 'application'
+    description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.forest.ForestMain'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
+tasks.register('runGame', JavaExec) {
+    group = 'application'
+    description = 'Runs fr.epistudio.epysia.GameLauncher (engine standalone). Pass scene via -Pscene=/path/to/scene.epyscene'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'fr.epistudio.epysia.GameLauncher'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    def scene = project.findProperty('scene') ?: '/tmp/epysia-scene.epyscene'
+    def project_ = project.findProperty('projectRoot') ?: ''
+    def channel = project.findProperty('channel') ?: ''
+    def title = project.findProperty('title') ?: 'Epysia - Game'
+    args = ['--scene', scene, '--title', title]
+    if (project_) args += ['--project', project_]
+    if (channel == 'stdio') args += ['--runtime-channel=stdio']
+}
+
 repositories {
     mavenCentral()
 }
 
+static String hostLwjglNatives() {
+    String osName = System.getProperty('os.name').toLowerCase()
+    if (osName.contains('win')) {
+        return 'natives-windows'
+    }
+    if (osName.contains('mac') || osName.contains('darwin')) {
+        return 'natives-macos'
+    }
+    return 'natives-linux'
+}
+
 ext {
     lwjglVersion = '3.3.6'
-    lwjglNatives = 'natives-linux'
+    lwjglNatives = (project.findProperty('lwjglNatives') ?: hostLwjglNatives()).toString()
     lwjglJarNatives = (project.findProperty('lwjglJarNatives') ?: 'natives-windows').toString()
 }
 
@@ -89,80 +123,19 @@ test {
     useJUnitPlatform()
 }
 
-ext.physicsNativesProjectDir = file('physics-natives')
-ext.physicsNativesResourceDir = file('src/main/resources/natives')
-
-ext.physicsNativesTargets = [
-        [triple: 'x86_64-unknown-linux-gnu',  resource: 'linux-x64',   lib: 'librapier_moud.so',     tool: 'cargo'],
-        [triple: 'aarch64-unknown-linux-gnu', resource: 'linux-arm64', lib: 'librapier_moud.so',     tool: 'zigbuild'],
-        [triple: 'x86_64-pc-windows-gnu',     resource: 'windows-x64', lib: 'rapier_moud.dll',       tool: 'cargo'],
-        [triple: 'x86_64-apple-darwin',       resource: 'macos-x64',   lib: 'librapier_moud.dylib',  tool: 'zigbuild'],
-        [triple: 'aarch64-apple-darwin',      resource: 'macos-arm64', lib: 'librapier_moud.dylib',  tool: 'zigbuild'],
-]
-
-ext.resolveCargoExecutable = {
-    String exeName = System.getProperty('os.name').toLowerCase().contains('windows') ? 'cargo.exe' : 'cargo'
-    String pathValue = System.getenv('PATH') ?: ''
-    for (String dir : pathValue.split(File.pathSeparator)) {
-        if (dir == null || dir.isBlank()) continue
-        File candidate = new File(dir, exeName)
-        if (candidate.isFile() && candidate.canExecute()) return candidate.absolutePath
+tasks.register('engineRuntimeJar', ShadowJar) {
+    group = 'distribution'
+    description = 'Fat jar for the game export template: engine, runtime libraries, and host-OS natives.'
+    archiveBaseName = 'epysia-engine'
+    archiveClassifier = ''
+    archiveVersion = ''
+    from sourceSets.main.output
+    configurations = [project.configurations.runtimeClasspath]
+    manifest {
+        attributes 'Main-Class': 'fr.epistudio.epysia.GameLauncher'
     }
-    File rustupCargo = new File("${System.getProperty('user.home')}/.cargo/bin/${exeName}")
-    if (rustupCargo.isFile() && rustupCargo.canExecute()) return rustupCargo.absolutePath
-    return exeName
-}
-
-ext.detectHostTriple = {
-    String os = System.getProperty('os.name').toLowerCase()
-    String arch = System.getProperty('os.arch').toLowerCase()
-    boolean arm = arch.contains('aarch64') || arch.contains('arm64')
-    if (os.contains('linux'))   return arm ? 'aarch64-unknown-linux-gnu' : 'x86_64-unknown-linux-gnu'
-    if (os.contains('mac'))     return arm ? 'aarch64-apple-darwin'      : 'x86_64-apple-darwin'
-    if (os.contains('windows')) return 'x86_64-pc-windows-gnu'
-    throw new GradleException("Unsupported host platform: ${os}/${arch}")
-}
-
-tasks.register('physicsNativesBuild', Exec) {
-    group = 'physics'
-    description = 'Builds the Rapier native library for the host platform and copies it into src/main/resources/natives.'
-    workingDir = physicsNativesProjectDir
-    Map target = physicsNativesTargets.find { it.triple == detectHostTriple() }
-    commandLine resolveCargoExecutable(), 'build', '--release', '--target', target.triple
-    doLast {
-        File source = new File(physicsNativesProjectDir, "target/${target.triple}/release/${target.lib}")
-        File destinationDir = new File(physicsNativesResourceDir, target.resource)
-        destinationDir.mkdirs()
-        ant.copy(file: source.absolutePath, todir: destinationDir.absolutePath, overwrite: true)
-        logger.lifecycle("Copied ${source.name} -> ${destinationDir}")
-    }
-}
-
-tasks.register('physicsNativesCrossBuild') {
-    group = 'physics'
-    description = 'Builds the Rapier native library for all supported targets (cargo + cargo-zigbuild) and copies them into src/main/resources/natives.'
-    doLast {
-        String cargo = resolveCargoExecutable()
-        physicsNativesTargets.each { target ->
-            try {
-                exec {
-                    workingDir = physicsNativesProjectDir
-                    if (target.tool == 'zigbuild') {
-                        commandLine cargo, 'zigbuild', '--release', '--target', target.triple
-                    } else {
-                        commandLine cargo, 'build', '--release', '--target', target.triple
-                    }
-                }
-                File source = new File(physicsNativesProjectDir, "target/${target.triple}/release/${target.lib}")
-                File destinationDir = new File(physicsNativesResourceDir, target.resource)
-                destinationDir.mkdirs()
-                ant.copy(file: source.absolutePath, todir: destinationDir.absolutePath, overwrite: true)
-                logger.lifecycle("Built ${target.triple} -> ${destinationDir}/${target.lib}")
-            } catch (Exception failure) {
-                logger.warn("Skipped ${target.triple} via ${target.tool}: ${failure.message}")
-            }
-        }
-    }
+    mergeServiceFiles()
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.register('psyhouJar', ShadowJar) {
