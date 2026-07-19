@@ -33,9 +33,9 @@ public final class b3RestitutionCallback {
     private static final FunctionDescriptor $DESC = FunctionDescriptor.of(
         box3d_h.C_FLOAT,
         box3d_h.C_FLOAT,
-        box3d_h.C_LONG,
+        box3d_h.C_LONG_LONG,
         box3d_h.C_FLOAT,
-        box3d_h.C_LONG
+        box3d_h.C_LONG_LONG
     );
 
     /**

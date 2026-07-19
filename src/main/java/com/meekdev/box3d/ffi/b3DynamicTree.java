@@ -37,7 +37,7 @@ public class b3DynamicTree {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        box3d_h.C_LONG.withName("version"),
+        box3d_h.C_LONG_LONG.withName("version"),
         box3d_h.C_POINTER.withName("nodes"),
         box3d_h.C_INT.withName("root"),
         box3d_h.C_INT.withName("nodeCount"),

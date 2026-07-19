@@ -33,7 +33,7 @@ public final class b3TreeQueryCallbackFcn {
     private static final FunctionDescriptor $DESC = FunctionDescriptor.of(
         box3d_h.C_BOOL,
         box3d_h.C_INT,
-        box3d_h.C_LONG,
+        box3d_h.C_LONG_LONG,
         box3d_h.C_POINTER
     );
 

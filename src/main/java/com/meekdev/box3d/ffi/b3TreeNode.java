@@ -38,10 +38,10 @@ public class b3TreeNode {
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         b3AABB.layout().withName("aabb"),
-        box3d_h.C_LONG.withName("categoryBits"),
+        box3d_h.C_LONG_LONG.withName("categoryBits"),
         MemoryLayout.unionLayout(
             b3TreeNodeChildren.layout().withName("children"),
-            box3d_h.C_LONG.withName("userData")
+            box3d_h.C_LONG_LONG.withName("userData")
         ).withName("$anon$1688:2"),
         MemoryLayout.unionLayout(
             box3d_h.C_INT.withName("parent"),

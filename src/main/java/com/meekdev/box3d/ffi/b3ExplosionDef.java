@@ -30,7 +30,7 @@ public class b3ExplosionDef {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        box3d_h.C_LONG.withName("maskBits"),
+        box3d_h.C_LONG_LONG.withName("maskBits"),
         b3Pos.layout().withName("position"),
         box3d_h.C_FLOAT.withName("radius"),
         box3d_h.C_FLOAT.withName("falloff"),
