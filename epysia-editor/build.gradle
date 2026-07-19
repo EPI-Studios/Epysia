@@ -1,10 +1,13 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
     id 'java'
     id 'application'
+    id 'com.gradleup.shadow' version '8.3.5'
 }
 
 group = 'fr.epistudio'
-version = '1.0-SNAPSHOT'
+version = rootProject.version
 
 java {
     toolchain {
@@ -20,36 +23,74 @@ repositories {
 ext {
     lwjglVersion = rootProject.ext.lwjglVersion
     lwjglNatives = rootProject.ext.lwjglNatives
+    imguiVersion = '1.87.7'
 }
 
 dependencies {
     implementation rootProject
-    implementation rootProject.sourceSets.example.output
-
-    implementation('com.miry:miry:1.0-SNAPSHOT') {
-        exclude group: 'org.lwjgl'
-    }
 
     implementation 'org.joml:joml:1.10.8'
+
+    implementation "io.github.spair:imgui-java-binding:${imguiVersion}"
+    implementation "io.github.spair:imgui-java-lwjgl3:${imguiVersion}"
+    runtimeOnly "io.github.spair:imgui-java-natives-linux:${imguiVersion}"
+    runtimeOnly "io.github.spair:imgui-java-natives-windows:${imguiVersion}"
+    runtimeOnly "io.github.spair:imgui-java-natives-macos:${imguiVersion}"
 
     implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
     implementation 'org.lwjgl:lwjgl'
     implementation 'org.lwjgl:lwjgl-glfw'
     implementation 'org.lwjgl:lwjgl-opengl'
     implementation 'org.lwjgl:lwjgl-stb'
+    implementation 'org.lwjgl:lwjgl-tinyfd'
     runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-tinyfd::${lwjglNatives}"
 }
 
 application {
-    mainClass = 'fr.epistudio.epysia.editor.launcher.LauncherLauncher'
+    mainClass = 'fr.epistudio.epysia.editor.EditorMain'
 }
 
 tasks.named('run', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'fr.epistudio.epysia.editor.EditorMain'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-    if (System.getProperty('os.name').toLowerCase().contains('mac')) {
-        jvmArgs += ['-XstartOnFirstThread']
+}
+
+def buildInfoDirectory = layout.buildDirectory.dir('generated/build-info')
+def templateRepository = (project.findProperty('templateRepository') ?: 'EPI-Studios/Epysia').toString()
+
+tasks.register('generateBuildInfo') {
+    def outputFile = buildInfoDirectory.get().file('editor-build.properties').asFile
+    def resolvedVersion = project.version.toString()
+    inputs.property('version', resolvedVersion)
+    inputs.property('repository', templateRepository)
+    outputs.file(outputFile)
+    doLast {
+        outputFile.parentFile.mkdirs()
+        outputFile.text = "version=${resolvedVersion}\nrepository=${templateRepository}\n"
     }
+}
+
+sourceSets.main.resources.srcDir(buildInfoDirectory)
+tasks.named('processResources') {
+    dependsOn 'generateBuildInfo'
+}
+
+tasks.register('editorJar', ShadowJar) {
+    group = 'distribution'
+    description = 'Fat jar for the editor installer: engine, editor, Dear ImGui, and host-OS natives.'
+    archiveBaseName = 'epysia-editor'
+    archiveClassifier = ''
+    archiveVersion = ''
+    from sourceSets.main.output
+    configurations = [project.configurations.runtimeClasspath]
+    manifest {
+        attributes 'Main-Class': 'fr.epistudio.epysia.editor.EditorMain'
+    }
+    mergeServiceFiles()
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
