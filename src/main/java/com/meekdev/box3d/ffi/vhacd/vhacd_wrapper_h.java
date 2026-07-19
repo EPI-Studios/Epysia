@@ -568,7 +568,7 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef unsigned long __u_long
      * }
      */
-    public static final OfLong __u_long = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __u_long = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef signed char __int8_t
@@ -610,13 +610,13 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef long __int64_t
      * }
      */
-    public static final OfLong __int64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __int64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __uint64_t
      * }
      */
-    public static final OfLong __uint64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __uint64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __int8_t __int_least8_t
@@ -658,43 +658,43 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef __int64_t __int_least64_t
      * }
      */
-    public static final OfLong __int_least64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __int_least64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __uint64_t __uint_least64_t
      * }
      */
-    public static final OfLong __uint_least64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __uint_least64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __quad_t
      * }
      */
-    public static final OfLong __quad_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __quad_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __u_quad_t
      * }
      */
-    public static final OfLong __u_quad_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __u_quad_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __intmax_t
      * }
      */
-    public static final OfLong __intmax_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __intmax_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __uintmax_t
      * }
      */
-    public static final OfLong __uintmax_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __uintmax_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __dev_t
      * }
      */
-    public static final OfLong __dev_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __dev_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned int __uid_t
@@ -712,13 +712,13 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef unsigned long __ino_t
      * }
      */
-    public static final OfLong __ino_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __ino_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __ino64_t
      * }
      */
-    public static final OfLong __ino64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __ino64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned int __mode_t
@@ -730,19 +730,19 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef unsigned long __nlink_t
      * }
      */
-    public static final OfLong __nlink_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __nlink_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __off_t
      * }
      */
-    public static final OfLong __off_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __off_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __off64_t
      * }
      */
-    public static final OfLong __off64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __off64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef int __pid_t
@@ -754,19 +754,19 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef long __clock_t
      * }
      */
-    public static final OfLong __clock_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __clock_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __rlim_t
      * }
      */
-    public static final OfLong __rlim_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __rlim_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __rlim64_t
      * }
      */
-    public static final OfLong __rlim64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __rlim64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned int __id_t
@@ -778,7 +778,7 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef long __time_t
      * }
      */
-    public static final OfLong __time_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __time_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned int __useconds_t
@@ -790,13 +790,13 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef long __suseconds_t
      * }
      */
-    public static final OfLong __suseconds_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __suseconds_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __suseconds64_t
      * }
      */
-    public static final OfLong __suseconds64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __suseconds64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef int __daddr_t
@@ -826,73 +826,73 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef long __blksize_t
      * }
      */
-    public static final OfLong __blksize_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __blksize_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __blkcnt_t
      * }
      */
-    public static final OfLong __blkcnt_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __blkcnt_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __blkcnt64_t
      * }
      */
-    public static final OfLong __blkcnt64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __blkcnt64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __fsblkcnt_t
      * }
      */
-    public static final OfLong __fsblkcnt_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __fsblkcnt_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __fsblkcnt64_t
      * }
      */
-    public static final OfLong __fsblkcnt64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __fsblkcnt64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __fsfilcnt_t
      * }
      */
-    public static final OfLong __fsfilcnt_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __fsfilcnt_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __fsfilcnt64_t
      * }
      */
-    public static final OfLong __fsfilcnt64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __fsfilcnt64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __fsword_t
      * }
      */
-    public static final OfLong __fsword_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __fsword_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __ssize_t
      * }
      */
-    public static final OfLong __ssize_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __ssize_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long __syscall_slong_t
      * }
      */
-    public static final OfLong __syscall_slong_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __syscall_slong_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long __syscall_ulong_t
      * }
      */
-    public static final OfLong __syscall_ulong_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __syscall_ulong_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __off64_t __loff_t
      * }
      */
-    public static final OfLong __loff_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __loff_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef char *__caddr_t
@@ -904,7 +904,7 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef long __intptr_t
      * }
      */
-    public static final OfLong __intptr_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong __intptr_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned int __socklen_t
@@ -940,7 +940,7 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef __int64_t int64_t
      * }
      */
-    public static final OfLong int64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong int64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __uint8_t uint8_t
@@ -964,7 +964,7 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef __uint64_t uint64_t
      * }
      */
-    public static final OfLong uint64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong uint64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __int_least8_t int_least8_t
@@ -988,7 +988,7 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef __int_least64_t int_least64_t
      * }
      */
-    public static final OfLong int_least64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong int_least64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __uint_least8_t uint_least8_t
@@ -1012,7 +1012,7 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef __uint_least64_t uint_least64_t
      * }
      */
-    public static final OfLong uint_least64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong uint_least64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef signed char int_fast8_t
@@ -1024,19 +1024,19 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef long int_fast16_t
      * }
      */
-    public static final OfLong int_fast16_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong int_fast16_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long int_fast32_t
      * }
      */
-    public static final OfLong int_fast32_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong int_fast32_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long int_fast64_t
      * }
      */
-    public static final OfLong int_fast64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong int_fast64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned char uint_fast8_t
@@ -1048,43 +1048,43 @@ public class vhacd_wrapper_h extends vhacd_wrapper_h$shared {
      * typedef unsigned long uint_fast16_t
      * }
      */
-    public static final OfLong uint_fast16_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong uint_fast16_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long uint_fast32_t
      * }
      */
-    public static final OfLong uint_fast32_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong uint_fast32_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long uint_fast64_t
      * }
      */
-    public static final OfLong uint_fast64_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong uint_fast64_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef long intptr_t
      * }
      */
-    public static final OfLong intptr_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong intptr_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef unsigned long uintptr_t
      * }
      */
-    public static final OfLong uintptr_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong uintptr_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __intmax_t intmax_t
      * }
      */
-    public static final OfLong intmax_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong intmax_t = vhacd_wrapper_h.C_LONG_LONG;
     /**
      * {@snippet lang=c :
      * typedef __uintmax_t uintmax_t
      * }
      */
-    public static final OfLong uintmax_t = vhacd_wrapper_h.C_LONG;
+    public static final OfLong uintmax_t = vhacd_wrapper_h.C_LONG_LONG;
 
     private static class bvh_compute {
         public static final FunctionDescriptor DESC = FunctionDescriptor.of(

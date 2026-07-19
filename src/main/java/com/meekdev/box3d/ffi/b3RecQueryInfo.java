@@ -41,8 +41,8 @@ public class b3RecQueryInfo {
         b3Pos.layout().withName("origin"),
         b3Vec3.layout().withName("translation"),
         box3d_h.C_INT.withName("hitCount"),
-        box3d_h.C_LONG.withName("key"),
-        box3d_h.C_LONG.withName("id"),
+        box3d_h.C_LONG_LONG.withName("key"),
+        box3d_h.C_LONG_LONG.withName("id"),
         box3d_h.C_POINTER.withName("name")
     ).withName("b3RecQueryInfo");
 

@@ -28,8 +28,8 @@ public class b3Filter {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        box3d_h.C_LONG.withName("categoryBits"),
-        box3d_h.C_LONG.withName("maskBits"),
+        box3d_h.C_LONG_LONG.withName("categoryBits"),
+        box3d_h.C_LONG_LONG.withName("maskBits"),
         box3d_h.C_INT.withName("groupIndex"),
         MemoryLayout.paddingLayout(4)
     ).withName("b3Filter");

@@ -35,7 +35,7 @@ public class b3SurfaceMaterial {
         box3d_h.C_FLOAT.withName("restitution"),
         box3d_h.C_FLOAT.withName("rollingResistance"),
         b3Vec3.layout().withName("tangentVelocity"),
-        box3d_h.C_LONG.withName("userMaterialId"),
+        box3d_h.C_LONG_LONG.withName("userMaterialId"),
         box3d_h.C_INT.withName("customColor"),
         MemoryLayout.paddingLayout(4)
     ).withName("b3SurfaceMaterial");

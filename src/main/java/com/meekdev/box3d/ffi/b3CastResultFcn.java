@@ -36,7 +36,7 @@ public final class b3CastResultFcn {
         b3Pos.layout(),
         b3Vec3.layout(),
         box3d_h.C_FLOAT,
-        box3d_h.C_LONG,
+        box3d_h.C_LONG_LONG,
         box3d_h.C_INT,
         box3d_h.C_INT,
         box3d_h.C_POINTER

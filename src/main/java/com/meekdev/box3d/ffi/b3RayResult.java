@@ -39,7 +39,7 @@ public class b3RayResult {
         b3Pos.layout().withName("point"),
         b3Vec3.layout().withName("normal"),
         MemoryLayout.paddingLayout(4),
-        box3d_h.C_LONG.withName("userMaterialId"),
+        box3d_h.C_LONG_LONG.withName("userMaterialId"),
         box3d_h.C_FLOAT.withName("fraction"),
         box3d_h.C_INT.withName("triangleIndex"),
         box3d_h.C_INT.withName("childIndex"),

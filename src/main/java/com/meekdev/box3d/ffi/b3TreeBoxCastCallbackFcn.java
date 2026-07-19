@@ -34,7 +34,7 @@ public final class b3TreeBoxCastCallbackFcn {
         box3d_h.C_FLOAT,
         box3d_h.C_POINTER,
         box3d_h.C_INT,
-        box3d_h.C_LONG,
+        box3d_h.C_LONG_LONG,
         box3d_h.C_POINTER
     );
 

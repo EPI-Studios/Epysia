@@ -40,8 +40,8 @@ public class b3ContactHitEvent {
         b3Pos.layout().withName("point"),
         b3Vec3.layout().withName("normal"),
         box3d_h.C_FLOAT.withName("approachSpeed"),
-        box3d_h.C_LONG.withName("userMaterialIdA"),
-        box3d_h.C_LONG.withName("userMaterialIdB")
+        box3d_h.C_LONG_LONG.withName("userMaterialIdA"),
+        box3d_h.C_LONG_LONG.withName("userMaterialIdB")
     ).withName("b3ContactHitEvent");
 
     /**
