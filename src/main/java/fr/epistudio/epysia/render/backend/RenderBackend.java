@@ -56,4 +56,6 @@ public interface RenderBackend {
     void endPass();
 
     void endFrame();
+
+    int readPixelArgb(RenderTargetHandle target, int x, int y);
 }
