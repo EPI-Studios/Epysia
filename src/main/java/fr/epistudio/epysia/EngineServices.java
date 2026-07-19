@@ -1,8 +1,12 @@
 package fr.epistudio.epysia;
 
+import fr.epistudio.epysia.assets.AssetRegistry;
+import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.text.FontRegistry;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scripting.Hud;
+import fr.epistudio.epysia.scripting.Scheduler;
 import fr.epistudio.epysia.window.Window;
 
 public interface EngineServices {
@@ -16,4 +20,12 @@ public interface EngineServices {
     Scene scene();
 
     SystemRegistry systems();
+
+    AssetRegistry assets();
+
+    Logger logger();
+
+    Scheduler scheduler();
+
+    Hud hud();
 }
