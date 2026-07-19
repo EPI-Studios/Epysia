@@ -7,7 +7,7 @@ import fr.epistudio.epysia.components.RequiresComponent;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.physics.api.BodyHandle;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
-import fr.epistudio.epysia.physics.rapier.RapierCharacterController;
+import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
@@ -15,7 +15,10 @@ import org.joml.Vector3fc;
 @RequiresComponent(Transform3D.class)
 public final class CharacterControllerComponent extends Component {
 
-    private ShapeDescriptor shape = ColliderShape.capsule(0.4f, 0.9f);
+    @Export(label = "Capsule Radius", min = 0.05f, max = 2.0f, step = 0.05f)
+    private float capsuleRadius = 0.3f;
+    @Export(label = "Capsule Half Height", min = 0.0f, max = 4.0f, step = 0.05f)
+    private float capsuleHalfHeight = 0.2f;
     @Export(label = "Move Speed", min = 0.0f, max = 50.0f, step = 0.1f)
     private float moveSpeedMetersPerSecond = 5.0f;
     @Export(label = "Jump Speed", min = 0.0f, max = 30.0f, step = 0.1f)
@@ -29,12 +32,13 @@ public final class CharacterControllerComponent extends Component {
     private float verticalVelocity;
     private boolean grounded;
     private BodyHandle bodyHandle = BodyHandle.NONE;
-    private RapierCharacterController nativeController;
+    private Box3dCharacterController nativeController;
     private final Vector3f desiredHorizontalMovement = new Vector3f();
     private boolean jumpRequested;
 
-    public CharacterControllerComponent setShape(ShapeDescriptor shape) {
-        this.shape = shape;
+    public CharacterControllerComponent setCapsule(float radius, float halfHeight) {
+        this.capsuleRadius = radius;
+        this.capsuleHalfHeight = halfHeight;
         return this;
     }
 
@@ -65,7 +69,7 @@ public final class CharacterControllerComponent extends Component {
     }
 
     public ShapeDescriptor shape() {
-        return shape;
+        return ColliderShape.capsule(capsuleRadius, capsuleHalfHeight);
     }
 
     public float moveSpeed() {
@@ -104,7 +108,7 @@ public final class CharacterControllerComponent extends Component {
         return bodyHandle;
     }
 
-    public RapierCharacterController nativeController() {
+    public Box3dCharacterController nativeController() {
         return nativeController;
     }
 
@@ -125,9 +129,21 @@ public final class CharacterControllerComponent extends Component {
         this.grounded = grounded;
     }
 
-    public void attachNative(BodyHandle handle, RapierCharacterController controller) {
+    public void attachNative(BodyHandle handle, Box3dCharacterController controller) {
         this.bodyHandle = handle;
         this.nativeController = controller;
+    }
+
+    public void move(Vector3fc velocityMetersPerSecond) {
+        this.desiredHorizontalMovement.set(velocityMetersPerSecond.x(), 0.0f, velocityMetersPerSecond.z());
+    }
+
+    public boolean isGrounded() {
+        return grounded;
+    }
+
+    public void jump() {
+        this.jumpRequested = true;
     }
 
     public void setDesiredHorizontalMove(Vector3fc movement) {
