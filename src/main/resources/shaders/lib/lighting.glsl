@@ -1,21 +1,3 @@
-layout(binding = 3) uniform sampler2DShadow shadowMap;
-
-float sampleShadow(vec4 lightSpacePosition) {
-    vec3 projected = lightSpacePosition.xyz / lightSpacePosition.w;
-    projected = projected * 0.5 + 0.5;
-    if (projected.z > 1.0) {
-        return 1.0;
-    }
-    float bias = 0.0025;
-    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
-    float result = 0.0;
-    result += texture(shadowMap, vec3(projected.xy + vec2(-0.5, -0.5) * texelSize, projected.z - bias));
-    result += texture(shadowMap, vec3(projected.xy + vec2( 0.5, -0.5) * texelSize, projected.z - bias));
-    result += texture(shadowMap, vec3(projected.xy + vec2(-0.5,  0.5) * texelSize, projected.z - bias));
-    result += texture(shadowMap, vec3(projected.xy + vec2( 0.5,  0.5) * texelSize, projected.z - bias));
-    return result * 0.25;
-}
-
 void unpackLight(Light light,
                  vec3 worldPosition,
                  out vec3 toLight,
