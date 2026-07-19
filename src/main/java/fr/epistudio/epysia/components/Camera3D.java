@@ -9,6 +9,8 @@ import org.joml.Vector3f;
 @RequiresComponent(Transform3D.class)
 public final class Camera3D extends Component {
 
+    @Export(label = "Active")
+    private boolean active = true;
     @Export(label = "FOV", min = 10.0f, max = 170.0f, step = 1.0f)
     private float fieldOfViewDegrees = 60.0f;
     @Export(label = "Near", min = 0.01f, max = 10.0f, step = 0.01f)
@@ -36,6 +38,15 @@ public final class Camera3D extends Component {
         return this;
     }
 
+    public boolean active() {
+        return active;
+    }
+
+    public Camera3D setActive(boolean active) {
+        this.active = active;
+        return this;
+    }
+
     public float fieldOfViewDegrees() {
         return fieldOfViewDegrees;
     }
@@ -52,20 +63,39 @@ public final class Camera3D extends Component {
         return farPlane;
     }
 
+    public static final float CURRENT_STATE_ALPHA = 1.0f;
+
     public Vector3f position(Vector3f destination) {
         return destination.set(requireOwnerTransform().position());
     }
 
-    public Matrix4f viewProjection() {
-        Transform3D transform = requireOwnerTransform();
-        transform.localMatrix().invert(viewMatrix);
-        projectionMatrix.identity().perspective(
+    public Vector3f position(Vector3f destination, float interpolationAlpha) {
+        return requireOwnerTransform().worldMatrix(interpolationAlpha).getTranslation(destination);
+    }
+
+    public Matrix4f view() {
+        return view(CURRENT_STATE_ALPHA);
+    }
+
+    public Matrix4f view(float interpolationAlpha) {
+        return requireOwnerTransform().worldMatrix(interpolationAlpha).invert(viewMatrix);
+    }
+
+    public Matrix4f projection() {
+        return projectionMatrix.identity().perspective(
                 (float) Math.toRadians(fieldOfViewDegrees),
                 aspectRatio,
                 nearPlane,
                 farPlane
         );
-        return projectionMatrix.mul(viewMatrix, viewProjectionMatrix);
+    }
+
+    public Matrix4f viewProjection() {
+        return viewProjection(CURRENT_STATE_ALPHA);
+    }
+
+    public Matrix4f viewProjection(float interpolationAlpha) {
+        return projection().mul(view(interpolationAlpha), viewProjectionMatrix);
     }
 
     private Transform3D requireOwnerTransform() {

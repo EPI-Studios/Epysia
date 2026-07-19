@@ -7,18 +7,35 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
 @EpysiaComponent(name = "Transform 3D", category = "Core")
 public final class Transform3D extends Component {
 
     @Export(label = "Position")
     private final Vector3f position = new Vector3f();
+    @Export(label = "Rotation")
     private final Quaternionf rotation = new Quaternionf();
     @Export(label = "Scale")
     private final Vector3f scale = new Vector3f(1.0f, 1.0f, 1.0f);
     private final Matrix4f cachedLocalMatrix = new Matrix4f();
+    private final Matrix4f cachedWorldMatrix = new Matrix4f();
+    private final Vector3f previousPosition = new Vector3f();
+    private final Quaternionf previousRotation = new Quaternionf();
+    private final Vector3f previousScale = new Vector3f(1.0f, 1.0f, 1.0f);
+    private final Vector3f blendedPosition = new Vector3f();
+    private final Quaternionf blendedRotation = new Quaternionf();
+    private final Vector3f blendedScale = new Vector3f();
+    private final Matrix4f blendedWorldMatrix = new Matrix4f();
+    private final List<Transform3D> children = new ArrayList<>();
+    private Transform3D parent;
     private int renderLayer;
     private boolean visible = true;
-    private boolean matrixDirty = true;
+    private boolean localDirty = true;
+    private boolean worldDirty = true;
+    private boolean previousStateCaptured;
 
     public Vector3f position() {
         return position;
@@ -26,13 +43,13 @@ public final class Transform3D extends Component {
 
     public Transform3D setPosition(float x, float y, float z) {
         position.set(x, y, z);
-        matrixDirty = true;
+        markDirty();
         return this;
     }
 
     public Transform3D translate(float deltaX, float deltaY, float deltaZ) {
         position.add(deltaX, deltaY, deltaZ);
-        matrixDirty = true;
+        markDirty();
         return this;
     }
 
@@ -42,19 +59,19 @@ public final class Transform3D extends Component {
 
     public Transform3D setRotation(Quaternionf source) {
         rotation.set(source).normalize();
-        matrixDirty = true;
+        markDirty();
         return this;
     }
 
     public Transform3D setRotationEuler(float pitchRadians, float yawRadians, float rollRadians) {
         rotation.identity().rotateXYZ(pitchRadians, yawRadians, rollRadians);
-        matrixDirty = true;
+        markDirty();
         return this;
     }
 
     public Transform3D rotateAxisAngle(float axisX, float axisY, float axisZ, float radians) {
         rotation.rotateAxis(radians, axisX, axisY, axisZ).normalize();
-        matrixDirty = true;
+        markDirty();
         return this;
     }
 
@@ -62,7 +79,7 @@ public final class Transform3D extends Component {
         rotation.identity()
                 .lookAlong(targetX - position.x, targetY - position.y, targetZ - position.z, upX, upY, upZ)
                 .invert();
-        matrixDirty = true;
+        markDirty();
         return this;
     }
 
@@ -72,8 +89,23 @@ public final class Transform3D extends Component {
 
     public Transform3D setScale(float x, float y, float z) {
         scale.set(x, y, z);
-        matrixDirty = true;
+        markDirty();
         return this;
+    }
+
+    public void markDirty() {
+        localDirty = true;
+        markWorldDirty();
+    }
+
+    private void markWorldDirty() {
+        if (worldDirty) {
+            return;
+        }
+        worldDirty = true;
+        for (Transform3D child : children) {
+            child.markWorldDirty();
+        }
     }
 
     public Transform3D setUniformScale(float value) {
@@ -98,9 +130,87 @@ public final class Transform3D extends Component {
         return this;
     }
 
+    public Optional<Transform3D> parent() {
+        return Optional.ofNullable(parent);
+    }
+
+    public List<Transform3D> children() {
+        return children;
+    }
+
+    public boolean setParent(Transform3D newParent) {
+        if (newParent == this || createsCycle(newParent)) {
+            return false;
+        }
+        if (parent != null) {
+            parent.children.remove(this);
+        }
+        parent = newParent;
+        if (parent != null) {
+            parent.children.add(this);
+        }
+        markWorldDirty();
+        return true;
+    }
+
+    public void detachFromParent() {
+        setParent(null);
+    }
+
+    private boolean createsCycle(Transform3D candidate) {
+        Transform3D walker = candidate;
+        while (walker != null) {
+            if (walker == this) {
+                return true;
+            }
+            walker = walker.parent;
+        }
+        return false;
+    }
+
     public Matrix4f localMatrix() {
-        cachedLocalMatrix.translationRotateScale(position, rotation, scale);
-        matrixDirty = false;
+        if (localDirty) {
+            cachedLocalMatrix.translationRotateScale(position, rotation, scale);
+            localDirty = false;
+        }
         return cachedLocalMatrix;
+    }
+
+    public Matrix4f worldMatrix() {
+        if (!worldDirty) {
+            return cachedWorldMatrix;
+        }
+        if (parent == null) {
+            cachedWorldMatrix.set(localMatrix());
+        } else {
+            parent.worldMatrix().mul(localMatrix(), cachedWorldMatrix);
+        }
+        worldDirty = false;
+        return cachedWorldMatrix;
+    }
+
+    public void captureInterpolationSnapshot() {
+        previousPosition.set(position);
+        previousRotation.set(rotation);
+        previousScale.set(scale);
+        previousStateCaptured = true;
+    }
+
+    public Matrix4f worldMatrix(float alpha) {
+        if (alpha >= 1.0f || !previousStateCaptured) {
+            return worldMatrix();
+        }
+        blendLocalInto(blendedWorldMatrix, alpha);
+        if (parent != null) {
+            parent.worldMatrix(alpha).mul(blendedWorldMatrix, blendedWorldMatrix);
+        }
+        return blendedWorldMatrix;
+    }
+
+    private void blendLocalInto(Matrix4f destination, float alpha) {
+        blendedPosition.set(previousPosition).lerp(position, alpha);
+        previousRotation.slerp(rotation, alpha, blendedRotation);
+        blendedScale.set(previousScale).lerp(scale, alpha);
+        destination.translationRotateScale(blendedPosition, blendedRotation, blendedScale);
     }
 }
