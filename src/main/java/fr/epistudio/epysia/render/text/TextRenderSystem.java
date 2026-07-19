@@ -1,9 +1,9 @@
 package fr.epistudio.epysia.render.text;
 
-import fr.epistudio.epysia.CpuTimings;
 import fr.epistudio.epysia.EpysiaEngine;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.FrameBuilder;
+import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.Stage;
 import fr.epistudio.epysia.render.StageConfigurer;
@@ -37,6 +37,7 @@ import fr.epistudio.epysia.render.backend.VertexLayout;
 import fr.epistudio.epysia.render.shader.LoadedShader;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scripting.DefaultHud;
 import fr.epistudio.epysia.render.backend.RenderSurface;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBTTAlignedQuad;
@@ -58,7 +59,6 @@ public final class TextRenderSystem implements RenderSystem {
     private static final int INDICES_PER_QUAD = 6;
     private static final int VERTEX_BYTES = 16;
     private static final int UBO_SIZE = 32;
-    private static final int FPS_SAMPLE_COUNT = 60;
 
     private final ShaderLoader shaderLoader;
     private final RenderSurface window;
@@ -76,12 +76,6 @@ public final class TextRenderSystem implements RenderSystem {
     private final ByteBuffer vertexScratch = BufferUtils.createByteBuffer(MAX_QUADS * VERTICES_PER_QUAD * VERTEX_BYTES);
     private final ByteBuffer indexScratch = BufferUtils.createByteBuffer(MAX_QUADS * INDICES_PER_QUAD * Integer.BYTES);
     private final ByteBuffer uboScratch = BufferUtils.createByteBuffer(UBO_SIZE);
-    private final float[] frameTimes = new float[FPS_SAMPLE_COUNT];
-    private int frameTimeCursor;
-    private long previousNanos;
-    private static final long OVERLAY_REFRESH_NANOS = 250_000_000L;
-    private long lastOverlayRefreshNanos;
-    private String cachedOverlayText = "";
 
     public TextRenderSystem(ShaderLoader shaderLoader, RenderSurface window, EpysiaEngine engine, Logger logger) {
         this.shaderLoader = shaderLoader;
@@ -106,7 +100,6 @@ public final class TextRenderSystem implements RenderSystem {
                         new Binding(0, UniformBufferBinding.whole(textUbo, UBO_SIZE)),
                         new Binding(1, new SampledTextureBinding(font.atlasTexture()))
                 )));
-        previousNanos = System.nanoTime();
     }
 
     private PipelineDescriptor buildPipelineDescriptor(BindingSetLayout layout) {
@@ -133,73 +126,30 @@ public final class TextRenderSystem implements RenderSystem {
     }
 
     @Override
-    public void collect(Scene scene, FrameBuilder frame, float interpolationAlpha) {
-        long now = System.nanoTime();
-        recordFrameTime(now);
-        previousNanos = now;
-        if (now - lastOverlayRefreshNanos >= OVERLAY_REFRESH_NANOS) {
-            cachedOverlayText = buildOverlayText();
-            lastOverlayRefreshNanos = now;
-        }
-        int indexCount = generateTextMesh(cachedOverlayText);
-        if (indexCount <= 0) {
-            return;
-        }
-        writeUbo();
-        frame.submit(Stage.UI, DrawCommand.withIndexCount(pipeline, mesh, bindings, indexCount));
-    }
-
-    private void recordFrameTime(long now) {
-        float deltaSeconds = (now - previousNanos) / 1_000_000_000.0f;
-        frameTimes[frameTimeCursor] = deltaSeconds;
-        frameTimeCursor = (frameTimeCursor + 1) % FPS_SAMPLE_COUNT;
-    }
-
-    private String buildOverlayText() {
-        float averageSeconds = averageFrameTime();
-        float fps = averageSeconds > 0.0f ? 1.0f / averageSeconds : 0.0f;
-        float frameMillis = averageSeconds * 1000.0f;
-        StringBuilder builder = new StringBuilder();
-        builder.append(String.format("Epysia  |  %.1f fps  |  %.2f ms", fps, frameMillis));
-        java.util.Map<String, Long> gpuTimings = backend.latestProfileTimingsNanos();
-        if (!gpuTimings.isEmpty()) {
-            long totalGpuNanos = 0L;
-            for (long nanos : gpuTimings.values()) {
-                totalGpuNanos += nanos;
-            }
-            builder.append('\n').append(String.format("GPU total %.2f ms", totalGpuNanos / 1_000_000.0));
-            for (java.util.Map.Entry<String, Long> entry : gpuTimings.entrySet()) {
-                builder.append('\n').append(String.format("  %-14s %.2f ms", entry.getKey(), entry.getValue() / 1_000_000.0));
-            }
-        }
-        builder.append('\n').append("CPU breakdown");
-        for (CpuTimings slot : CpuTimings.values()) {
-            builder.append('\n').append(String.format("  %-14s %.2f ms", slot.label(), engine.cpuTimingNanos(slot) / 1_000_000.0));
-        }
-        return builder.toString();
-    }
-
-    private float averageFrameTime() {
-        float sum = 0.0f;
-        int counted = 0;
-        for (float sample : frameTimes) {
-            if (sample > 0.0f) {
-                sum += sample;
-                counted++;
-            }
-        }
-        return counted == 0 ? 0.0f : sum / counted;
-    }
-
-    private int generateTextMesh(String text) {
+    public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         vertexScratch.clear();
         indexScratch.clear();
         int quadCount = 0;
-        float startX = 12.0f;
+        for (DefaultHud.Entry entry : engine.hudEntries().entries()) {
+            quadCount = appendText(entry.message(), entry.x(), entry.y(), quadCount);
+        }
+        if (quadCount <= 0) {
+            return;
+        }
+        vertexScratch.flip();
+        indexScratch.flip();
+        backend.writeBuffer(vertexBuffer, vertexScratch, 0L);
+        backend.writeBuffer(indexBuffer, indexScratch, 0L);
+        writeUbo();
+        frame.submit(Stage.UI, DrawCommand.withIndexCount(pipeline, mesh, bindings, quadCount * INDICES_PER_QUAD));
+    }
+
+    private int appendText(String text, float startX, float startY, int quadCursor) {
+        int quadCount = quadCursor;
         float lineHeight = font.pixelHeight() * 1.2f;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer xPosition = stack.floats(startX);
-            FloatBuffer yPosition = stack.floats(12.0f + font.pixelHeight());
+            FloatBuffer yPosition = stack.floats(startY + font.pixelHeight());
             STBTTAlignedQuad quad = STBTTAlignedQuad.malloc(stack);
             for (int i = 0; i < text.length() && quadCount < MAX_QUADS; i++) {
                 char character = text.charAt(i);
@@ -217,11 +167,7 @@ public final class TextRenderSystem implements RenderSystem {
                 quadCount++;
             }
         }
-        vertexScratch.flip();
-        indexScratch.flip();
-        backend.writeBuffer(vertexBuffer, vertexScratch, 0L);
-        backend.writeBuffer(indexBuffer, indexScratch, 0L);
-        return quadCount * INDICES_PER_QUAD;
+        return quadCount;
     }
 
     private void appendQuad(STBTTAlignedQuad quad, int quadIndex) {
