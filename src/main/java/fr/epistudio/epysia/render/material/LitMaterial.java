@@ -9,16 +9,31 @@ public final class LitMaterial extends Material {
     public final Vector3f baseColor = new Vector3f(1.0f, 1.0f, 1.0f);
 
     @Uniform
-    public float shininess = 32.0f;
+    public float metallic = 0.0f;
 
     @Uniform
-    public float specularStrength = 0.5f;
+    public float roughness = 0.6f;
+
+    @Uniform
+    public float emissiveStrength = 0.0f;
+
+    @Uniform
+    public float alphaCutoff = 0.0f;
 
     @Texture
     public TextureHandle albedo;
 
     @Texture
     public TextureHandle normalMap;
+
+    @Texture
+    public TextureHandle metallicRoughnessMap;
+
+    @Texture
+    public TextureHandle occlusionMap;
+
+    @Texture
+    public TextureHandle emissiveMap;
 
     public LitMaterial() {
         super("lit.vert.glsl", "lit.frag.glsl");
@@ -29,13 +44,23 @@ public final class LitMaterial extends Material {
         return this;
     }
 
-    public LitMaterial setShininess(float value) {
-        this.shininess = value;
+    public LitMaterial setMetallic(float value) {
+        this.metallic = value;
         return this;
     }
 
-    public LitMaterial setSpecularStrength(float value) {
-        this.specularStrength = value;
+    public LitMaterial setRoughness(float value) {
+        this.roughness = value;
+        return this;
+    }
+
+    public LitMaterial setEmissiveStrength(float value) {
+        this.emissiveStrength = value;
+        return this;
+    }
+
+    public LitMaterial setAlphaCutoff(float value) {
+        this.alphaCutoff = value;
         return this;
     }
 
@@ -46,6 +71,21 @@ public final class LitMaterial extends Material {
 
     public LitMaterial setNormalMap(TextureHandle texture) {
         this.normalMap = texture;
+        return this;
+    }
+
+    public LitMaterial setMetallicRoughnessMap(TextureHandle texture) {
+        this.metallicRoughnessMap = texture;
+        return this;
+    }
+
+    public LitMaterial setOcclusionMap(TextureHandle texture) {
+        this.occlusionMap = texture;
+        return this;
+    }
+
+    public LitMaterial setEmissiveMap(TextureHandle texture) {
+        this.emissiveMap = texture;
         return this;
     }
 }
