@@ -1,0 +1,122 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the leading v
+        required: true
+        default: 0.0.1
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            lwjgl: natives-linux
+            box3d_lib: libbox3d.so
+            vhacd_lib: libbkunvhacd.so
+          - os: windows-latest
+            target: windows-x64
+            lwjgl: natives-windows
+            box3d_lib: box3d.dll
+            vhacd_lib: bkunvhacd.dll
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            ref="${{ github.ref_name }}"
+            echo "value=${ref#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Checkout box3d-java
+        uses: actions/checkout@v4
+        with:
+          repository: Meekiavelique/box3d-java
+          submodules: recursive
+          path: box3d-java
+
+      - name: Build box3d natives
+        shell: bash
+        run: |
+          cmake -B box3d-java/native/box3d/build -S box3d-java/native/box3d \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBOX3D_DOUBLE_PRECISION=ON \
+            -DBOX3D_SAMPLES=OFF -DBOX3D_UNIT_TESTS=OFF
+          cmake --build box3d-java/native/box3d/build --target box3d --config Release
+          cmake -B box3d-java/native/vhacd/build -S box3d-java/native/vhacd -DCMAKE_BUILD_TYPE=Release
+          cmake --build box3d-java/native/vhacd/build --config Release
+
+      - name: Stage box3d natives
+        shell: bash
+        run: |
+          destination="src/main/resources/natives/${{ matrix.target }}"
+          mkdir -p "$destination"
+          find box3d-java/native/box3d/build -name '${{ matrix.box3d_lib }}' -exec cp {} "$destination/" \;
+          find box3d-java/native/vhacd/build -name '${{ matrix.vhacd_lib }}' -exec cp {} "$destination/" \;
+          ls -l "$destination"
+
+      - name: Install WiX (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Install packaging tools (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y fakeroot binutils zip
+
+      - name: Build fat jars
+        shell: bash
+        run: |
+          ./gradlew engineRuntimeJar :epysia-editor:editorJar \
+            -PreleaseVersion=${{ steps.version.outputs.value }} \
+            -PlwjglNatives=${{ matrix.lwjgl }}
+
+      - name: Package installers and template
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+        run: bash packaging/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write checksums
+        run: cd dist && sha256sum * > checksums.txt
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
