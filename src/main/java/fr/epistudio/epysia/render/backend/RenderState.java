@@ -1,12 +1,24 @@
 package fr.epistudio.epysia.render.backend;
 
-public record RenderState(Topology topology, DepthTest depthTest, BlendMode blendMode, CullMode cullMode) {
+public record RenderState(Topology topology, DepthTest depthTest, BlendMode blendMode, CullMode cullMode, boolean depthWrite) {
+
+    public RenderState(Topology topology, DepthTest depthTest, BlendMode blendMode, CullMode cullMode) {
+        this(topology, depthTest, blendMode, cullMode, true);
+    }
 
     public static final RenderState OPAQUE_3D = new RenderState(
             Topology.TRIANGLES,
             DepthTest.LESS_EQUAL,
             BlendMode.OPAQUE,
             CullMode.BACK
+    );
+
+    public static final RenderState TRANSPARENT_3D = new RenderState(
+            Topology.TRIANGLES,
+            DepthTest.LESS_EQUAL,
+            BlendMode.ALPHA_BLEND,
+            CullMode.BACK,
+            false
     );
 
     public static final RenderState SPRITE_2D = new RenderState(
