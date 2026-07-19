@@ -1,9 +1,21 @@
+<div align="center">
+
 # Epysia
 
-Epysia is a 3D game engine and editor written in Java 25. You build a game as a
-tree of GameObjects with components, script behaviour in plain Java, and export
-a native executable that carries its own trimmed runtime, so players never
-install or see a JVM.
+**A 3D game engine written in Java**
+
+Build a game as a tree of GameObjects with components, script behaviour in
+plain Java, and export a native executable that carries its own trimmed
+runtime. Players never install or see a JVM.
+
+[![JDK](https://img.shields.io/badge/JDK-25-orange?style=flat-square)](#requirements)
+[![OpenGL](https://img.shields.io/badge/OpenGL-4.3-blue?style=flat-square)](#highlights)
+[![Physics](https://img.shields.io/badge/Physics-Box3D-red?style=flat-square)](#highlights)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)](#third-party)
+
+</div>
+
+---
 
 ## Highlights
 
@@ -24,19 +36,12 @@ install or see a JVM.
 
 - JDK 25
 - An OpenGL 4.3 capable GPU
-- Linux x64 to run from source. The Box3D linux natives are vendored in the
-  repo. Windows natives are produced by the release workflow.
 
 ## Running the editor
 
 ```sh
 ./gradlew :epysia-editor:run
 ```
-
-Pick or create a project in the selector and you land in the editor with a
-starter scene. From there you can add primitives, lights and cameras, drop in
-components, write scripts, and press play to run the game inside the viewport.
-
 ## Writing a script
 
 Scripts are `Behaviour` subclasses. The editor compiles and reloads them when
@@ -112,3 +117,11 @@ public final class MyGameModule implements EngineModule {
 - Physics is powered by Box3D, with vendored FFM bindings under
   `src/main/java/com/meekdev/box3d`.
 - Built on LWJGL 3, JOML, Dear ImGui, and ClassGraph.
+
+<div align="center">
+
+---
+
+Made with Epysia
+
+</div>
