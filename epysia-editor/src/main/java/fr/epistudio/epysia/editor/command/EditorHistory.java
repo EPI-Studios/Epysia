@@ -11,9 +11,16 @@ public final class EditorHistory {
     private final Deque<Entry> undoStack = new ArrayDeque<>();
     private final Deque<Entry> redoStack = new ArrayDeque<>();
     private final CommandContext context;
+    private Runnable onChange = () -> {
+    };
 
     public EditorHistory(CommandContext context) {
         this.context = context;
+    }
+
+    public void setOnChange(Runnable onChange) {
+        this.onChange = onChange != null ? onChange : () -> {
+        };
     }
 
     public void execute(EditorCommand command) {
@@ -21,23 +28,24 @@ public final class EditorHistory {
         try {
             inverse = command.invert(context);
         } catch (RuntimeException error) {
-            System.err.println("[EditorHistory] invert failed for " + command.label() + ": " + error);
+            context.services().logger().error("[EditorHistory] invert failed for " + command.label(), error);
             return;
         }
         try {
             command.apply(context);
         } catch (RuntimeException error) {
-            System.err.println("[EditorHistory] apply failed for " + command.label() + ": " + error);
+            context.services().logger().error("[EditorHistory] apply failed for " + command.label(), error);
             return;
         }
         push(command, inverse);
+        onChange.run();
     }
 
     public void executeWithoutHistory(EditorCommand command) {
         try {
             command.apply(context);
         } catch (RuntimeException error) {
-            System.err.println("[EditorHistory] apply (no history) failed for " + command.label() + ": " + error);
+            context.services().logger().error("[EditorHistory] apply (no history) failed for " + command.label(), error);
         }
     }
 
@@ -77,17 +85,18 @@ public final class EditorHistory {
         try {
             refreshedForward = entry.inverse.invert(context);
         } catch (RuntimeException error) {
-            System.err.println("[EditorHistory] invert before undo failed for " + entry.forward.label() + ": " + error);
+            context.services().logger().error("[EditorHistory] invert-before-undo failed for " + entry.forward.label(), error);
             refreshedForward = entry.forward;
         }
         try {
             entry.inverse.apply(context);
         } catch (RuntimeException error) {
-            System.err.println("[EditorHistory] undo failed for " + entry.forward.label() + ": " + error);
+            context.services().logger().error("[EditorHistory] undo failed for " + entry.forward.label(), error);
             return;
         }
         entry.forward = refreshedForward;
         redoStack.push(entry);
+        onChange.run();
     }
 
     public void redo() {
@@ -99,22 +108,35 @@ public final class EditorHistory {
         try {
             refreshedInverse = entry.forward.invert(context);
         } catch (RuntimeException error) {
-            System.err.println("[EditorHistory] invert before redo failed for " + entry.forward.label() + ": " + error);
+            context.services().logger().error("[EditorHistory] invert-before-redo failed for " + entry.forward.label(), error);
             refreshedInverse = entry.inverse;
         }
         try {
             entry.forward.apply(context);
         } catch (RuntimeException error) {
-            System.err.println("[EditorHistory] redo failed for " + entry.forward.label() + ": " + error);
+            context.services().logger().error("[EditorHistory] redo failed for " + entry.forward.label(), error);
             return;
         }
         entry.inverse = refreshedInverse;
         undoStack.push(entry);
+        onChange.run();
     }
 
     public void clear() {
         undoStack.clear();
         redoStack.clear();
+    }
+
+    public java.util.Optional<String> undoLabel() {
+        return undoStack.isEmpty()
+                ? java.util.Optional.empty()
+                : java.util.Optional.of(undoStack.peek().forward.label());
+    }
+
+    public java.util.Optional<String> redoLabel() {
+        return redoStack.isEmpty()
+                ? java.util.Optional.empty()
+                : java.util.Optional.of(redoStack.peek().forward.label());
     }
 
     public int undoDepth() {
@@ -123,14 +145,6 @@ public final class EditorHistory {
 
     public int redoDepth() {
         return redoStack.size();
-    }
-
-    public String peekUndoLabel() {
-        return undoStack.isEmpty() ? null : undoStack.peek().forward.label();
-    }
-
-    public String peekRedoLabel() {
-        return redoStack.isEmpty() ? null : redoStack.peek().forward.label();
     }
 
     private static final class Entry {
