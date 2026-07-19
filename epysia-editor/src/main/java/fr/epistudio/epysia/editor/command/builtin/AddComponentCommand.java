@@ -5,43 +5,36 @@ import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.gameobjects.GameObject;
 
-import java.util.function.Supplier;
-
 public final class AddComponentCommand implements EditorCommand {
 
     private final GameObject target;
     private final Class<? extends IComponent> componentClass;
-    private final Supplier<? extends IComponent> factory;
-    private final IComponent specificInstance;
+    private final IComponent existingInstance;
 
-    public AddComponentCommand(GameObject target, Class<? extends IComponent> componentClass,
-                               Supplier<? extends IComponent> factory) {
-        this.target = target;
-        this.componentClass = componentClass;
-        this.factory = factory;
-        this.specificInstance = null;
+    public AddComponentCommand(GameObject target, Class<? extends IComponent> componentClass) {
+        this(target, componentClass, null);
     }
 
-    public AddComponentCommand(GameObject target, IComponent specificInstance,
-                               Supplier<? extends IComponent> factory) {
+    public AddComponentCommand(GameObject target, Class<? extends IComponent> componentClass, IComponent existingInstance) {
         this.target = target;
-        this.componentClass = specificInstance.getClass();
-        this.factory = factory;
-        this.specificInstance = specificInstance;
+        this.componentClass = componentClass;
+        this.existingInstance = existingInstance;
     }
 
     @Override
     public void apply(CommandContext context) {
-        if (target.getComponent(componentClass).isPresent()) {
-            return;
-        }
-        IComponent toAttach = specificInstance != null ? specificInstance : factory.get();
-        target.addComponent(toAttach);
+        IComponent fresh = existingInstance != null
+                ? existingInstance
+                : context.componentRegistry().factoryFor(componentClass)
+                        .orElseThrow(() -> new IllegalStateException("No factory for " + componentClass.getName())).get();
+        target.addComponent(fresh);
+        fresh.onLoad(context.services());
     }
 
     @Override
     public EditorCommand invert(CommandContext context) {
-        return new RemoveComponentCommand(target, componentClass, factory);
+        IComponent current = target.getComponent(componentClass).map(c -> (IComponent) c).orElse(existingInstance);
+        return new RemoveComponentCommand(target, componentClass, current);
     }
 
     @Override

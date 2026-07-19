@@ -7,16 +7,20 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 public final class AddGameObjectCommand implements EditorCommand {
 
     private final GameObject gameObject;
+    private final boolean selectAfter;
 
-    public AddGameObjectCommand(GameObject gameObject) {
+    public AddGameObjectCommand(GameObject gameObject, boolean selectAfter) {
         this.gameObject = gameObject;
+        this.selectAfter = selectAfter;
     }
 
     @Override
     public void apply(CommandContext context) {
-        context.world().scene().addGameObject(gameObject);
-        context.world().scene().advanceTick();
-        context.selection().setSingle(gameObject);
+        context.scene().addGameObject(gameObject);
+        context.scene().advanceTick();
+        if (selectAfter) {
+            context.selection().select(gameObject);
+        }
     }
 
     @Override

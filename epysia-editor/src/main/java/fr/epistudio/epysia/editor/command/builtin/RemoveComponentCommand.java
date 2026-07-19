@@ -5,19 +5,17 @@ import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.gameobjects.GameObject;
 
-import java.util.function.Supplier;
-
 public final class RemoveComponentCommand implements EditorCommand {
 
     private final GameObject target;
     private final Class<? extends IComponent> componentClass;
-    private final Supplier<? extends IComponent> factory;
+    private final IComponent instanceSnapshot;
 
     public RemoveComponentCommand(GameObject target, Class<? extends IComponent> componentClass,
-                                  Supplier<? extends IComponent> factory) {
+                                  IComponent instanceSnapshot) {
         this.target = target;
         this.componentClass = componentClass;
-        this.factory = factory;
+        this.instanceSnapshot = instanceSnapshot;
     }
 
     @Override
@@ -27,11 +25,7 @@ public final class RemoveComponentCommand implements EditorCommand {
 
     @Override
     public EditorCommand invert(CommandContext context) {
-        IComponent currentInstance = target.getComponent(componentClass).orElse(null);
-        if (currentInstance != null) {
-            return new AddComponentCommand(target, currentInstance, factory);
-        }
-        return new AddComponentCommand(target, componentClass, factory);
+        return new AddComponentCommand(target, componentClass, instanceSnapshot);
     }
 
     @Override

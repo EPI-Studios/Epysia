@@ -14,14 +14,14 @@ public final class RemoveGameObjectCommand implements EditorCommand {
 
     @Override
     public void apply(CommandContext context) {
-        context.selection().remove(gameObject);
-        context.world().scene().removeGameObject(gameObject);
-        context.world().scene().advanceTick();
+        context.scene().removeGameObject(gameObject);
+        context.scene().advanceTick();
+        context.selection().deselect(gameObject);
     }
 
     @Override
     public EditorCommand invert(CommandContext context) {
-        return new AddGameObjectCommand(gameObject);
+        return new AddGameObjectCommand(gameObject, false);
     }
 
     @Override
