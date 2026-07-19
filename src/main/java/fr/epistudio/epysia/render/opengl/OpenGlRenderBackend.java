@@ -129,10 +129,13 @@ import static org.lwjgl.opengl.GL43.glBindVertexBuffer;
 import static org.lwjgl.opengl.GL43.glDebugMessageCallback;
 import static org.lwjgl.opengl.GL43.glVertexAttribBinding;
 import static org.lwjgl.opengl.GL43.glVertexAttribFormat;
+import static org.lwjgl.opengl.GL43.glVertexBindingDivisor;
+import static org.lwjgl.opengl.GL31.glDrawElementsInstanced;
 
 public final class OpenGlRenderBackend implements RenderBackend {
 
     private static final int VERTEX_BINDING_INDEX = 0;
+    private static final int INSTANCE_BINDING_INDEX = 1;
 
     private final AtomicLong nextId = new AtomicLong(1);
     private final Map<Long, PipelineResource> pipelines = new HashMap<>();
@@ -166,6 +169,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         GLCapabilities capabilities = GL.createCapabilities();
         verifyMinimumGlVersion();
         installDebugCallback(capabilities);
+        glEnable(org.lwjgl.opengl.GL32.GL_TEXTURE_CUBE_MAP_SEAMLESS);
         screenWidth = surface.framebufferWidth();
         screenHeight = surface.framebufferHeight();
         glViewport(0, 0, screenWidth, screenHeight);
@@ -261,18 +265,20 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public PipelineHandle createPipeline(PipelineDescriptor descriptor) {
         int program = compileProgram(descriptor.shaders());
-        int vao = createVertexArrayObject(descriptor.vertexLayout());
+        int vao = createVertexArrayObject(descriptor.vertexLayout(), descriptor.instanceLayout());
+        int instanceStride = descriptor.isInstanced() ? descriptor.instanceLayout().byteStride() : 0;
         long id = nextId.getAndIncrement();
         pipelines.put(id, new PipelineResource(
                 program,
                 vao,
                 descriptor.state(),
-                descriptor.vertexLayout().byteStride()
+                descriptor.vertexLayout().byteStride(),
+                instanceStride
         ));
         return new PipelineHandle(id);
     }
 
-    private int createVertexArrayObject(VertexLayout layout) {
+    private int createVertexArrayObject(VertexLayout layout, VertexLayout instanceLayout) {
         int vao = glGenVertexArrays();
         glBindVertexArray(vao);
         for (VertexAttribute attribute : layout.attributes()) {
@@ -285,6 +291,20 @@ public final class OpenGlRenderBackend implements RenderBackend {
                     attribute.byteOffset()
             );
             glVertexAttribBinding(attribute.location(), VERTEX_BINDING_INDEX);
+        }
+        if (instanceLayout != null) {
+            for (VertexAttribute attribute : instanceLayout.attributes()) {
+                glEnableVertexAttribArray(attribute.location());
+                glVertexAttribFormat(
+                        attribute.location(),
+                        attribute.format().componentCount(),
+                        GL_FLOAT,
+                        false,
+                        attribute.byteOffset()
+                );
+                glVertexAttribBinding(attribute.location(), INSTANCE_BINDING_INDEX);
+            }
+            glVertexBindingDivisor(INSTANCE_BINDING_INDEX, 1);
         }
         glBindVertexArray(0);
         return vao;
@@ -328,35 +348,72 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public TextureHandle createTexture(TextureDescriptor descriptor) {
         int textureId = glGenTextures();
-        glBindTexture(GL_TEXTURE_2D, textureId);
-        configureTextureStorage(descriptor);
-        configureTextureSamplerState(descriptor);
+        int glTarget = textureTargetToGl(descriptor.kind());
+        glBindTexture(glTarget, textureId);
+        configureTextureStorage(glTarget, descriptor);
+        configureTextureSamplerState(glTarget, descriptor);
         long id = nextId.getAndIncrement();
-        textures.put(id, new TextureResource(textureId, descriptor.width(), descriptor.height(), descriptor.format()));
+        textures.put(id, new TextureResource(textureId, descriptor.width(), descriptor.height(), descriptor.format(), descriptor.kind()));
         return new TextureHandle(id);
     }
 
-    private void configureTextureStorage(TextureDescriptor descriptor) {
-        switch (descriptor.format()) {
-            case RGBA8 -> glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, descriptor.width(), descriptor.height(),
-                    0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-            case SRGB8_ALPHA8 -> glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, descriptor.width(), descriptor.height(),
-                    0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-            case DEPTH32F -> glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, descriptor.width(), descriptor.height(),
-                    0, GL_DEPTH_COMPONENT, GL_FLOAT, (ByteBuffer) null);
+    private void configureTextureStorage(int glTarget, TextureDescriptor descriptor) {
+        int internalFormat = internalFormatToGl(descriptor.format());
+        switch (descriptor.kind()) {
+            case TEXTURE_2D -> allocateTexture2dStorage(descriptor, internalFormat);
+            case CUBEMAP -> org.lwjgl.opengl.GL42.glTexStorage2D(glTarget, descriptor.mipLevels(),
+                    internalFormat, descriptor.width(), descriptor.height());
+            case ARRAY_2D -> org.lwjgl.opengl.GL42.glTexStorage3D(glTarget, descriptor.mipLevels(),
+                    internalFormat, descriptor.width(), descriptor.height(), descriptor.layers());
         }
     }
 
-    private void configureTextureSamplerState(TextureDescriptor descriptor) {
-        int filter = descriptor.samplerFilter() == SamplerFilter.NEAREST ? GL_NEAREST : GL_LINEAR;
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        if (descriptor.format() == TextureFormat.DEPTH32F && descriptor.usage() == TextureUsage.SAMPLED_DEPTH_SHADOW) {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    private void allocateTexture2dStorage(TextureDescriptor descriptor, int internalFormat) {
+        int pixelFormat = descriptor.format() == TextureFormat.DEPTH32F ? GL_DEPTH_COMPONENT : GL_RGBA;
+        int pixelType = pixelTypeToGl(descriptor.format());
+        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, descriptor.width(), descriptor.height(),
+                0, pixelFormat, pixelType, (ByteBuffer) null);
+    }
+
+    private static int internalFormatToGl(TextureFormat format) {
+        return switch (format) {
+            case RGBA8 -> GL_RGBA8;
+            case SRGB8_ALPHA8 -> GL_SRGB8_ALPHA8;
+            case RGBA16F -> org.lwjgl.opengl.GL30.GL_RGBA16F;
+            case R11G11B10F -> org.lwjgl.opengl.GL30.GL_R11F_G11F_B10F;
+            case DEPTH32F -> GL_DEPTH_COMPONENT32F;
+        };
+    }
+
+    private static int pixelTypeToGl(TextureFormat format) {
+        return switch (format) {
+            case RGBA8, SRGB8_ALPHA8 -> GL_UNSIGNED_BYTE;
+            case RGBA16F, R11G11B10F, DEPTH32F -> GL_FLOAT;
+        };
+    }
+
+    private void configureTextureSamplerState(int glTarget, TextureDescriptor descriptor) {
+        int magFilter = descriptor.samplerFilter() == SamplerFilter.NEAREST ? GL_NEAREST : GL_LINEAR;
+        int minFilter = descriptor.mipLevels() > 1 ? org.lwjgl.opengl.GL11.GL_LINEAR_MIPMAP_LINEAR : magFilter;
+        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, minFilter);
+        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, magFilter);
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        if (descriptor.kind() != TextureKind.TEXTURE_2D) {
+            glTexParameteri(glTarget, org.lwjgl.opengl.GL12.GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         }
+        if (descriptor.format() == TextureFormat.DEPTH32F && descriptor.usage() == TextureUsage.SAMPLED_DEPTH_SHADOW) {
+            glTexParameteri(glTarget, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+            glTexParameteri(glTarget, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+        }
+    }
+
+    private static int textureTargetToGl(TextureKind kind) {
+        return switch (kind) {
+            case TEXTURE_2D -> GL_TEXTURE_2D;
+            case CUBEMAP -> org.lwjgl.opengl.GL13.GL_TEXTURE_CUBE_MAP;
+            case ARRAY_2D -> org.lwjgl.opengl.GL30.GL_TEXTURE_2D_ARRAY;
+        };
     }
 
     @Override
@@ -364,7 +421,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         int fboId = glGenFramebuffers();
         glBindFramebuffer(GL_FRAMEBUFFER, fboId);
         attachColorTextures(descriptor);
-        descriptor.depthAttachment().ifPresent(this::attachDepthTexture);
+        descriptor.depthAttachment().ifPresent(depth -> attachDepthTexture(descriptor, depth));
         if (descriptor.colorAttachments().isEmpty()) {
             glDrawBuffer(GL_NONE);
             glReadBuffer(GL_NONE);
@@ -382,14 +439,27 @@ public final class OpenGlRenderBackend implements RenderBackend {
         int attachmentIndex = 0;
         for (TextureHandle color : descriptor.colorAttachments()) {
             TextureResource resource = requireTexture(color);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + attachmentIndex, GL_TEXTURE_2D, resource.textureId(), 0);
+            attachTexture(GL_COLOR_ATTACHMENT0 + attachmentIndex, resource,
+                    descriptor.colorLayer(), descriptor.colorMipLevel());
             attachmentIndex++;
         }
     }
 
-    private void attachDepthTexture(TextureHandle depth) {
+    private void attachDepthTexture(RenderTargetDescriptor descriptor, TextureHandle depth) {
         TextureResource resource = requireTexture(depth);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, resource.textureId(), 0);
+        attachTexture(GL_DEPTH_ATTACHMENT, resource, descriptor.depthLayer(), 0);
+    }
+
+    private void attachTexture(int attachmentPoint, TextureResource resource, int layer, int mipLevel) {
+        switch (resource.kind()) {
+            case TEXTURE_2D -> glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentPoint,
+                    GL_TEXTURE_2D, resource.textureId(), mipLevel);
+            case CUBEMAP -> glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentPoint,
+                    org.lwjgl.opengl.GL13.GL_TEXTURE_CUBE_MAP_POSITIVE_X + Math.max(layer, 0),
+                    resource.textureId(), mipLevel);
+            case ARRAY_2D -> org.lwjgl.opengl.GL30.glFramebufferTextureLayer(GL_FRAMEBUFFER, attachmentPoint,
+                    resource.textureId(), mipLevel, Math.max(layer, 0));
+        }
     }
 
     @Override
@@ -411,10 +481,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
                     ubo.byteOffset(),
                     ubo.byteSize()
             );
-            case SampledTextureBinding texture -> new ResolvedTexture(
-                    binding.slotIndex(),
-                    requireTexture(texture.texture()).textureId()
-            );
+            case SampledTextureBinding texture -> {
+                TextureResource resource = requireTexture(texture.texture());
+                yield new ResolvedTexture(binding.slotIndex(), resource.textureId(), textureTargetToGl(resource.kind()));
+            }
         };
     }
 
@@ -437,7 +507,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         PipelineResource existing = requirePipeline(handle);
         int newProgram = compileProgram(shaders);
         glDeleteProgram(existing.programId());
-        pipelines.put(handle.id(), new PipelineResource(newProgram, existing.vaoId(), existing.state(), existing.vertexStride()));
+        pipelines.put(handle.id(), new PipelineResource(newProgram, existing.vaoId(), existing.state(), existing.vertexStride(), existing.instanceStride()));
         currentPipeline = null;
         currentBindingSetId = 0L;
     }
@@ -561,6 +631,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         currentBindingSetId = 0L;
         currentVertexBufferId = 0;
         currentIndexBufferId = 0;
+        org.lwjgl.opengl.GL11.glDepthMask(true);
         applyClear(clear);
     }
 
@@ -586,6 +657,8 @@ public final class OpenGlRenderBackend implements RenderBackend {
         if (currentPipeline != pipeline) {
             applyPipeline(pipeline);
             currentPipeline = pipeline;
+            currentVertexBufferId = 0;
+            currentIndexBufferId = 0;
         }
         if (currentBindingSetId != command.bindings().id()) {
             applyBindings(command.bindings());
@@ -602,11 +675,24 @@ public final class OpenGlRenderBackend implements RenderBackend {
         int indexCount = command.indexCountOverride() == DrawCommand.USE_MESH_INDEX_COUNT
                 ? mesh.indexCount()
                 : command.indexCountOverride();
+        long indexOffset = (long) mesh.firstIndex() * mesh.indexFormat().byteSize();
+        if (command.instanceBuffer() != null && pipeline.instanceStride() > 0) {
+            BufferResource instanceBuffer = requireBuffer(command.instanceBuffer());
+            glBindVertexBuffer(INSTANCE_BINDING_INDEX, instanceBuffer.bufferId(), 0L, pipeline.instanceStride());
+            glDrawElementsInstanced(
+                    topologyToGl(pipeline.state().topology()),
+                    indexCount,
+                    indexFormatToGl(mesh.indexFormat()),
+                    indexOffset,
+                    command.instanceCount()
+            );
+            return;
+        }
         glDrawElements(
                 topologyToGl(pipeline.state().topology()),
                 indexCount,
                 indexFormatToGl(mesh.indexFormat()),
-                (long) mesh.firstIndex() * mesh.indexFormat().byteSize()
+                indexOffset
         );
     }
 
@@ -620,12 +706,28 @@ public final class OpenGlRenderBackend implements RenderBackend {
         profileFrameSlot = (profileFrameSlot + 1) % PROFILE_FRAME_LAG;
     }
 
+    @Override
+    public int readPixelArgb(RenderTargetHandle target, int x, int y) {
+        RenderTargetResource resource = requireRenderTarget(target);
+        int previousReadFbo = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING);
+        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, resource.fboId());
+        java.nio.ByteBuffer pixel = org.lwjgl.BufferUtils.createByteBuffer(4);
+        org.lwjgl.opengl.GL11.glReadPixels(x, y, 1, 1, GL_RGBA, org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, pixel);
+        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
+        int r = pixel.get(0) & 0xFF;
+        int g = pixel.get(1) & 0xFF;
+        int b = pixel.get(2) & 0xFF;
+        int a = pixel.get(3) & 0xFF;
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
     private void applyPipeline(PipelineResource pipeline) {
         glUseProgram(pipeline.programId());
         glBindVertexArray(pipeline.vaoId());
         applyDepthTest(pipeline.state().depthTest());
         applyBlendMode(pipeline.state().blendMode());
         applyCullMode(pipeline.state().cullMode());
+        org.lwjgl.opengl.GL11.glDepthMask(pipeline.state().depthWrite());
     }
 
     private void applyBindings(BindingSetHandle handle) {
@@ -643,7 +745,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case ResolvedUbo ubo -> glBindBufferRange(GL_UNIFORM_BUFFER, ubo.slot(), ubo.bufferId(), ubo.offset(), ubo.size());
             case ResolvedTexture texture -> {
                 glActiveTexture(GL_TEXTURE0 + texture.slot());
-                glBindTexture(GL_TEXTURE_2D, texture.textureId());
+                glBindTexture(texture.glTarget(), texture.textureId());
             }
         }
     }
@@ -668,6 +770,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case ALPHA_BLEND -> {
                 glEnable(GL_BLEND);
                 glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            }
+            case ADDITIVE -> {
+                glEnable(GL_BLEND);
+                glBlendFuncSeparate(org.lwjgl.opengl.GL11.GL_ONE, org.lwjgl.opengl.GL11.GL_ONE,
+                        org.lwjgl.opengl.GL11.GL_ONE, org.lwjgl.opengl.GL11.GL_ONE);
             }
         }
     }
@@ -761,7 +868,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return resource;
     }
 
-    private record PipelineResource(int programId, int vaoId, RenderState state, int vertexStride) {
+    private record PipelineResource(int programId, int vaoId, RenderState state, int vertexStride, int instanceStride) {
     }
 
     private record MeshResource(int vertexBufferId, int indexBufferId, int firstIndex, int indexCount, IndexFormat indexFormat) {
@@ -770,7 +877,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private record BufferResource(int bufferId, int glTarget) {
     }
 
-    private record TextureResource(int textureId, int width, int height, TextureFormat format) {
+    private record TextureResource(int textureId, int width, int height, TextureFormat format, TextureKind kind) {
     }
 
     private record RenderTargetResource(int fboId, int width, int height) {
@@ -785,6 +892,6 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private record ResolvedUbo(int slot, int bufferId, long offset, long size) implements ResolvedBinding {
     }
 
-    private record ResolvedTexture(int slot, int textureId) implements ResolvedBinding {
+    private record ResolvedTexture(int slot, int textureId, int glTarget) implements ResolvedBinding {
     }
 }
