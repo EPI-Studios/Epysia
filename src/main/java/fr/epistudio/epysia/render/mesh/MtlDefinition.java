@@ -8,6 +8,7 @@ public record MtlDefinition(
         String name,
         Vector3f diffuseColor,
         Optional<String> diffuseTexturePath,
-        Optional<String> normalTexturePath
+        Optional<String> normalTexturePath,
+        Optional<String> alphaMaskTexturePath
 ) {
 }
