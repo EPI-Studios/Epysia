@@ -1,7 +1,12 @@
 package fr.epistudio.epysia.editor.command;
 
-import fr.epistudio.epysia.editor.EditorWorld;
-import fr.epistudio.epysia.editor.selection.EditorSelectionBus;
+import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.editor.EditorSelection;
+import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.scene.Scene;
 
-public record CommandContext(EditorWorld world, EditorSelectionBus selection) {
+public record CommandContext(Scene scene,
+                             EditorSelection selection,
+                             EngineServices services,
+                             ComponentRegistry componentRegistry) {
 }
