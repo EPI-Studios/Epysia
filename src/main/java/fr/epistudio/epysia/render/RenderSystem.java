@@ -7,7 +7,7 @@ public interface RenderSystem {
 
     void initialize(RenderBackend backend, StageConfigurer configurer);
 
-    void collect(Scene scene, FrameBuilder frame, float interpolationAlpha);
+    void collect(Scene scene, FrameBuilder frame, RenderContext context);
 
     default void onResize(RenderBackend backend, StageConfigurer configurer, int width, int height) {
     }
