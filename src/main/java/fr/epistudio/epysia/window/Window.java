@@ -82,7 +82,7 @@ public final class Window implements RenderSurface {
     }
 
     public void open() {
-        forceX11Platform();
+        applyPlatformHint();
         if (!glfwInit()) {
             glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
             if (!glfwInit()) {
@@ -152,8 +152,18 @@ public final class Window implements RenderSurface {
         glfwSetScrollCallback(handle, scrollCallback);
     }
 
-    private void forceX11Platform() {
-        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+    private void applyPlatformHint() {
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (!osName.contains("linux")) {
+            glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
+            return;
+        }
+        String sessionType = System.getenv("XDG_SESSION_TYPE");
+        if ("wayland".equalsIgnoreCase(sessionType)) {
+            glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
+        } else {
+            glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+        }
     }
 
     private void applyWindowHints() {
@@ -189,6 +199,9 @@ public final class Window implements RenderSurface {
     }
 
     public void setCursorMode(CursorMode mode) {
+        if (handle == 0L) {
+            return;
+        }
         int glfwMode = switch (mode) {
             case NORMAL -> GLFW_CURSOR_NORMAL;
             case HIDDEN -> GLFW_CURSOR_HIDDEN;
