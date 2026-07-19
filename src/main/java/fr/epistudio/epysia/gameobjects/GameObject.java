@@ -10,15 +10,58 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 public final class GameObject implements IGameObject {
 
+    private static final Runnable NO_LISTENER = () -> {
+    };
+
+    private final UUID id;
     private String name;
+    private String tag = "";
+    private boolean active = true;
     private final Map<Class<?>, IComponent> componentsByType = new HashMap<>();
     private final List<IComponent> attachedComponents = new ArrayList<>();
+    private Runnable structuralChangeListener = NO_LISTENER;
 
     public GameObject(String name) {
+        this(name, UUID.randomUUID());
+    }
+
+    public GameObject(String name, UUID id) {
         this.name = name;
+        this.id = id;
+    }
+
+    public UUID id() {
+        return id;
+    }
+
+    public void setStructuralChangeListener(Runnable listener) {
+        this.structuralChangeListener = listener == null ? NO_LISTENER : listener;
+    }
+
+    public void clearStructuralChangeListener() {
+        this.structuralChangeListener = NO_LISTENER;
+    }
+
+    public String tag() {
+        return tag;
+    }
+
+    public GameObject setTag(String tag) {
+        this.tag = tag == null ? "" : tag;
+        return this;
+    }
+
+    public boolean active() {
+        return active;
+    }
+
+    public GameObject setActive(boolean active) {
+        this.active = active;
+        return this;
     }
 
     @Override
@@ -48,6 +91,7 @@ public final class GameObject implements IGameObject {
         component.attachTo(this);
         registerUnderHierarchy(component);
         attachedComponents.add(component);
+        structuralChangeListener.run();
         return component;
     }
 
@@ -79,6 +123,18 @@ public final class GameObject implements IGameObject {
         return Collections.unmodifiableList(attachedComponents);
     }
 
+    public void replaceComponent(IComponent existing, IComponent replacement) {
+        int index = attachedComponents.indexOf(existing);
+        if (index < 0) {
+            return;
+        }
+        unregisterUnderHierarchy(existing);
+        attachedComponents.set(index, replacement);
+        replacement.attachTo(this);
+        registerUnderHierarchy(replacement);
+        structuralChangeListener.run();
+    }
+
     private void registerUnderHierarchy(IComponent component) {
         Class<?> currentClass = component.getClass();
         while (currentClass != null && IComponent.class.isAssignableFrom(currentClass)) {
@@ -96,6 +152,7 @@ public final class GameObject implements IGameObject {
         }
         unregisterUnderHierarchy(component);
         attachedComponents.remove(component);
+        structuralChangeListener.run();
         return Optional.of((T) component);
     }
 
