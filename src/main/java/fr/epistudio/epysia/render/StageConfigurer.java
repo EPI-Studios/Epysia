@@ -6,4 +6,7 @@ import fr.epistudio.epysia.render.backend.RenderTargetHandle;
 public interface StageConfigurer {
 
     void bindStageTarget(Stage stage, RenderTargetHandle target, PassClear clear);
+
+    default void bindStagePreparation(Stage stage, Runnable preparation) {
+    }
 }
