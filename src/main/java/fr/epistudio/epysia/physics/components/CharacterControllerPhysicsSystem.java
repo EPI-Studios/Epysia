@@ -7,7 +7,7 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import fr.epistudio.epysia.physics.api.RigidBodyPose;
-import fr.epistudio.epysia.physics.rapier.RapierCharacterController;
+import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Vector3f;
 
@@ -41,7 +41,7 @@ public final class CharacterControllerPhysicsSystem implements GameSystem {
                 scratchDesiredHorizontal.x,
                 component.verticalVelocity() * deltaTimeSeconds,
                 scratchDesiredHorizontal.z);
-        RapierCharacterController.MoveResult result = component.nativeController()
+        Box3dCharacterController.MoveResult result = component.nativeController()
                 .move(component.bodyHandle(), scratchTotalDesired, deltaTimeSeconds);
         transform.translate(
                 result.correctedDisplacement().x(),
