@@ -40,7 +40,7 @@ public class b3HeightFieldData {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        box3d_h.C_LONG.withName("version"),
+        box3d_h.C_LONG_LONG.withName("version"),
         box3d_h.C_INT.withName("byteCount"),
         box3d_h.C_INT.withName("hash"),
         b3AABB.layout().withName("aabb"),

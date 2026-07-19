@@ -29,9 +29,9 @@ public class b3QueryFilter {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        box3d_h.C_LONG.withName("categoryBits"),
-        box3d_h.C_LONG.withName("maskBits"),
-        box3d_h.C_LONG.withName("id"),
+        box3d_h.C_LONG_LONG.withName("categoryBits"),
+        box3d_h.C_LONG_LONG.withName("maskBits"),
+        box3d_h.C_LONG_LONG.withName("id"),
         box3d_h.C_POINTER.withName("name")
     ).withName("b3QueryFilter");
 

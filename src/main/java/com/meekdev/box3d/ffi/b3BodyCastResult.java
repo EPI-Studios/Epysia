@@ -39,7 +39,7 @@ public class b3BodyCastResult {
         box3d_h.C_FLOAT.withName("fraction"),
         box3d_h.C_INT.withName("triangleIndex"),
         MemoryLayout.paddingLayout(4),
-        box3d_h.C_LONG.withName("userMaterialId"),
+        box3d_h.C_LONG_LONG.withName("userMaterialId"),
         box3d_h.C_INT.withName("iterations"),
         box3d_h.C_BOOL.withName("hit"),
         MemoryLayout.paddingLayout(3)
