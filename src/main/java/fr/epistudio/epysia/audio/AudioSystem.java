@@ -311,6 +311,18 @@ public final class AudioSystem implements GameSystem {
         return fade.advance(deltaTimeSeconds);
     }
 
+    public void resetForPlaySession() {
+        for (AudioPlayback playback : playbacks) {
+            playback.stop();
+        }
+        playbacks.clear();
+        for (AudioStream stream : streams) {
+            stream.streaming().destroy();
+        }
+        streams.clear();
+        startedComponents.clear();
+    }
+
     @Override
     public void shutdown() {
         for (AudioStream stream : streams) {
