@@ -35,6 +35,7 @@ public final class MtlParser {
             case "Kd" -> state.setDiffuse(parseFloat(tokens, 1), parseFloat(tokens, 2), parseFloat(tokens, 3));
             case "map_Kd" -> state.setDiffuseTexture(extractTexturePath(tokens));
             case "bump", "map_Bump", "norm", "map_bump" -> state.setNormalTexture(extractTexturePath(tokens));
+            case "map_d" -> state.setAlphaMaskTexture(extractTexturePath(tokens));
             default -> {
             }
         }
@@ -53,12 +54,14 @@ public final class MtlParser {
         private final Vector3f diffuseColor = new Vector3f(1.0f, 1.0f, 1.0f);
         private String diffuseTexturePath;
         private String normalTexturePath;
+        private String alphaMaskTexturePath;
 
         void startMaterial(String name) {
             currentName = name;
             diffuseColor.set(1.0f, 1.0f, 1.0f);
             diffuseTexturePath = null;
             normalTexturePath = null;
+            alphaMaskTexturePath = null;
         }
 
         void setDiffuse(float red, float green, float blue) {
@@ -73,6 +76,10 @@ public final class MtlParser {
             this.normalTexturePath = relativePath;
         }
 
+        void setAlphaMaskTexture(String relativePath) {
+            this.alphaMaskTexturePath = relativePath;
+        }
+
         void flushTo(List<MtlDefinition> definitions) {
             if (currentName == null) {
                 return;
@@ -81,11 +88,13 @@ public final class MtlParser {
                     currentName,
                     new Vector3f(diffuseColor),
                     Optional.ofNullable(diffuseTexturePath),
-                    Optional.ofNullable(normalTexturePath)
+                    Optional.ofNullable(normalTexturePath),
+                    Optional.ofNullable(alphaMaskTexturePath)
             ));
             currentName = null;
             diffuseTexturePath = null;
             normalTexturePath = null;
+            alphaMaskTexturePath = null;
         }
     }
 }
