@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.render.texture;
 
+import fr.epistudio.epysia.assets.source.AssetResolvers;
+import fr.epistudio.epysia.assets.source.AssetSource;
+import fr.epistudio.epysia.assets.source.FilesystemAssetSource;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.TextureDescriptor;
@@ -10,18 +13,31 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
 
+import java.util.Random;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 public final class Texture2D {
 
-    private static final String RESOURCE_ROOT = "src/main/resources";
-
     private Texture2D() {
+    }
+
+    public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format) {
+        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format);
+    }
+
+    public static TextureHandle load(RenderBackend backend, String path) {
+        return load(backend, path, TextureFormat.RGBA8);
+    }
+
+    public static TextureHandle load(RenderBackend backend, String path, TextureFormat format) {
+        AssetSource source = AssetResolvers.forPath(path, "").source()
+                .orElseThrow(() -> new EpysiaException("Texture resource not found: " + path));
+        return loadFrom(backend, source, format);
     }
 
     public static TextureHandle loadFromFile(RenderBackend backend, Path imagePath) {
@@ -29,25 +45,24 @@ public final class Texture2D {
     }
 
     public static TextureHandle loadFromFile(RenderBackend backend, Path imagePath, TextureFormat format) {
-        return decodeAndUpload(backend, readAllBytesAsBuffer(imagePath), format);
+        return loadFrom(backend, new FilesystemAssetSource(imagePath), format);
     }
 
     public static TextureHandle loadFromResource(RenderBackend backend, String relativePath) {
-        return loadFromResource(backend, relativePath, TextureFormat.RGBA8);
+        return load(backend, relativePath, TextureFormat.RGBA8);
     }
 
     public static TextureHandle loadFromResource(RenderBackend backend, String relativePath, TextureFormat format) {
-        Path absolute = Path.of(RESOURCE_ROOT).resolve(relativePath);
-        if (Files.isRegularFile(absolute)) {
-            return loadFromFile(backend, absolute, format);
-        }
-        try (InputStream stream = Texture2D.class.getClassLoader().getResourceAsStream(relativePath)) {
-            if (stream == null) {
-                throw new EpysiaException("Texture resource not found on filesystem or classpath: " + relativePath);
-            }
-            return decodeAndUpload(backend, copyToDirectBuffer(stream.readAllBytes()), format);
+        return load(backend, relativePath, format);
+    }
+
+    private static byte[] readBytes(AssetSource source) {
+        InputStream stream = source.open().orElseThrow(() ->
+                new EpysiaException("Texture resource not found on filesystem or classpath: " + source.path()));
+        try (stream) {
+            return stream.readAllBytes();
         } catch (IOException exception) {
-            throw new EpysiaException("Failed to read texture " + relativePath + ": " + exception.getMessage());
+            throw new EpysiaException("Failed to read texture " + source.path() + ": " + exception.getMessage());
         }
     }
 
@@ -58,7 +73,7 @@ public final class Texture2D {
     }
 
     public static TextureHandle valueNoise(RenderBackend backend, int size, long seed) {
-        java.util.Random random = new java.util.Random(seed);
+        Random random = new Random(seed);
         ByteBuffer pixels = BufferUtils.createByteBuffer(size * size * 4);
         for (int i = 0; i < size * size; i++) {
             byte value = (byte) random.nextInt(256);
@@ -95,14 +110,6 @@ public final class Texture2D {
             } finally {
                 STBImage.stbi_image_free(pixels);
             }
-        }
-    }
-
-    private static ByteBuffer readAllBytesAsBuffer(Path path) {
-        try {
-            return copyToDirectBuffer(Files.readAllBytes(path));
-        } catch (IOException exception) {
-            throw new EpysiaException("Failed to read texture " + path + ": " + exception.getMessage());
         }
     }
 
