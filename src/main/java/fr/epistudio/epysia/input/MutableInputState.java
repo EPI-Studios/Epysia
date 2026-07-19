@@ -7,6 +7,10 @@ public final class MutableInputState implements InputState {
     private float cursorX;
     private float cursorY;
     private float scrollDeltaY;
+    private final boolean[] previousKeyStates = new boolean[KeyCode.values().length];
+    private final boolean[] previousMouseButtonStates = new boolean[MouseButton.values().length];
+    private float previousCursorX;
+    private float previousCursorY;
 
     @Override
     public boolean isKeyDown(KeyCode key) {
@@ -48,6 +52,43 @@ public final class MutableInputState implements InputState {
 
     public void onScroll(float deltaY) {
         scrollDeltaY += deltaY;
+    }
+
+    @Override
+    public boolean wasKeyPressed(KeyCode key) {
+        return keyStates[key.ordinal()] && !previousKeyStates[key.ordinal()];
+    }
+
+    @Override
+    public boolean wasKeyReleased(KeyCode key) {
+        return !keyStates[key.ordinal()] && previousKeyStates[key.ordinal()];
+    }
+
+    @Override
+    public boolean wasMouseButtonPressed(MouseButton button) {
+        return mouseButtonStates[button.ordinal()] && !previousMouseButtonStates[button.ordinal()];
+    }
+
+    @Override
+    public boolean wasMouseButtonReleased(MouseButton button) {
+        return !mouseButtonStates[button.ordinal()] && previousMouseButtonStates[button.ordinal()];
+    }
+
+    @Override
+    public float mouseDeltaX() {
+        return cursorX - previousCursorX;
+    }
+
+    @Override
+    public float mouseDeltaY() {
+        return cursorY - previousCursorY;
+    }
+
+    public void advanceFrame() {
+        System.arraycopy(keyStates, 0, previousKeyStates, 0, keyStates.length);
+        System.arraycopy(mouseButtonStates, 0, previousMouseButtonStates, 0, mouseButtonStates.length);
+        previousCursorX = cursorX;
+        previousCursorY = cursorY;
     }
 
     public void consumeFrameDeltas() {

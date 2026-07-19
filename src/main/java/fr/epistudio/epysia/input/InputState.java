@@ -11,4 +11,11 @@ public interface InputState {
     float cursorY();
 
     float scrollDeltaY();
+
+    default boolean wasKeyPressed(KeyCode key) { return false; }
+    default boolean wasKeyReleased(KeyCode key) { return false; }
+    default boolean wasMouseButtonPressed(MouseButton button) { return false; }
+    default boolean wasMouseButtonReleased(MouseButton button) { return false; }
+    default float mouseDeltaX() { return 0.0f; }
+    default float mouseDeltaY() { return 0.0f; }
 }
