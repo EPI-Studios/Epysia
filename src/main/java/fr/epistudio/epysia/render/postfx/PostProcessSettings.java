@@ -14,6 +14,94 @@ public final class PostProcessSettings {
     private float fogHeightOrigin = 1.0f;
     private float fogHeightFalloff = 0.35f;
     private float fogHeightDensity = 0.6f;
+    private boolean bloomEnabled = true;
+    private float bloomThreshold = 1.0f;
+    private float bloomKnee = 0.5f;
+    private float bloomIntensity = 0.35f;
+    private boolean ambientOcclusionEnabled = true;
+    private float ambientOcclusionRadius = 0.5f;
+    private float ambientOcclusionIntensity = 1.0f;
+    private float ambientOcclusionPower = 1.5f;
+    private boolean ambientOcclusionFullResolution = false;
+    private boolean antiAliasingEnabled = true;
+
+    public boolean bloomEnabled() {
+        return bloomEnabled;
+    }
+
+    public float bloomThreshold() {
+        return bloomThreshold;
+    }
+
+    public float bloomKnee() {
+        return bloomKnee;
+    }
+
+    public float bloomIntensity() {
+        return bloomIntensity;
+    }
+
+    public boolean ambientOcclusionEnabled() {
+        return ambientOcclusionEnabled;
+    }
+
+    public float ambientOcclusionRadius() {
+        return ambientOcclusionRadius;
+    }
+
+    public float ambientOcclusionIntensity() {
+        return ambientOcclusionIntensity;
+    }
+
+    public float ambientOcclusionPower() {
+        return ambientOcclusionPower;
+    }
+
+    public boolean ambientOcclusionFullResolution() {
+        return ambientOcclusionFullResolution;
+    }
+
+    public boolean antiAliasingEnabled() {
+        return antiAliasingEnabled;
+    }
+
+    public PostProcessSettings setBloomEnabled(boolean value) {
+        this.bloomEnabled = value;
+        return this;
+    }
+
+    public PostProcessSettings setBloom(float threshold, float knee, float intensity) {
+        this.bloomThreshold = threshold;
+        this.bloomKnee = knee;
+        this.bloomIntensity = intensity;
+        return this;
+    }
+
+    public PostProcessSettings setAmbientOcclusionEnabled(boolean value) {
+        this.ambientOcclusionEnabled = value;
+        return this;
+    }
+
+    public PostProcessSettings setAmbientOcclusion(float radius, float intensity) {
+        this.ambientOcclusionRadius = radius;
+        this.ambientOcclusionIntensity = intensity;
+        return this;
+    }
+
+    public PostProcessSettings setAmbientOcclusionPower(float value) {
+        this.ambientOcclusionPower = value;
+        return this;
+    }
+
+    public PostProcessSettings setAmbientOcclusionFullResolution(boolean value) {
+        this.ambientOcclusionFullResolution = value;
+        return this;
+    }
+
+    public PostProcessSettings setAntiAliasingEnabled(boolean value) {
+        this.antiAliasingEnabled = value;
+        return this;
+    }
 
     public float vignetteStrength() {
         return vignetteStrength;
