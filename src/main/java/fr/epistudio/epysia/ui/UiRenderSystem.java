@@ -2,6 +2,7 @@ package fr.epistudio.epysia.ui;
 
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.FrameBuilder;
+import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.Stage;
 import fr.epistudio.epysia.render.StageConfigurer;
@@ -130,7 +131,7 @@ public final class UiRenderSystem implements RenderSystem {
     }
 
     @Override
-    public void collect(Scene scene, FrameBuilder frame, float interpolationAlpha) {
+    public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         resetBatches();
         writeUbo();
         for (GameObject gameObject : scene.gameObjects()) {
@@ -176,7 +177,7 @@ public final class UiRenderSystem implements RenderSystem {
             case UiButton button -> emitPanel(button.computedRect(), button.currentColor(), button.customShader().orElse(null));
             case UiLabel label -> emitLabel(label);
             case UiImage image -> emitImage(image);
-            case UiStack stack -> { /* container only; children handled by recursion */ }
+            case UiStack stack -> { }
         }
     }
 
