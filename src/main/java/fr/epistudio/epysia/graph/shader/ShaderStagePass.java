@@ -552,17 +552,12 @@ final class ShaderStagePass {
     private boolean emitValueParameter(GraphNode node, PinType type) {
         requireLiteralDefault(node);
         String name = parameterName(node);
-        String defaultText = literalExpression(node,
-                new PinDefinition(ShaderNodes.VALUE_PIN, type)).code();
-        shared.declare(name, valueParameterDeclaration(node, type, name, defaultText));
+        shared.declare(name, valueParameterDeclaration(node, type, name));
         remember(node, ShaderNodes.RESULT_PIN, new ShaderExpression(type, name));
         return true;
     }
 
-    private String valueParameterDeclaration(GraphNode node, PinType type, String name, String defaultText) {
-        if (stage != ShaderStage.POST) {
-            return "const " + ShaderExpression.glslType(type) + " " + name + " = " + defaultText + ";";
-        }
+    private String valueParameterDeclaration(GraphNode node, PinType type, String name) {
         String annotations = node.typeKey().equals(ShaderNodes.PARAMETER_COLOR) ? " // @color @default " : " // @default ";
         return "uniform " + ShaderExpression.glslType(type) + " " + name + ";"
                 + annotations + defaultComponents(node, type);
