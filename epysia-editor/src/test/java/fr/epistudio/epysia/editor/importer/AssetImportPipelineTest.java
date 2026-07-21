@@ -72,6 +72,28 @@ class AssetImportPipelineTest {
         assertTrue(pipeline.needsImport(source));
     }
 
+    @Test
+    void importerVersionBumpTriggersReimport(@TempDir Path directory) throws IOException {
+        FakeImporter importer = new FakeImporter();
+        AssetImportPipeline pipeline = pipelineWith(importer);
+        Path source = writeSource(directory);
+        pipeline.ensureImported(source);
+        Path output = importer.primaryOutput(source, outputDirectoryFor(source));
+        makeOutputNewerThanSource(source, output);
+        assertFalse(pipeline.needsImport(source));
+        importer.version = 2;
+        assertTrue(pipeline.needsImport(source));
+        Optional<ImportOutcome> outcome = pipeline.ensureImported(source);
+        assertTrue(outcome.isPresent());
+        assertEquals(2, importer.importCount);
+        assertEquals("2", Files.readString(versionSidecarFor(output)));
+        assertFalse(pipeline.needsImport(source));
+    }
+
+    private static Path versionSidecarFor(Path output) {
+        return output.resolveSibling(output.getFileName().toString() + ".importversion");
+    }
+
     private static AssetImportPipeline pipelineWith(AssetImporter importer) {
         AssetImporterRegistry registry = new AssetImporterRegistry();
         registry.register(importer);
@@ -98,6 +120,7 @@ class AssetImportPipelineTest {
         private int importCount;
         private boolean fail;
         private boolean produceOutput = true;
+        private int version = 1;
 
         @Override
         public String displayName() {
@@ -126,6 +149,11 @@ class AssetImportPipelineTest {
             }
             writeOutput(output);
             return new ImportOutcome(List.of(output), Optional.of(output), List.of());
+        }
+
+        @Override
+        public int version() {
+            return version;
         }
 
         private static void writeOutput(Path output) {

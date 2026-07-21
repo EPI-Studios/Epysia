@@ -12,6 +12,7 @@ public final class GltfAssetImporter implements AssetImporter {
     private static final String GLTF_EXTENSION = ".gltf";
     private static final String GLB_EXTENSION = ".glb";
     private static final String PREFAB_EXTENSION = ".epyprefab";
+    private static final int IMPORTER_VERSION = 7;
 
     private final ComponentRegistry componentRegistry;
 
@@ -38,6 +39,11 @@ public final class GltfAssetImporter implements AssetImporter {
     public ImportOutcome importSource(Path source, Path outputDirectory) {
         GltfImportResult result = GltfImporter.importFile(source, outputDirectory, componentRegistry);
         return new ImportOutcome(collectOutputs(result), result.prefabFile(), result.warnings());
+    }
+
+    @Override
+    public int version() {
+        return IMPORTER_VERSION;
     }
 
     private static List<Path> collectOutputs(GltfImportResult result) {
