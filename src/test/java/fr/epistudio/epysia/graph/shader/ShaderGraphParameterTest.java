@@ -33,6 +33,20 @@ class ShaderGraphParameterTest {
     }
 
     @Test
+    void surfaceTextureParameterCompilesToSamplerUniform() {
+        GraphAsset asset = surfaceGraph();
+        GraphNode output = asset.addNode(ShaderNodes.OUTPUT_SURFACE, 0.0f, 0.0f);
+        GraphNode parameter = asset.addNode(ShaderNodes.PARAMETER_TEXTURE, 0.0f, 0.0f);
+        parameter.values().put(ShaderNodes.NAME_SETTING, "detailTexture");
+        parameter.values().put(ShaderNodes.PATH_SETTING, "textures/detail.png");
+        asset.edges().add(new GraphEdge(parameter.id(), ShaderNodes.RGBA_PIN,
+                output.id(), ShaderNodes.ALBEDO_PIN));
+        String source = new ShaderGraphCompiler().compile(asset, "test.epygraph");
+        assertTrue(source.contains("uniform sampler2D detailTexture;"));
+        assertTrue(source.contains("@default textures/detail.png"));
+    }
+
+    @Test
     void surfaceColorParameterCompilesToAnnotatedUniform() {
         GraphAsset asset = surfaceGraph();
         GraphNode output = asset.addNode(ShaderNodes.OUTPUT_SURFACE, 0.0f, 0.0f);

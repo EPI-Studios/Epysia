@@ -581,8 +581,8 @@ final class ShaderStagePass {
     }
 
     private boolean emitTextureParameter(GraphNode node) {
-        if (stage != ShaderStage.POST) {
-            throw new EpysiaException("Texture Parameter is only available in post effect graphs");
+        if (stage == ShaderStage.SURFACE_VERTEX) {
+            throw new EpysiaException("Texture Parameter is not available in the surface vertex stage");
         }
         String name = parameterName(node);
         shared.declare(name, samplerDeclaration(name, textureSettingPath(node)));
