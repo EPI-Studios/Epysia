@@ -823,6 +823,17 @@ public final class OpenGlRenderBackend implements RenderBackend {
                 ? mesh.indexCount()
                 : command.indexCountOverride();
         long indexOffset = (long) mesh.firstIndex() * mesh.indexFormat().byteSize();
+        if (command.indirectBuffer() != null) {
+            BufferResource indirectBuffer = requireBuffer(command.indirectBuffer());
+            glBindBuffer(org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER, indirectBuffer.bufferId());
+            drawStatistics.recordDraw(pipeline.state().topology(), indexCount, 1, true);
+            org.lwjgl.opengl.GL40.glDrawElementsIndirect(
+                    topologyToGl(pipeline.state().topology()),
+                    indexFormatToGl(mesh.indexFormat()),
+                    0L
+            );
+            return;
+        }
         boolean hasInstanceAttributes = command.instanceBuffer() != null && pipeline.instanceStride() > 0;
         if (hasInstanceAttributes || command.instanceCount() > 1) {
             if (hasInstanceAttributes) {
@@ -955,11 +966,13 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case INDEX -> GL_ELEMENT_ARRAY_BUFFER;
             case UNIFORM -> GL_UNIFORM_BUFFER;
             case STORAGE -> GL_SHADER_STORAGE_BUFFER;
+            case INDIRECT -> org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER;
         };
     }
 
     private static boolean isDynamicUsage(BufferUsage usage) {
-        return usage == BufferUsage.UNIFORM || usage == BufferUsage.STORAGE;
+        return usage == BufferUsage.UNIFORM || usage == BufferUsage.STORAGE
+                || usage == BufferUsage.INDIRECT;
     }
 
     private static int topologyToGl(Topology topology) {
