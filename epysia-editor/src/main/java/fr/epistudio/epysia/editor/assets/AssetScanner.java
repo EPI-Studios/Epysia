@@ -127,6 +127,9 @@ public final class AssetScanner {
         if (lower.endsWith(".epymaterial")) {
             return AssetType.MATERIAL;
         }
+        if (lower.endsWith(".epyclip")) {
+            return AssetType.CLIP;
+        }
         return classifyBinary(lower);
     }
 

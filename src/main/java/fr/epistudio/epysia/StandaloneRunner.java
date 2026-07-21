@@ -107,6 +107,7 @@ public final class StandaloneRunner {
     private static void runPopulator(EpysiaEngine engine, ScenePopulator populator) {
         try {
             populator.populate(engine, engine);
+            engine.scene().advanceTick();
             for (GameObject gameObject : engine.scene().gameObjects()) {
                 for (IComponent component : new ArrayList<>(gameObject.components())) {
                     try {
