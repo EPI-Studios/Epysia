@@ -15,6 +15,16 @@ import java.util.Optional;
 
 public final class MaterialJsonCodec {
 
+    public String writeSingle(Material material) {
+        JsonWriter writer = new JsonWriter();
+        writeMaterial(writer, material);
+        return writer.toString();
+    }
+
+    public Optional<Material> readSingle(String json) {
+        return readMaterial(new JsonReader(json).readRootObject());
+    }
+
     public void writeMaterialArray(JsonWriter writer, List<Material> materials) {
         writer.beginArray();
         for (Material material : materials) {
