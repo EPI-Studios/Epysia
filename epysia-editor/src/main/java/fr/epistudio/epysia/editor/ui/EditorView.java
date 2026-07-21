@@ -190,7 +190,7 @@ public final class EditorView implements FrameView {
         this.assetBrowserView = new AssetBrowserView(project, toasts, icons, thumbnailCache, meshThumbnailer,
                 scriptEditorView::open, meshBakeDialog::openFor,
                 this::instantiatePrefabAtOrigin, this::openScenePath, this::attachScriptToSelected,
-                graphEditorView::open);
+                graphEditorView::open, componentRegistry);
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onViewportTuningChanged);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);

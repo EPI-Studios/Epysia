@@ -25,11 +25,21 @@ import fr.epistudio.epysia.animation.Joint;
 import fr.epistudio.epysia.animation.Skeleton;
 import fr.epistudio.epysia.assets.epyclip.EpyClipWriter;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshWriter;
+import fr.epistudio.epysia.components.Animator;
+import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
+import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.render.material.LitMaterial;
+import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.mesh.MeshData;
 import fr.epistudio.epysia.render.mesh.Submesh;
+import fr.epistudio.epysia.prefab.PrefabWriter;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -47,14 +57,16 @@ public final class GltfImporter {
     private GltfImporter() {
     }
 
-    public static GltfImportResult importFile(Path source, Path outputDirectory) {
+    public static GltfImportResult importFile(Path source, Path outputDirectory, ComponentRegistry componentRegistry) {
         GltfModel model = readModel(source);
         List<String> warnings = new ArrayList<>();
         Map<SkinModel, SkeletonBuild> skeletonBuilds = buildSkeletonBuilds(model);
         List<Path> meshFiles = importMeshes(model, skeletonBuilds, outputDirectory, warnings);
         List<Path> clipFiles = importAnimations(model, skeletonBuilds, outputDirectory, warnings);
-        List<Path> materialFiles = importMaterials(model, outputDirectory, warnings);
-        return new GltfImportResult(meshFiles, clipFiles, materialFiles, warnings);
+        MaterialImport materials = importMaterials(model, outputDirectory, warnings);
+        Optional<Path> prefabFile = buildPrefab(model, source, outputDirectory, meshFiles, clipFiles,
+                materials.byModel(), componentRegistry, warnings);
+        return new GltfImportResult(meshFiles, clipFiles, materials.files(), prefabFile, warnings);
     }
 
     private static GltfModel readModel(Path source) {
@@ -507,18 +519,23 @@ public final class GltfImporter {
         return sanitized.isEmpty() ? fallback : sanitized;
     }
 
-    private static List<Path> importMaterials(GltfModel model, Path outputDirectory, List<String> warnings) {
+    private static MaterialImport importMaterials(GltfModel model, Path outputDirectory, List<String> warnings) {
         Map<ImageModel, Integer> imageIndices = buildImageIndices(model);
         Map<ImageModel, String> writtenImages = new IdentityHashMap<>();
         FileNameAllocator materialFileNames = new FileNameAllocator();
         FileNameAllocator imageFileNames = new FileNameAllocator();
         List<Path> materialFiles = new ArrayList<>();
+        Map<MaterialModel, Path> byModel = new IdentityHashMap<>();
         List<MaterialModel> materialModels = model.getMaterialModels();
         for (int materialIndex = 0; materialIndex < materialModels.size(); materialIndex++) {
-            importMaterial(materialModels.get(materialIndex), materialIndex, outputDirectory, imageIndices,
-                    writtenImages, materialFileNames, imageFileNames, warnings).ifPresent(materialFiles::add);
+            MaterialModel materialModel = materialModels.get(materialIndex);
+            importMaterial(materialModel, materialIndex, outputDirectory, imageIndices,
+                    writtenImages, materialFileNames, imageFileNames, warnings).ifPresent(path -> {
+                        materialFiles.add(path);
+                        byModel.put(materialModel, path);
+                    });
         }
-        return materialFiles;
+        return new MaterialImport(materialFiles, byModel);
     }
 
     private static Map<ImageModel, Integer> buildImageIndices(GltfModel model) {
@@ -664,6 +681,116 @@ public final class GltfImporter {
         }
     }
 
+    private static Optional<Path> buildPrefab(GltfModel model, Path source, Path outputDirectory, List<Path> meshFiles,
+            List<Path> clipFiles, Map<MaterialModel, Path> materialsByModel, ComponentRegistry componentRegistry,
+            List<String> warnings) {
+        List<MeshNodeBinding> bindings = collectMeshNodeBindings(model, meshFiles, materialsByModel);
+        if (bindings.isEmpty()) {
+            return Optional.empty();
+        }
+        String stem = fileStem(source);
+        GameObject root = new GameObject(stem);
+        Transform3D rootTransform = new Transform3D();
+        root.addComponent(rootTransform);
+        Optional<Path> firstClip = clipFiles.isEmpty() ? Optional.empty() : Optional.of(clipFiles.get(0));
+        for (MeshNodeBinding binding : bindings) {
+            addMeshChild(rootTransform, binding, firstClip);
+        }
+        return Optional.of(writePrefab(root, stem, outputDirectory, componentRegistry, warnings));
+    }
+
+    private static List<MeshNodeBinding> collectMeshNodeBindings(GltfModel model, List<Path> meshFiles,
+            Map<MaterialModel, Path> materialsByModel) {
+        Map<MeshModel, Integer> meshIndices = buildMeshIndices(model);
+        List<MeshNodeBinding> bindings = new ArrayList<>();
+        for (NodeModel node : model.getNodeModels()) {
+            for (MeshModel meshModel : node.getMeshModels()) {
+                bindings.add(bindMeshNode(node, meshModel, meshIndices, meshFiles, materialsByModel));
+            }
+        }
+        return bindings;
+    }
+
+    private static Map<MeshModel, Integer> buildMeshIndices(GltfModel model) {
+        Map<MeshModel, Integer> meshIndices = new IdentityHashMap<>();
+        List<MeshModel> meshModels = model.getMeshModels();
+        for (int meshIndex = 0; meshIndex < meshModels.size(); meshIndex++) {
+            meshIndices.put(meshModels.get(meshIndex), meshIndex);
+        }
+        return meshIndices;
+    }
+
+    private static MeshNodeBinding bindMeshNode(NodeModel node, MeshModel meshModel, Map<MeshModel, Integer> meshIndices,
+            List<Path> meshFiles, Map<MaterialModel, Path> materialsByModel) {
+        Path meshFile = meshFiles.get(meshIndices.get(meshModel));
+        List<Optional<Path>> materialPaths = materialPathsForMesh(meshModel, materialsByModel);
+        String nodeName = Optional.ofNullable(node.getName()).orElse(meshFile.getFileName().toString());
+        boolean skinned = node.getSkinModel() != null;
+        return new MeshNodeBinding(nodeName, meshFile, materialPaths, node.computeGlobalTransform(null), skinned);
+    }
+
+    private static List<Optional<Path>> materialPathsForMesh(MeshModel meshModel, Map<MaterialModel, Path> materialsByModel) {
+        List<Optional<Path>> materialPaths = new ArrayList<>();
+        for (MeshPrimitiveModel primitive : meshModel.getMeshPrimitiveModels()) {
+            materialPaths.add(Optional.ofNullable(materialsByModel.get(primitive.getMaterialModel())));
+        }
+        return materialPaths;
+    }
+
+    private static void addMeshChild(Transform3D rootTransform, MeshNodeBinding binding, Optional<Path> firstClip) {
+        GameObject child = new GameObject(binding.nodeName());
+        Transform3D transform = new Transform3D();
+        applyWorldTransform(transform, binding.worldTransform());
+        child.addComponent(transform);
+        transform.setParent(rootTransform);
+        MeshRenderer renderer = new MeshRenderer().setMeshPath(binding.meshFile().toString());
+        renderer.setMaterials(buildMaterialPlaceholders(binding.materialPaths()));
+        child.addComponent(renderer);
+        if (binding.skinned() && firstClip.isPresent()) {
+            child.addComponent(new Animator().setClipPath(firstClip.get().toString()));
+        }
+    }
+
+    private static void applyWorldTransform(Transform3D transform, float[] worldMatrix) {
+        Matrix4f matrix = new Matrix4f().set(worldMatrix);
+        Vector3f translation = matrix.getTranslation(new Vector3f());
+        Quaternionf rotation = matrix.getNormalizedRotation(new Quaternionf());
+        Vector3f scale = matrix.getScale(new Vector3f());
+        transform.setPosition(translation.x, translation.y, translation.z);
+        transform.setRotation(rotation);
+        transform.setScale(scale.x, scale.y, scale.z);
+    }
+
+    private static List<Material> buildMaterialPlaceholders(List<Optional<Path>> materialPaths) {
+        List<Material> materials = new ArrayList<>();
+        for (Optional<Path> materialPath : materialPaths) {
+            LitMaterial material = new LitMaterial();
+            materialPath.ifPresent(path -> material.setAssetPath(path.toString()));
+            materials.add(material);
+        }
+        return materials;
+    }
+
+    private static Path writePrefab(GameObject root, String stem, Path outputDirectory,
+            ComponentRegistry componentRegistry, List<String> warnings) {
+        Path outputPath = outputDirectory.resolve(stem + ".epyprefab");
+        try {
+            new PrefabWriter(componentRegistry).write(root, outputPath);
+        } catch (IOException exception) {
+            throw new EpysiaException("Failed to write .epyprefab to " + outputPath + ": " + exception.getMessage(), exception);
+        }
+        if (componentRegistry.entries().isEmpty()) {
+            warnings.add("Component registry is empty; the prefab was written without components.");
+        }
+        return outputPath;
+    }
+
+    private static String fileStem(Path source) {
+        String fileName = source.getFileName().toString();
+        int extensionSeparator = fileName.lastIndexOf('.');
+        return extensionSeparator > 0 ? fileName.substring(0, extensionSeparator) : fileName;
+    }
+
     private static MeshData mergePrimitives(List<PrimitiveVertexData> primitives, String meshName, List<String> warnings) {
         MergePlan plan = MergePlan.of(primitives);
         warnIfMixedSkin(primitives, plan, meshName, warnings);
@@ -705,6 +832,13 @@ public final class GltfImporter {
     }
 
     private record JointReference(SkinModel skin, int jointIndex) {
+    }
+
+    private record MaterialImport(List<Path> files, Map<MaterialModel, Path> byModel) {
+    }
+
+    private record MeshNodeBinding(String nodeName, Path meshFile, List<Optional<Path>> materialPaths,
+                                   float[] worldTransform, boolean skinned) {
     }
 
     private static final class FileNameAllocator {

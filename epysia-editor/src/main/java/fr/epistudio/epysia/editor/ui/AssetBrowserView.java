@@ -17,6 +17,7 @@ import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.reflection.ComponentRegistry;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiPopupFlags;
@@ -94,6 +95,7 @@ public final class AssetBrowserView {
     private final Consumer<Path> onOpenScene;
     private final Consumer<Path> onAttachScript;
     private final Consumer<Path> onOpenGraph;
+    private final ComponentRegistry componentRegistry;
     private final NameDialog nameDialog = new NameDialog("##asset-name-dialog");
     private final NewAssetDialog newAssetDialog;
     private final ConfirmDialog deleteConfirm = new ConfirmDialog("Delete this file?", "Delete");
@@ -110,7 +112,8 @@ public final class AssetBrowserView {
                             ThumbnailCache thumbnails, MeshThumbnailer meshThumbnails,
                             Consumer<Path> onOpenScript, Consumer<Path> onBakeMesh,
                             Consumer<Path> onInstantiatePrefab, Consumer<Path> onOpenScene,
-                            Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph) {
+                            Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph,
+                            ComponentRegistry componentRegistry) {
         this.project = project;
         this.notifier = notifier;
         this.icons = icons;
@@ -122,6 +125,7 @@ public final class AssetBrowserView {
         this.onOpenScene = onOpenScene;
         this.onAttachScript = onAttachScript;
         this.onOpenGraph = onOpenGraph;
+        this.componentRegistry = componentRegistry;
         this.currentDirectory = project.rootDirectory();
         this.newAssetDialog = new NewAssetDialog("##new-asset-dialog", icons);
         this.grid = new AssetEntryGrid(icons, thumbnails, meshThumbnails);
@@ -638,10 +642,11 @@ public final class AssetBrowserView {
 
     private void importGltf(Path source) {
         try {
-            GltfImportResult result = GltfImporter.importFile(source, source.getParent());
+            GltfImportResult result = GltfImporter.importFile(source, source.getParent(), componentRegistry);
             result.warnings().forEach(warning -> notifier.show("glTF: " + warning));
             notifier.show("Imported " + result.meshFiles().size() + " meshes, "
-                    + result.clipFiles().size() + " clips, " + result.materialFiles().size() + " materials");
+                    + result.clipFiles().size() + " clips, " + result.materialFiles().size() + " materials"
+                    + result.prefabFile().map(prefab -> ", 1 prefab").orElse(""));
             refresh();
         } catch (RuntimeException error) {
             notifier.show("glTF import failed: " + error.getMessage());
