@@ -508,6 +508,7 @@ public final class GraphEditorView {
             case STATE_MACHINE -> "State Machine";
             case SHADER_SURFACE -> "Surface Shader Graph";
             case SHADER_POST -> "Post Effect Shader Graph";
+            case VFX -> "VFX Graph";
         };
     }
 
