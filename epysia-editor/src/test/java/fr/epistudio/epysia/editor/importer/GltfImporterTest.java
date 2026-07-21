@@ -5,6 +5,8 @@ import fr.epistudio.epysia.animation.ClipProperty;
 import fr.epistudio.epysia.assets.epyclip.EpyClipReader;
 import fr.epistudio.epysia.assets.epymesh.EpyMesh;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshReader;
+import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.reflection.ComponentScanner;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
@@ -34,7 +36,7 @@ class GltfImporterTest {
     @Test
     void importsSkinnedTriangle(@TempDir Path directory) throws Exception {
         Path source = writeFixture(directory);
-        GltfImportResult result = GltfImporter.importFile(source, directory);
+        GltfImportResult result = runImport(source, directory);
         assertEquals(1, result.meshFiles().size());
         EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
         assertEquals(VERTEX_COUNT, decoded.mesh().vertexCount());
@@ -48,7 +50,7 @@ class GltfImporterTest {
     @Test
     void importsAnimationAsClip(@TempDir Path directory) throws Exception {
         Path source = writeFixture(directory);
-        GltfImportResult result = GltfImporter.importFile(source, directory);
+        GltfImportResult result = runImport(source, directory);
         assertEquals(1, result.clipFiles().size());
         Clip clip = EpyClipReader.readFile(result.clipFiles().get(0));
         assertEquals("wave", clip.name());
@@ -61,7 +63,7 @@ class GltfImporterTest {
     @Test
     void importsMaterialWithEmbeddedTexture(@TempDir Path directory) throws Exception {
         Path source = writeFixture(directory);
-        GltfImportResult result = GltfImporter.importFile(source, directory);
+        GltfImportResult result = runImport(source, directory);
         assertEquals(1, result.materialFiles().size());
         String document = Files.readString(result.materialFiles().get(0));
         Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
@@ -74,7 +76,7 @@ class GltfImporterTest {
     @Test
     void mixedSkinnedAndRigidPrimitivesImportAsStatic(@TempDir Path directory) throws Exception {
         Path source = writeMixedFixture(directory);
-        GltfImportResult result = GltfImporter.importFile(source, directory);
+        GltfImportResult result = runImport(source, directory);
         assertEquals(1, result.meshFiles().size());
         EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
         assertFalse(decoded.mesh().hasSkin());
@@ -84,7 +86,7 @@ class GltfImporterTest {
     @Test
     void duplicateMaterialNamesGetDistinctFiles(@TempDir Path directory) throws Exception {
         Path source = writeDuplicateMaterialNamesFixture(directory);
-        GltfImportResult result = GltfImporter.importFile(source, directory);
+        GltfImportResult result = runImport(source, directory);
         assertEquals(2, result.materialFiles().size());
         Path first = result.materialFiles().get(0);
         Path second = result.materialFiles().get(1);
@@ -145,7 +147,7 @@ class GltfImporterTest {
     @Test
     void blendAlphaModeMarksMaterialTransparent(@TempDir Path directory) throws Exception {
         Path source = writeDuplicateMaterialNamesFixture(directory);
-        GltfImportResult result = GltfImporter.importFile(source, directory);
+        GltfImportResult result = runImport(source, directory);
         String document = Files.readString(result.materialFiles().get(1));
         Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
         assertTrue(((LitMaterial) material).transparent());
@@ -196,6 +198,26 @@ class GltfImporterTest {
                 """;
     }
 
+    @Test
+    void importAssemblesPrefabWithTransformMaterialAndAnimator(@TempDir Path directory) throws Exception {
+        Path source = writeFixture(directory);
+        GltfImportResult result = runImport(source, directory);
+        Path prefab = result.prefabFile().orElseThrow();
+        assertTrue(Files.exists(prefab));
+        String document = Files.readString(prefab);
+        assertTrue(document.contains(result.meshFiles().get(0).toString()));
+        assertTrue(document.contains(result.materialFiles().get(0).toString()));
+        assertTrue(document.contains(result.clipFiles().get(0).toString()));
+        assertTrue(document.contains("Animator"));
+        assertTrue(document.contains("2.0") && document.contains("3.0") && document.contains("4.0"));
+    }
+
+    private static GltfImportResult runImport(Path source, Path directory) {
+        ComponentRegistry registry = new ComponentRegistry();
+        registry.populateFromScan(ComponentScanner.scan());
+        return GltfImporter.importFile(source, directory, registry);
+    }
+
     private static Path writeFixture(Path directory) throws Exception {
         Files.write(directory.resolve("triangle.bin"), fixtureBuffer());
         Path gltf = directory.resolve("triangle.gltf");
@@ -240,7 +262,7 @@ class GltfImporterTest {
                   "scenes": [{"nodes": [0, 1]}],
                   "nodes": [
                     {"name": "root", "children": [2]},
-                    {"name": "model", "mesh": 0, "skin": 0},
+                    {"name": "model", "mesh": 0, "skin": 0, "translation": [2, 3, 4]},
                     {"name": "tip", "translation": [0, 1, 0]}
                   ],
                   "skins": [{"joints": [0, 2], "inverseBindMatrices": 5}],
