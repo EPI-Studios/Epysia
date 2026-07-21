@@ -1,5 +1,11 @@
 package fr.epistudio.epysia.render.mesh;
 
+import fr.epistudio.epysia.animation.Clip;
+import fr.epistudio.epysia.animation.ClipSampler;
+import fr.epistudio.epysia.animation.Skeleton;
+import fr.epistudio.epysia.animation.SkeletonPose;
+import fr.epistudio.epysia.animation.SkinningPalette;
+import fr.epistudio.epysia.components.Animator;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.IComponent;
@@ -42,6 +48,7 @@ import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
@@ -125,10 +132,13 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private float shadowDistance = 60.0f;
     private LitMaterial fallback;
 
+    private final ClipSampler clipSampler = new ClipSampler();
     private RenderBackend backend;
     private int culledThisFrame;
     private int submittedThisFrame;
     private long startNanos;
+    private long lastFrameNanos;
+    private float frameDeltaSeconds;
 
     public MeshRenderSystem(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger) {
         this.logger = logger;
@@ -150,6 +160,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     public void initialize(RenderBackend backend, StageConfigurer configurer) {
         this.backend = backend;
         this.startNanos = System.nanoTime();
+        this.lastFrameNanos = this.startNanos;
         shadowCascades.initialize(backend);
         configurer.bindStagePreparation(RenderPasses.OPAQUE_3D, shadowCascades::render);
         spotShadows.initialize(backend, shadowCascades.cascadeUbo());
@@ -170,6 +181,12 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         this.profiler = frameProfiler;
     }
 
+    private void advanceFrameClock(long nowNanos) {
+        float delta = (nowNanos - lastFrameNanos) / 1_000_000_000.0f;
+        frameDeltaSeconds = Math.max(0.0f, Math.min(0.25f, delta));
+        lastFrameNanos = nowNanos;
+    }
+
     private long markSection(String name, long since) {
         long now = System.nanoTime();
         profiler.record(name, now - since);
@@ -187,6 +204,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         long mark = System.nanoTime();
+        advanceFrameClock(mark);
         shaderWatcher.poll();
         Camera3D camera = context.primaryCamera().orElse(null);
         if (camera == null) {
@@ -477,6 +495,9 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         RenderableMesh renderable = resolvePerSubmeshes(renderer, mesh);
         List<PerSubmesh> perSubmeshes = renderable.submeshes();
         refreshStalePerSubmeshes(renderer, mesh, perSubmeshes, renderable.jointPalette());
+        if (mesh.skinned()) {
+            renderable.jointPalette().ifPresent(palette -> updateAnimatedPalette(gameObject, mesh, palette));
+        }
         Matrix4f modelMatrix = transformComponent.worldMatrix(alpha);
         culler.computeWorldBounds(mesh.localBounds(), modelMatrix, scratchCasterMin, scratchCasterMax);
         boolean visible = mesh.localBounds() == null
@@ -739,7 +760,35 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         writeIdentityPalette(identity, jointCount);
         BufferHandle buffer = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, identity));
         ownedBuffers.add(buffer);
-        return Optional.of(new JointPalette(buffer, byteSize));
+        return Optional.of(new JointPalette(buffer, byteSize, jointCount));
+    }
+
+    private void updateAnimatedPalette(GameObject gameObject, UploadedMesh mesh, JointPalette palette) {
+        Animator animator = gameObject.getComponentOrNull(Animator.class);
+        if (animator == null || !animator.isPlaying() || animator.resolvedClip().isEmpty()) {
+            return;
+        }
+        Clip clip = animator.resolvedClip().get();
+        Skeleton skeleton = mesh.skeleton().orElseThrow(() ->
+                new EpysiaException("Skinned mesh missing skeleton during animation."));
+        if (clip.skeletonChecksum() != skeleton.nameChecksum()) {
+            logChecksumMismatchOnce(gameObject, clip, skeleton, palette);
+            return;
+        }
+        animator.advance(frameDeltaSeconds, clip.durationSeconds());
+        clipSampler.sample(clip, skeleton, animator.currentTimeSeconds(), palette.pose);
+        palette.pose.computeSkinningMatrices(skeleton, palette.skinningMatrices);
+        SkinningPalette.pack(palette.skinningMatrices, palette.packBuffer, palette.rowScratch);
+        backend.writeBuffer(palette.buffer, palette.packBuffer, 0L);
+    }
+
+    private void logChecksumMismatchOnce(GameObject gameObject, Clip clip, Skeleton skeleton, JointPalette palette) {
+        if (palette.checksumMismatchLogged) {
+            return;
+        }
+        palette.checksumMismatchLogged = true;
+        logger.warn("Animator on '" + gameObject.name() + "' clip checksum " + clip.skeletonChecksum()
+                + " does not match skeleton " + skeleton.nameChecksum() + "; keeping bind pose.");
     }
 
     private static void writeIdentityPalette(ByteBuffer buffer, int jointCount) {
@@ -1020,6 +1069,38 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
                                   Optional<JointPalette> jointPalette) {
     }
 
-    private record JointPalette(BufferHandle buffer, long byteSize) {
+    private static final class JointPalette {
+
+        private final BufferHandle buffer;
+        private final long byteSize;
+        private final SkeletonPose pose;
+        private final Matrix4f[] skinningMatrices;
+        private final ByteBuffer packBuffer;
+        private final Vector4f rowScratch = new Vector4f();
+        private boolean checksumMismatchLogged;
+
+        private JointPalette(BufferHandle buffer, long byteSize, int jointCount) {
+            this.buffer = buffer;
+            this.byteSize = byteSize;
+            this.pose = new SkeletonPose(jointCount);
+            this.skinningMatrices = createIdentityMatrices(jointCount);
+            this.packBuffer = BufferUtils.createByteBuffer((int) byteSize);
+        }
+
+        private BufferHandle buffer() {
+            return buffer;
+        }
+
+        private long byteSize() {
+            return byteSize;
+        }
+    }
+
+    private static Matrix4f[] createIdentityMatrices(int jointCount) {
+        Matrix4f[] matrices = new Matrix4f[jointCount];
+        for (int index = 0; index < jointCount; index++) {
+            matrices[index] = new Matrix4f();
+        }
+        return matrices;
     }
 }

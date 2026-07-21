@@ -4,6 +4,7 @@ import fr.epistudio.epysia.EngineModule;
 import fr.epistudio.epysia.EpysiaEngine;
 import fr.epistudio.epysia.GameSystem;
 import fr.epistudio.epysia.SystemRegistryImpl;
+import fr.epistudio.epysia.assets.loaders.ClipAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
@@ -119,6 +120,7 @@ public final class EditorScene3DHost {
         engine.assets().register(new TextureAssetLoader());
         engine.assets().register(new PhysicsMaterialLoader());
         engine.assets().register(new MaterialAssetLoader());
+        engine.assets().register(new ClipAssetLoader());
         currentWidth = renderSurface.framebufferWidth();
         currentHeight = renderSurface.framebufferHeight();
         createRenderTarget(currentWidth, currentHeight);

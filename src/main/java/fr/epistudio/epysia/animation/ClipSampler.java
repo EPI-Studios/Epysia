@@ -22,7 +22,9 @@ public final class ClipSampler {
         for (int index = 0; index < joints.size(); index++) {
             applyBindDefaults(joints.get(index), out.jointPose(index));
         }
-        for (ClipChannel channel : clip.channels()) {
+        List<ClipChannel> channels = clip.channels();
+        for (int index = 0; index < channels.size(); index++) {
+            ClipChannel channel = channels.get(index);
             applyChannel(channel, timeSeconds, out.jointPose(channel.jointIndex()));
         }
     }
