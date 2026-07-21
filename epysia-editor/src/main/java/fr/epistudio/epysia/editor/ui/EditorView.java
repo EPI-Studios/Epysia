@@ -214,6 +214,7 @@ public final class EditorView implements FrameView {
     private void finishSetup() {
         applyPreferences();
         scriptService.reload();
+        assetBrowserView.sweepProjectForImports();
         if (Files.isRegularFile(project.defaultScenePath())) {
             workspace.open(project.defaultScenePath());
         } else {
