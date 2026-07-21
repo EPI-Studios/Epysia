@@ -62,6 +62,7 @@ import static org.lwjgl.opengl.GL11.glTexImage2D;
 import static org.lwjgl.opengl.GL11.glTexParameteri;
 import static org.lwjgl.opengl.GL11.glTexSubImage2D;
 import static org.lwjgl.opengl.GL11.glViewport;
+import static org.lwjgl.opengl.GL11.GL_REPEAT;
 import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
@@ -475,10 +476,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private void configureTextureSamplerState(int glTarget, TextureDescriptor descriptor) {
         int magFilter = descriptor.samplerFilter() == SamplerFilter.NEAREST ? GL_NEAREST : GL_LINEAR;
         int minFilter = descriptor.mipLevels() > 1 ? org.lwjgl.opengl.GL11.GL_LINEAR_MIPMAP_LINEAR : magFilter;
+        int wrapMode = wrapToGl(descriptor.wrap());
         glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, minFilter);
         glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, magFilter);
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, wrapMode);
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, wrapMode);
         if (descriptor.kind() != TextureKind.TEXTURE_2D) {
             glTexParameteri(glTarget, org.lwjgl.opengl.GL12.GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         }
@@ -486,6 +488,13 @@ public final class OpenGlRenderBackend implements RenderBackend {
             glTexParameteri(glTarget, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
             glTexParameteri(glTarget, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
         }
+    }
+
+    private static int wrapToGl(TextureWrap wrap) {
+        return switch (wrap) {
+            case CLAMP_TO_EDGE -> GL_CLAMP_TO_EDGE;
+            case REPEAT -> GL_REPEAT;
+        };
     }
 
     private static int textureTargetToGl(TextureKind kind) {

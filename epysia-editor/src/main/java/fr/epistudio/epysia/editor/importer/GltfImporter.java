@@ -572,13 +572,23 @@ public final class GltfImporter {
         litMaterial.setBaseColor(baseColorFactor[0], baseColorFactor[1], baseColorFactor[2]);
         litMaterial.setMetallic(material.getMetallicFactor());
         litMaterial.setRoughness(material.getRoughnessFactor());
+        litMaterial.setDoubleSided(material.isDoubleSided());
         applyAlphaMode(litMaterial, material);
+        applyEmissiveStrength(litMaterial, material);
         applyTexture(litMaterial, "albedo", material.getBaseColorTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
         applyTexture(litMaterial, "normalMap", material.getNormalTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
         applyTexture(litMaterial, "metallicRoughnessMap", material.getMetallicRoughnessTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
         applyTexture(litMaterial, "occlusionMap", material.getOcclusionTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
         applyTexture(litMaterial, "emissiveMap", material.getEmissiveTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
         return litMaterial;
+    }
+
+    private static void applyEmissiveStrength(LitMaterial litMaterial, MaterialModelV2 material) {
+        if (material.getEmissiveTexture() == null) {
+            return;
+        }
+        float[] emissiveFactor = material.getEmissiveFactor();
+        litMaterial.setEmissiveStrength(Math.max(emissiveFactor[0], Math.max(emissiveFactor[1], emissiveFactor[2])));
     }
 
     private static void applyAlphaMode(LitMaterial litMaterial, MaterialModelV2 material) {

@@ -9,6 +9,7 @@ import fr.epistudio.epysia.render.backend.TextureDescriptor;
 import fr.epistudio.epysia.render.backend.TextureFormat;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.backend.TextureUsage;
+import fr.epistudio.epysia.render.backend.TextureWrap;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
@@ -27,7 +28,7 @@ public final class Texture2D {
     }
 
     public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format) {
-        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format);
+        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, TextureWrap.REPEAT);
     }
 
     public static TextureHandle load(RenderBackend backend, String path) {
@@ -95,7 +96,8 @@ public final class Texture2D {
         return upload(backend, size, size, pixels, TextureFormat.SRGB8_ALPHA8);
     }
 
-    private static TextureHandle decodeAndUpload(RenderBackend backend, ByteBuffer encodedBytes, TextureFormat format) {
+    private static TextureHandle decodeAndUpload(RenderBackend backend, ByteBuffer encodedBytes, TextureFormat format,
+            TextureWrap wrap) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer widthBuffer = stack.mallocInt(1);
             IntBuffer heightBuffer = stack.mallocInt(1);
@@ -106,7 +108,7 @@ public final class Texture2D {
                 throw new EpysiaException("Image decode failed: " + STBImage.stbi_failure_reason());
             }
             try {
-                return upload(backend, widthBuffer.get(0), heightBuffer.get(0), pixels, format);
+                return upload(backend, widthBuffer.get(0), heightBuffer.get(0), pixels, format, wrap);
             } finally {
                 STBImage.stbi_image_free(pixels);
             }
@@ -128,7 +130,12 @@ public final class Texture2D {
     }
 
     private static TextureHandle upload(RenderBackend backend, int width, int height, ByteBuffer pixels, TextureFormat format) {
-        TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height, format, TextureUsage.SAMPLED));
+        return upload(backend, width, height, pixels, format, TextureWrap.CLAMP_TO_EDGE);
+    }
+
+    private static TextureHandle upload(RenderBackend backend, int width, int height, ByteBuffer pixels,
+            TextureFormat format, TextureWrap wrap) {
+        TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height, format, TextureUsage.SAMPLED, wrap));
         backend.writeTexture(handle, pixels);
         return handle;
     }
