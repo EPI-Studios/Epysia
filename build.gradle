@@ -43,6 +43,14 @@ tasks.named('run', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runMaterialPixelCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders two instances of one surface shader with different uniform values and checks the pixels.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.MaterialInstancePixelCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
