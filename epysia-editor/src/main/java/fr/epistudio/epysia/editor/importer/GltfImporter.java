@@ -329,16 +329,21 @@ public final class GltfImporter {
         weights[base + 3] /= sum;
     }
 
+    private static final int COMPONENT_TYPE_UNSIGNED_BYTE = 5121;
+    private static final int COMPONENT_TYPE_UNSIGNED_SHORT = 5123;
+
     private static float[] readFloats(AccessorModel accessor, int componentsPerElement) {
         AccessorData data = accessor.getAccessorData();
         if (data instanceof AccessorFloatData floatData) {
             return flattenFloat(floatData, componentsPerElement);
         }
         if (data instanceof AccessorShortData shortData) {
-            return flattenNormalizedShort(shortData, componentsPerElement, accessor.isNormalized());
+            return flattenShort(shortData, componentsPerElement, accessor.isNormalized(),
+                    accessor.getComponentType() == COMPONENT_TYPE_UNSIGNED_SHORT);
         }
         if (data instanceof AccessorByteData byteData) {
-            return flattenNormalizedByte(byteData, componentsPerElement, accessor.isNormalized());
+            return flattenByte(byteData, componentsPerElement, accessor.isNormalized(),
+                    accessor.getComponentType() == COMPONENT_TYPE_UNSIGNED_BYTE);
         }
         throw new EpysiaException("Unsupported accessor component type for a float attribute.");
     }
@@ -353,35 +358,49 @@ public final class GltfImporter {
         return values;
     }
 
-    private static float[] flattenNormalizedShort(AccessorShortData data, int componentsPerElement, boolean normalized) {
-        float divisor = normalized ? 65535.0f : 1.0f;
+    private static float[] flattenShort(AccessorShortData data, int componentsPerElement,
+                                        boolean normalized, boolean unsigned) {
         float[] values = new float[data.getNumElements() * componentsPerElement];
         for (int element = 0; element < data.getNumElements(); element++) {
             for (int component = 0; component < componentsPerElement; component++) {
-                values[element * componentsPerElement + component] = data.getInt(element, component) / divisor;
+                int raw = unsigned ? data.get(element, component) & 0xFFFF : data.get(element, component);
+                values[element * componentsPerElement + component] = normalizeComponent(
+                        raw, normalized, unsigned, 65535.0f, 32767.0f);
             }
         }
         return values;
     }
 
-    private static float[] flattenNormalizedByte(AccessorByteData data, int componentsPerElement, boolean normalized) {
-        float divisor = normalized ? 255.0f : 1.0f;
+    private static float[] flattenByte(AccessorByteData data, int componentsPerElement,
+                                       boolean normalized, boolean unsigned) {
         float[] values = new float[data.getNumElements() * componentsPerElement];
         for (int element = 0; element < data.getNumElements(); element++) {
             for (int component = 0; component < componentsPerElement; component++) {
-                values[element * componentsPerElement + component] = data.getInt(element, component) / divisor;
+                int raw = unsigned ? data.get(element, component) & 0xFF : data.get(element, component);
+                values[element * componentsPerElement + component] = normalizeComponent(
+                        raw, normalized, unsigned, 255.0f, 127.0f);
             }
         }
         return values;
+    }
+
+    private static float normalizeComponent(int raw, boolean normalized, boolean unsigned,
+                                            float unsignedDivisor, float signedDivisor) {
+        if (!normalized) {
+            return raw;
+        }
+        return unsigned ? raw / unsignedDivisor : Math.max(-1.0f, raw / signedDivisor);
     }
 
     private static int[] readUnsignedInts(AccessorModel accessor, int componentsPerElement) {
         AccessorData data = accessor.getAccessorData();
         if (data instanceof AccessorShortData shortData) {
-            return flattenInt(shortData.getNumElements(), componentsPerElement, shortData::getInt);
+            return flattenInt(shortData.getNumElements(), componentsPerElement,
+                    (element, component) -> shortData.get(element, component) & 0xFFFF);
         }
         if (data instanceof AccessorByteData byteData) {
-            return flattenInt(byteData.getNumElements(), componentsPerElement, byteData::getInt);
+            return flattenInt(byteData.getNumElements(), componentsPerElement,
+                    (element, component) -> byteData.get(element, component) & 0xFF);
         }
         if (data instanceof AccessorIntData intData) {
             return flattenInt(intData.getNumElements(), componentsPerElement, intData::get);
