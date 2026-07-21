@@ -91,6 +91,54 @@ class EpyMeshRoundTripTest {
     }
 
     @Test
+    void skinnedMeshWithColliderRoundTrips() {
+        MeshData mesh = skinnedTriangle();
+        float[] triangleVertices = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f, 2.0f, 0.0f};
+        int[] triangleIndices = {0, 1, 2};
+        float[] convexVertices = {-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.5f, -0.5f, 0.25f};
+        BakedCollider collider = new BakedCollider(triangleVertices, triangleIndices, convexVertices);
+        Skeleton skeleton = new Skeleton(List.of(
+                new Joint("root", -1, identityMatrix(), identityMatrix()),
+                new Joint("tip", 0, identityMatrix(), identityMatrix())));
+
+        byte[] encoded = EpyMeshWriter.write(mesh, Optional.of(collider), Optional.of(skeleton));
+        EpyMesh decoded = EpyMeshReader.read(encoded);
+
+        assertTrue(decoded.mesh().hasSkin());
+        assertTrue(decoded.collider().isPresent());
+        assertTrue(decoded.skeleton().isPresent());
+        assertArrayEquals(triangleVertices, decoded.collider().orElseThrow().triangleVertices(), 0.0f);
+    }
+
+    @Test
+    void skeletonJointsRoundTripExactly() {
+        MeshData mesh = skinnedTriangle();
+        float[] rootLocalTransform = identityMatrix();
+        float[] tipLocalTransform = identityMatrix();
+        tipLocalTransform[13] = 2.5f;
+        float[] rootInverseTransform = identityMatrix();
+        float[] tipInverseTransform = identityMatrix();
+        tipInverseTransform[12] = -1.0f;
+        Skeleton skeleton = new Skeleton(List.of(
+                new Joint("root", -1, rootLocalTransform, rootInverseTransform),
+                new Joint("tip", 0, tipLocalTransform, tipInverseTransform)));
+
+        byte[] encoded = EpyMeshWriter.write(mesh, Optional.empty(), Optional.of(skeleton));
+        EpyMesh decoded = EpyMeshReader.read(encoded);
+
+        Skeleton decodedSkeleton = decoded.skeleton().orElseThrow();
+        Joint decodedTip = decodedSkeleton.joints().get(1);
+        assertEquals("tip", decodedTip.name());
+        assertEquals(0, decodedTip.parentIndex());
+        float[] decodedTipLocalTransform = decodedTip.localBindTransform();
+        float[] decodedTipInverseTransform = decodedTip.inverseBindMatrix();
+        assertEquals(2.5f, decodedTipLocalTransform[13]);
+        assertEquals(-1.0f, decodedTipInverseTransform[12]);
+        assertArrayEquals(tipLocalTransform, decodedTipLocalTransform, 0.0f);
+        assertArrayEquals(tipInverseTransform, decodedTipInverseTransform, 0.0f);
+    }
+
+    @Test
     void versionOneFilesStillLoad() {
         byte[] versionOne = encodeVersionOne(staticTriangle());
 
