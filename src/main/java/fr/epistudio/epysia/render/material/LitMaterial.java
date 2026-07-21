@@ -24,7 +24,7 @@ public final class LitMaterial extends Material {
     @Uniform
     public float alphaCutoff = 0.0f;
 
-    @Texture
+    @Texture(srgb = true)
     public TextureHandle albedo;
 
     @Texture
@@ -36,7 +36,7 @@ public final class LitMaterial extends Material {
     @Texture
     public TextureHandle occlusionMap;
 
-    @Texture
+    @Texture(srgb = true)
     public TextureHandle emissiveMap;
 
     private final ShaderUniformValues surfaceUniforms = new ShaderUniformValues();

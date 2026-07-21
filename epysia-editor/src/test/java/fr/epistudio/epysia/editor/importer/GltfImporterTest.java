@@ -74,6 +74,15 @@ class GltfImporterTest {
     }
 
     @Test
+    void importsDoubleSidedMaterial(@TempDir Path directory) throws Exception {
+        Path source = writeFixture(directory);
+        GltfImportResult result = runImport(source, directory);
+        String document = Files.readString(result.materialFiles().get(0));
+        Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
+        assertTrue(material.doubleSided());
+    }
+
+    @Test
     void mixedSkinnedAndRigidPrimitivesImportAsStatic(@TempDir Path directory) throws Exception {
         Path source = writeMixedFixture(directory);
         GltfImportResult result = runImport(source, directory);
@@ -273,6 +282,7 @@ class GltfImporterTest {
                   }]}],
                   "materials": [{
                     "name": "skin",
+                    "doubleSided": true,
                     "pbrMetallicRoughness": {
                       "baseColorFactor": [0.5, 0.25, 1.0, 1.0],
                       "metallicFactor": 0.0,
