@@ -733,6 +733,8 @@ public final class GltfImporter {
         litMaterial.setBaseColor(baseColorFactor[0], baseColorFactor[1], baseColorFactor[2]);
         litMaterial.setMetallic(material.getMetallicFactor());
         litMaterial.setRoughness(material.getRoughnessFactor());
+        litMaterial.setNormalScale(material.getNormalScale());
+        litMaterial.setOcclusionStrength(material.getOcclusionStrength());
         litMaterial.setDoubleSided(material.isDoubleSided());
         applyAlphaMode(litMaterial, material);
         applyEmissiveStrength(litMaterial, material);
@@ -745,11 +747,22 @@ public final class GltfImporter {
     }
 
     private static void applyEmissiveStrength(LitMaterial litMaterial, MaterialModelV2 material) {
-        if (material.getEmissiveTexture() == null) {
-            return;
-        }
         float[] emissiveFactor = material.getEmissiveFactor();
-        litMaterial.setEmissiveStrength(Math.max(emissiveFactor[0], Math.max(emissiveFactor[1], emissiveFactor[2])));
+        float maxComponent = Math.max(emissiveFactor[0], Math.max(emissiveFactor[1], emissiveFactor[2]));
+        litMaterial.setEmissiveStrength(maxComponent * emissiveStrengthMultiplier(material));
+    }
+
+    private static float emissiveStrengthMultiplier(MaterialModelV2 material) {
+        Object extensions = material.getExtensions();
+        if (!(extensions instanceof Map<?, ?> extensionMap)) {
+            return 1.0f;
+        }
+        Object emissiveStrength = extensionMap.get("KHR_materials_emissive_strength");
+        if (!(emissiveStrength instanceof Map<?, ?> emissiveStrengthMap)) {
+            return 1.0f;
+        }
+        Object factor = emissiveStrengthMap.get("emissiveStrength");
+        return factor instanceof Number number ? number.floatValue() : 1.0f;
     }
 
     private static void applyAlphaMode(LitMaterial litMaterial, MaterialModelV2 material) {
