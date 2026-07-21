@@ -83,6 +83,12 @@ public final class GameObject implements IGameObject {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public <T extends IComponent> T getComponentOrNull(Class<T> componentClass) {
+        return (T) componentsByType.get(componentClass);
+    }
+
+    @Override
     public <T extends IComponent> T addComponent(T component) {
         if (componentsByType.containsKey(component.getClass())) {
             throw new ComponentPresentException(component, this);

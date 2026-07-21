@@ -28,14 +28,17 @@ import fr.epistudio.epysia.physics.components.MeshCollider;
 import fr.epistudio.epysia.physics.components.PhysicsMaterial;
 import fr.epistudio.epysia.physics.components.RigidBodyComponent;
 import fr.epistudio.epysia.scene.Scene;
-import fr.epistudio.epysia.scripting.Behaviour;
+import fr.epistudio.epysia.scripting.PhysicsEventListener;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,7 +47,10 @@ import java.util.function.Consumer;
 
 public final class PhysicsSystem implements IPhysicsSystem {
 
+    private static final float DEFAULT_WORLD_FLOOR_Y = -500.0f;
+
     private final Vector3f defaultGravity = new Vector3f(0.0f, -9.81f, 0.0f);
+    private float worldFloorY = DEFAULT_WORLD_FLOOR_Y;
     private final Vector3f scratchPosition = new Vector3f();
     private final Quaternionf scratchRotation = new Quaternionf();
     private final Vector3f scratchHorizontal = new Vector3f();
@@ -104,11 +110,13 @@ public final class PhysicsSystem implements IPhysicsSystem {
             gameObject.getComponent(CharacterControllerComponent.class).ifPresent(controller ->
                     ensureCharacterController(gameObject, controller));
         }
+        destroyOrphanBodies(scene);
         world.step(deltaTimeSeconds);
         for (GameObject gameObject : scene.gameObjects()) {
             gameObject.getComponent(RigidBodyComponent.class).ifPresent(rigidBody ->
                     pullDynamicTransform(gameObject, rigidBody));
         }
+        removeBodiesBelowWorldFloor(scene);
         for (GameObject gameObject : scene.gameObjects()) {
             gameObject.getComponent(CharacterControllerComponent.class).ifPresent(controller ->
                     stepCharacterController(gameObject, controller, deltaTimeSeconds));
@@ -132,14 +140,11 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
         Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
         controller.consumeDesiredHorizontalMove(scratchHorizontal);
-        float vertical = controller.verticalVelocity();
-        if (controller.consumeJumpRequest() && controller.grounded()) {
-            vertical = controller.jumpSpeed();
-        }
-        vertical += controller.gravity() * deltaTimeSeconds;
+        float vertical = verticalVelocityFor(controller, deltaTimeSeconds);
         scratchDisplacement.set(scratchHorizontal.x * deltaTimeSeconds, vertical * deltaTimeSeconds, scratchHorizontal.z * deltaTimeSeconds);
-        Box3dCharacterController.MoveResult result =
-                controller.nativeController().move(controller.bodyHandle(), scratchDisplacement, deltaTimeSeconds);
+        boolean snap = controller.snapToGround() && vertical <= 0.0f;
+        Box3dCharacterController.MoveResult result = controller.nativeController()
+                .move(controller.bodyHandle(), scratchDisplacement, controller.stepHeight(), snap);
         Vector3fc corrected = result.correctedDisplacement();
         Vector3f position = transform.position();
         float newX = position.x + corrected.x();
@@ -150,7 +155,21 @@ public final class PhysicsSystem implements IPhysicsSystem {
         scratchRotation.set(transform.rotation());
         world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(new Vector3f(scratchPosition), new Quaternionf(scratchRotation)));
         controller.setGrounded(result.grounded());
-        controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
+        controller.setMoveResult(result.groundNormal(), result.clippedDelta(), result.contacts());
+        if (controller.applyGravity()) {
+            controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
+        }
+    }
+
+    private static float verticalVelocityFor(CharacterControllerComponent controller, float deltaTimeSeconds) {
+        if (!controller.applyGravity()) {
+            controller.consumeJumpRequest();
+            return controller.verticalVelocity();
+        }
+        if (controller.consumeJumpRequest() && controller.grounded()) {
+            return controller.jumpSpeed();
+        }
+        return controller.verticalVelocity() + controller.gravity() * deltaTimeSeconds;
     }
 
     private void syncRigidBodyToPhysics(GameObject gameObject, RigidBodyComponent rigidBody) {
@@ -253,6 +272,42 @@ public final class PhysicsSystem implements IPhysicsSystem {
             }
         }
         return colliders;
+    }
+
+    public void setWorldFloor(float worldFloorY) {
+        this.worldFloorY = worldFloorY;
+    }
+
+    private void destroyOrphanBodies(Scene scene) {
+        if (bodyOwners.isEmpty()) {
+            return;
+        }
+        Set<GameObject> resident = Collections.newSetFromMap(new IdentityHashMap<>());
+        resident.addAll(scene.gameObjects());
+        Iterator<Map.Entry<Long, GameObject>> entries = bodyOwners.entrySet().iterator();
+        while (entries.hasNext()) {
+            Map.Entry<Long, GameObject> entry = entries.next();
+            if (!resident.contains(entry.getValue())) {
+                world.removeBody(new BodyHandle(entry.getKey()));
+                entries.remove();
+            }
+        }
+    }
+
+    private void removeBodiesBelowWorldFloor(Scene scene) {
+        for (GameObject gameObject : scene.gameObjects()) {
+            gameObject.getComponent(RigidBodyComponent.class).ifPresent(rigidBody -> {
+                if (rigidBody.kind() != RigidBodyKind.DYNAMIC || !rigidBody.handle().isValid()) {
+                    return;
+                }
+                float bodyY = world.getBodyPose(rigidBody.handle()).position().y();
+                if (bodyY < worldFloorY) {
+                    services.logger().warn("[PhysicsSystem] Removing " + gameObject.name()
+                            + " — fell below the world floor (y=" + bodyY + ")");
+                    scene.removeGameObject(gameObject);
+                }
+            });
+        }
     }
 
     private void pullDynamicTransform(GameObject gameObject, RigidBodyComponent rigidBody) {
@@ -385,17 +440,17 @@ public final class PhysicsSystem implements IPhysicsSystem {
         });
     }
 
-    private void dispatchToBehaviours(GameObject gameObject, Consumer<Behaviour> action) {
+    private void dispatchToBehaviours(GameObject gameObject, Consumer<PhysicsEventListener> action) {
         for (IComponent component : gameObject.components()) {
-            if (component instanceof Behaviour behaviour) {
-                action.accept(behaviour);
+            if (component instanceof PhysicsEventListener listener) {
+                action.accept(listener);
             }
         }
     }
 
     private void logScriptError(String hook, RuntimeException error) {
         if (services != null) {
-            services.logger().error("[PhysicsSystem] " + hook + " threw in a Behaviour", error);
+            services.logger().error("[PhysicsSystem] " + hook + " threw in a physics event listener", error);
         }
     }
 
@@ -406,7 +461,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
         RigidBodyPose pose = new RigidBodyPose(new Vector3f(transform.position()), new Quaternionf(transform.rotation()));
         BodyHandle handle = world.addKinematicBody(capsule, pose, CollisionMask.DEFAULT);
-        Box3dCharacterController controller = new Box3dCharacterController(world, capsule.radius(), capsule.halfHeight());
+        Box3dCharacterController controller = new Box3dCharacterController(world, capsule.radius(),
+                capsule.halfHeight(), component.maxSlopeDegrees());
         ownedControllers.add(controller);
         component.attachNative(handle, controller);
         return controller;

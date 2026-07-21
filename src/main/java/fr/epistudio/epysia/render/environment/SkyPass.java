@@ -2,7 +2,8 @@ package fr.epistudio.epysia.render.environment;
 
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.render.FrameBuilder;
-import fr.epistudio.epysia.render.Stage;
+import fr.epistudio.epysia.render.RenderPass;
+import fr.epistudio.epysia.render.RenderPasses;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
 import fr.epistudio.epysia.render.backend.BindingSetHandle;
@@ -68,7 +69,7 @@ final class SkyPass {
 
     void collect(Camera3D camera, Vector3f sunDirection, float skyIntensity, FrameBuilder frame, float alpha) {
         writeUbo(camera, sunDirection, skyIntensity, alpha);
-        frame.submit(Stage.OPAQUE_3D, DrawCommand.of(pipeline, quad.mesh(), bindings, Long.MAX_VALUE));
+        frame.submit(RenderPasses.OPAQUE_3D, DrawCommand.of(pipeline, quad.mesh(), bindings, Long.MAX_VALUE));
     }
 
     private void writeUbo(Camera3D camera, Vector3f sunDirection, float skyIntensity, float alpha) {

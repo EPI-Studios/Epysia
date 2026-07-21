@@ -12,6 +12,8 @@ public interface IGameObject {
 
     <T extends IComponent> Optional<T> getComponent(Class<T> componentClass);
 
+    <T extends IComponent> T getComponentOrNull(Class<T> componentClass);
+
     <T extends IComponent> T addComponent(T component);
 
     <T extends IComponent> Optional<T> removeComponent(Class<T> componentClass);

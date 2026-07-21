@@ -4,7 +4,8 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
-import fr.epistudio.epysia.render.Stage;
+import fr.epistudio.epysia.render.RenderPass;
+import fr.epistudio.epysia.render.RenderPasses;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
@@ -347,7 +348,7 @@ public final class UiRenderSystem implements RenderSystem {
             batch.indexScratch.flip();
             backend.writeBuffer(batch.vertexBuffer, batch.vertexScratch, 0L);
             backend.writeBuffer(batch.indexBuffer, batch.indexScratch, 0L);
-            frame.submit(Stage.UI, DrawCommand.withIndexCount(batch.pipeline, batch.mesh, batch.bindings, batch.indexCount()));
+            frame.submit(RenderPasses.UI, DrawCommand.withIndexCount(batch.pipeline, batch.mesh, batch.bindings, batch.indexCount()));
         }
     }
 

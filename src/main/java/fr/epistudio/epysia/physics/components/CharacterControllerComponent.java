@@ -8,12 +8,18 @@ import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.physics.api.BodyHandle;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
+import fr.epistudio.epysia.physics.api.CharacterContact;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
+import java.util.List;
+
 @EpysiaComponent(name = "Character Controller", category = "Physics")
 @RequiresComponent(Transform3D.class)
-public final class CharacterControllerComponent extends Component {
+public class CharacterControllerComponent extends Component {
+
+    private static final float WALL_NORMAL_LIMIT = 0.5f;
+    private static final float CEILING_NORMAL_LIMIT = 0.5f;
 
     @Export(label = "Capsule Radius", min = 0.05f, max = 2.0f, step = 0.05f)
     private float capsuleRadius = 0.3f;
@@ -25,15 +31,24 @@ public final class CharacterControllerComponent extends Component {
     private float jumpSpeedMetersPerSecond = 6.0f;
     @Export(label = "Gravity", min = -50.0f, max = 0.0f, step = 0.1f)
     private float gravityAcceleration = -18.0f;
-    @Export(label = "Look Sensitivity", min = 0.0001f, max = 0.05f, step = 0.0001f)
-    private float lookSensitivity = 0.0025f;
-    private float yawRadians;
-    private float pitchRadians;
+    @Export(label = "Max Slope", min = 5.0f, max = 85.0f, step = 1.0f)
+    private float maxSlopeDegrees = 50.0f;
+    @Export(label = "Step Height", min = 0.0f, max = 1.0f, step = 0.01f)
+    private float stepHeight = 0.3f;
+    @Export(label = "Snap To Ground")
+    private boolean snapToGround = true;
+    @Export(label = "Apply Gravity")
+    private boolean applyGravity = true;
     private float verticalVelocity;
     private boolean grounded;
     private BodyHandle bodyHandle = BodyHandle.NONE;
     private Box3dCharacterController nativeController;
     private final Vector3f desiredHorizontalMovement = new Vector3f();
+    private final Vector3f groundNormal = new Vector3f(0.0f, 1.0f, 0.0f);
+    private final Vector3f clippedDelta = new Vector3f();
+    private List<CharacterContact> contacts = List.of();
+    private boolean hitWall;
+    private boolean hitCeiling;
     private boolean jumpRequested;
 
     public CharacterControllerComponent setCapsule(float radius, float halfHeight) {
@@ -57,15 +72,87 @@ public final class CharacterControllerComponent extends Component {
         return this;
     }
 
-    public CharacterControllerComponent setLookSensitivity(float radiansPerPixel) {
-        this.lookSensitivity = radiansPerPixel;
+    public float maxSlopeDegrees() {
+        return maxSlopeDegrees;
+    }
+
+    public CharacterControllerComponent setMaxSlopeDegrees(float degrees) {
+        this.maxSlopeDegrees = degrees;
         return this;
     }
 
-    public CharacterControllerComponent setInitialOrientation(float yawDegrees, float pitchDegrees) {
-        this.yawRadians = (float) Math.toRadians(yawDegrees);
-        this.pitchRadians = (float) Math.toRadians(pitchDegrees);
+    public float stepHeight() {
+        return stepHeight;
+    }
+
+    public CharacterControllerComponent setStepHeight(float height) {
+        this.stepHeight = height;
         return this;
+    }
+
+    public boolean snapToGround() {
+        return snapToGround;
+    }
+
+    public CharacterControllerComponent setSnapToGround(boolean value) {
+        this.snapToGround = value;
+        return this;
+    }
+
+    public boolean applyGravity() {
+        return applyGravity;
+    }
+
+    public CharacterControllerComponent setApplyGravity(boolean value) {
+        this.applyGravity = value;
+        return this;
+    }
+
+    public Vector3fc groundNormal() {
+        return groundNormal;
+    }
+
+    public Vector3fc clippedDelta() {
+        return clippedDelta;
+    }
+
+    public List<CharacterContact> contacts() {
+        return contacts;
+    }
+
+    public boolean hitWall() {
+        return hitWall;
+    }
+
+    public boolean hitCeiling() {
+        return hitCeiling;
+    }
+
+    public boolean groundBelow(float depth) {
+        return nativeController != null && bodyHandle.isValid()
+                && nativeController.groundBelow(bodyHandle, depth);
+    }
+
+    public void setMoveResult(Vector3fc newGroundNormal, Vector3fc newClippedDelta,
+                              List<CharacterContact> newContacts) {
+        groundNormal.set(newGroundNormal);
+        clippedDelta.set(newClippedDelta);
+        contacts = newContacts;
+        hitWall = anyContactMatches(newContacts, normalY -> Math.abs(normalY) < WALL_NORMAL_LIMIT);
+        hitCeiling = anyContactMatches(newContacts, normalY -> normalY < -CEILING_NORMAL_LIMIT);
+    }
+
+    private static boolean anyContactMatches(List<CharacterContact> candidates, FloatPredicate test) {
+        for (CharacterContact contact : candidates) {
+            if (test.matches(contact.normal().y())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private interface FloatPredicate {
+        boolean matches(float value);
     }
 
     public ShapeDescriptor shape() {
@@ -84,18 +171,6 @@ public final class CharacterControllerComponent extends Component {
         return gravityAcceleration;
     }
 
-    public float lookSensitivity() {
-        return lookSensitivity;
-    }
-
-    public float yawRadians() {
-        return yawRadians;
-    }
-
-    public float pitchRadians() {
-        return pitchRadians;
-    }
-
     public float verticalVelocity() {
         return verticalVelocity;
     }
@@ -110,15 +185,6 @@ public final class CharacterControllerComponent extends Component {
 
     public Box3dCharacterController nativeController() {
         return nativeController;
-    }
-
-    public void addYaw(float deltaRadians) {
-        yawRadians += deltaRadians;
-    }
-
-    public void addPitch(float deltaRadians) {
-        float maxPitch = (float) Math.toRadians(89.0);
-        pitchRadians = Math.max(-maxPitch, Math.min(maxPitch, pitchRadians + deltaRadians));
     }
 
     public void setVerticalVelocity(float velocity) {

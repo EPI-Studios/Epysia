@@ -11,6 +11,12 @@ public interface RenderBackend {
 
     PipelineHandle createPipeline(PipelineDescriptor descriptor);
 
+    PipelineHandle createComputePipeline(ComputePipelineDescriptor descriptor);
+
+    void dispatchCompute(ComputeDispatch dispatch);
+
+    void computeBarrier(ComputeBarrier barrier);
+
     MeshHandle createMesh(MeshDescriptor descriptor);
 
     BufferHandle createBuffer(BufferDescriptor descriptor);
@@ -23,7 +29,11 @@ public interface RenderBackend {
 
     void writeBuffer(BufferHandle handle, ByteBuffer data, long byteOffset);
 
+    void readBuffer(BufferHandle handle, ByteBuffer destination, long byteOffset);
+
     void writeTexture(TextureHandle handle, ByteBuffer rgbaPixels);
+
+    void copyTextureLayer(TextureHandle source, int sourceLayer, TextureHandle destination, int destinationLayer);
 
     void updatePipelineShaders(PipelineHandle handle, ShaderSource shaders);
 
@@ -48,6 +58,8 @@ public interface RenderBackend {
     void endProfileSection();
 
     Map<String, Long> latestProfileTimingsNanos();
+
+    DrawStatistics drawStatistics();
 
     void beginPass(RenderTargetHandle target, PassClear clear);
 

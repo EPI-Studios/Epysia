@@ -3,38 +3,50 @@ package fr.epistudio.epysia.render;
 import fr.epistudio.epysia.render.backend.DrawCommand;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.Comparator;
 import java.util.List;
 
 public final class Frame implements FrameBuilder {
 
-    private static final java.util.Comparator<DrawCommand> SORT_KEY_ORDER =
-            java.util.Comparator.comparingLong(DrawCommand::sortKey);
+    private static final Comparator<DrawCommand> SORT_KEY_ORDER =
+            Comparator.comparingLong(DrawCommand::sortKey);
 
-    private final EnumMap<Stage, List<DrawCommand>> commandsByStage = new EnumMap<>(Stage.class);
+    private final List<List<DrawCommand>> buckets = new ArrayList<>();
 
     public Frame() {
-        for (Stage stage : Stage.values()) {
-            commandsByStage.put(stage, new ArrayList<>());
-        }
+        growToRegistryCapacity();
     }
 
     @Override
-    public void submit(Stage stage, DrawCommand command) {
-        commandsByStage.get(stage).add(command);
+    public void submit(RenderPass pass, DrawCommand command) {
+        bucketFor(pass).add(command);
     }
 
-    public List<DrawCommand> commandsFor(Stage stage) {
-        return commandsByStage.get(stage);
+    public List<DrawCommand> commandsFor(RenderPass pass) {
+        return bucketFor(pass);
     }
 
-    public void sortByKey(Stage stage) {
-        commandsByStage.get(stage).sort(SORT_KEY_ORDER);
+    public void sortByKey(RenderPass pass) {
+        bucketFor(pass).sort(SORT_KEY_ORDER);
     }
 
     public void reset() {
-        for (List<DrawCommand> bucket : commandsByStage.values()) {
+        growToRegistryCapacity();
+        for (List<DrawCommand> bucket : buckets) {
             bucket.clear();
+        }
+    }
+
+    private List<DrawCommand> bucketFor(RenderPass pass) {
+        if (pass.index() >= buckets.size()) {
+            growToRegistryCapacity();
+        }
+        return buckets.get(pass.index());
+    }
+
+    private void growToRegistryCapacity() {
+        while (buckets.size() < RenderPasses.capacity()) {
+            buckets.add(new ArrayList<>());
         }
     }
 }

@@ -3,8 +3,6 @@ package fr.epistudio.epysia.render.mesh;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.Light;
-import fr.epistudio.epysia.components.PointLight;
-import fr.epistudio.epysia.components.SpotLight;
 import fr.epistudio.epysia.render.backend.BufferDescriptor;
 import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.BufferUsage;
@@ -19,17 +17,12 @@ import java.util.Optional;
 
 final class FrameUboWriter {
 
-    private static final int LIGHT_TYPE_DIRECTIONAL = 0;
-    private static final int LIGHT_TYPE_POINT = 1;
-    private static final int LIGHT_TYPE_SPOT = 2;
     private static final int CASCADE_MATRICES_OFFSET = 64;
     private static final int CASCADE_SPLITS_OFFSET = 320;
     private static final int CASCADE_TEXEL_SIZES_OFFSET = 336;
     private static final int AMBIENT_OFFSET = 352;
 
     private final ByteBuffer scratch = BufferUtils.createByteBuffer(MeshShaderBindings.FRAME_UBO_SIZE);
-    private final Vector3f scratchLightDirection = new Vector3f();
-    private final Vector3f scratchLightPosition = new Vector3f();
     private final Vector3f scratchCameraPosition = new Vector3f();
     private final Vector3f whiteAmbient = new Vector3f(1.0f, 1.0f, 1.0f);
     private final Matrix4f scratchIdentity = new Matrix4f();
@@ -42,26 +35,67 @@ final class FrameUboWriter {
         handle = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, initial));
     }
 
-    BufferHandle handle() {
+    public BufferHandle handle() {
         return handle;
     }
 
+    private static int directionalCountOf(List<Light> lights) {
+        int count = 0;
+        for (int index = 0; index < lights.size(); index++) {
+            if (!(lights.get(index) instanceof DirectionalLight)) {
+                return count;
+            }
+            count++;
+        }
+        return count;
+    }
+
     void write(Camera3D camera, Optional<DirectionalLight> primary, List<Light> lights,
-               float timeSeconds, float ambientIntensity, CascadedShadowMaps shadows, float alpha) {
+               float timeSeconds, float ambientIntensity, CascadedShadowMaps shadows,
+               SpotShadowAtlas spotShadows, PointShadowAtlas pointShadows,
+               ClusterLightCuller clusters, boolean clusteringEnabled, float alpha) {
         scratch.clear();
         camera.viewProjection(alpha).get(0, scratch);
         writeCascades(shadows);
         writeAmbientAndCamera(camera, primary, timeSeconds, ambientIntensity, alpha);
         int shadowIndex = primary.isPresent() ? 0 : -1;
-        scratch.putInt(lights.size()).putInt(shadowIndex).putInt(shadows.activeCascadeCount()).putInt(0);
-        for (int i = 0; i < lights.size(); i++) {
-            writeLight(lights.get(i));
-        }
-        for (int i = lights.size(); i < MeshShaderBindings.MAX_LIGHTS; i++) {
-            writeBlankLight();
-        }
+        scratch.putInt(lights.size()).putInt(shadowIndex).putInt(shadows.activeCascadeCount())
+                .putInt(directionalCountOf(lights));
+        writeSpotShadows(spotShadows);
+        writePointShadows(pointShadows);
+        writeClusterParams(camera, clusters, clusteringEnabled);
+        scratch.position(MeshShaderBindings.FRAME_UBO_SIZE);
         scratch.flip();
         backend.writeBuffer(handle, scratch, 0L);
+    }
+
+    private void writeClusterParams(Camera3D camera, ClusterLightCuller clusters, boolean enabled) {
+        scratch.position(MeshShaderBindings.CLUSTER_GRID_OFFSET);
+        scratch.putInt(MeshShaderBindings.CLUSTER_X).putInt(MeshShaderBindings.CLUSTER_Y)
+                .putInt(MeshShaderBindings.CLUSTER_Z).putInt(enabled ? 1 : 0);
+        scratch.putFloat(camera.nearPlane()).putFloat(camera.farPlane()).putFloat(0.0f).putFloat(0.0f);
+        scratch.putFloat(clusters.sliceScale()).putFloat(clusters.sliceBias())
+                .putFloat(MeshShaderBindings.MAX_LIGHTS_PER_CLUSTER).putFloat(0.0f);
+    }
+
+    private void writeSpotShadows(SpotShadowAtlas spotShadows) {
+        int count = spotShadows.activeCount();
+        scratch.putInt(count).putInt(0).putInt(0).putInt(0);
+        for (int layer = 0; layer < MeshShaderBindings.MAX_SHADOW_SPOTS; layer++) {
+            Matrix4f matrix = layer < count ? spotShadows.matrix(layer) : scratchIdentity.identity();
+            matrix.get(MeshShaderBindings.SPOT_SHADOW_MATRICES_OFFSET + layer * 64, scratch);
+        }
+    }
+
+    private void writePointShadows(PointShadowAtlas pointShadows) {
+        int totalLayers = MeshShaderBindings.MAX_SHADOW_POINTS * MeshShaderBindings.POINT_SHADOW_FACES;
+        int activeLayers = pointShadows.activeCount() * MeshShaderBindings.POINT_SHADOW_FACES;
+        scratch.position(MeshShaderBindings.POINT_SHADOW_COUNT_OFFSET);
+        scratch.putInt(pointShadows.activeCount()).putInt(0).putInt(0).putInt(0);
+        for (int layer = 0; layer < totalLayers; layer++) {
+            Matrix4f matrix = layer < activeLayers ? pointShadows.matrix(layer) : scratchIdentity.identity();
+            matrix.get(MeshShaderBindings.POINT_SHADOW_MATRICES_OFFSET + layer * 64, scratch);
+        }
     }
 
     private void writeCascades(CascadedShadowMaps shadows) {
@@ -87,39 +121,6 @@ final class FrameUboWriter {
         camera.position(scratchCameraPosition, alpha);
         scratch.putFloat(scratchCameraPosition.x).putFloat(scratchCameraPosition.y)
                 .putFloat(scratchCameraPosition.z).putFloat(timeSeconds);
-    }
-
-    private void writeLight(Light light) {
-        if (light instanceof DirectionalLight directional) {
-            directional.direction(scratchLightDirection);
-            scratch.putFloat(0.0f).putFloat(0.0f).putFloat(0.0f).putFloat(LIGHT_TYPE_DIRECTIONAL);
-            scratch.putFloat(scratchLightDirection.x).putFloat(scratchLightDirection.y).putFloat(scratchLightDirection.z).putFloat(0.0f);
-        } else if (light instanceof PointLight point) {
-            point.position(scratchLightPosition);
-            scratch.putFloat(scratchLightPosition.x).putFloat(scratchLightPosition.y).putFloat(scratchLightPosition.z).putFloat(LIGHT_TYPE_POINT);
-            scratch.putFloat(0.0f).putFloat(0.0f).putFloat(0.0f).putFloat(point.range());
-        } else if (light instanceof SpotLight spot) {
-            spot.position(scratchLightPosition);
-            spot.direction(scratchLightDirection);
-            scratch.putFloat(scratchLightPosition.x).putFloat(scratchLightPosition.y).putFloat(scratchLightPosition.z).putFloat(LIGHT_TYPE_SPOT);
-            scratch.putFloat(scratchLightDirection.x).putFloat(scratchLightDirection.y).putFloat(scratchLightDirection.z).putFloat(spot.range());
-        } else {
-            writeBlankLight();
-            return;
-        }
-        Vector3f color = light.color();
-        scratch.putFloat(color.x).putFloat(color.y).putFloat(color.z).putFloat(light.intensity());
-        if (light instanceof SpotLight spot) {
-            scratch.putFloat(spot.innerConeCosine()).putFloat(spot.outerConeCosine()).putFloat(0.0f).putFloat(0.0f);
-        } else {
-            scratch.putFloat(0.0f).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
-        }
-    }
-
-    private void writeBlankLight() {
-        for (int i = 0; i < MeshShaderBindings.LIGHT_BYTES / Float.BYTES; i++) {
-            scratch.putFloat(0.0f);
-        }
     }
 
     void shutdown() {

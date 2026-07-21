@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.scene;
 
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.render.postfx.PostEffectStack;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -20,6 +21,7 @@ public final class Scene implements IScene {
     private final Map<UUID, GameObject> gameObjectsById = new HashMap<>();
     private final Deque<GameObject> pendingAdditions = new ArrayDeque<>();
     private final Deque<GameObject> pendingRemovals = new ArrayDeque<>();
+    private final PostEffectStack postEffects = new PostEffectStack();
     private long modificationCount;
 
     public Scene(String name) {
@@ -78,6 +80,10 @@ public final class Scene implements IScene {
 
     public long modificationCount() {
         return modificationCount;
+    }
+
+    public PostEffectStack postEffects() {
+        return postEffects;
     }
 
     public Optional<GameObject> findById(UUID id) {

@@ -35,6 +35,8 @@ public final class Transform3D extends Component {
     private boolean visible = true;
     private boolean localDirty = true;
     private boolean worldDirty = true;
+    private boolean blendDirty = true;
+    private float blendedAlpha = Float.NaN;
     private boolean previousStateCaptured;
 
     public Vector3f position() {
@@ -99,7 +101,9 @@ public final class Transform3D extends Component {
     }
 
     private void markWorldDirty() {
-        if (worldDirty) {
+        boolean alreadyPropagated = worldDirty && blendDirty;
+        blendDirty = true;
+        if (alreadyPropagated) {
             return;
         }
         worldDirty = true;
@@ -194,16 +198,22 @@ public final class Transform3D extends Component {
         previousRotation.set(rotation);
         previousScale.set(scale);
         previousStateCaptured = true;
+        blendDirty = true;
     }
 
     public Matrix4f worldMatrix(float alpha) {
         if (alpha >= 1.0f || !previousStateCaptured) {
             return worldMatrix();
         }
+        if (!blendDirty && blendedAlpha == alpha) {
+            return blendedWorldMatrix;
+        }
         blendLocalInto(blendedWorldMatrix, alpha);
         if (parent != null) {
             parent.worldMatrix(alpha).mul(blendedWorldMatrix, blendedWorldMatrix);
         }
+        blendedAlpha = alpha;
+        blendDirty = false;
         return blendedWorldMatrix;
     }
 

@@ -5,7 +5,8 @@ import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
-import fr.epistudio.epysia.render.Stage;
+import fr.epistudio.epysia.render.RenderPass;
+import fr.epistudio.epysia.render.RenderPasses;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
@@ -38,6 +39,7 @@ import fr.epistudio.epysia.render.backend.Topology;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
 import fr.epistudio.epysia.render.environment.FullscreenQuad;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
+import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -53,6 +55,8 @@ public final class PostProcessSystem implements RenderSystem {
     private static final String DEFAULT_FRAGMENT_PATH = "post.frag.glsl";
     private static final String FXAA_FRAGMENT_PATH = "postfx/fxaa.frag.glsl";
     private static final int UBO_SIZE = 176;
+    private static final float DEFAULT_NEAR_PLANE = 0.1f;
+    private static final float DEFAULT_FAR_PLANE = 100.0f;
     private static final RenderState PASS_STATE = new RenderState(
             Topology.TRIANGLES, DepthTest.DISABLED, BlendMode.OPAQUE, CullMode.NONE);
 
@@ -65,6 +69,7 @@ public final class PostProcessSystem implements RenderSystem {
     private final FullscreenQuad quad = new FullscreenQuad();
     private final SsaoPass ssao;
     private final BloomChain bloom;
+    private final PostEffectChain effectChain;
     private final Matrix4f scratchInverseViewProjection = new Matrix4f();
     private final Vector3f scratchCameraPosition = new Vector3f();
     private final ByteBuffer uboScratch = BufferUtils.createByteBuffer(UBO_SIZE);
@@ -80,6 +85,8 @@ public final class PostProcessSystem implements RenderSystem {
     private BufferHandle postUbo;
     private BindingSetHandle tonemapBindings;
     private BindingSetHandle antiAliasBindings;
+    private TextureHandle currentTonemapInput;
+    private TextureHandle currentAntiAliasInput;
     private Camera3D activeCamera;
     private int targetWidth;
     private int targetHeight;
@@ -97,10 +104,15 @@ public final class PostProcessSystem implements RenderSystem {
         this.fragmentPath = fragmentPath;
         this.ssao = new SsaoPass(shaderLoader, quad, settings);
         this.bloom = new BloomChain(shaderLoader, quad);
+        this.effectChain = new PostEffectChain(shaderLoader, quad, logger);
     }
 
     public PostProcessSettings settings() {
         return settings;
+    }
+
+    public void setShaderWatcher(ShaderWatcher watcher) {
+        effectChain.setShaderWatcher(watcher);
     }
 
     @Override
@@ -117,9 +129,11 @@ public final class PostProcessSystem implements RenderSystem {
         antiAliasPipeline = backend.createPipeline(buildPipelineDescriptor(DEFAULT_VERTEX_PATH, FXAA_FRAGMENT_PATH, antiAliasLayout()));
         ssao.initialize(backend, sceneDepthTexture, width, height);
         bloom.initialize(backend, sceneColorTexture, width, height);
+        effectChain.initialize(backend);
+        effectChain.configure(sceneColorTexture, sceneDepthTexture, ldrColorTexture, width, height);
         createBindings();
         bindStageTargets(configurer);
-        configurer.bindStagePreparation(Stage.POST, this::runPostPasses);
+        configurer.bindStagePreparation(RenderPasses.POST, this::runPostPasses);
     }
 
     @Override
@@ -132,8 +146,13 @@ public final class PostProcessSystem implements RenderSystem {
         createTargets(targetWidth, targetHeight);
         ssao.onResize(sceneDepthTexture, targetWidth, targetHeight);
         bloom.onResize(sceneColorTexture, targetWidth, targetHeight);
+        effectChain.configure(sceneColorTexture, sceneDepthTexture, ldrColorTexture, targetWidth, targetHeight);
         createBindings();
         bindStageTargets(configurer);
+    }
+
+    public TextureHandle sceneDepthTexture() {
+        return sceneDepthTexture;
     }
 
     @Override
@@ -143,7 +162,40 @@ public final class PostProcessSystem implements RenderSystem {
         writeUbo(activeCamera, context.interpolationAlpha());
         ssao.writeUbo(activeCamera, settings, context.interpolationAlpha());
         bloom.writeUbo(settings);
-        frame.submit(Stage.POST, DrawCommand.of(antiAliasPipeline, quad.mesh(), antiAliasBindings));
+        updateEffectChainCameraState(activeCamera, context.interpolationAlpha());
+        effectChain.prepare(resolveStack(scene));
+        refreshEffectChainBindings();
+        frame.submit(RenderPasses.POST, DrawCommand.of(antiAliasPipeline, quad.mesh(), antiAliasBindings));
+    }
+
+    private void updateEffectChainCameraState(Camera3D camera, float alpha) {
+        if (camera == null) {
+            effectChain.setCameraState(DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE,
+                    scratchCameraPosition.zero(), scratchInverseViewProjection.identity());
+            return;
+        }
+        camera.position(scratchCameraPosition, alpha);
+        camera.viewProjection(alpha).invert(scratchInverseViewProjection);
+        effectChain.setCameraState(camera.nearPlane(), camera.farPlane(),
+                scratchCameraPosition, scratchInverseViewProjection);
+    }
+
+    private PostEffectStack resolveStack(Scene scene) {
+        if (activeCamera != null && activeCamera.postEffectStack().isPresent()) {
+            return activeCamera.postEffectStack().get();
+        }
+        return scene.postEffects();
+    }
+
+    private void refreshEffectChainBindings() {
+        TextureHandle tonemapInput = effectChain.outputTexture(PostEffectInsertionPoint.BEFORE_TONEMAP);
+        TextureHandle antiAliasInput = effectChain.outputTexture(PostEffectInsertionPoint.AFTER_TONEMAP);
+        if (tonemapInput.equals(currentTonemapInput) && antiAliasInput.equals(currentAntiAliasInput)) {
+            return;
+        }
+        backend.destroy(tonemapBindings);
+        backend.destroy(antiAliasBindings);
+        createBindings();
     }
 
     private void refreshSsaoResolutionMode() {
@@ -163,9 +215,11 @@ public final class PostProcessSystem implements RenderSystem {
         if (settings.bloomEnabled()) {
             bloom.render();
         }
+        effectChain.render(PostEffectInsertionPoint.BEFORE_TONEMAP);
         backend.beginPass(ldrTarget, PassClear.none());
         backend.execute(DrawCommand.of(tonemapPipeline, quad.mesh(), tonemapBindings));
         backend.endPass();
+        effectChain.render(PostEffectInsertionPoint.AFTER_TONEMAP);
     }
 
     private void createTargets(int width, int height) {
@@ -204,15 +258,17 @@ public final class PostProcessSystem implements RenderSystem {
     }
 
     private void createBindings() {
+        currentTonemapInput = effectChain.outputTexture(PostEffectInsertionPoint.BEFORE_TONEMAP);
+        currentAntiAliasInput = effectChain.outputTexture(PostEffectInsertionPoint.AFTER_TONEMAP);
         tonemapBindings = backend.createBindingSet(new BindingSetDescriptor(tonemapLayout(), List.of(
-                new Binding(0, new SampledTextureBinding(sceneColorTexture)),
+                new Binding(0, new SampledTextureBinding(currentTonemapInput)),
                 new Binding(1, UniformBufferBinding.whole(postUbo, UBO_SIZE)),
                 new Binding(2, new SampledTextureBinding(sceneDepthTexture)),
                 new Binding(3, new SampledTextureBinding(bloom.bloomTexture())),
                 new Binding(4, new SampledTextureBinding(ssao.occlusionTexture()))
         )));
         antiAliasBindings = backend.createBindingSet(new BindingSetDescriptor(antiAliasLayout(), List.of(
-                new Binding(0, new SampledTextureBinding(ldrColorTexture)),
+                new Binding(0, new SampledTextureBinding(currentAntiAliasInput)),
                 new Binding(1, UniformBufferBinding.whole(postUbo, UBO_SIZE))
         )));
     }
@@ -232,10 +288,10 @@ public final class PostProcessSystem implements RenderSystem {
     private void bindStageTargets(StageConfigurer configurer) {
         PassClear sceneClear = PassClear.color(0.10f, 0.12f, 0.18f);
         PassClear sceneNoClear = PassClear.none();
-        configurer.bindStageTarget(Stage.OPAQUE_3D, sceneTarget, sceneClear);
-        configurer.bindStageTarget(Stage.TRANSPARENT_3D, sceneTarget, sceneNoClear);
-        configurer.bindStageTarget(Stage.WORLD_2D, sceneTarget, sceneNoClear);
-        configurer.bindStageTarget(Stage.POST, RenderTargetHandle.SCREEN, PassClear.color(0.0f, 0.0f, 0.0f));
+        configurer.bindStageTarget(RenderPasses.OPAQUE_3D, sceneTarget, sceneClear);
+        configurer.bindStageTarget(RenderPasses.TRANSPARENT_3D, sceneTarget, sceneNoClear);
+        configurer.bindStageTarget(RenderPasses.WORLD_2D, sceneTarget, sceneNoClear);
+        configurer.bindStageTarget(RenderPasses.POST, RenderTargetHandle.SCREEN, PassClear.color(0.0f, 0.0f, 0.0f));
     }
 
     private void writeUbo(Camera3D camera, float alpha) {
@@ -287,6 +343,7 @@ public final class PostProcessSystem implements RenderSystem {
         backend.destroy(antiAliasBindings);
         ssao.shutdown();
         bloom.shutdown();
+        effectChain.shutdown();
         backend.destroy(postUbo);
         backend.destroy(tonemapPipeline);
         backend.destroy(antiAliasPipeline);

@@ -5,18 +5,24 @@ import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.Light;
 import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.PointLight;
+import fr.epistudio.epysia.components.SpotLight;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.FrameBuilder;
+import fr.epistudio.epysia.profiling.FrameProfiler;
+import fr.epistudio.epysia.render.ProfiledRenderSystem;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
-import fr.epistudio.epysia.render.Stage;
+import fr.epistudio.epysia.render.RenderPass;
+import fr.epistudio.epysia.render.RenderPasses;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
 import fr.epistudio.epysia.render.backend.BindingSetHandle;
+import fr.epistudio.epysia.render.backend.BindingSetLayout;
 import fr.epistudio.epysia.render.backend.BufferDescriptor;
 import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.BufferUsage;
@@ -25,6 +31,7 @@ import fr.epistudio.epysia.render.backend.PipelineHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.SampledTextureBinding;
 import fr.epistudio.epysia.render.backend.TextureHandle;
+import fr.epistudio.epysia.render.backend.StorageBufferBinding;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
 import fr.epistudio.epysia.render.environment.Environment;
 import fr.epistudio.epysia.render.material.LitMaterial;
@@ -40,6 +47,7 @@ import org.lwjgl.BufferUtils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -47,40 +55,89 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-public final class MeshRenderSystem implements RenderSystem {
+public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSystem {
+
+    private FrameProfiler profiler = new FrameProfiler();
 
     private static final String SHADOW_MASK_ALBEDO_FIELD = "albedo";
+    private static final long SINGLE_CASTER_DOMAIN = 0x51A71C0000000001L;
+    private static final long INSTANCED_CASTER_DOMAIN = 0x1B5AC70000000002L;
+
+    private static final Vector3f[] CUBE_DIRECTIONS = {
+            new Vector3f(1.0f, 0.0f, 0.0f), new Vector3f(-1.0f, 0.0f, 0.0f),
+            new Vector3f(0.0f, 1.0f, 0.0f), new Vector3f(0.0f, -1.0f, 0.0f),
+            new Vector3f(0.0f, 0.0f, 1.0f), new Vector3f(0.0f, 0.0f, -1.0f)
+    };
+    private static final Vector3f[] CUBE_UPS = {
+            new Vector3f(0.0f, -1.0f, 0.0f), new Vector3f(0.0f, -1.0f, 0.0f),
+            new Vector3f(0.0f, 0.0f, 1.0f), new Vector3f(0.0f, 0.0f, -1.0f),
+            new Vector3f(0.0f, -1.0f, 0.0f), new Vector3f(0.0f, -1.0f, 0.0f)
+    };
 
     private final ShaderWatcher shaderWatcher;
+    private final ShadowStatistics shadowStatistics = new ShadowStatistics();
+    private final SurfaceTimeDependence surfaceTimeDependence;
+    private boolean shadowCachingEnabled = true;
+    private boolean shadowSplitEnabled = true;
     private final FrameUboWriter frameUboWriter = new FrameUboWriter();
+    private final LightStorage lightStorage = new LightStorage();
+    private final ClusterLightCuller clusterCuller = new ClusterLightCuller();
+    private boolean clusteringEnabled = true;
     private final CascadedShadowMaps shadowCascades;
+    private final SpotShadowAtlas spotShadows;
+    private final PointShadowAtlas pointShadows;
     private final MaterialPipelineCache materialCache;
+    private final SurfaceUniformBinder surfaceUniforms;
     private final InstancedMeshPass instancedPass;
+    private final MeshInstanceBatches instanceBatches = new MeshInstanceBatches();
+    private final MaterialStateDigests materialStates = new MaterialStateDigests();
+    private boolean instancingEnabled = true;
+    private int batchesThisFrame;
+    private int instancedBatchesThisFrame;
     private final FrustumCuller culler = new FrustumCuller();
 
     private final Map<MeshRenderer, RenderableMesh> objectResources = new IdentityHashMap<>();
+    private final Map<BufferHandle, Long> objectUboTransformHashes = new HashMap<>();
+    private final Vector3f scratchCasterMin = new Vector3f();
+    private final Vector3f scratchCasterMax = new Vector3f();
     private final Set<MeshRenderer> renderersSeenThisFrame =
             Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<BufferHandle> ownedBuffers = new ArrayList<>();
     private final List<BindingSetHandle> ownedBindings = new ArrayList<>();
-    private final List<Light> activeLights = new ArrayList<>(MeshShaderBindings.MAX_LIGHTS * 2);
+    private final List<Light> activeLights = new ArrayList<>(64);
     private final ByteBuffer scratchObjectUbo = BufferUtils.createByteBuffer(MeshShaderBindings.OBJECT_UBO_SIZE);
     private final Matrix4f scratchNormalMatrix = new Matrix4f();
     private final Vector3f scratchSunDirection = new Vector3f();
     private final Vector3f scratchLightDirection = new Vector3f();
     private final Vector3f scratchCameraPosition = new Vector3f();
+    private final Matrix4f scratchSpotMatrix = new Matrix4f();
+    private final Vector3f scratchSpotPosition = new Vector3f();
+    private final Vector3f scratchSpotDirection = new Vector3f();
+    private final Vector3f scratchSpotTarget = new Vector3f();
+    private final Vector3f scratchSpotUp = new Vector3f();
+    private final Matrix4f[] scratchPointFaces = createPointFaceMatrices();
+    private final Vector3f scratchPointPosition = new Vector3f();
+    private final Vector3f scratchPointTarget = new Vector3f();
     private final Environment environment;
     private float shadowDistance = 60.0f;
     private LitMaterial fallback;
 
     private RenderBackend backend;
     private int culledThisFrame;
+    private int submittedThisFrame;
     private long startNanos;
 
     public MeshRenderSystem(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger) {
         this.shaderWatcher = shaderWatcher;
-        this.shadowCascades = new CascadedShadowMaps(shaderLoader, shaderWatcher, logger);
+        this.surfaceTimeDependence = new SurfaceTimeDependence(shaderLoader, logger);
+        this.shadowCascades = new CascadedShadowMaps(shaderLoader, shaderWatcher, logger,
+                shadowStatistics, this::invalidateShadowCaches);
+        this.spotShadows = new SpotShadowAtlas(shaderLoader, shaderWatcher, logger,
+                shadowStatistics, this::invalidateShadowCaches);
+        this.pointShadows = new PointShadowAtlas(shaderLoader, shaderWatcher, logger,
+                shadowStatistics, this::invalidateShadowCaches);
         this.materialCache = new MaterialPipelineCache(shaderLoader, shaderWatcher, logger);
+        this.surfaceUniforms = new SurfaceUniformBinder(logger);
         this.instancedPass = new InstancedMeshPass(shaderLoader);
         this.environment = new Environment(shaderLoader);
     }
@@ -90,15 +147,42 @@ public final class MeshRenderSystem implements RenderSystem {
         this.backend = backend;
         this.startNanos = System.nanoTime();
         shadowCascades.initialize(backend);
-        configurer.bindStagePreparation(Stage.OPAQUE_3D, shadowCascades::render);
+        configurer.bindStagePreparation(RenderPasses.OPAQUE_3D, shadowCascades::render);
+        spotShadows.initialize(backend, shadowCascades.cascadeUbo());
+        configurer.bindStagePreparation(RenderPasses.OPAQUE_3D, spotShadows::render);
+        pointShadows.initialize(backend, shadowCascades.cascadeUbo());
+        configurer.bindStagePreparation(RenderPasses.OPAQUE_3D, pointShadows::render);
         materialCache.initialize(backend);
+        surfaceUniforms.initialize(backend);
         frameUboWriter.initialize(backend);
-        instancedPass.initialize(backend, frameUboWriter.handle());
+        lightStorage.initialize(backend);
+        clusterCuller.initialize(backend);
+        instancedPass.initialize(backend, frameUboWriter.handle(), lightStorage);
+        instanceBatches.initialize(backend, this::createInstanceBindingSet);
         environment.initialize(backend);
+    }
+
+    public void setProfiler(FrameProfiler frameProfiler) {
+        this.profiler = frameProfiler;
+    }
+
+    private long markSection(String name, long since) {
+        long now = System.nanoTime();
+        profiler.record(name, now - since);
+        return now;
+    }
+
+    public InstancedMeshPass instancedPass() {
+        return instancedPass;
+    }
+
+    public BufferHandle frameUniformBuffer() {
+        return frameUboWriter.handle();
     }
 
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
+        long mark = System.nanoTime();
         shaderWatcher.poll();
         Camera3D camera = context.primaryCamera().orElse(null);
         if (camera == null) {
@@ -108,26 +192,45 @@ public final class MeshRenderSystem implements RenderSystem {
         resolveSunDirection(primaryDirectional);
         environment.prepareFrame(scratchSunDirection);
         gatherLights(scene, primaryDirectional);
-        shadowCascades.beginFrame();
+        mark = markSection("mesh/lights", mark);
+        shadowStatistics.beginFrame();
+        long sceneModificationCount = scene.modificationCount();
+        shadowCascades.beginFrame(sceneModificationCount);
+        spotShadows.beginFrame(sceneModificationCount);
+        pointShadows.beginFrame(sceneModificationCount);
         float alpha = context.interpolationAlpha();
         if (primaryDirectional.isPresent()) {
             primaryDirectional.get().direction(scratchLightDirection).normalize();
             shadowCascades.update(camera, scratchLightDirection, shadowDistance, alpha);
         }
+        assignSpotShadows();
+        assignPointShadows();
+        mark = markSection("mesh/shadowSetup", mark);
         float timeSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0f;
+        clusterCuller.cull(camera, activeLights, alpha);
+        mark = markSection("mesh/clusterCull", mark);
         frameUboWriter.write(camera, primaryDirectional, activeLights, timeSeconds,
-                environment.settings().ambientIntensity(), shadowCascades, alpha);
+                environment.settings().ambientIntensity(), shadowCascades, spotShadows, pointShadows,
+                clusterCuller, clusteringEnabled, alpha);
+        lightStorage.update(activeLights, spotShadows, pointShadows);
+        mark = markSection("mesh/uniforms", mark);
         materialCache.beginFrame();
+        surfaceUniforms.beginFrame();
         renderersSeenThisFrame.clear();
         camera.position(scratchCameraPosition, alpha);
         culler.setProjection(camera.viewProjection(alpha));
         culledThisFrame = 0;
+        submittedThisFrame = 0;
+        instanceBatches.beginFrame();
         for (GameObject gameObject : scene.gameObjects()) {
             submitMeshDraws(gameObject, frame, alpha);
         }
+        mark = markSection("mesh/objectLoop", mark);
+        flushInstanceBatches(frame);
         instancedPass.collect(scene, frame);
         environment.collectSky(camera, scratchSunDirection, frame, alpha);
         purgeOrphanRenderers();
+        markSection("mesh/flush", mark);
     }
 
     public Environment environment() {
@@ -151,6 +254,80 @@ public final class MeshRenderSystem implements RenderSystem {
         return culledThisFrame;
     }
 
+    public int submittedMeshCount() {
+        return submittedThisFrame;
+    }
+
+    public ShadowStatistics shadowStatistics() {
+        return shadowStatistics;
+    }
+
+    public void setShadowCachingEnabled(boolean enabled) {
+        this.shadowCachingEnabled = enabled;
+        shadowCascades.setCachingEnabled(enabled);
+        spotShadows.setCachingEnabled(enabled);
+        pointShadows.setCachingEnabled(enabled);
+        applyShadowSplit();
+    }
+
+    public boolean shadowCachingEnabled() {
+        return shadowCachingEnabled;
+    }
+
+    public void setShadowSplitEnabled(boolean enabled) {
+        this.shadowSplitEnabled = enabled;
+        applyShadowSplit();
+    }
+
+    private void applyShadowSplit() {
+        boolean effective = shadowSplitEnabled && shadowCachingEnabled;
+        shadowCascades.setSplitEnabled(effective);
+        spotShadows.setSplitEnabled(effective);
+        pointShadows.setSplitEnabled(effective);
+    }
+
+    public boolean shadowSplitEnabled() {
+        return shadowSplitEnabled;
+    }
+
+    public long shadowStaticVideoMemoryBytes() {
+        return shadowCascades.staticVideoMemoryBytes()
+                + spotShadows.staticVideoMemoryBytes()
+                + pointShadows.staticVideoMemoryBytes();
+    }
+
+    public void setInstancingEnabled(boolean enabled) {
+        this.instancingEnabled = enabled;
+        invalidateShadowCaches();
+    }
+
+    public boolean instancingEnabled() {
+        return instancingEnabled;
+    }
+
+    public int batchCount() {
+        return batchesThisFrame;
+    }
+
+    public int instancedBatchCount() {
+        return instancedBatchesThisFrame;
+    }
+
+    private void invalidateShadowCaches() {
+        surfaceTimeDependence.clear();
+        shadowCascades.invalidateCache();
+        spotShadows.invalidateCache();
+        pointShadows.invalidateCache();
+    }
+
+    public void setClusteringEnabled(boolean enabled) {
+        this.clusteringEnabled = enabled;
+    }
+
+    public boolean clusteringEnabled() {
+        return clusteringEnabled;
+    }
+
     @Override
     public void shutdown(RenderBackend backend) {
         for (BindingSetHandle binding : ownedBindings) {
@@ -163,42 +340,126 @@ public final class MeshRenderSystem implements RenderSystem {
         ownedBuffers.clear();
         objectResources.clear();
         renderersSeenThisFrame.clear();
+        instanceBatches.shutdown();
         instancedPass.shutdown();
+        surfaceUniforms.shutdown();
         materialCache.shutdown();
         shadowCascades.shutdown();
+        spotShadows.shutdown();
+        pointShadows.shutdown();
         frameUboWriter.shutdown();
+        lightStorage.shutdown();
+        clusterCuller.shutdown();
         environment.shutdown();
     }
 
     private void gatherLights(Scene scene, Optional<DirectionalLight> primary) {
         activeLights.clear();
         primary.ifPresent(activeLights::add);
+        collectLights(scene, primary, true);
+        collectLights(scene, primary, false);
+    }
+
+    private void collectLights(Scene scene, Optional<DirectionalLight> primary, boolean directional) {
         for (GameObject gameObject : scene.gameObjects()) {
-            Light light = gameObject.getComponent(Light.class).orElse(null);
-            boolean isPrimary = primary.isPresent() && light == primary.get();
-            if (light != null && !isPrimary && activeLights.size() < MeshShaderBindings.MAX_LIGHTS) {
+            Light light = gameObject.getComponentOrNull(Light.class);
+            if (light == null || (primary.isPresent() && light == primary.get())) {
+                continue;
+            }
+            if (light instanceof DirectionalLight != directional) {
+                continue;
+            }
+            if (activeLights.size() < LightStorage.MAX_LIGHTS) {
                 activeLights.add(light);
             }
         }
     }
 
+    private void assignSpotShadows() {
+        for (Light light : activeLights) {
+            if (!(light instanceof SpotLight spot) || !spot.castShadows()) {
+                continue;
+            }
+            if (spotShadows.activeCount() >= MeshShaderBindings.MAX_SHADOW_SPOTS) {
+                return;
+            }
+            spotShadows.assign(spot, computeSpotMatrix(spot));
+        }
+    }
+
+    private Matrix4f computeSpotMatrix(SpotLight spot) {
+        spot.position(scratchSpotPosition);
+        spot.direction(scratchSpotDirection).normalize();
+        scratchSpotTarget.set(scratchSpotPosition).add(scratchSpotDirection);
+        chooseSpotUp(scratchSpotDirection);
+        float halfAngle = (float) Math.acos(clampCosine(spot.outerConeCosine()));
+        float fieldOfView = Math.min(2.0f * halfAngle + 0.12f, 3.0f);
+        float farPlane = Math.max(spot.range(), 0.2f);
+        scratchSpotMatrix.setPerspective(fieldOfView, 1.0f, 0.05f, farPlane);
+        scratchSpotMatrix.lookAt(scratchSpotPosition, scratchSpotTarget, scratchSpotUp);
+        return scratchSpotMatrix;
+    }
+
+    private void chooseSpotUp(Vector3f direction) {
+        if (Math.abs(direction.y) > 0.99f) {
+            scratchSpotUp.set(0.0f, 0.0f, 1.0f);
+        } else {
+            scratchSpotUp.set(0.0f, 1.0f, 0.0f);
+        }
+    }
+
+    private static float clampCosine(float value) {
+        return Math.max(-1.0f, Math.min(1.0f, value));
+    }
+
+    private void assignPointShadows() {
+        for (Light light : activeLights) {
+            if (!(light instanceof PointLight point) || !point.castShadows()) {
+                continue;
+            }
+            if (pointShadows.activeCount() >= MeshShaderBindings.MAX_SHADOW_POINTS) {
+                return;
+            }
+            computePointFaceMatrices(point);
+            pointShadows.assign(point, scratchPointFaces);
+        }
+    }
+
+    private void computePointFaceMatrices(PointLight point) {
+        point.position(scratchPointPosition);
+        float farPlane = Math.max(point.range(), 0.2f);
+        for (int face = 0; face < MeshShaderBindings.POINT_SHADOW_FACES; face++) {
+            scratchPointTarget.set(scratchPointPosition).add(CUBE_DIRECTIONS[face]);
+            scratchPointFaces[face]
+                    .setPerspective((float) (Math.PI / 2.0), 1.0f, 0.05f, farPlane)
+                    .lookAt(scratchPointPosition, scratchPointTarget, CUBE_UPS[face]);
+        }
+    }
+
+    private static Matrix4f[] createPointFaceMatrices() {
+        Matrix4f[] faces = new Matrix4f[MeshShaderBindings.POINT_SHADOW_FACES];
+        for (int i = 0; i < faces.length; i++) {
+            faces[i] = new Matrix4f();
+        }
+        return faces;
+    }
+
     private <T extends IComponent> Optional<T> findComponent(Scene scene, Class<T> componentClass) {
         for (GameObject gameObject : scene.gameObjects()) {
-            Optional<T> component = gameObject.getComponent(componentClass);
-            if (component.isPresent()) {
-                return component;
+            T component = gameObject.getComponentOrNull(componentClass);
+            if (component != null) {
+                return Optional.of(component);
             }
         }
         return Optional.empty();
     }
 
     private void submitMeshDraws(GameObject gameObject, FrameBuilder frame, float alpha) {
-        Optional<MeshRenderer> rendererOpt = gameObject.getComponent(MeshRenderer.class);
-        Optional<Transform3D> transformOpt = gameObject.getComponent(Transform3D.class);
-        if (rendererOpt.isEmpty() || transformOpt.isEmpty()) {
+        MeshRenderer renderer = gameObject.getComponentOrNull(MeshRenderer.class);
+        Transform3D transformComponent = gameObject.getComponentOrNull(Transform3D.class);
+        if (renderer == null || transformComponent == null) {
             return;
         }
-        MeshRenderer renderer = rendererOpt.get();
         Optional<UploadedMesh> meshOpt = renderer.mesh();
         if (meshOpt.isEmpty()) {
             return;
@@ -206,37 +467,187 @@ public final class MeshRenderSystem implements RenderSystem {
         UploadedMesh mesh = meshOpt.get();
         renderersSeenThisFrame.add(renderer);
         List<PerSubmesh> perSubmeshes = resolvePerSubmeshes(renderer, mesh);
-        refreshStaleTextureBindings(perSubmeshes);
-        Matrix4f modelMatrix = transformOpt.get().worldMatrix(alpha);
-        if (culler.isCulled(mesh.localBounds(), modelMatrix)) {
-            culledThisFrame++;
-            return;
-        }
+        refreshStalePerSubmeshes(renderer, mesh, perSubmeshes);
+        Matrix4f modelMatrix = transformComponent.worldMatrix(alpha);
+        culler.computeWorldBounds(mesh.localBounds(), modelMatrix, scratchCasterMin, scratchCasterMax);
+        boolean visible = mesh.localBounds() == null
+                || !culler.isCulled(scratchCasterMin, scratchCasterMax);
         long depthBits = viewDepthBits(modelMatrix);
+        long transformHash = ShadowSignatures.mixMatrix(ShadowSignatures.seed(), modelMatrix);
+        if (visible) {
+            submittedThisFrame++;
+        } else {
+            culledThisFrame++;
+        }
         for (int i = 0; i < mesh.submeshes().size(); i++) {
             UploadedSubmesh submesh = mesh.submeshes().get(i);
             PerSubmesh perSubmesh = perSubmeshes.get(i);
-            writeObjectUbo(perSubmesh.modelUbo(), modelMatrix);
             materialCache.writeMaterialUboIfNeeded(perSubmesh.material(), perSubmesh.classResources());
-            submitSubmesh(frame, submesh, perSubmesh, depthBits);
+            surfaceUniforms.writeIfNeeded(perSubmesh.material(), perSubmesh.classResources().surfaceUniforms());
+            if (batchable(perSubmesh)
+                    && instanceBatches.add(submesh, perSubmesh,
+                            materialStates.snapshotFor(perSubmesh, materialCache, surfaceUniforms),
+                            modelMatrix, depthBits, visible, scratchCasterMin, scratchCasterMax)) {
+                continue;
+            }
+            writeObjectUboIfChanged(perSubmesh.modelUbo(), modelMatrix, transformHash);
+            submitSubmesh(frame, submesh, perSubmesh, depthBits, transformHash, visible);
         }
     }
 
-    private void submitSubmesh(FrameBuilder frame, UploadedSubmesh submesh, PerSubmesh perSubmesh, long depthBits) {
+    private boolean batchable(PerSubmesh perSubmesh) {
+        return instancingEnabled
+                && !perSubmesh.material().transparent()
+                && perSubmesh.classResources().supportsInstancing();
+    }
+
+    private void flushInstanceBatches(FrameBuilder frame) {
+        batchesThisFrame = instanceBatches.activeBatches().size();
+        instancedBatchesThisFrame = 0;
+        for (MeshInstanceBatch batch : instanceBatches.activeBatches()) {
+            if (batch.pendingCount() == 1) {
+                submitBatchAsSingleObject(frame, batch);
+                continue;
+            }
+            instanceBatches.upload(batch);
+            submitInstancedBatch(frame, batch);
+            instancedBatchesThisFrame++;
+        }
+    }
+
+    private void submitBatchAsSingleObject(FrameBuilder frame, MeshInstanceBatch batch) {
+        PerSubmesh perSubmesh = batch.representative();
+        writeObjectUbo(perSubmesh.modelUbo(), batch.firstModel());
+        long transformHash = ShadowSignatures.mixMatrix(ShadowSignatures.seed(), batch.firstModel());
+        submitSubmesh(frame, batch.submesh(), perSubmesh, batch.minDepthBits(), transformHash,
+                batch.visibleCount() == 1);
+    }
+
+    private void submitInstancedBatch(FrameBuilder frame, MeshInstanceBatch batch) {
+        PerSubmesh perSubmesh = batch.representative();
         PipelineHandle pipeline = perSubmesh.classResources().pipeline();
-        if (perSubmesh.material().transparent()) {
-            long backToFrontKey = 0xFFFFFFFFL - depthBits;
-            frame.submit(Stage.TRANSPARENT_3D, new DrawCommand(pipeline, submesh.handle(), perSubmesh.litBindings(), backToFrontKey, 1));
+        String surfacePath = MaterialPipelineCache.surfaceShaderPathOf(perSubmesh.material());
+        submitInstancedShadowCasters(batch, surfacePath);
+        if (batch.visibleCount() == 0) {
             return;
         }
+        long opaqueKey = (pipeline.id() << 32) | batch.minDepthBits();
+        frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, batch.submesh().handle(),
+                batch.litBindings(), opaqueKey, batch.visibleCount()));
+    }
+
+    private void submitInstancedShadowCasters(MeshInstanceBatch batch, String surfacePath) {
+        PerSubmesh perSubmesh = batch.representative();
+        boolean frozen = shadowTimeFrozen(perSubmesh.material(), surfacePath);
+        boolean timeAnimated = shadowTimeAnimated(perSubmesh.material(), surfacePath);
+        if (timeAnimated) {
+            shadowStatistics.recordAnimatedCaster();
+        }
+        long identity = ShadowSignatures.mix(
+                ShadowSignatures.mix(INSTANCED_CASTER_DOMAIN, batch.submesh().handle().id()),
+                batch.state().digest());
+        long signature = instancedCasterSignature(batch, surfacePath, frozen);
+        int count = batch.instanceCount();
         if (shadowCascades.cascadesActive()) {
-            PipelineHandle shadowPipeline = perSubmesh.shadowMasked()
-                    ? shadowCascades.maskedPipeline()
-                    : shadowCascades.pipeline();
-            shadowCascades.submitCaster(new DrawCommand(shadowPipeline, submesh.handle(), perSubmesh.shadowBindings(), 0L, 1));
+            shadowCascades.submitCaster(new DrawCommand(
+                    shadowCascades.pipelineFor(surfacePath, perSubmesh.shadowMasked(), frozen),
+                    batch.submesh().handle(), batch.shadowBindings(), 0L, count),
+                    identity, signature, timeAnimated, batch.boundsMin(), batch.boundsMax());
+        }
+        if (spotShadows.activeCount() > 0) {
+            spotShadows.submitCaster(new DrawCommand(spotShadows.pipelineFor(surfacePath, frozen),
+                    batch.submesh().handle(), batch.shadowBindings(), 0L, count),
+                    identity, signature, timeAnimated);
+        }
+        if (pointShadows.activeCount() > 0) {
+            pointShadows.submitCaster(new DrawCommand(pointShadows.pipelineFor(surfacePath, frozen),
+                    batch.submesh().handle(), batch.shadowBindings(), 0L, count),
+                    identity, signature, timeAnimated);
+        }
+    }
+
+    private static long instancedCasterSignature(MeshInstanceBatch batch, String surfacePath, boolean frozen) {
+        PerSubmesh perSubmesh = batch.representative();
+        long signature = ShadowSignatures.mix(batch.transformHash(), batch.submesh().handle().id());
+        signature = ShadowSignatures.mix(signature, batch.shadowBindings().id());
+        signature = ShadowSignatures.mix(signature, batch.instanceCount());
+        signature = ShadowSignatures.mix(signature, surfacePath.hashCode());
+        signature = ShadowSignatures.mix(signature, perSubmesh.shadowMasked() ? 1L : 0L);
+        signature = ShadowSignatures.mix(signature, frozen ? 1L : 0L);
+        signature = ShadowSignatures.mix(signature, alphaCutoffBits(perSubmesh.material()));
+        return ShadowSignatures.mix(signature, SurfaceUniformBinder.valueRevisionOf(perSubmesh.material()));
+    }
+
+    private boolean shadowTimeFrozen(Material material, String surfacePath) {
+        return material instanceof LitMaterial lit && !lit.animatedShadow()
+                && surfaceTimeDependence.animatesShadow(surfacePath);
+    }
+
+    private boolean shadowTimeAnimated(Material material, String surfacePath) {
+        return surfaceTimeDependence.animatesShadow(surfacePath) && !shadowTimeFrozen(material, surfacePath);
+    }
+
+    private void submitSubmesh(FrameBuilder frame, UploadedSubmesh submesh, PerSubmesh perSubmesh,
+                               long depthBits, long transformHash, boolean visible) {
+        PipelineHandle pipeline = perSubmesh.classResources().pipeline();
+        if (perSubmesh.material().transparent()) {
+            if (!visible) {
+                return;
+            }
+            long backToFrontKey = 0xFFFFFFFFL - depthBits;
+            frame.submit(RenderPasses.TRANSPARENT_3D, new DrawCommand(pipeline, submesh.handle(), perSubmesh.litBindings(), backToFrontKey, 1));
+            return;
+        }
+        String surfacePath = MaterialPipelineCache.surfaceShaderPathOf(perSubmesh.material());
+        submitShadowCasters(submesh, perSubmesh, surfacePath, transformHash);
+        if (!visible) {
+            return;
         }
         long opaqueKey = (pipeline.id() << 32) | depthBits;
-        frame.submit(Stage.OPAQUE_3D, new DrawCommand(pipeline, submesh.handle(), perSubmesh.litBindings(), opaqueKey, 1));
+        frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, submesh.handle(), perSubmesh.litBindings(), opaqueKey, 1));
+    }
+
+    private void submitShadowCasters(UploadedSubmesh submesh, PerSubmesh perSubmesh,
+                                     String surfacePath, long transformHash) {
+        boolean frozen = shadowTimeFrozen(perSubmesh.material(), surfacePath);
+        boolean timeAnimated = shadowTimeAnimated(perSubmesh.material(), surfacePath);
+        if (timeAnimated) {
+            shadowStatistics.recordAnimatedCaster();
+        }
+        long identity = ShadowSignatures.mix(
+                ShadowSignatures.mix(SINGLE_CASTER_DOMAIN, submesh.handle().id()),
+                perSubmesh.shadowBindings().id());
+        long signature = casterSignature(submesh, perSubmesh, surfacePath, transformHash, frozen);
+        if (shadowCascades.cascadesActive()) {
+            PipelineHandle shadowPipeline =
+                    shadowCascades.pipelineFor(surfacePath, perSubmesh.shadowMasked(), frozen);
+            shadowCascades.submitCaster(new DrawCommand(shadowPipeline, submesh.handle(),
+                    perSubmesh.shadowBindings(), 0L, 1), identity, signature, timeAnimated,
+                    scratchCasterMin, scratchCasterMax);
+        }
+        if (spotShadows.activeCount() > 0) {
+            spotShadows.submitCaster(new DrawCommand(spotShadows.pipelineFor(surfacePath, frozen), submesh.handle(),
+                    perSubmesh.shadowBindings(), 0L, 1), identity, signature, timeAnimated);
+        }
+        if (pointShadows.activeCount() > 0) {
+            pointShadows.submitCaster(new DrawCommand(pointShadows.pipelineFor(surfacePath, frozen), submesh.handle(),
+                    perSubmesh.shadowBindings(), 0L, 1), identity, signature, timeAnimated);
+        }
+    }
+
+    private static long casterSignature(UploadedSubmesh submesh, PerSubmesh perSubmesh,
+                                        String surfacePath, long transformHash, boolean frozen) {
+        long signature = ShadowSignatures.mix(transformHash, submesh.handle().id());
+        signature = ShadowSignatures.mix(signature, perSubmesh.shadowBindings().id());
+        signature = ShadowSignatures.mix(signature, surfacePath.hashCode());
+        signature = ShadowSignatures.mix(signature, perSubmesh.shadowMasked() ? 1L : 0L);
+        signature = ShadowSignatures.mix(signature, frozen ? 1L : 0L);
+        signature = ShadowSignatures.mix(signature, alphaCutoffBits(perSubmesh.material()));
+        return ShadowSignatures.mix(signature, SurfaceUniformBinder.valueRevisionOf(perSubmesh.material()));
+    }
+
+    private static long alphaCutoffBits(Material material) {
+        return material instanceof LitMaterial lit ? Float.floatToRawIntBits(lit.alphaCutoff) : 0L;
     }
 
     private long viewDepthBits(Matrix4f modelMatrix) {
@@ -245,6 +656,15 @@ public final class MeshRenderSystem implements RenderSystem {
         float dz = modelMatrix.m32() - scratchCameraPosition.z;
         float distanceSquared = dx * dx + dy * dy + dz * dz;
         return Float.floatToIntBits(distanceSquared) & 0xFFFFFFFFL;
+    }
+
+    private void writeObjectUboIfChanged(BufferHandle ubo, Matrix4f model, long transformHash) {
+        Long previous = objectUboTransformHashes.get(ubo);
+        if (previous != null && previous == transformHash) {
+            return;
+        }
+        objectUboTransformHashes.put(ubo, transformHash);
+        writeObjectUbo(ubo, model);
     }
 
     private void writeObjectUbo(BufferHandle ubo, Matrix4f model) {
@@ -287,19 +707,27 @@ public final class MeshRenderSystem implements RenderSystem {
 
     private void destroyPerSubmeshes(List<PerSubmesh> perSubmeshes) {
         for (PerSubmesh perSubmesh : perSubmeshes) {
-            backend.destroy(perSubmesh.litBindings());
-            backend.destroy(perSubmesh.shadowBindings());
-            backend.destroy(perSubmesh.modelUbo());
-            ownedBindings.remove(perSubmesh.litBindings());
-            ownedBindings.remove(perSubmesh.shadowBindings());
-            ownedBuffers.remove(perSubmesh.modelUbo());
+            destroyPerSubmesh(perSubmesh);
         }
     }
 
+    private void destroyPerSubmesh(PerSubmesh perSubmesh) {
+        backend.destroy(perSubmesh.litBindings());
+        backend.destroy(perSubmesh.shadowBindings());
+        backend.destroy(perSubmesh.modelUbo());
+        ownedBindings.remove(perSubmesh.litBindings());
+        ownedBindings.remove(perSubmesh.shadowBindings());
+        ownedBuffers.remove(perSubmesh.modelUbo());
+        objectUboTransformHashes.remove(perSubmesh.modelUbo());
+    }
+
     private Material resolveMaterial(MeshRenderer renderer, int slot) {
-        return renderer.materialForSlot(slot)
-                .or(() -> renderer.materialForSlot(0))
-                .orElseGet(this::fallbackMaterial);
+        Material forSlot = renderer.materialForSlot(slot).orElse(null);
+        if (forSlot != null) {
+            return forSlot;
+        }
+        Material primary = renderer.materialForSlot(0).orElse(null);
+        return primary != null ? primary : fallbackMaterial();
     }
 
     private Material fallbackMaterial() {
@@ -324,7 +752,7 @@ public final class MeshRenderSystem implements RenderSystem {
         MaterialClassResources classResources = materialCache.classResourcesFor(material);
         BufferHandle materialUbo = materialCache.ensureMaterialUbo(material, classResources);
         ByteBuffer empty = BufferUtils.createByteBuffer(MeshShaderBindings.OBJECT_UBO_SIZE);
-        BufferHandle modelUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, empty));
+        BufferHandle modelUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, empty));
         ownedBuffers.add(modelUbo);
         boolean shadowMasked = shadowMasked(material, materialUbo);
         BindingSetHandle shadowBindings = createShadowBindings(material, classResources, modelUbo, materialUbo, shadowMasked);
@@ -332,7 +760,8 @@ public final class MeshRenderSystem implements RenderSystem {
         ownedBindings.add(shadowBindings);
         ownedBindings.add(litBindings);
         return new PerSubmesh(modelUbo, shadowBindings, litBindings, classResources, material,
-                captureTextures(material, classResources), shadowMasked);
+                captureTextures(material, classResources), shadowMasked,
+                SurfaceUniformBinder.structureRevisionOf(material));
     }
 
     private static boolean shadowMasked(Material material, BufferHandle materialUbo) {
@@ -341,21 +770,45 @@ public final class MeshRenderSystem implements RenderSystem {
 
     private BindingSetHandle createShadowBindings(Material material, MaterialClassResources classResources,
                                                   BufferHandle modelUbo, BufferHandle materialUbo, boolean masked) {
+        return createShadowBindings(material, classResources, objectTransformBindings(modelUbo), materialUbo, masked,
+                shadowCascades.bindingLayout(), shadowCascades.maskedBindingLayout());
+    }
+
+    private BindingSetHandle createShadowBindings(Material material, MaterialClassResources classResources,
+                                                  List<Binding> transformBindings, BufferHandle materialUbo, boolean masked,
+                                                  BindingSetLayout layout, BindingSetLayout maskedLayout) {
         List<Binding> bindings = new ArrayList<>();
         bindings.add(new Binding(MeshShaderBindings.FRAME_UBO_BINDING,
                 UniformBufferBinding.whole(frameUboWriter.handle(), MeshShaderBindings.FRAME_UBO_SIZE)));
-        bindings.add(new Binding(MeshShaderBindings.OBJECT_UBO_BINDING,
-                UniformBufferBinding.whole(modelUbo, MeshShaderBindings.OBJECT_UBO_SIZE)));
+        bindings.addAll(transformBindings);
         bindings.add(new Binding(MeshShaderBindings.CASCADE_UBO_BINDING,
                 UniformBufferBinding.whole(shadowCascades.cascadeUbo(), MeshShaderBindings.CASCADE_UBO_SIZE)));
         if (!masked) {
-            return backend.createBindingSet(new BindingSetDescriptor(shadowCascades.bindingLayout(), bindings));
+            surfaceUniforms.appendBindings(bindings, material, classResources.surfaceUniforms());
+            return backend.createBindingSet(new BindingSetDescriptor(layout, bindings));
         }
         bindings.add(new Binding(MeshShaderBindings.SHADOW_MASK_MATERIAL_UBO_BINDING,
                 UniformBufferBinding.whole(materialUbo, classResources.metadata().uniformBufferSize())));
         bindings.add(new Binding(MeshShaderBindings.SHADOW_MASK_ALBEDO_BINDING,
                 new SampledTextureBinding(shadowAlbedoTexture(material, classResources))));
-        return backend.createBindingSet(new BindingSetDescriptor(shadowCascades.maskedBindingLayout(), bindings));
+        surfaceUniforms.appendBindings(bindings, material, classResources.surfaceUniforms());
+        return backend.createBindingSet(new BindingSetDescriptor(maskedLayout, bindings));
+    }
+
+    private BindingSetHandle createInstanceBindingSet(PerSubmesh perSubmesh, BufferHandle instanceBuffer,
+                                                      long byteSize, boolean shadow) {
+        List<Binding> transformBindings =
+                instanceTransformBindings(perSubmesh.modelUbo(), instanceBuffer, byteSize);
+        Material material = perSubmesh.material();
+        MaterialClassResources classResources = perSubmesh.classResources();
+        BufferHandle materialUbo = materialCache.materialUboFor(material);
+        if (!shadow) {
+            return backend.createBindingSet(buildLitBindingSetDescriptor(material, classResources, transformBindings,
+                    materialUbo, classResources.litBindingLayout()));
+        }
+        return createShadowBindings(material, classResources, transformBindings, materialUbo,
+                perSubmesh.shadowMasked(), shadowCascades.bindingLayout(),
+                shadowCascades.maskedBindingLayout());
     }
 
     private TextureHandle shadowAlbedoTexture(Material material, MaterialClassResources classResources) {
@@ -378,15 +831,34 @@ public final class MeshRenderSystem implements RenderSystem {
         return snapshot;
     }
 
-    private void refreshStaleTextureBindings(List<PerSubmesh> perSubmeshes) {
+    private void refreshStalePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh, List<PerSubmesh> perSubmeshes) {
         for (int i = 0; i < perSubmeshes.size(); i++) {
             PerSubmesh existing = perSubmeshes.get(i);
-            boolean masked = shadowMasked(existing.material(), materialCache.materialUboFor(existing.material()));
-            if (!texturesChangedSinceCapture(existing) && masked == existing.shadowMasked()) {
+            UploadedSubmesh submesh = mesh.submeshes().get(i);
+            Material current = resolveMaterial(renderer, submesh.materialSlot());
+            if (materialOrPipelineChanged(current, existing)) {
+                destroyPerSubmesh(existing);
+                perSubmeshes.set(i, createPerSubmesh(renderer, submesh));
                 continue;
             }
-            perSubmeshes.set(i, rebuildBindings(existing, masked));
+            refreshTextureBindingsAt(perSubmeshes, i);
         }
+    }
+
+    private boolean materialOrPipelineChanged(Material current, PerSubmesh existing) {
+        return current != existing.material()
+                || materialCache.classResourcesFor(current) != existing.classResources();
+    }
+
+    private void refreshTextureBindingsAt(List<PerSubmesh> perSubmeshes, int index) {
+        PerSubmesh existing = perSubmeshes.get(index);
+        boolean masked = shadowMasked(existing.material(), materialCache.materialUboFor(existing.material()));
+        boolean surfaceTexturesChanged = existing.surfaceStructureRevision()
+                != SurfaceUniformBinder.structureRevisionOf(existing.material());
+        if (!texturesChangedSinceCapture(existing) && masked == existing.shadowMasked() && !surfaceTexturesChanged) {
+            return;
+        }
+        perSubmeshes.set(index, rebuildBindings(existing, masked));
     }
 
     private PerSubmesh rebuildBindings(PerSubmesh existing, boolean masked) {
@@ -403,7 +875,8 @@ public final class MeshRenderSystem implements RenderSystem {
         ownedBindings.add(freshShadowBindings);
         return new PerSubmesh(existing.modelUbo(), freshShadowBindings, freshLitBindings,
                 existing.classResources(), existing.material(),
-                captureTextures(existing.material(), existing.classResources()), masked);
+                captureTextures(existing.material(), existing.classResources()), masked,
+                SurfaceUniformBinder.structureRevisionOf(existing.material()));
     }
 
     private boolean texturesChangedSinceCapture(PerSubmesh perSubmesh) {
@@ -423,11 +896,40 @@ public final class MeshRenderSystem implements RenderSystem {
 
     private BindingSetDescriptor buildLitBindingSetDescriptor(Material material, MaterialClassResources classResources,
                                                               BufferHandle modelUbo, BufferHandle materialUbo) {
+        return buildLitBindingSetDescriptor(material, classResources, objectTransformBindings(modelUbo),
+                materialUbo, classResources.litBindingLayout());
+    }
+
+    private static List<Binding> objectTransformBindings(BufferHandle modelUbo) {
+        return List.of(
+                new Binding(MeshShaderBindings.OBJECT_UBO_BINDING,
+                        UniformBufferBinding.whole(modelUbo, MeshShaderBindings.OBJECT_UBO_SIZE)),
+                new Binding(MeshShaderBindings.INSTANCE_SSBO_BINDING,
+                        new StorageBufferBinding(modelUbo, 0L, MeshShaderBindings.INSTANCE_TRANSFORM_BYTES)));
+    }
+
+    private static List<Binding> instanceTransformBindings(BufferHandle representativeUbo,
+                                                           BufferHandle instanceBuffer, long byteSize) {
+        return List.of(
+                new Binding(MeshShaderBindings.OBJECT_UBO_BINDING,
+                        UniformBufferBinding.whole(representativeUbo, MeshShaderBindings.OBJECT_UBO_SIZE)),
+                new Binding(MeshShaderBindings.INSTANCE_SSBO_BINDING,
+                        new StorageBufferBinding(instanceBuffer, 0L, byteSize)));
+    }
+
+    private BindingSetDescriptor buildLitBindingSetDescriptor(Material material, MaterialClassResources classResources,
+                                                              List<Binding> transformBindings, BufferHandle materialUbo,
+                                                              BindingSetLayout layout) {
         List<Binding> bindings = new ArrayList<>();
         bindings.add(new Binding(MeshShaderBindings.FRAME_UBO_BINDING,
                 UniformBufferBinding.whole(frameUboWriter.handle(), MeshShaderBindings.FRAME_UBO_SIZE)));
-        bindings.add(new Binding(MeshShaderBindings.OBJECT_UBO_BINDING,
-                UniformBufferBinding.whole(modelUbo, MeshShaderBindings.OBJECT_UBO_SIZE)));
+        bindings.add(new Binding(MeshShaderBindings.LIGHT_SSBO_BINDING,
+                StorageBufferBinding.whole(lightStorage.handle(), lightStorage.byteSize())));
+        bindings.add(new Binding(MeshShaderBindings.CLUSTER_COUNT_SSBO_BINDING,
+                StorageBufferBinding.whole(clusterCuller.countBuffer(), clusterCuller.countByteSize())));
+        bindings.add(new Binding(MeshShaderBindings.CLUSTER_INDEX_SSBO_BINDING,
+                StorageBufferBinding.whole(clusterCuller.indexBuffer(), clusterCuller.indexByteSize())));
+        bindings.addAll(transformBindings);
         if (classResources.metadata().hasUniformBuffer()) {
             bindings.add(new Binding(MeshShaderBindings.MATERIAL_UBO_BINDING,
                     UniformBufferBinding.whole(materialUbo, classResources.metadata().uniformBufferSize())));
@@ -445,18 +947,12 @@ public final class MeshRenderSystem implements RenderSystem {
                 new SampledTextureBinding(environment.prefiltered())));
         bindings.add(new Binding(MeshShaderBindings.BRDF_LUT_BINDING,
                 new SampledTextureBinding(environment.brdfLut())));
-        return new BindingSetDescriptor(classResources.litBindingLayout(), bindings);
-    }
-
-    private record PerSubmesh(
-            BufferHandle modelUbo,
-            BindingSetHandle shadowBindings,
-            BindingSetHandle litBindings,
-            MaterialClassResources classResources,
-            Material material,
-            TextureHandle[] capturedTextures,
-            boolean shadowMasked
-    ) {
+        bindings.add(new Binding(MeshShaderBindings.SPOT_SHADOW_ATLAS_BINDING,
+                new SampledTextureBinding(spotShadows.texture())));
+        bindings.add(new Binding(MeshShaderBindings.POINT_SHADOW_ATLAS_BINDING,
+                new SampledTextureBinding(pointShadows.texture())));
+        surfaceUniforms.appendBindings(bindings, material, classResources.surfaceUniforms());
+        return new BindingSetDescriptor(layout, bindings);
     }
 
     private record RenderableMesh(UploadedMesh mesh, List<PerSubmesh> submeshes) {

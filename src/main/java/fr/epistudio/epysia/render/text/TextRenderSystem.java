@@ -5,7 +5,8 @@ import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
-import fr.epistudio.epysia.render.Stage;
+import fr.epistudio.epysia.render.RenderPass;
+import fr.epistudio.epysia.render.RenderPasses;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
@@ -141,7 +142,7 @@ public final class TextRenderSystem implements RenderSystem {
         backend.writeBuffer(vertexBuffer, vertexScratch, 0L);
         backend.writeBuffer(indexBuffer, indexScratch, 0L);
         writeUbo();
-        frame.submit(Stage.UI, DrawCommand.withIndexCount(pipeline, mesh, bindings, quadCount * INDICES_PER_QUAD));
+        frame.submit(RenderPasses.UI, DrawCommand.withIndexCount(pipeline, mesh, bindings, quadCount * INDICES_PER_QUAD));
     }
 
     private int appendText(String text, float startX, float startY, int quadCursor) {

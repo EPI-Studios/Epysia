@@ -1,7 +1,9 @@
 package fr.epistudio.epysia.scene.serialization;
 
+import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialFields;
+import fr.epistudio.epysia.render.shader.ShaderUniformValue;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -24,6 +26,14 @@ public final class MaterialJsonCodec {
     private void writeMaterial(JsonWriter writer, Material material) {
         writer.beginObject();
         writer.key("class").valueString(material.getClass().getName());
+        writer.key("vertexShader").valueString(material.vertexShaderPath());
+        writer.key("fragmentShader").valueString(material.fragmentShaderPath());
+        if (material instanceof LitMaterial lit && !lit.surfaceShaderPath().isEmpty()) {
+            writer.key("surfaceShader").valueString(lit.surfaceShaderPath());
+        }
+        if (material instanceof LitMaterial lit && !lit.animatedShadow()) {
+            writer.key("animatedShadow").valueBoolean(false);
+        }
         writer.key("transparent").valueBoolean(material.transparent());
         writer.key("doubleSided").valueBoolean(material.doubleSided());
         writer.key("uniforms").beginObject();
@@ -36,6 +46,39 @@ public final class MaterialJsonCodec {
             writer.key(entry.getKey()).valueString(entry.getValue());
         }
         writer.endObject();
+        writeSurfaceUniforms(writer, material);
+        writer.endObject();
+    }
+
+    private void writeSurfaceUniforms(JsonWriter writer, Material material) {
+        if (!(material instanceof LitMaterial lit) || lit.surfaceUniforms().isEmpty()) {
+            return;
+        }
+        writer.key("surfaceUniforms").beginObject();
+        for (Map.Entry<String, ShaderUniformValue> entry : lit.surfaceUniforms().all().entrySet()) {
+            writeSurfaceUniform(writer, entry.getKey(), entry.getValue());
+        }
+        writer.endObject();
+    }
+
+    private void writeSurfaceUniform(JsonWriter writer, String name, ShaderUniformValue value) {
+        writer.key(name).beginObject().key("type").valueString(SurfaceUniformTypeTags.of(value));
+        switch (value) {
+            case ShaderUniformValue.FloatValue number -> writer.key("value").valueNumber(number.value());
+            case ShaderUniformValue.IntValue number -> writer.key("value").valueNumber(number.value());
+            case ShaderUniformValue.BoolValue flag -> writer.key("value").valueBoolean(flag.value());
+            case ShaderUniformValue.TextureValue texture -> writer.key("value").valueString(texture.path());
+            case ShaderUniformValue.Vector2Value vector -> writeComponents(writer, "value", vector.x(), vector.y());
+            case ShaderUniformValue.Vector3Value vector ->
+                    writeComponents(writer, "value", vector.x(), vector.y(), vector.z());
+            case ShaderUniformValue.Vector4Value vector ->
+                    writeComponents(writer, "value", vector.x(), vector.y(), vector.z(), vector.w());
+            case ShaderUniformValue.Matrix4Value matrix ->
+                    writeComponents(writer, "value", matrix.columnMajorElements());
+            case ShaderUniformValue.FloatArrayValue floats -> writeComponents(writer, "value", floats.elements());
+            case ShaderUniformValue.Vector4ArrayValue vectors ->
+                    writeComponents(writer, "value", vectors.flattenedElements());
+        }
         writer.endObject();
     }
 
@@ -63,8 +106,15 @@ public final class MaterialJsonCodec {
     @SuppressWarnings("unchecked")
     public Optional<Material> readMaterial(Map<String, Object> materialJson) {
         String className = materialJson.get("class") instanceof String name ? name : "";
-        Optional<Material> instantiated = instantiate(className);
+        Optional<Material> instantiated = instantiate(className,
+                stringValue(materialJson, "vertexShader"), stringValue(materialJson, "fragmentShader"));
         instantiated.ifPresent(material -> {
+            if (material instanceof LitMaterial lit) {
+                lit.setSurfaceShaderPath(stringValue(materialJson, "surfaceShader"));
+                if (materialJson.get("animatedShadow") instanceof Boolean animatedShadow) {
+                    lit.setAnimatedShadow(animatedShadow);
+                }
+            }
             if (materialJson.get("transparent") instanceof Boolean transparent) {
                 material.setTransparent(transparent);
             }
@@ -73,20 +123,38 @@ public final class MaterialJsonCodec {
             }
             applyUniforms(material, (Map<String, Object>) materialJson.getOrDefault("uniforms", Map.of()));
             applyTexturePaths(material, (Map<String, Object>) materialJson.getOrDefault("textures", Map.of()));
+            applySurfaceUniforms(material, (Map<String, Object>) materialJson.getOrDefault("surfaceUniforms", Map.of()));
         });
         return instantiated;
     }
 
-    private Optional<Material> instantiate(String className) {
+    private Optional<Material> instantiate(String className, String vertexShaderPath, String fragmentShaderPath) {
         try {
             Class<?> loaded = Class.forName(className, true, Thread.currentThread().getContextClassLoader());
             if (!Material.class.isAssignableFrom(loaded)) {
                 return Optional.empty();
             }
-            return Optional.of((Material) loaded.getDeclaredConstructor().newInstance());
+            return construct(loaded, vertexShaderPath, fragmentShaderPath);
         } catch (ReflectiveOperationException | RuntimeException error) {
             return Optional.empty();
         }
+    }
+
+    private Optional<Material> construct(Class<?> loaded, String vertexShaderPath, String fragmentShaderPath)
+            throws ReflectiveOperationException {
+        try {
+            return Optional.of((Material) loaded.getDeclaredConstructor().newInstance());
+        } catch (NoSuchMethodException missingDefaultConstructor) {
+            if (vertexShaderPath.isEmpty() || fragmentShaderPath.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of((Material) loaded.getDeclaredConstructor(String.class, String.class)
+                    .newInstance(vertexShaderPath, fragmentShaderPath));
+        }
+    }
+
+    private static String stringValue(Map<String, Object> json, String key) {
+        return json.get(key) instanceof String value ? value : "";
     }
 
     private void applyTexturePaths(Material material, Map<String, Object> textures) {
@@ -95,6 +163,24 @@ public final class MaterialJsonCodec {
                 material.setTexturePath(entry.getKey(), path);
             }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applySurfaceUniforms(Material material, Map<String, Object> surfaceUniforms) {
+        if (!(material instanceof LitMaterial lit)) {
+            return;
+        }
+        for (Map.Entry<String, Object> entry : surfaceUniforms.entrySet()) {
+            if (entry.getValue() instanceof Map<?, ?> encoded) {
+                applySurfaceUniform(lit, entry.getKey(), (Map<String, Object>) encoded);
+            }
+        }
+    }
+
+    private void applySurfaceUniform(LitMaterial material, String name, Map<String, Object> encoded) {
+        String tag = encoded.get("type") instanceof String type ? type : "";
+        SurfaceUniformTypeTags.parse(tag, encoded.get("value"))
+                .ifPresent(value -> material.surfaceUniforms().set(name, value));
     }
 
     private void applyUniforms(Material material, Map<String, Object> uniforms) {

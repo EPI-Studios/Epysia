@@ -95,8 +95,8 @@ public final class MeshRenderer extends Component {
         String path = mesh.path();
         if (path.endsWith(".obj")) {
             try {
-                LoadedObj loaded = ObjLoader.load(services.renderBackend(), path);
-                loaded.warnings().forEach(warning -> services.logger().warn("[MeshRenderer] " + warning));
+                LoadedObj loaded = services.assets().resolveOrCompute(LoadedObj.class, path,
+                        () -> loadObj(services, path));
                 mesh.setDirect(loaded.mesh());
                 if (!loaded.materials().isEmpty() && materials.size() != loaded.materials().size()) {
                     setMaterials(loaded.materials());
@@ -107,6 +107,12 @@ public final class MeshRenderer extends Component {
             }
         }
         mesh.resolve(services.assets());
+    }
+
+    private static LoadedObj loadObj(EngineServices services, String path) {
+        LoadedObj loaded = ObjLoader.load(services.renderBackend(), path);
+        loaded.warnings().forEach(warning -> services.logger().warn("[MeshRenderer] " + warning));
+        return loaded;
     }
 
     private void attachDefaultMaterial(EngineServices services) {
