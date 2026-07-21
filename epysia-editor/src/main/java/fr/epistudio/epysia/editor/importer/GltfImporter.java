@@ -8,6 +8,7 @@ import de.javagl.jgltf.model.AccessorModel;
 import de.javagl.jgltf.model.AccessorShortData;
 import de.javagl.jgltf.model.AnimationModel;
 import de.javagl.jgltf.model.GltfModel;
+import de.javagl.jgltf.model.GltfModels;
 import de.javagl.jgltf.model.ImageModel;
 import de.javagl.jgltf.model.MaterialModel;
 import de.javagl.jgltf.model.MeshModel;
@@ -17,9 +18,10 @@ import de.javagl.jgltf.model.SkinModel;
 import de.javagl.jgltf.model.TextureModel;
 import de.javagl.jgltf.model.io.GltfAsset;
 import de.javagl.jgltf.model.io.GltfAssetReader;
-import de.javagl.jgltf.model.io.GltfModelReader;
+import de.javagl.jgltf.model.io.v2.GltfAssetV2;
 import de.javagl.jgltf.model.v2.MaterialModelV2;
 import de.javagl.jgltf.impl.v2.GlTF;
+import de.javagl.jgltf.impl.v2.Image;
 import de.javagl.jgltf.impl.v2.MaterialPbrMetallicRoughness;
 import de.javagl.jgltf.impl.v2.TextureInfo;
 import fr.epistudio.epysia.animation.Clip;
@@ -67,13 +69,16 @@ public final class GltfImporter {
     private static final int MODE_TRIANGLE_STRIP = 5;
     private static final int MODE_TRIANGLE_FAN = 6;
     private static final String TEXTURE_TRANSFORM = "KHR_texture_transform";
+    private static final String PLACEHOLDER_IMAGE_URI = "data:image/png;base64,"
+            + "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4XmP4z/D/Pwg"
+            + "zwBgAaagL9cNwS4oAAAAASUVORK5CYII=";
 
     private GltfImporter() {
     }
 
     public static GltfImportResult importFile(Path source, Path outputDirectory, ComponentRegistry componentRegistry) {
-        GltfModel model = readModel(source);
         List<String> warnings = new ArrayList<>();
+        GltfModel model = readModel(source, warnings);
         Map<MaterialModel, MaterialUvHints> uvHints = buildMaterialUvHints(model, source, warnings);
         Map<SkinModel, SkeletonBuild> skeletonBuilds = buildSkeletonBuilds(model);
         List<Path> meshFiles = importMeshes(model, skeletonBuilds, uvHints, outputDirectory, warnings);
@@ -84,12 +89,42 @@ public final class GltfImporter {
         return new GltfImportResult(meshFiles, clipFiles, materials.files(), prefabFile, warnings);
     }
 
-    private static GltfModel readModel(Path source) {
+    private static GltfModel readModel(Path source, List<String> warnings) {
+        GltfAsset asset = readAsset(source);
+        if (asset instanceof GltfAssetV2 assetV2) {
+            replaceMissingImagesWithPlaceholder(assetV2, warnings);
+        }
+        return GltfModels.create(asset);
+    }
+
+    private static GltfAsset readAsset(Path source) {
         try {
-            return new GltfModelReader().read(source);
+            return new GltfAssetReader().read(source);
         } catch (IOException exception) {
             throw new EpysiaException("Failed to read glTF file " + source + ": " + exception.getMessage(), exception);
         }
+    }
+
+    private static void replaceMissingImagesWithPlaceholder(GltfAssetV2 asset, List<String> warnings) {
+        List<Image> images = asset.getGltf().getImages();
+        if (images == null) {
+            return;
+        }
+        for (Image image : images) {
+            replaceMissingImageWithPlaceholder(image, asset, warnings);
+        }
+    }
+
+    private static void replaceMissingImageWithPlaceholder(Image image, GltfAssetV2 asset, List<String> warnings) {
+        String uri = image.getUri();
+        if (uri == null || uri.startsWith("data:") || image.getBufferView() != null) {
+            return;
+        }
+        if (asset.getReferenceData(uri) != null) {
+            return;
+        }
+        warnings.add("Missing texture " + uri + ", using placeholder");
+        image.setUri(PLACEHOLDER_IMAGE_URI);
     }
 
     private static Map<SkinModel, SkeletonBuild> buildSkeletonBuilds(GltfModel model) {

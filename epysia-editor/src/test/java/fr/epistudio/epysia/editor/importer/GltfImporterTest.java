@@ -303,7 +303,25 @@ class GltfImporterTest {
         return uvFixtureJson("\"baseColorTexture\": {\"index\": 0, \"texCoord\": 1}");
     }
 
+    @Test
+    void missingExternalTextureFallsBackToPlaceholder(@TempDir Path directory) throws Exception {
+        Files.write(directory.resolve("uv.bin"), uvFixtureBuffer());
+        Path gltf = directory.resolve("missing.gltf");
+        Files.writeString(gltf, uvFixtureJson("\"baseColorTexture\": {\"index\": 0}", "does-not-exist.png"));
+        GltfImportResult result = runImport(gltf, directory);
+        assertEquals(1, result.materialFiles().size());
+        assertEquals(1, result.warnings().stream().filter(warning -> warning.contains("Missing texture")).count());
+        String document = Files.readString(result.materialFiles().get(0));
+        Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
+        String albedoPath = ((LitMaterial) material).texturePath("albedo").orElseThrow();
+        assertTrue(Files.exists(directory.resolve(albedoPath)));
+    }
+
     private static String uvFixtureJson(String baseColorTexture) throws IOException {
+        return uvFixtureJson(baseColorTexture, pngDataUri());
+    }
+
+    private static String uvFixtureJson(String baseColorTexture, String imageUri) {
         return """
                 {
                   "asset": {"version": "2.0"},
@@ -335,7 +353,7 @@ class GltfImporterTest {
                   ],
                   "buffers": [{"uri": "uv.bin", "byteLength": 126}]
                 }
-                """.formatted(baseColorTexture, pngDataUri());
+                """.formatted(baseColorTexture, imageUri);
     }
 
     private static Path writeStripFixture(Path directory) throws Exception {
