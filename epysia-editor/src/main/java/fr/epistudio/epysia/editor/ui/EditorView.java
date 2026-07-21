@@ -7,6 +7,9 @@ import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.importer.AssetImportPipeline;
+import fr.epistudio.epysia.editor.importer.AssetImporterRegistry;
+import fr.epistudio.epysia.editor.importer.GltfAssetImporter;
 import fr.epistudio.epysia.editor.log.EditorConsole;
 import fr.epistudio.epysia.editor.notify.ToastCenter;
 import fr.epistudio.epysia.editor.play.EmbeddedPlaySession;
@@ -117,6 +120,7 @@ public final class EditorView implements FrameView {
     private final PlayController playController;
     private final EmbeddedPlaySession playSession;
     private final GameObjectFactory objectFactory;
+    private final AssetImportPipeline importPipeline;
     private final ScriptService scriptService;
     private final GizmoState gizmoState = new GizmoState();
     private final DockLayout dockLayout = new DockLayout();
@@ -169,6 +173,7 @@ public final class EditorView implements FrameView {
         this.playSession = new EmbeddedPlaySession(sceneHost, serializer, project, projectStore,
                 active, toasts, editorConsole);
         this.objectFactory = new GameObjectFactory(active, sceneHost.engine());
+        this.importPipeline = new AssetImportPipeline(buildImporterRegistry(componentRegistry));
         this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::onScriptFileSaved);
         this.shaderGraphPreviews = new ShaderGraphPreviewService(sceneHost.window(), sceneHost.backend());
         this.graphEditorView = new GraphEditorView(componentRegistry, toasts, active,
@@ -178,7 +183,7 @@ public final class EditorView implements FrameView {
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
         this.viewportView = new ViewportView(sceneHost, editorCamera, active, gizmoState,
-                shell.windowHandle(), playSession, icons, objectFactory);
+                shell.windowHandle(), playSession, icons, objectFactory, importPipeline);
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
@@ -190,7 +195,7 @@ public final class EditorView implements FrameView {
         this.assetBrowserView = new AssetBrowserView(project, toasts, icons, thumbnailCache, meshThumbnailer,
                 scriptEditorView::open, meshBakeDialog::openFor,
                 this::instantiatePrefabAtOrigin, this::openScenePath, this::attachScriptToSelected,
-                graphEditorView::open, componentRegistry);
+                graphEditorView::open, importPipeline);
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onViewportTuningChanged);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
@@ -198,6 +203,12 @@ public final class EditorView implements FrameView {
         this.exportGameDialog = new ExportGameDialog(project, toasts);
         shell.setFileDropHandler(assetBrowserView::importExternalFiles);
         finishSetup();
+    }
+
+    private static AssetImporterRegistry buildImporterRegistry(ComponentRegistry componentRegistry) {
+        AssetImporterRegistry registry = new AssetImporterRegistry();
+        registry.register(new GltfAssetImporter(componentRegistry));
+        return registry;
     }
 
     private void finishSetup() {

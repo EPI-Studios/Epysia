@@ -11,13 +11,13 @@ import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
-import fr.epistudio.epysia.editor.importer.GltfImportResult;
-import fr.epistudio.epysia.editor.importer.GltfImporter;
+import fr.epistudio.epysia.editor.importer.AssetImportPipeline;
+import fr.epistudio.epysia.editor.importer.AssetImporter;
+import fr.epistudio.epysia.editor.importer.ImportOutcome;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.project.Project;
-import fr.epistudio.epysia.reflection.ComponentRegistry;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiPopupFlags;
@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -55,8 +56,6 @@ public final class AssetBrowserView {
     private static final String PREFAB_EXTENSION = ".epyprefab";
     private static final String SCENE_EXTENSION = ".epyscene";
     private static final String OBJ_EXTENSION = ".obj";
-    private static final String GLTF_EXTENSION = ".gltf";
-    private static final String GLB_EXTENSION = ".glb";
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
 
@@ -95,7 +94,7 @@ public final class AssetBrowserView {
     private final Consumer<Path> onOpenScene;
     private final Consumer<Path> onAttachScript;
     private final Consumer<Path> onOpenGraph;
-    private final ComponentRegistry componentRegistry;
+    private final AssetImportPipeline importPipeline;
     private final NameDialog nameDialog = new NameDialog("##asset-name-dialog");
     private final NewAssetDialog newAssetDialog;
     private final ConfirmDialog deleteConfirm = new ConfirmDialog("Delete this file?", "Delete");
@@ -113,7 +112,7 @@ public final class AssetBrowserView {
                             Consumer<Path> onOpenScript, Consumer<Path> onBakeMesh,
                             Consumer<Path> onInstantiatePrefab, Consumer<Path> onOpenScene,
                             Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph,
-                            ComponentRegistry componentRegistry) {
+                            AssetImportPipeline importPipeline) {
         this.project = project;
         this.notifier = notifier;
         this.icons = icons;
@@ -125,7 +124,7 @@ public final class AssetBrowserView {
         this.onOpenScene = onOpenScene;
         this.onAttachScript = onAttachScript;
         this.onOpenGraph = onOpenGraph;
-        this.componentRegistry = componentRegistry;
+        this.importPipeline = importPipeline;
         this.currentDirectory = project.rootDirectory();
         this.newAssetDialog = new NewAssetDialog("##new-asset-dialog", icons);
         this.grid = new AssetEntryGrid(icons, thumbnails, meshThumbnails);
@@ -605,8 +604,8 @@ public final class AssetBrowserView {
         if (isBakeable(entry) && ImGui.menuItem("Bake Mesh")) {
             onBakeMesh.accept(path);
         }
-        if (isGltfSource(entry) && ImGui.menuItem("Import glTF")) {
-            importGltf(path);
+        if (isImportSource(path) && ImGui.menuItem("Reimport")) {
+            reimport(path);
         }
         if (entry.type() != AssetType.PRESET) {
             renderFileManagementItems(entry, path);
@@ -636,38 +635,34 @@ public final class AssetBrowserView {
                 && entry.assetPath().toLowerCase(Locale.ROOT).endsWith(OBJ_EXTENSION);
     }
 
-    private static boolean isGltfSource(AssetEntry entry) {
-        String lowerCasePath = entry.assetPath().toLowerCase(Locale.ROOT);
-        return entry.type() == AssetType.MESH
-                && (lowerCasePath.endsWith(GLTF_EXTENSION) || lowerCasePath.endsWith(GLB_EXTENSION));
+    private boolean isImportSource(Path path) {
+        return importPipeline.importerFor(path).isPresent();
     }
 
-    private void importGltf(Path source) {
-        try {
-            runGltfImport(source);
-        } catch (RuntimeException | IOException error) {
-            notifier.show("glTF import failed: " + error.getMessage());
+    private void reimport(Path source) {
+        Optional<String> displayName = importPipeline.importerFor(source).map(AssetImporter::displayName);
+        Optional<ImportOutcome> outcome = importPipeline.reimport(source);
+        if (outcome.isEmpty()) {
+            notifier.show("Reimport failed: " + source.getFileName());
+            return;
         }
-    }
-
-    private void runGltfImport(Path source) throws IOException {
-        Path outputDirectory = source.getParent().resolve(stem(source.getFileName().toString()));
-        Files.createDirectories(outputDirectory);
-        GltfImportResult result = GltfImporter.importFile(source, outputDirectory, componentRegistry);
-        result.warnings().forEach(warning -> notifier.show("glTF: " + warning));
-        notifier.show(importSummary(result) + " into " + outputDirectory.getFileName());
+        reportImport("Reimported", source, displayName, outcome.get());
         refresh();
     }
 
-    private static String importSummary(GltfImportResult result) {
-        return "Imported " + result.meshFiles().size() + " meshes, "
-                + result.clipFiles().size() + " clips, " + result.materialFiles().size() + " materials"
-                + result.prefabFile().map(prefab -> ", 1 prefab").orElse("");
+    private void importAndReport(Path source) {
+        Optional<String> displayName = importPipeline.importerFor(source).map(AssetImporter::displayName);
+        Optional<ImportOutcome> outcome = importPipeline.ensureImported(source);
+        if (outcome.isEmpty()) {
+            notifier.show("Import failed: " + source.getFileName());
+            return;
+        }
+        reportImport("Imported", source, displayName, outcome.get());
     }
 
-    private static String stem(String fileName) {
-        int dot = fileName.lastIndexOf('.');
-        return dot > 0 ? fileName.substring(0, dot) : fileName;
+    private void reportImport(String verb, Path source, Optional<String> displayName, ImportOutcome outcome) {
+        notifier.show(verb + " " + source.getFileName() + displayName.map(name -> " (" + name + ")").orElse(""));
+        outcome.warnings().forEach(notifier::show);
     }
 
     private void activateEntry(AssetEntry entry) {
@@ -750,10 +745,11 @@ public final class AssetBrowserView {
     private int importSingleFile(Path file) {
         try {
             int copied = copyIntoCurrentDirectory(file);
-            String name = file.getFileName().toString().toLowerCase();
-            if (name.endsWith(GLTF_EXTENSION) || name.endsWith(GLB_EXTENSION)) {
-                importGltf(currentDirectory.resolve(file.getFileName().toString()));
+            Path copiedFile = currentDirectory.resolve(file.getFileName().toString());
+            if (importPipeline.needsImport(copiedFile)) {
+                importAndReport(copiedFile);
             }
+            String name = file.getFileName().toString().toLowerCase();
             if (name.endsWith(".obj")) {
                 copied += importCompanions(file, "mtllib");
             }
@@ -888,7 +884,20 @@ public final class AssetBrowserView {
         if (!showingBuiltins && !Files.isDirectory(currentDirectory)) {
             currentDirectory = project.rootDirectory();
         }
-        entries.addAll(showingBuiltins ? BuiltinAssets.entries() : scanCurrentDirectory());
+        List<AssetEntry> scanned = showingBuiltins ? BuiltinAssets.entries() : scanCurrentDirectory();
+        entries.addAll(scanned);
+        if (!showingBuiltins) {
+            autoImportScanned(scanned);
+        }
+    }
+
+    private void autoImportScanned(List<AssetEntry> scanned) {
+        for (AssetEntry entry : scanned) {
+            Path source = Path.of(entry.assetPath());
+            if (importPipeline.needsImport(source)) {
+                importAndReport(source);
+            }
+        }
     }
 
     private List<AssetEntry> scanCurrentDirectory() {

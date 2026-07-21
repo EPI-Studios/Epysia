@@ -14,6 +14,8 @@ import fr.epistudio.epysia.editor.gizmo.SelectionOutlineOverlay;
 import fr.epistudio.epysia.editor.gl.GlStateSnapshot;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.importer.AssetImportPipeline;
+import fr.epistudio.epysia.editor.importer.ImportOutcome;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.play.EmbeddedPlaySession;
 import fr.epistudio.epysia.editor.runtime.EditorCamera;
@@ -81,6 +83,7 @@ public final class ViewportView {
     private final EmbeddedPlaySession playSession;
     private final IconWidgets icons;
     private final GameObjectFactory objectFactory;
+    private final AssetImportPipeline importPipeline;
     private final Matrix4f viewMatrix = new Matrix4f();
     private final Matrix4f projectionMatrix = new Matrix4f();
     private final float[] viewArray = new float[16];
@@ -106,7 +109,8 @@ public final class ViewportView {
 
     public ViewportView(EditorScene3DHost sceneHost, EditorCamera editorCamera,
                         Supplier<SceneDocument> activeDocument, GizmoState gizmoState, long windowHandle,
-                        EmbeddedPlaySession playSession, IconWidgets icons, GameObjectFactory objectFactory) {
+                        EmbeddedPlaySession playSession, IconWidgets icons, GameObjectFactory objectFactory,
+                        AssetImportPipeline importPipeline) {
         this.sceneHost = sceneHost;
         this.editorCamera = editorCamera;
         this.activeDocument = activeDocument;
@@ -115,6 +119,7 @@ public final class ViewportView {
         this.playSession = playSession;
         this.icons = icons;
         this.objectFactory = objectFactory;
+        this.importPipeline = importPipeline;
     }
 
     public boolean showGrid() {
@@ -301,16 +306,38 @@ public final class ViewportView {
         if (playSession.isActive() || !ImGui.beginDragDropTarget()) {
             return;
         }
+        try {
+            handleAssetDrops(imageX, imageY, width, height);
+        } catch (RuntimeException error) {
+            sceneHost.engine().logger().error("[ViewportView] Asset drop failed", error);
+        } finally {
+            ImGui.endDragDropTarget();
+        }
+    }
+
+    private void handleAssetDrops(float imageX, float imageY, int width, int height) {
         Vector3f dropPoint = dropPointAtMouse(imageX, imageY, width, height);
         String prefabPath = ImGui.acceptDragDropPayload(AssetMimeTypes.PREFAB, String.class);
         if (prefabPath != null) {
             activeDocument.get().history().execute(new InstantiatePrefabCommand(Path.of(prefabPath), dropPoint));
         }
         String meshPath = ImGui.acceptDragDropPayload(AssetMimeTypes.MESH, String.class);
-        if (meshPath != null) {
-            objectFactory.createMesh(meshPath, meshBaseName(meshPath), dropPoint);
+        if (meshPath == null) {
+            return;
         }
-        ImGui.endDragDropTarget();
+        Path meshFile = Path.of(meshPath);
+        if (importPipeline.importerFor(meshFile).isPresent()) {
+            instantiateImported(meshFile, dropPoint);
+            return;
+        }
+        objectFactory.createMesh(meshPath, meshBaseName(meshPath), dropPoint);
+    }
+
+    private void instantiateImported(Path source, Vector3f dropPoint) {
+        importPipeline.ensureImported(source)
+                .flatMap(ImportOutcome::instantiable)
+                .ifPresent(prefab -> activeDocument.get().history()
+                        .execute(new InstantiatePrefabCommand(prefab, dropPoint)));
     }
 
     private static String meshBaseName(String meshPath) {
