@@ -38,6 +38,7 @@ public final class MeshThumbnailer {
 
     private static final int THUMB_PIXEL_SIZE = 128;
     private static final int MAX_ENTRIES = 256;
+    private static final int RENDERS_PER_FRAME = 1;
 
     private final OpenGlRenderBackend backend = new OpenGlRenderBackend();
     private final Window window = new Window("(thumbnailer)", THUMB_PIXEL_SIZE, THUMB_PIXEL_SIZE);
@@ -50,6 +51,7 @@ public final class MeshThumbnailer {
     private final Map<String, Entry> cache = new LinkedHashMap<>(16, 0.75f, true);
     private final Set<String> failedPaths = new HashSet<>();
     private boolean initialized;
+    private int renderBudget;
 
     public MeshThumbnailer() {
         targetObject.addComponent(targetTransform);
@@ -76,6 +78,10 @@ public final class MeshThumbnailer {
         return sunObject;
     }
 
+    public void beginFrame() {
+        renderBudget = RENDERS_PER_FRAME;
+    }
+
     public OptionalInt get(String meshPath) {
         if (failedPaths.contains(meshPath)) {
             return OptionalInt.empty();
@@ -84,6 +90,10 @@ public final class MeshThumbnailer {
         if (existing != null) {
             return OptionalInt.of(existing.glTextureName());
         }
+        if (renderBudget <= 0) {
+            return OptionalInt.empty();
+        }
+        renderBudget--;
         ensureInitialized();
         Optional<Entry> rendered = renderEntrySafely(meshPath);
         if (rendered.isEmpty()) {

@@ -8,6 +8,7 @@ import fr.epistudio.epysia.render.backend.TextureUsage;
 import fr.epistudio.epysia.render.opengl.OpenGlRenderBackend;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImage;
+import org.lwjgl.stb.STBImageResize;
 import org.lwjgl.system.MemoryStack;
 
 import java.io.IOException;
@@ -25,14 +26,21 @@ import java.util.Set;
 
 public final class ThumbnailCache {
 
-    private static final int MAX_ENTRIES = 256;
+    private static final int MAX_ENTRIES = 512;
+    private static final int LOADS_PER_FRAME = 4;
+    private static final int MAX_THUMBNAIL_SIZE = 128;
 
     private final OpenGlRenderBackend backend;
     private final Map<String, Entry> cache = new LinkedHashMap<>(16, 0.75f, true);
     private final Set<String> failedPaths = new HashSet<>();
+    private int loadBudget;
 
     public ThumbnailCache(OpenGlRenderBackend backend) {
         this.backend = backend;
+    }
+
+    public void beginFrame() {
+        loadBudget = LOADS_PER_FRAME;
     }
 
     public OptionalInt get(String absolutePath) {
@@ -43,6 +51,10 @@ public final class ThumbnailCache {
         if (existing != null) {
             return OptionalInt.of(existing.glTextureName());
         }
+        if (loadBudget <= 0) {
+            return OptionalInt.empty();
+        }
+        loadBudget--;
         Optional<Entry> loaded = tryLoad(absolutePath);
         if (loaded.isEmpty()) {
             failedPaths.add(absolutePath);
@@ -90,11 +102,29 @@ public final class ThumbnailCache {
                 return Optional.empty();
             }
             try {
-                return Optional.of(uploadPixels(pixels, widthBuffer.get(0), heightBuffer.get(0)));
+                return Optional.of(uploadScaled(pixels, widthBuffer.get(0), heightBuffer.get(0)));
             } finally {
                 STBImage.stbi_image_free(pixels);
             }
         }
+    }
+
+    private Entry uploadScaled(ByteBuffer pixels, int width, int height) {
+        if (width <= MAX_THUMBNAIL_SIZE && height <= MAX_THUMBNAIL_SIZE) {
+            return uploadPixels(pixels, width, height);
+        }
+        int targetWidth = scaledDimension(width, width, height);
+        int targetHeight = scaledDimension(height, width, height);
+        ByteBuffer resized = BufferUtils.createByteBuffer(targetWidth * targetHeight * 4);
+        STBImageResize.stbir_resize_uint8_srgb(pixels, width, height, 0,
+                resized, targetWidth, targetHeight, 0, STBImageResize.STBIR_RGBA);
+        return uploadPixels(resized, targetWidth, targetHeight);
+    }
+
+    private static int scaledDimension(int dimension, int width, int height) {
+        int longestSide = Math.max(width, height);
+        int scaled = Math.round(dimension * (float) MAX_THUMBNAIL_SIZE / longestSide);
+        return Math.max(1, scaled);
     }
 
     private Entry uploadPixels(ByteBuffer pixels, int width, int height) {
