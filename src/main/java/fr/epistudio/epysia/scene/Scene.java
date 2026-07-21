@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.scene;
 
+import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.postfx.PostEffectStack;
 
@@ -55,12 +56,45 @@ public final class Scene implements IScene {
 
     private void applyPendingRemovals() {
         while (!pendingRemovals.isEmpty()) {
-            GameObject removed = pendingRemovals.poll();
-            if (gameObjects.remove(removed)) {
-                gameObjectsById.remove(removed.id());
-                removed.clearStructuralChangeListener();
-                modificationCount++;
-            }
+            removeSubtree(pendingRemovals.poll());
+        }
+    }
+
+    private void removeSubtree(GameObject root) {
+        if (!gameObjects.contains(root)) {
+            return;
+        }
+        detachFromParent(root);
+        List<GameObject> subtree = new ArrayList<>();
+        collectSubtree(root, subtree);
+        for (GameObject member : subtree) {
+            removeSingle(member);
+        }
+    }
+
+    private void collectSubtree(GameObject gameObject, List<GameObject> collected) {
+        collected.add(gameObject);
+        Transform3D transform = gameObject.getComponentOrNull(Transform3D.class);
+        if (transform == null) {
+            return;
+        }
+        for (Transform3D child : new ArrayList<>(transform.children())) {
+            child.owner().ifPresent(childOwner -> collectSubtree(childOwner, collected));
+        }
+    }
+
+    private void detachFromParent(GameObject gameObject) {
+        Transform3D transform = gameObject.getComponentOrNull(Transform3D.class);
+        if (transform != null) {
+            transform.detachFromParent();
+        }
+    }
+
+    private void removeSingle(GameObject removed) {
+        if (gameObjects.remove(removed)) {
+            gameObjectsById.remove(removed.id());
+            removed.clearStructuralChangeListener();
+            modificationCount++;
         }
     }
 
