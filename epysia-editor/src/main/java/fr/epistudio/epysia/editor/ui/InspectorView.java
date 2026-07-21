@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.components.Animator;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
@@ -56,6 +57,7 @@ public final class InspectorView {
     private final ConfirmDialog removeConfirm = new ConfirmDialog("Remove this component?", "Remove");
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final MaterialsSection materialsSection;
+    private final AnimatorSection animatorSection;
     private final PostEffectsSection postEffectsSection;
     private final GraphSection graphSection;
     private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
@@ -73,6 +75,7 @@ public final class InspectorView {
         this.assetPicker = assetPicker;
         this.propertyRows = new PropertyRows(activeDocument, assetPicker);
         this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project);
+        this.animatorSection = new AnimatorSection(activeDocument, project);
         this.postEffectsSection = new PostEffectsSection(project, thumbnails);
         this.graphSection = new GraphSection(activeDocument, onOpenGraph);
         this.onCreateScriptForObject = onCreateScriptForObject;
@@ -189,6 +192,9 @@ public final class InspectorView {
         }
         if (component instanceof MeshRenderer renderer) {
             materialsSection.render(renderer);
+        }
+        if (component instanceof Animator animator) {
+            animatorSection.render(gameObject, animator);
         }
         if (component instanceof Camera3D camera) {
             renderCameraPostEffects(camera);

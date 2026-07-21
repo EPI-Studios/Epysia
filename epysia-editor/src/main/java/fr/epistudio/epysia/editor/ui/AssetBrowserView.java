@@ -642,15 +642,30 @@ public final class AssetBrowserView {
 
     private void importGltf(Path source) {
         try {
-            GltfImportResult result = GltfImporter.importFile(source, source.getParent(), componentRegistry);
-            result.warnings().forEach(warning -> notifier.show("glTF: " + warning));
-            notifier.show("Imported " + result.meshFiles().size() + " meshes, "
-                    + result.clipFiles().size() + " clips, " + result.materialFiles().size() + " materials"
-                    + result.prefabFile().map(prefab -> ", 1 prefab").orElse(""));
-            refresh();
-        } catch (RuntimeException error) {
+            runGltfImport(source);
+        } catch (RuntimeException | IOException error) {
             notifier.show("glTF import failed: " + error.getMessage());
         }
+    }
+
+    private void runGltfImport(Path source) throws IOException {
+        Path outputDirectory = source.getParent().resolve(stem(source.getFileName().toString()));
+        Files.createDirectories(outputDirectory);
+        GltfImportResult result = GltfImporter.importFile(source, outputDirectory, componentRegistry);
+        result.warnings().forEach(warning -> notifier.show("glTF: " + warning));
+        notifier.show(importSummary(result) + " into " + outputDirectory.getFileName());
+        refresh();
+    }
+
+    private static String importSummary(GltfImportResult result) {
+        return "Imported " + result.meshFiles().size() + " meshes, "
+                + result.clipFiles().size() + " clips, " + result.materialFiles().size() + " materials"
+                + result.prefabFile().map(prefab -> ", 1 prefab").orElse("");
+    }
+
+    private static String stem(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        return dot > 0 ? fileName.substring(0, dot) : fileName;
     }
 
     private void activateEntry(AssetEntry entry) {
@@ -734,6 +749,9 @@ public final class AssetBrowserView {
         try {
             int copied = copyIntoCurrentDirectory(file);
             String name = file.getFileName().toString().toLowerCase();
+            if (name.endsWith(GLTF_EXTENSION) || name.endsWith(GLB_EXTENSION)) {
+                importGltf(currentDirectory.resolve(file.getFileName().toString()));
+            }
             if (name.endsWith(".obj")) {
                 copied += importCompanions(file, "mtllib");
             }
