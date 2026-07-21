@@ -4,6 +4,7 @@ import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
@@ -141,6 +142,32 @@ public final class GameObjectJsonCodec {
                 }
             }
         }
+        resolveMaterialAssets(loaded, services);
+    }
+
+    private void resolveMaterialAssets(List<GameObject> loaded, EngineServices services) {
+        for (GameObject gameObject : loaded) {
+            gameObject.getComponent(MeshRenderer.class)
+                    .ifPresent(renderer -> replaceMaterialPlaceholders(renderer, services));
+            gameObject.getComponent(MultiMeshRenderer.class)
+                    .ifPresent(renderer -> renderer.material()
+                            .ifPresent(material -> renderer.setMaterial(resolveMaterial(material, services))));
+        }
+    }
+
+    private void replaceMaterialPlaceholders(MeshRenderer renderer, EngineServices services) {
+        List<Material> replaced = new ArrayList<>();
+        for (Material material : renderer.materials()) {
+            replaced.add(resolveMaterial(material, services));
+        }
+        renderer.setMaterials(replaced);
+    }
+
+    private Material resolveMaterial(Material material, EngineServices services) {
+        if (material.assetPath().isEmpty()) {
+            return material;
+        }
+        return services.assets().resolve(Material.class, material.assetPath()).orElse(material);
     }
 
     private final class GraphReader implements ComponentFieldsCodec.ReferenceSink {
