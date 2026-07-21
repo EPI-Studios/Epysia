@@ -29,7 +29,7 @@ public final class MeshAssetLoader implements AssetLoader<UploadedMesh> {
 
     @Override
     public String[] supportedExtensions() {
-        return new String[]{".obj", ".gltf", ".glb", EpyMeshFormat.EXTENSION};
+        return new String[]{".obj", EpyMeshFormat.EXTENSION};
     }
 
     @Override

@@ -85,13 +85,22 @@ public final class MeshThumbnailer {
             return OptionalInt.of(existing.glTextureName());
         }
         ensureInitialized();
-        Optional<Entry> rendered = renderEntry(meshPath);
+        Optional<Entry> rendered = renderEntrySafely(meshPath);
         if (rendered.isEmpty()) {
             failedPaths.add(meshPath);
             return OptionalInt.empty();
         }
         putBounded(meshPath, rendered.get());
         return OptionalInt.of(rendered.get().glTextureName());
+    }
+
+    private Optional<Entry> renderEntrySafely(String meshPath) {
+        try {
+            return renderEntry(meshPath);
+        } catch (RuntimeException error) {
+            engine.logger().warn("[MeshThumbnailer] Thumbnail failed for " + meshPath + ": " + error.getMessage());
+            return Optional.empty();
+        }
     }
 
     private void putBounded(String key, Entry entry) {

@@ -15,6 +15,7 @@ import imgui.flag.ImGuiSelectableFlags;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Locale;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -210,10 +211,16 @@ public final class AssetEntryGrid {
         if (entry.type() == AssetType.TEXTURE) {
             return thumbnails.get(entry.assetPath());
         }
-        if (entry.type() == AssetType.MESH || entry.type() == AssetType.PRESET) {
+        if ((entry.type() == AssetType.MESH || entry.type() == AssetType.PRESET)
+                && !isImportSource(entry.assetPath())) {
             return meshThumbnails.get(entry.assetPath());
         }
         return OptionalInt.empty();
+    }
+
+    private static boolean isImportSource(String assetPath) {
+        String lowerCasePath = assetPath.toLowerCase(Locale.ROOT);
+        return lowerCasePath.endsWith(".gltf") || lowerCasePath.endsWith(".glb");
     }
 
     public static EditorIcon iconFor(AssetType type) {
