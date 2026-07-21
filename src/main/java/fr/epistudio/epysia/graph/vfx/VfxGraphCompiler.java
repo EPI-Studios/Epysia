@@ -3,6 +3,7 @@ package fr.epistudio.epysia.graph.vfx;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.graph.GraphAsset;
 import fr.epistudio.epysia.graph.GraphEdge;
+import fr.epistudio.epysia.graph.GraphKind;
 import fr.epistudio.epysia.graph.GraphNode;
 import fr.epistudio.epysia.graph.GraphValues;
 
@@ -18,7 +19,7 @@ public final class VfxGraphCompiler {
     }
 
     public VfxCompiledSources compile(GraphAsset asset, String sourceName) {
-        if (asset.kind() != fr.epistudio.epysia.graph.GraphKind.VFX) {
+        if (asset.kind() != GraphKind.VFX) {
             throw new EpysiaException("Graph " + sourceName + " is not a VFX graph.");
         }
         return new VfxCompiledSources(

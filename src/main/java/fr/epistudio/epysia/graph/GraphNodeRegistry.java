@@ -3,6 +3,8 @@ package fr.epistudio.epysia.graph;
 import fr.epistudio.epysia.graph.shader.ShaderNodes;
 
 import java.util.ArrayList;
+import fr.epistudio.epysia.graph.vfx.VfxNodes;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +25,7 @@ public final class GraphNodeRegistry {
         BuiltinNodes.registerInto(registry);
         StateNodes.registerInto(registry);
         ShaderNodes.registerInto(registry);
-        fr.epistudio.epysia.graph.vfx.VfxNodes.registerInto(registry);
+        VfxNodes.registerInto(registry);
         return registry;
     }
 
