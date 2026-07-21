@@ -167,7 +167,13 @@ public final class GameObjectJsonCodec {
         if (material.assetPath().isEmpty()) {
             return material;
         }
-        return services.assets().resolve(Material.class, material.assetPath()).orElse(material);
+        try {
+            return services.assets().resolve(Material.class, material.assetPath()).orElse(material);
+        } catch (RuntimeException error) {
+            services.logger().warn("[GameObjectJsonCodec] Material asset unavailable, keeping placeholder: "
+                    + material.assetPath() + " (" + error.getMessage() + ")");
+            return material;
+        }
     }
 
     private final class GraphReader implements ComponentFieldsCodec.ReferenceSink {
