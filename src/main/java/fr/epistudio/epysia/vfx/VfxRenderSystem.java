@@ -1,6 +1,9 @@
 package fr.epistudio.epysia.vfx;
 
 import fr.epistudio.epysia.components.transforms.Transform3D;
+import fr.epistudio.epysia.graph.GraphAsset;
+import fr.epistudio.epysia.graph.GraphJsonCodec;
+import fr.epistudio.epysia.graph.vfx.VfxGraphCompiler;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.FrameBuilder;
@@ -39,18 +42,23 @@ import fr.epistudio.epysia.render.backend.VertexAttribute;
 import fr.epistudio.epysia.render.backend.VertexFormat;
 import fr.epistudio.epysia.render.backend.VertexLayout;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
+import fr.epistudio.epysia.render.mesh.MeshShaderBindings;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class VfxRenderSystem implements RenderSystem {
 
@@ -64,6 +72,7 @@ public final class VfxRenderSystem implements RenderSystem {
     private final MeshRenderSystem meshRenderSystem;
     private final Logger logger;
     private final Map<ParticleEffect, EffectResources> effectResources = new IdentityHashMap<>();
+    private final Map<ParticleEffect, CompiledGraphPipelines> compiledGraphs = new IdentityHashMap<>();
     private final ByteBuffer effectUboScratch = BufferUtils.createByteBuffer(EFFECT_UBO_BYTES);
     private final Vector3f emitterPosition = new Vector3f();
 
@@ -171,22 +180,110 @@ public final class VfxRenderSystem implements RenderSystem {
 
     private void simulateAndSubmit(ParticleEffect effect, Transform3D transform, float delta, FrameBuilder frame) {
         EffectResources resources = effectResources.computeIfAbsent(effect, this::createResources);
+        Optional<CompiledGraphPipelines> compiled = resolveGraphPipelines(effect);
+        if (!effect.graphPath().isEmpty() && compiled.isEmpty()) {
+            return;
+        }
+        compiled.ifPresent(pipelines -> effect.setEmissionRate(pipelines.spawnRatePerSecond()));
         int spawnCount = effect.consumeSpawnCount(delta);
         writeEffectUbo(resources, transform, delta, spawnCount, effect);
         effect.recordSpawned(spawnCount);
+        PipelineHandle activeSpawn = compiled.map(CompiledGraphPipelines::spawn).orElse(spawnPipeline);
+        PipelineHandle activeUpdate = compiled.map(CompiledGraphPipelines::update).orElse(updatePipeline);
+        PipelineHandle activeDraw = compiled.map(CompiledGraphPipelines::draw).orElse(billboardPipeline);
         backend.dispatchCompute(ComputeDispatch.of(resetPipeline, resources.computeBindings(), 1));
         backend.computeBarrier(ComputeBarrier.STORAGE_BUFFER);
         if (spawnCount > 0) {
-            backend.dispatchCompute(ComputeDispatch.of(spawnPipeline, resources.computeBindings(),
+            backend.dispatchCompute(ComputeDispatch.of(activeSpawn, resources.computeBindings(),
                     groupsFor(spawnCount)));
             backend.computeBarrier(ComputeBarrier.STORAGE_BUFFER);
         }
-        backend.dispatchCompute(ComputeDispatch.of(updatePipeline, resources.computeBindings(),
+        backend.dispatchCompute(ComputeDispatch.of(activeUpdate, resources.computeBindings(),
                 groupsFor(effect.poolSize())));
         backend.computeBarrier(ComputeBarrier.ALL);
         frame.submit(RenderPasses.TRANSPARENT_3D,
-                DrawCommand.indirect(billboardPipeline, quadMesh, resources.drawBindings(),
+                DrawCommand.indirect(activeDraw, quadMesh, resources.drawBindings(),
                         Long.MAX_VALUE, resources.indirectBuffer()));
+    }
+
+    private Optional<CompiledGraphPipelines> resolveGraphPipelines(ParticleEffect effect) {
+        if (effect.graphPath().isEmpty()) {
+            return Optional.empty();
+        }
+        Path graphFile = Path.of(effect.graphPath());
+        long modifiedMillis = modifiedMillisOf(graphFile);
+        CompiledGraphPipelines existing = compiledGraphs.get(effect);
+        if (existing != null && existing.modifiedMillis() == modifiedMillis) {
+            return existing.failed() ? Optional.empty() : Optional.of(existing);
+        }
+        if (existing != null) {
+            destroyCompiled(existing);
+        }
+        CompiledGraphPipelines rebuilt = compileGraph(graphFile, modifiedMillis);
+        compiledGraphs.put(effect, rebuilt);
+        return rebuilt.failed() ? Optional.empty() : Optional.of(rebuilt);
+    }
+
+    private CompiledGraphPipelines compileGraph(Path graphFile, long modifiedMillis) {
+        try {
+            GraphAsset asset = new GraphJsonCodec().readFromFile(graphFile);
+            VfxGraphCompiler.VfxCompiledSources sources = new VfxGraphCompiler(
+                    shaderLoader.load("vfx/particle_common.glsl").source())
+                    .compile(asset, graphFile.toString());
+            PipelineHandle spawn = backend.createComputePipeline(
+                    new ComputePipelineDescriptor(sources.spawnCompute(), computeLayout));
+            PipelineHandle update = backend.createComputePipeline(
+                    new ComputePipelineDescriptor(sources.updateCompute(), computeLayout));
+            PipelineHandle draw = createGraphBillboardPipeline(sources.fragmentBody());
+            return new CompiledGraphPipelines(modifiedMillis, false,
+                    sources.spawnRatePerSecond(), spawn, update, draw);
+        } catch (RuntimeException | IOException error) {
+            logger.error("[VfxRenderSystem] VFX graph failed to compile: " + graphFile, error);
+            return new CompiledGraphPipelines(modifiedMillis, true, 0.0f, null, null, null);
+        }
+    }
+
+    private PipelineHandle createGraphBillboardPipeline(String fragmentBody) {
+        String fragment = """
+                #version 430 core
+
+                in vec2 particleCorner;
+                in vec4 particleColor;
+
+                out vec4 fragmentColor;
+
+                void main() {
+                %s
+                }
+                """.formatted(fragmentBody);
+        ShaderSource source = new ShaderSource(
+                shaderLoader.load("vfx/particle_billboard.vert.glsl").source(), fragment);
+        VertexLayout vertexLayout = new VertexLayout(
+                List.of(new VertexAttribute(0, VertexFormat.FLOAT3, 0)), 12);
+        RenderState state = new RenderState(Topology.TRIANGLES, DepthTest.LESS_EQUAL,
+                BlendMode.ADDITIVE, CullMode.NONE, false);
+        return backend.createPipeline(new PipelineDescriptor(source, vertexLayout, state, drawLayout));
+    }
+
+    private void destroyCompiled(CompiledGraphPipelines compiled) {
+        if (compiled.failed()) {
+            return;
+        }
+        backend.destroy(compiled.spawn());
+        backend.destroy(compiled.update());
+        backend.destroy(compiled.draw());
+    }
+
+    private static long modifiedMillisOf(Path file) {
+        try {
+            return Files.getLastModifiedTime(file).toMillis();
+        } catch (IOException unreadable) {
+            return 0L;
+        }
+    }
+
+    private record CompiledGraphPipelines(long modifiedMillis, boolean failed, float spawnRatePerSecond,
+                                          PipelineHandle spawn, PipelineHandle update, PipelineHandle draw) {
     }
 
     private static int groupsFor(int threads) {
@@ -248,7 +345,7 @@ public final class VfxRenderSystem implements RenderSystem {
             BufferHandle freeList, BufferHandle indirect, BufferHandle effectUbo) {
         return backend.createBindingSet(new BindingSetDescriptor(drawLayout, List.of(
                 new Binding(0, UniformBufferBinding.whole(meshRenderSystem.frameUniformBuffer(),
-                        fr.epistudio.epysia.render.mesh.MeshShaderBindings.FRAME_UBO_SIZE)),
+                        MeshShaderBindings.FRAME_UBO_SIZE)),
                 new Binding(1, UniformBufferBinding.whole(effectUbo, EFFECT_UBO_BYTES)),
                 new Binding(0, StorageBufferBinding.whole(pool, 0L)),
                 new Binding(1, StorageBufferBinding.whole(aliveList, 0L)),
@@ -263,6 +360,10 @@ public final class VfxRenderSystem implements RenderSystem {
             if (!seen.contains(entry.getKey())) {
                 destroyResources(entry.getValue());
                 iterator.remove();
+                CompiledGraphPipelines compiled = compiledGraphs.remove(entry.getKey());
+                if (compiled != null) {
+                    destroyCompiled(compiled);
+                }
             }
         }
     }
@@ -283,6 +384,10 @@ public final class VfxRenderSystem implements RenderSystem {
             destroyResources(resources);
         }
         effectResources.clear();
+        for (CompiledGraphPipelines compiled : compiledGraphs.values()) {
+            destroyCompiled(compiled);
+        }
+        compiledGraphs.clear();
         renderBackend.destroy(quadMesh);
         renderBackend.destroy(quadVertexBuffer);
         renderBackend.destroy(quadIndexBuffer);

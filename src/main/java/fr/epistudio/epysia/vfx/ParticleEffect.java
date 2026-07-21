@@ -10,6 +10,8 @@ public final class ParticleEffect extends Component {
     public static final int MINIMUM_POOL_SIZE = 64;
     public static final int MAXIMUM_POOL_SIZE = 65536;
 
+    @Export(label = "Graph")
+    private String graphPath = "";
     @Export(label = "Pool Size", min = MINIMUM_POOL_SIZE, max = MAXIMUM_POOL_SIZE, step = 64.0f)
     private int poolSize = 1024;
     @Export(label = "Emission Rate", min = 0.0f, max = 10000.0f, step = 10.0f)
@@ -21,6 +23,15 @@ public final class ParticleEffect extends Component {
 
     private float spawnAccumulator;
     private long totalSpawned;
+
+    public String graphPath() {
+        return graphPath;
+    }
+
+    public ParticleEffect setGraphPath(String value) {
+        graphPath = value;
+        return this;
+    }
 
     public int poolSize() {
         return Math.clamp(poolSize, MINIMUM_POOL_SIZE, MAXIMUM_POOL_SIZE);
