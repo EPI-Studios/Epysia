@@ -67,6 +67,7 @@ public final class EditorMain {
             currentView.render(delta);
             toasts.render();
             long viewEnd = System.nanoTime();
+            shell.recordUiBuildNanos(viewEnd - pollEnd);
             shell.endFrame();
             frameProfiler.record(frameStart, pollEnd, viewEnd, shell);
         }
