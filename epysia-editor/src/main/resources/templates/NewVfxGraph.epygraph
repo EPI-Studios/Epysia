@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "kind": "VFX",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "vfx.output.spawnRate",
+      "x": 420.0,
+      "y": 60.0,
+      "values": {}
+    },
+    {
+      "id": 2,
+      "type": "vfx.output.particle",
+      "x": 420.0,
+      "y": 180.0,
+      "values": {}
+    },
+    {
+      "id": 3,
+      "type": "vfx.output.update",
+      "x": 420.0,
+      "y": 380.0,
+      "values": {}
+    },
+    {
+      "id": 4,
+      "type": "vfx.output.render",
+      "x": 420.0,
+      "y": 560.0,
+      "values": {}
+    }
+  ],
+  "edges": [],
+  "variables": []
+}
