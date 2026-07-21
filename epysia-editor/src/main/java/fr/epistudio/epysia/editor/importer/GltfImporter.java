@@ -275,7 +275,15 @@ public final class GltfImporter {
             return new float[0];
         }
         float[] uvs = readFloats(accessor.get(), 2);
-        return hints.baseColorTransform().map(transform -> transform.apply(uvs)).orElse(uvs);
+        float[] transformed = hints.baseColorTransform().map(transform -> transform.apply(uvs)).orElse(uvs);
+        return flipVerticalAxis(transformed);
+    }
+
+    private static float[] flipVerticalAxis(float[] uvs) {
+        for (int index = 1; index < uvs.length; index += 2) {
+            uvs[index] = 1.0f - uvs[index];
+        }
+        return uvs;
     }
 
     private static Optional<AccessorModel> selectUvAccessor(Map<String, AccessorModel> attributes, int texCoordSet,
