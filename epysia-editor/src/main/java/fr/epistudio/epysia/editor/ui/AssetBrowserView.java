@@ -28,10 +28,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -141,6 +144,44 @@ public final class AssetBrowserView {
 
     public void refreshAssets() {
         refresh();
+    }
+
+    public void sweepProjectForImports() {
+        int queuedBeforeSweep = importQueue.size();
+        try {
+            Files.walkFileTree(project.rootDirectory(), new ImportSweepVisitor());
+        } catch (IOException error) {
+            notifier.show("Import sweep failed: " + error.getMessage());
+            return;
+        }
+        int enqueuedCount = importQueue.size() - queuedBeforeSweep;
+        if (enqueuedCount > 0) {
+            notifier.show(enqueuedCount + " assets need reimport, importing in background");
+        }
+    }
+
+    private final class ImportSweepVisitor extends SimpleFileVisitor<Path> {
+
+        @Override
+        public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) {
+            return isDirectoryExcludedFromSweep(directory) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+            if (importPipeline.importerFor(file).isPresent()) {
+                enqueueIfStale(file);
+            }
+            return FileVisitResult.CONTINUE;
+        }
+    }
+
+    private boolean isDirectoryExcludedFromSweep(Path directory) {
+        if (directory.equals(project.rootDirectory())) {
+            return false;
+        }
+        String name = directory.getFileName().toString();
+        return name.startsWith(".") || EXCLUDED_DIRECTORIES.contains(name.toLowerCase(Locale.ROOT));
     }
 
     public void render() {
