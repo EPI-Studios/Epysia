@@ -81,6 +81,76 @@ class GltfImporterTest {
         assertTrue(result.warnings().stream().anyMatch(warning -> warning.contains("mixed")));
     }
 
+    @Test
+    void duplicateMaterialNamesGetDistinctFiles(@TempDir Path directory) throws Exception {
+        Path source = writeDuplicateMaterialNamesFixture(directory);
+        GltfImportResult result = GltfImporter.importFile(source, directory);
+        assertEquals(2, result.materialFiles().size());
+        Path first = result.materialFiles().get(0);
+        Path second = result.materialFiles().get(1);
+        assertTrue(Files.exists(first));
+        assertTrue(Files.exists(second));
+        assertFalse(first.equals(second));
+        assertTrue(result.warnings().stream().anyMatch(warning -> warning.contains("Shared")));
+    }
+
+    private static Path writeDuplicateMaterialNamesFixture(Path directory) throws Exception {
+        Files.write(directory.resolve("mixed.bin"), fixtureBuffer());
+        Path gltf = directory.resolve("duplicate.gltf");
+        Files.writeString(gltf, duplicateMaterialNamesFixtureJson());
+        return gltf;
+    }
+
+    private static String duplicateMaterialNamesFixtureJson() {
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0,
+                  "scenes": [{"nodes": [0, 1]}],
+                  "nodes": [
+                    {"name": "root", "children": [2]},
+                    {"name": "model", "mesh": 0, "skin": 0},
+                    {"name": "tip", "translation": [0, 1, 0]}
+                  ],
+                  "skins": [{"joints": [0, 2], "inverseBindMatrices": 5}],
+                  "meshes": [{"primitives": [
+                    {"attributes": {"POSITION": 0, "NORMAL": 1, "JOINTS_0": 2, "WEIGHTS_0": 3}, "indices": 4}
+                  ]}],
+                  "materials": [
+                    {"name": "Shared", "pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0]}},
+                    {"name": "Shared", "pbrMetallicRoughness": {"baseColorFactor": [0.5, 0.5, 0.5, 1.0]}, "alphaMode": "BLEND"}
+                  ],
+                  "accessors": [
+                    {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                     "min": [0, 0, 0], "max": [1, 1, 0]},
+                    {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                    {"bufferView": 2, "componentType": 5123, "count": 3, "type": "VEC4"},
+                    {"bufferView": 3, "componentType": 5126, "count": 3, "type": "VEC4"},
+                    {"bufferView": 4, "componentType": 5123, "count": 3, "type": "SCALAR"},
+                    {"bufferView": 5, "componentType": 5126, "count": 2, "type": "MAT4"}
+                  ],
+                  "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 72, "byteLength": 24},
+                    {"buffer": 0, "byteOffset": 96, "byteLength": 48},
+                    {"buffer": 0, "byteOffset": 144, "byteLength": 6},
+                    {"buffer": 0, "byteOffset": 152, "byteLength": 128}
+                  ],
+                  "buffers": [{"uri": "mixed.bin", "byteLength": 280}]
+                }
+                """;
+    }
+
+    @Test
+    void blendAlphaModeMarksMaterialTransparent(@TempDir Path directory) throws Exception {
+        Path source = writeDuplicateMaterialNamesFixture(directory);
+        GltfImportResult result = GltfImporter.importFile(source, directory);
+        String document = Files.readString(result.materialFiles().get(1));
+        Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
+        assertTrue(((LitMaterial) material).transparent());
+    }
+
     private static Path writeMixedFixture(Path directory) throws Exception {
         Files.write(directory.resolve("mixed.bin"), fixtureBuffer());
         Path gltf = directory.resolve("mixed.gltf");
