@@ -4,5 +4,6 @@ public enum BufferUsage {
     VERTEX,
     INDEX,
     UNIFORM,
-    STORAGE
+    STORAGE,
+    INDIRECT
 }

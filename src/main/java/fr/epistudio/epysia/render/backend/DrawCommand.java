@@ -7,17 +7,27 @@ public record DrawCommand(
         long sortKey,
         int instanceCount,
         int indexCountOverride,
-        BufferHandle instanceBuffer
+        BufferHandle instanceBuffer,
+        BufferHandle indirectBuffer
 ) {
 
     public static final int USE_MESH_INDEX_COUNT = -1;
 
+    public DrawCommand(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey, int instanceCount, int indexCountOverride, BufferHandle instanceBuffer) {
+        this(pipeline, mesh, bindings, sortKey, instanceCount, indexCountOverride, instanceBuffer, null);
+    }
+
     public DrawCommand(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey, int instanceCount, int indexCountOverride) {
-        this(pipeline, mesh, bindings, sortKey, instanceCount, indexCountOverride, null);
+        this(pipeline, mesh, bindings, sortKey, instanceCount, indexCountOverride, null, null);
     }
 
     public DrawCommand(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey, int instanceCount) {
-        this(pipeline, mesh, bindings, sortKey, instanceCount, USE_MESH_INDEX_COUNT, null);
+        this(pipeline, mesh, bindings, sortKey, instanceCount, USE_MESH_INDEX_COUNT, null, null);
+    }
+
+    public static DrawCommand indirect(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings,
+                                       long sortKey, BufferHandle indirectBuffer) {
+        return new DrawCommand(pipeline, mesh, bindings, sortKey, 1, USE_MESH_INDEX_COUNT, null, indirectBuffer);
     }
 
     public static DrawCommand of(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey) {
