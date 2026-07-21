@@ -62,6 +62,9 @@ public final class AssetBrowserView {
     private static final String SURFACE_SHADER_GRAPH_TEMPLATE_RESOURCE = "/templates/NewSurfaceShaderGraph.epygraph";
     private static final String POST_SHADER_GRAPH_TEMPLATE_RESOURCE = "/templates/NewPostShaderGraph.epygraph";
 
+    private static final String MATERIAL_TEMPLATE_RESOURCE = "/templates/NewMaterial.epymaterial";
+    private static final String MATERIAL_EXTENSION = ".epymaterial";
+    private static final String MATERIALS_CATEGORY = "Materials";
     private static final String SHADERS_CATEGORY = "Shaders";
     private static final String POST_CATEGORY = "Post Processing";
     private static final String SCRIPTING_CATEGORY = "Scripting";
@@ -359,6 +362,8 @@ public final class AssetBrowserView {
 
     private List<NewAssetDialog.AssetKind> assetKinds() {
         return List.of(
+                kind("Material", MATERIALS_CATEGORY, "shareable material, assign to mesh slots",
+                        EditorIcon.MESH, "MyMaterial", this::createMaterial),
                 kind("Surface Shader", SHADERS_CATEGORY, "GLSL injected into the lit pipeline",
                         EditorIcon.MESH, "MySurfaceShader", this::createSurfaceShader),
                 kind("Shader Graph", SHADERS_CATEGORY, "nodes, compiles to a surface shader",
@@ -425,6 +430,31 @@ public final class AssetBrowserView {
 
     private void createStateMachine(String requestedName) {
         createGraphFromTemplate(requestedName, STATE_MACHINE_TEMPLATE_RESOURCE);
+    }
+
+    private void createMaterial(String requestedName) {
+        String name = requestedName.replace("\0", "").strip();
+        if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
+            notifier.show("Invalid material name: " + requestedName);
+            return;
+        }
+        try {
+            writeMaterialTemplate(name);
+            refresh();
+        } catch (IOException | InvalidPathException error) {
+            notifier.show("Material creation failed: " + error.getMessage());
+        }
+    }
+
+    private void writeMaterialTemplate(String name) throws IOException {
+        Path directory = targetDirectory();
+        Files.createDirectories(directory);
+        Path materialFile = directory.resolve(name + MATERIAL_EXTENSION);
+        if (Files.exists(materialFile)) {
+            throw new IOException("Material already exists: " + name);
+        }
+        Files.writeString(materialFile, loadTemplate(MATERIAL_TEMPLATE_RESOURCE));
+        notifier.show("Material created: " + name);
     }
 
     private void createGraphFromTemplate(String requestedName, String templateResource) {
@@ -830,6 +860,7 @@ public final class AssetBrowserView {
             case SHADER -> AssetMimeTypes.SHADER;
             case PREFAB -> AssetMimeTypes.PREFAB;
             case GRAPH -> AssetMimeTypes.GRAPH;
+            case MATERIAL -> AssetMimeTypes.MATERIAL;
             case SCENE, SCRIPT, OTHER -> AssetMimeTypes.NONE;
         };
     }
@@ -840,6 +871,7 @@ public final class AssetBrowserView {
             case SCRIPT, SHADER -> EditorIcon.SCRIPT;
             case PREFAB -> EditorIcon.NODE_3D;
             case GRAPH -> EditorIcon.GRID;
+            case MATERIAL -> EditorIcon.MESH;
             case SCENE -> EditorIcon.LOAD;
             case AUDIO -> EditorIcon.ANIMATION_PLAYER;
             case TEXTURE, OTHER -> EditorIcon.FILE;

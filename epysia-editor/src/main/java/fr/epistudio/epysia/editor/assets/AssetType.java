@@ -10,6 +10,7 @@ public enum AssetType {
     PREFAB("Prefabs"),
     SCENE("Scenes"),
     GRAPH("Graphs"),
+    MATERIAL("Materials"),
     OTHER("Other");
 
     private final String pluralLabel;
