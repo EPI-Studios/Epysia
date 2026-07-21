@@ -224,7 +224,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
             return Optional.empty();
         }
         if (pickingPass == null) {
-            pickingPass = new PickingPass(ShaderLoader.autoDetect());
+            pickingPass = new PickingPass(ShaderLoader.autoDetect(), logger);
         }
         if (activeScene == null) {
             return Optional.empty();

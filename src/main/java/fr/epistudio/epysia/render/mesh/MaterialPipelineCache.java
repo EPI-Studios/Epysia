@@ -92,12 +92,20 @@ final class MaterialPipelineCache {
     }
 
     MaterialClassResources classResourcesFor(Material material) {
+        return classResourcesFor(material, false);
+    }
+
+    MaterialClassResources classResourcesFor(Material material, boolean skinned) {
+        if (skinned) {
+            return classCache.computeIfAbsent(pipelineKey(material, true),
+                    ignored -> buildOrFallback(material, true));
+        }
         ResolvedClass resolved = resolvedClasses.get(material);
         if (resolved != null && resolved.matches(material)) {
             return resolved.resources();
         }
-        MaterialClassResources built = classCache.computeIfAbsent(pipelineKey(material),
-                ignored -> buildOrFallback(material));
+        MaterialClassResources built = classCache.computeIfAbsent(pipelineKey(material, false),
+                ignored -> buildOrFallback(material, false));
         resolvedClasses.put(material, new ResolvedClass(material.vertexShaderPath(),
                 material.fragmentShaderPath(), surfaceShaderPathOf(material),
                 material.transparent(), material.doubleSided(), built));
@@ -108,9 +116,9 @@ final class MaterialPipelineCache {
         return classResourcesFor(material).surfaceUniforms();
     }
 
-    private MaterialClassResources buildOrFallback(Material material) {
+    private MaterialClassResources buildOrFallback(Material material, boolean skinned) {
         try {
-            return buildClassResources(material);
+            return buildClassResources(material, skinned);
         } catch (EpysiaException failure) {
             String surfacePath = surfaceShaderPathOf(material);
             if (surfacePath.isEmpty()) {
@@ -118,27 +126,28 @@ final class MaterialPipelineCache {
             }
             logger.error("Surface shader '" + surfacePath
                     + "' failed to compile, falling back to the base material shaders", failure);
-            return buildFallbackClassResources(material, surfacePath);
+            return buildFallbackClassResources(material, surfacePath, skinned);
         }
     }
 
-    private MaterialClassResources buildFallbackClassResources(Material material, String surfacePath) {
-        LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(), "");
+    private MaterialClassResources buildFallbackClassResources(Material material, String surfacePath, boolean skinned) {
+        LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(), "", skinned);
         MaterialClassMetadata metadata =
                 MaterialClassMetadata.reflect(material.getClass(), programs.fragment().source());
-        BindingSetLayout litLayout = buildLitBindingLayout(metadata, ParsedSource.empty());
-        PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout));
-        registerHotReload(pipelineKey(material), pipeline, material.vertexShaderPath(),
-                material.fragmentShaderPath(), surfacePath, programs);
+        BindingSetLayout litLayout = buildLitBindingLayout(metadata, ParsedSource.empty(), skinned);
+        PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout, skinned));
+        registerHotReload(pipelineKey(material, skinned), pipeline, material.vertexShaderPath(),
+                material.fragmentShaderPath(), surfacePath, skinned, programs);
         return new MaterialClassResources(metadata, pipeline, litLayout, ParsedSource.empty(),
                 supportsInstancing(material, ""));
     }
 
-    private static String pipelineKey(Material material) {
+    private static String pipelineKey(Material material, boolean skinned) {
         return material.getClass().getName() + "|" + material.vertexShaderPath() + "|" + material.fragmentShaderPath()
                 + "|" + surfaceShaderPathOf(material)
                 + "|" + (material.transparent() ? "transparent" : "opaque")
-                + "|" + (material.doubleSided() ? "doubleSided" : "culled");
+                + "|" + (material.doubleSided() ? "doubleSided" : "culled")
+                + "|" + (skinned ? "skinned" : "static");
     }
 
     static String surfaceShaderPathOf(Material material) {
@@ -230,14 +239,14 @@ final class MaterialPipelineCache {
         writtenThisFrame.clear();
     }
 
-    private MaterialClassResources buildClassResources(Material material) {
-        LoadedPrograms programs = loadPrograms(material);
+    private MaterialClassResources buildClassResources(Material material, boolean skinned) {
+        LoadedPrograms programs = loadPrograms(material, skinned);
         MaterialClassMetadata metadata = MaterialClassMetadata.reflect(material.getClass(), programs.fragment().source());
         ParsedSource surfaceUniforms = parseSurfaceUniforms(surfaceShaderPathOf(material));
-        BindingSetLayout litLayout = buildLitBindingLayout(metadata, surfaceUniforms);
-        PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout));
-        registerHotReload(pipelineKey(material), pipeline, material.vertexShaderPath(),
-                material.fragmentShaderPath(), surfaceShaderPathOf(material), programs);
+        BindingSetLayout litLayout = buildLitBindingLayout(metadata, surfaceUniforms, skinned);
+        PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout, skinned));
+        registerHotReload(pipelineKey(material, skinned), pipeline, material.vertexShaderPath(),
+                material.fragmentShaderPath(), surfaceShaderPathOf(material), skinned, programs);
         return new MaterialClassResources(metadata, pipeline, litLayout, surfaceUniforms,
                 supportsInstancing(material, surfaceShaderPathOf(material)));
     }
@@ -255,23 +264,27 @@ final class MaterialPipelineCache {
                 : SurfaceShaderComposer.parseUniforms(shaderLoader.load(surfacePath));
     }
 
-    private LoadedPrograms loadPrograms(Material material) {
-        return loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(), surfaceShaderPathOf(material));
+    private LoadedPrograms loadPrograms(Material material, boolean skinned) {
+        return loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(),
+                surfaceShaderPathOf(material), skinned);
     }
 
-    private LoadedPrograms loadPrograms(String vertexPath, String fragmentPath, String surfacePath) {
+    private LoadedPrograms loadPrograms(String vertexPath, String fragmentPath, String surfacePath, boolean skinned) {
         LoadedShader vertex = shaderLoader.load(vertexPath);
         LoadedShader fragment = shaderLoader.load(fragmentPath);
-        if (surfacePath.isEmpty()) {
-            return new LoadedPrograms(vertex, fragment);
+        if (!surfacePath.isEmpty()) {
+            LoadedShader surface = shaderLoader.load(surfacePath);
+            vertex = SurfaceShaderComposer.composeVertex(vertex, surface);
+            fragment = SurfaceShaderComposer.composeFragment(fragment, surface);
         }
-        LoadedShader surface = shaderLoader.load(surfacePath);
-        return new LoadedPrograms(
-                SurfaceShaderComposer.composeVertex(vertex, surface),
-                SurfaceShaderComposer.composeFragment(fragment, surface));
+        if (skinned) {
+            vertex = SurfaceShaderComposer.injectSkinningDefine(vertex);
+        }
+        return new LoadedPrograms(vertex, fragment);
     }
 
-    private BindingSetLayout buildLitBindingLayout(MaterialClassMetadata metadata, ParsedSource surfaceUniforms) {
+    private BindingSetLayout buildLitBindingLayout(MaterialClassMetadata metadata, ParsedSource surfaceUniforms,
+                                                   boolean skinned) {
         List<BindingSlot> slots = new ArrayList<>();
         slots.add(new BindingSlot(MeshShaderBindings.FRAME_UBO_BINDING, BindingType.UNIFORM_BUFFER));
         slots.add(new BindingSlot(MeshShaderBindings.LIGHT_SSBO_BINDING, BindingType.STORAGE_BUFFER));
@@ -279,6 +292,9 @@ final class MaterialPipelineCache {
         slots.add(new BindingSlot(MeshShaderBindings.CLUSTER_INDEX_SSBO_BINDING, BindingType.STORAGE_BUFFER));
         slots.add(new BindingSlot(MeshShaderBindings.OBJECT_UBO_BINDING, BindingType.UNIFORM_BUFFER));
         slots.add(new BindingSlot(MeshShaderBindings.INSTANCE_SSBO_BINDING, BindingType.STORAGE_BUFFER));
+        if (skinned) {
+            slots.add(new BindingSlot(MeshShaderBindings.JOINT_PALETTE_SSBO_BINDING, BindingType.STORAGE_BUFFER));
+        }
         if (metadata.hasUniformBuffer()) {
             slots.add(new BindingSlot(MeshShaderBindings.MATERIAL_UBO_BINDING, BindingType.UNIFORM_BUFFER));
         }
@@ -296,14 +312,19 @@ final class MaterialPipelineCache {
     }
 
     private PipelineDescriptor buildLitPipelineDescriptor(Material material, LoadedPrograms programs,
-                                                          BindingSetLayout bindingLayout) {
-        VertexAttribute position = new VertexAttribute(0, VertexFormat.FLOAT3, 0);
-        VertexAttribute normal = new VertexAttribute(1, VertexFormat.FLOAT3, 12);
-        VertexAttribute uv = new VertexAttribute(2, VertexFormat.FLOAT2, 24);
-        VertexAttribute tangent = new VertexAttribute(3, VertexFormat.FLOAT3, 32);
-        VertexLayout layout = new VertexLayout(List.of(position, normal, uv, tangent), MeshShaderBindings.VERTEX_STRIDE);
-        RenderState state = renderStateFor(material);
-        return new PipelineDescriptor(programs.shaderSource(), layout, state, bindingLayout);
+                                                          BindingSetLayout bindingLayout, boolean skinned) {
+        List<VertexAttribute> attributes = new ArrayList<>(List.of(
+                new VertexAttribute(0, VertexFormat.FLOAT3, 0),
+                new VertexAttribute(1, VertexFormat.FLOAT3, 12),
+                new VertexAttribute(2, VertexFormat.FLOAT2, 24),
+                new VertexAttribute(3, VertexFormat.FLOAT3, 32)));
+        if (skinned) {
+            attributes.add(new VertexAttribute(4, VertexFormat.UINT16X4, 44));
+            attributes.add(new VertexAttribute(5, VertexFormat.FLOAT4, 52));
+        }
+        int stride = skinned ? MeshShaderBindings.SKINNED_VERTEX_STRIDE : MeshShaderBindings.VERTEX_STRIDE;
+        VertexLayout layout = new VertexLayout(attributes, stride);
+        return new PipelineDescriptor(programs.shaderSource(), layout, renderStateFor(material), bindingLayout);
     }
 
     private static RenderState renderStateFor(Material material) {
@@ -315,7 +336,7 @@ final class MaterialPipelineCache {
     }
 
     private void registerHotReload(String cacheKey, PipelineHandle pipeline, String vertexPath, String fragmentPath,
-                                   String surfacePath, LoadedPrograms programs) {
+                                   String surfacePath, boolean skinned, LoadedPrograms programs) {
         if (!shaderWatcher.active()) {
             return;
         }
@@ -326,17 +347,18 @@ final class MaterialPipelineCache {
             dependencies.add(surfacePath);
         }
         shaderWatcher.watch(List.copyOf(dependencies),
-                () -> reloadPipeline(cacheKey, pipeline, vertexPath, fragmentPath, surfacePath));
+                () -> reloadPipeline(cacheKey, pipeline, vertexPath, fragmentPath, surfacePath, skinned));
     }
 
     private void reloadPipeline(String cacheKey, PipelineHandle pipeline,
-                                String vertexPath, String fragmentPath, String surfacePath) {
+                                String vertexPath, String fragmentPath, String surfacePath, boolean skinned) {
         try {
             if (surfaceDeclarationsChanged(cacheKey, surfacePath)) {
                 evictForRebuild(cacheKey, surfacePath);
                 return;
             }
-            backend.updatePipelineShaders(pipeline, loadPrograms(vertexPath, fragmentPath, surfacePath).shaderSource());
+            backend.updatePipelineShaders(pipeline,
+                    loadPrograms(vertexPath, fragmentPath, surfacePath, skinned).shaderSource());
             logger.info("Reloaded shader pipeline: " + vertexPath + " + " + fragmentPath
                     + (surfacePath.isEmpty() ? "" : " + " + surfacePath));
         } catch (EpysiaException exception) {

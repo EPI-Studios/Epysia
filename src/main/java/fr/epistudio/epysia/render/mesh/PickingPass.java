@@ -4,6 +4,7 @@ import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
 import fr.epistudio.epysia.render.backend.BindingSetHandle;
@@ -38,10 +39,12 @@ import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class PickingPass {
 
@@ -49,10 +52,13 @@ public final class PickingPass {
     private static final String FRAGMENT_PATH = "picking.frag.glsl";
 
     private final ShaderLoader shaderLoader;
+    private final Logger logger;
     private final ByteBuffer scratchFrameUbo = BufferUtils.createByteBuffer(MeshShaderBindings.FRAME_UBO_SIZE);
     private final ByteBuffer scratchObjectUbo = BufferUtils.createByteBuffer(MeshShaderBindings.OBJECT_UBO_SIZE);
     private final ByteBuffer scratchPickingUbo = BufferUtils.createByteBuffer(MeshShaderBindings.PICKING_UBO_SIZE);
     private final Map<MeshRenderer, PerRenderer> resourcesByRenderer = new IdentityHashMap<>();
+    private final Set<MeshRenderer> loggedSkinnedExclusions =
+            Collections.newSetFromMap(new IdentityHashMap<>());
 
     private RenderBackend backend;
     private BindingSetLayout bindingLayout;
@@ -66,8 +72,9 @@ public final class PickingPass {
     private int currentHeight;
     private boolean initialized;
 
-    public PickingPass(ShaderLoader shaderLoader) {
+    public PickingPass(ShaderLoader shaderLoader, Logger logger) {
         this.shaderLoader = shaderLoader;
+        this.logger = logger;
     }
 
     private void lazyInitialize(RenderBackend backend) {
@@ -111,10 +118,14 @@ public final class PickingPass {
             if (meshOpt.isEmpty()) {
                 continue;
             }
+            UploadedMesh mesh = meshOpt.get();
+            if (mesh.skinned()) {
+                logSkinnedExclusionOnce(gameObject, renderer);
+                continue;
+            }
             PerRenderer perRenderer = resourcesByRenderer.computeIfAbsent(renderer, this::createPerRenderer);
             writeObjectUbo(perRenderer.modelUbo(), transformOpt.get().worldMatrix());
             writePickingId(index + 1);
-            UploadedMesh mesh = meshOpt.get();
             for (UploadedSubmesh submesh : mesh.submeshes()) {
                 backend.execute(new DrawCommand(pipeline, submesh.handle(), perRenderer.bindings(), 0L, 1));
             }
@@ -138,6 +149,7 @@ public final class PickingPass {
             backend.destroy(perRenderer.modelUbo());
         }
         resourcesByRenderer.clear();
+        loggedSkinnedExclusions.clear();
         backend.destroy(pipeline);
         backend.destroy(frameUbo);
         backend.destroy(pickingUbo);
@@ -151,6 +163,13 @@ public final class PickingPass {
             backend.destroy(depthTexture);
         }
         initialized = false;
+    }
+
+    private void logSkinnedExclusionOnce(GameObject gameObject, MeshRenderer renderer) {
+        if (!loggedSkinnedExclusions.add(renderer)) {
+            return;
+        }
+        logger.info("Skinned mesh '" + gameObject.name() + "' excluded from picking this milestone.");
     }
 
     private PerRenderer createPerRenderer(MeshRenderer ignored) {
