@@ -83,6 +83,14 @@ tasks.register('runVfxFountainCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runVfxGraphCheck', JavaExec) {
+    group = 'verification'
+    description = 'Compiles a VFX graph to compute shaders and checks the effect renders.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.VfxGraphPixelCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
