@@ -55,7 +55,7 @@ public final class GltfImporter {
         Optional<SkinModel> skinModel = findSkinForMesh(model, meshModel);
         Optional<SkeletonBuild> skeletonBuild = skinModel.map(GltfImporter::buildSkeleton);
         List<PrimitiveVertexData> primitives = readPrimitives(meshModel, meshName, skeletonBuild, warnings);
-        MeshData meshData = mergePrimitives(primitives);
+        MeshData meshData = mergePrimitives(primitives, meshName, warnings);
         Optional<Skeleton> skeleton = meshData.hasSkin() ? skeletonBuild.map(SkeletonBuild::skeleton) : Optional.empty();
         Path outputPath = outputDirectory.resolve(meshName + ".epymesh");
         EpyMeshWriter.writeToFile(outputPath, meshData, Optional.empty(), skeleton);
@@ -343,12 +343,23 @@ public final class GltfImporter {
         return matrix;
     }
 
-    private static MeshData mergePrimitives(List<PrimitiveVertexData> primitives) {
+    private static MeshData mergePrimitives(List<PrimitiveVertexData> primitives, String meshName, List<String> warnings) {
         MergePlan plan = MergePlan.of(primitives);
+        warnIfMixedSkin(primitives, plan, meshName, warnings);
         MergeBuffers buffers = new MergeBuffers(plan);
         List<Submesh> submeshes = buffers.copyAll(primitives);
         return new MeshData(buffers.positions(), buffers.normals(), buffers.uvs(), new float[0],
                 buffers.jointIndices(), buffers.jointWeights(), buffers.indices(), submeshes);
+    }
+
+    private static void warnIfMixedSkin(List<PrimitiveVertexData> primitives, MergePlan plan, String meshName, List<String> warnings) {
+        if (plan.hasSkin()) {
+            return;
+        }
+        boolean anyPrimitiveSkinned = primitives.stream().anyMatch(primitive -> primitive.jointIndices().length > 0);
+        if (anyPrimitiveSkinned) {
+            warnings.add("Mesh " + meshName + " has mixed skinned and rigid primitives, imported as static");
+        }
     }
 
     @FunctionalInterface
@@ -377,12 +388,12 @@ public final class GltfImporter {
             int vertexTotal = 0;
             int indexTotal = 0;
             boolean hasUv = !primitives.isEmpty();
-            boolean hasSkin = false;
+            boolean hasSkin = !primitives.isEmpty();
             for (PrimitiveVertexData primitive : primitives) {
                 vertexTotal += primitive.vertexCount();
                 indexTotal += primitive.indices().length;
                 hasUv = hasUv && primitive.uvs().length > 0;
-                hasSkin = hasSkin || primitive.jointIndices().length > 0;
+                hasSkin = hasSkin && primitive.jointIndices().length > 0;
             }
             return new MergePlan(vertexTotal, indexTotal, hasUv, hasSkin);
         }
