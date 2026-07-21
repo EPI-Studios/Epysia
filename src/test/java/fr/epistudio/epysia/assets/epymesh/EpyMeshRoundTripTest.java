@@ -148,6 +148,18 @@ class EpyMeshRoundTripTest {
         assertTrue(decoded.skeleton().isEmpty());
     }
 
+    @Test
+    void rejectsJointIndexOutOfBounds() {
+        MeshData mesh = skinnedTriangleWithOutOfBoundsIndex();
+        Skeleton skeleton = new Skeleton(List.of(
+                new Joint("root", -1, identityMatrix(), identityMatrix()),
+                new Joint("tip", 0, identityMatrix(), identityMatrix())));
+
+        byte[] encoded = EpyMeshWriter.write(mesh, Optional.empty(), Optional.of(skeleton));
+
+        assertThrows(EpysiaException.class, () -> EpyMeshReader.read(encoded));
+    }
+
     private static MeshData staticTriangle() {
         float[] positions = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f};
         float[] normals = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
@@ -160,6 +172,14 @@ class EpyMeshRoundTripTest {
     private static MeshData skinnedTriangle() {
         MeshData base = staticTriangle();
         short[] jointIndices = {0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0};
+        float[] jointWeights = {1.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+        return new MeshData(base.positions(), base.normals(), base.uvs(), base.tangents(),
+                jointIndices, jointWeights, base.indices(), base.submeshes());
+    }
+
+    private static MeshData skinnedTriangleWithOutOfBoundsIndex() {
+        MeshData base = staticTriangle();
+        short[] jointIndices = {7, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0};
         float[] jointWeights = {1.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
         return new MeshData(base.positions(), base.normals(), base.uvs(), base.tangents(),
                 jointIndices, jointWeights, base.indices(), base.submeshes());
