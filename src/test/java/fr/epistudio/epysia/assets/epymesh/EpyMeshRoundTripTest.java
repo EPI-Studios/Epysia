@@ -67,6 +67,27 @@ class EpyMeshRoundTripTest {
     }
 
     @Test
+    void roundTripsMeshWithVertexColors() {
+        MeshData original = coloredMesh();
+
+        EpyMesh decoded = EpyMeshReader.read(EpyMeshWriter.write(original, Optional.empty()));
+
+        assertTrue(decoded.mesh().hasVertexColors());
+        assertArrayEquals(original.vertexColors(), decoded.mesh().vertexColors(), 0.0f);
+        assertMeshEquals(original, decoded.mesh());
+    }
+
+    private static MeshData coloredMesh() {
+        MeshData base = sampleMesh();
+        float[] vertexColors = {
+                1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+                0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f
+        };
+        return new MeshData(base.positions(), base.normals(), base.uvs(), base.tangents(), vertexColors,
+                new short[0], new float[0], base.indices(), base.submeshes());
+    }
+
+    @Test
     void rejectsWrongMagic() {
         byte[] corrupt = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
 

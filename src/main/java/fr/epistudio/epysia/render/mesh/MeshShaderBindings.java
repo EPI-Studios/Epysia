@@ -47,8 +47,23 @@ public final class MeshShaderBindings {
     public static final int CASCADE_UBO_SIZE = 16;
 
     public static final int VERTEX_STRIDE = MeshData.VERTEX_FLOAT_COUNT * Float.BYTES;
-    public static final int SKINNED_VERTEX_STRIDE = VERTEX_STRIDE + 24;
+    public static final int VERTEX_COLOR_BYTES = MeshData.COLOR_COMPONENTS * Float.BYTES;
+    public static final int SKIN_INFLUENCE_BYTES = 24;
+    public static final int SKINNED_VERTEX_STRIDE = VERTEX_STRIDE + SKIN_INFLUENCE_BYTES;
+    public static final int COLORED_VERTEX_STRIDE = VERTEX_STRIDE + VERTEX_COLOR_BYTES;
+    public static final int SKINNED_COLORED_VERTEX_STRIDE = VERTEX_STRIDE + VERTEX_COLOR_BYTES + SKIN_INFLUENCE_BYTES;
     public static final int JOINT_PALETTE_BYTES_PER_JOINT = 48;
+
+    public static int vertexStride(boolean skinned, boolean colored) {
+        int stride = VERTEX_STRIDE;
+        if (colored) {
+            stride += VERTEX_COLOR_BYTES;
+        }
+        if (skinned) {
+            stride += SKIN_INFLUENCE_BYTES;
+        }
+        return stride;
+    }
 
     private MeshShaderBindings() {
     }

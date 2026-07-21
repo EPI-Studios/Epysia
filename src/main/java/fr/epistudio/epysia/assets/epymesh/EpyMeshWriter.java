@@ -35,6 +35,9 @@ public final class EpyMeshWriter {
             if (mesh.hasSkin()) {
                 writeSkin(stream, mesh, skeleton.orElseThrow());
             }
+            if (mesh.hasVertexColors()) {
+                writeFloats(stream, mesh.vertexColors());
+            }
         } catch (IOException exception) {
             throw new EpysiaException("Failed to encode .epymesh: " + exception.getMessage(), exception);
         }
@@ -72,6 +75,9 @@ public final class EpyMeshWriter {
         }
         if (mesh.hasSkin()) {
             flags |= EpyMeshFormat.HAS_SKIN;
+        }
+        if (mesh.hasVertexColors()) {
+            flags |= EpyMeshFormat.HAS_VERTEX_COLORS;
         }
         return flags;
     }
