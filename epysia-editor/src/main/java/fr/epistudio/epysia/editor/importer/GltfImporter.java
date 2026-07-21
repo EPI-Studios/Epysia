@@ -1030,8 +1030,8 @@ public final class GltfImporter {
             for (int index = 0; index + 1 < uvs.length; index += 2) {
                 float u = uvs[index];
                 float v = uvs[index + 1];
-                result[index] = offsetX + scaleX * u * cos - scaleY * v * sin;
-                result[index + 1] = offsetY + scaleX * u * sin + scaleY * v * cos;
+                result[index] = offsetX + scaleX * u * cos + scaleY * v * sin;
+                result[index + 1] = offsetY - scaleX * u * sin + scaleY * v * cos;
             }
             return result;
         }

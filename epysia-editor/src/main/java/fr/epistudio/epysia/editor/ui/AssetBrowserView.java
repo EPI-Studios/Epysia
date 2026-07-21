@@ -32,10 +32,15 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -58,6 +63,7 @@ public final class AssetBrowserView {
     private static final String OBJ_EXTENSION = ".obj";
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
+    private static final long NEEDS_IMPORT_RECHECK_MILLIS = 2000L;
 
     
     private static final String GRAPH_EXTENSION = ".epygraph";
@@ -99,6 +105,9 @@ public final class AssetBrowserView {
     private final NewAssetDialog newAssetDialog;
     private final ConfirmDialog deleteConfirm = new ConfirmDialog("Delete this file?", "Delete");
     private final List<AssetEntry> entries = new ArrayList<>();
+    private final Deque<Path> importQueue = new ArrayDeque<>();
+    private final Set<Path> queuedSources = new HashSet<>();
+    private final Map<Path, Long> lastImportCheckAt = new HashMap<>();
     private final AssetQuery query = new AssetQuery();
     private boolean showingBuiltins;
     private final ImString searchInput = new ImString(SEARCH_CAPACITY);
@@ -136,6 +145,7 @@ public final class AssetBrowserView {
 
     public void render() {
         ensureInitialized();
+        processImportQueue();
         thumbnails.beginFrame();
         meshThumbnails.beginFrame();
         if (!ImGui.begin(WINDOW_TITLE)) {
@@ -892,12 +902,37 @@ public final class AssetBrowserView {
     }
 
     private void autoImportScanned(List<AssetEntry> scanned) {
-        for (AssetEntry entry : scanned) {
-            Path source = Path.of(entry.assetPath());
-            if (importPipeline.needsImport(source)) {
-                importAndReport(source);
-            }
+        if (query.isSearching()) {
+            return;
         }
+        for (AssetEntry entry : scanned) {
+            enqueueIfStale(Path.of(entry.assetPath()));
+        }
+    }
+
+    private void enqueueIfStale(Path source) {
+        if (queuedSources.contains(source) || wasRecentlyChecked(source)) {
+            return;
+        }
+        lastImportCheckAt.put(source, System.currentTimeMillis());
+        if (importPipeline.needsImport(source)) {
+            queuedSources.add(source);
+            importQueue.addLast(source);
+        }
+    }
+
+    private boolean wasRecentlyChecked(Path source) {
+        Long checkedAt = lastImportCheckAt.get(source);
+        return checkedAt != null && System.currentTimeMillis() - checkedAt < NEEDS_IMPORT_RECHECK_MILLIS;
+    }
+
+    private void processImportQueue() {
+        Path source = importQueue.pollFirst();
+        if (source == null) {
+            return;
+        }
+        queuedSources.remove(source);
+        importAndReport(source);
     }
 
     private List<AssetEntry> scanCurrentDirectory() {
