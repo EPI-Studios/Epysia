@@ -6,6 +6,7 @@ import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.render.material.Material;
+import fr.epistudio.epysia.render.material.MaterialFields;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
@@ -168,7 +169,9 @@ public final class GameObjectJsonCodec {
             return material;
         }
         try {
-            return services.assets().resolve(Material.class, material.assetPath()).orElse(material);
+            Material resolved = services.assets().resolve(Material.class, material.assetPath()).orElse(material);
+            MaterialFields.resolveTextures(resolved, services.assets());
+            return resolved;
         } catch (RuntimeException error) {
             services.logger().warn("[GameObjectJsonCodec] Material asset unavailable, keeping placeholder: "
                     + material.assetPath() + " (" + error.getMessage() + ")");
