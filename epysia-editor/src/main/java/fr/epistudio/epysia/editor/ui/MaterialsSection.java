@@ -8,7 +8,9 @@ import fr.epistudio.epysia.editor.command.builtin.SetMaterialPropertyCommand;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.command.builtin.SetMaterialsCommand;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
+import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialClassMetadata;
@@ -26,6 +28,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,6 +48,7 @@ public final class MaterialsSection {
     private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
     private static final Set<String> SHADER_EXTENSIONS = Set.of(".glsl", ".vert", ".frag");
     private static final Set<String> SURFACE_SHADER_EXTENSIONS = Set.of(".surf.glsl");
+    private static final Set<String> MATERIAL_EXTENSIONS = Set.of(".epymaterial");
     private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
     private static final String ANIMATED_SHADOW_TOOLTIP = """
             Only affects materials with a time animated surface shader.
@@ -62,6 +66,9 @@ public final class MaterialsSection {
     private final AssetFilePicker filePicker;
     private String samplerCachePath = "";
     private Map<String, Integer> samplerCache = Map.of();
+    private final MaterialJsonCodec materialCodec = new MaterialJsonCodec();
+    private final Map<String, Material> assetMaterials = new HashMap<>();
+    private final Map<String, String> savedDocuments = new HashMap<>();
 
     public MaterialsSection(Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails, Project project) {
         this.activeDocument = activeDocument;
@@ -116,11 +123,81 @@ public final class MaterialsSection {
             }
             return;
         }
+        renderAssetRow(renderer, slot, material.get());
         renderTypeCombo(renderer, slot, material.get());
         if (material.get() instanceof ShaderMaterial shaderMaterial) {
             renderShaderMaterialEditor(renderer, slot, shaderMaterial);
         } else {
             renderMaterialEditor(material.get());
+        }
+        saveAssetMaterialIfChanged(material.get());
+    }
+
+    private void renderAssetRow(MeshRenderer renderer, int slot, Material material) {
+        ImGui.pushID("material-asset");
+        String label = material.assetPath().isEmpty()
+                ? "inline" : Path.of(material.assetPath()).getFileName().toString();
+        if (ImGui.button(label, SHADER_PATH_BUTTON_WIDTH, 0.0f)) {
+            filePicker.open(MATERIAL_EXTENSIONS, false, path -> assignAssetMaterial(renderer, slot, path));
+        }
+        if (ImGui.isItemHovered() && !material.assetPath().isEmpty()) {
+            ImGui.setTooltip(material.assetPath());
+        }
+        ImGui.sameLine();
+        ImGui.textDisabled("Material Asset");
+        if (!material.assetPath().isEmpty()) {
+            ImGui.sameLine();
+            if (ImGui.smallButton("Detach")) {
+                detachAssetMaterial(renderer, slot, material);
+            }
+        }
+        ImGui.popID();
+    }
+
+    private void assignAssetMaterial(MeshRenderer renderer, int slot, String path) {
+        if (path.isEmpty()) {
+            return;
+        }
+        replaceSlot(renderer, slot, assetMaterials.computeIfAbsent(path, this::readAssetMaterial));
+    }
+
+    private Material readAssetMaterial(String path) {
+        try {
+            Material material = materialCodec.readSingle(Files.readString(Path.of(path)))
+                    .orElseThrow(() -> new EpysiaException("Not a material document: " + path));
+            material.setAssetPath(path);
+            savedDocuments.put(path, materialCodec.writeSingle(material));
+            return material;
+        } catch (IOException error) {
+            throw new EpysiaException("Failed to read material asset " + path + ": " + error.getMessage());
+        }
+    }
+
+    private void detachAssetMaterial(MeshRenderer renderer, int slot, Material material) {
+        Material copy = materialCodec.readSingle(materialCodec.writeSingle(material))
+                .orElseGet(LitMaterial::new);
+        copy.setAssetPath("");
+        replaceSlot(renderer, slot, copy);
+    }
+
+    private void saveAssetMaterialIfChanged(Material material) {
+        if (material.assetPath().isEmpty() || ImGui.isAnyItemActive()) {
+            return;
+        }
+        String document = materialCodec.writeSingle(material);
+        String known = savedDocuments.putIfAbsent(material.assetPath(), document);
+        if (known == null || known.equals(document)) {
+            return;
+        }
+        writeAssetDocument(material.assetPath(), document);
+    }
+
+    private void writeAssetDocument(String path, String document) {
+        savedDocuments.put(path, document);
+        try {
+            Files.writeString(Path.of(path), document);
+        } catch (IOException error) {
+            throw new EpysiaException("Failed to save material asset " + path + ": " + error.getMessage());
         }
     }
 
