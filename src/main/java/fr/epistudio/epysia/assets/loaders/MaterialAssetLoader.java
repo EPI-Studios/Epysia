@@ -54,8 +54,25 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
     }
 
     private Material decode(String json, String origin) {
-        return codec.readSingle(json).map(material -> material.setAssetPath(origin))
+        Material material = codec.readSingle(json)
                 .orElseThrow(() -> new EpysiaException("Not a material document: " + origin));
+        material.setAssetPath(origin);
+        rebaseRelativeTexturePaths(material, origin);
+        return material;
+    }
+
+    private static void rebaseRelativeTexturePaths(Material material, String origin) {
+        Path originPath = Path.of(origin);
+        if (!Files.isRegularFile(originPath)) {
+            return;
+        }
+        Path baseDirectory = originPath.toAbsolutePath().getParent();
+        for (Map.Entry<String, String> entry : Map.copyOf(material.texturePaths()).entrySet()) {
+            Path texturePath = Path.of(entry.getValue());
+            if (!texturePath.isAbsolute()) {
+                material.setTexturePath(entry.getKey(), baseDirectory.resolve(texturePath).normalize().toString());
+            }
+        }
     }
 
     private static String readFileText(Path file) {
