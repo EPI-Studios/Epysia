@@ -8,8 +8,12 @@ import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.Behaviour;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -36,12 +40,15 @@ public final class JavaSymbols {
 
     private static final List<Class<?>> CORE_CLASSES = List.of(
             Behaviour.class, EngineServices.class, GameObject.class, Transform3D.class,
-            Scene.class, InputState.class, KeyCode.class, Vector3f.class, Quaternionf.class,
+            Scene.class, InputState.class, KeyCode.class,
+            Vector2f.class, Vector3f.class, Vector4f.class,
+            Matrix3f.class, Matrix4f.class, Quaternionf.class,
             String.class, Math.class, Optional.class, List.class, Map.class);
 
     private final Map<String, List<CompletionSymbol>> instanceMembers = new HashMap<>();
     private final Map<String, List<CompletionSymbol>> staticMembers = new HashMap<>();
     private final List<CompletionSymbol> globalPool = new ArrayList<>();
+    private final Map<String, String> qualifiedBySimpleName = new TreeMap<>();
 
     public JavaSymbols(ComponentRegistry registry) {
         List<Class<?>> classes = new ArrayList<>(CORE_CLASSES);
@@ -55,8 +62,8 @@ public final class JavaSymbols {
             globalPool.add(new CompletionSymbol(keyword, keyword, CompletionKind.KEYWORD));
         }
         for (Class<?> type : classes) {
-            globalPool.add(new CompletionSymbol(
-                    type.getSimpleName(), type.getSimpleName(), CompletionKind.TYPE));
+            globalPool.add(new CompletionSymbol(type.getSimpleName(), type.getSimpleName(),
+                    CompletionKind.TYPE, Optional.of(type.getName())));
         }
         globalPool.addAll(instanceMembersOf(Behaviour.class.getSimpleName()));
     }
@@ -65,6 +72,7 @@ public final class JavaSymbols {
         String name = type.getSimpleName();
         instanceMembers.putIfAbsent(name, collectMembers(type, false));
         staticMembers.putIfAbsent(name, collectMembers(type, true));
+        qualifiedBySimpleName.putIfAbsent(name, type.getName());
     }
 
     private static List<CompletionSymbol> collectMembers(Class<?> type, boolean wantStatic) {
@@ -111,6 +119,10 @@ public final class JavaSymbols {
 
     public Set<String> typeNames() {
         return Set.copyOf(instanceMembers.keySet());
+    }
+
+    public List<String> qualifiedTypeNames() {
+        return List.copyOf(qualifiedBySimpleName.values());
     }
 
     public List<CompletionSymbol> globalPool() {

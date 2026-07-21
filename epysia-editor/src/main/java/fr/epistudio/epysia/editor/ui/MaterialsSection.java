@@ -6,37 +6,67 @@ import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.AddMaterialCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetMaterialPropertyCommand;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
+import fr.epistudio.epysia.editor.command.builtin.SetMaterialsCommand;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
+import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
+import fr.epistudio.epysia.render.material.MaterialClassMetadata;
 import fr.epistudio.epysia.render.material.MaterialFields;
+import fr.epistudio.epysia.render.material.ShaderMaterial;
 import fr.epistudio.epysia.render.mesh.UploadedMesh;
 import fr.epistudio.epysia.render.mesh.UploadedSubmesh;
 import imgui.ImGui;
+import imgui.flag.ImGuiHoveredFlags;
 import imgui.flag.ImGuiTreeNodeFlags;
 import org.joml.Vector3f;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public final class MaterialsSection {
 
     private static final float TEXTURE_WELL_SIZE = 32.0f;
     private static final float FLOAT_DRAG_STEP = 0.05f;
+    private static final float SHADER_PATH_BUTTON_WIDTH = 180.0f;
     private static final Set<String> UNIT_RANGE_FIELDS = Set.of("metallic", "roughness", "alphaCutoff");
+    private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
+    private static final Set<String> SHADER_EXTENSIONS = Set.of(".glsl", ".vert", ".frag");
+    private static final Set<String> SURFACE_SHADER_EXTENSIONS = Set.of(".surf.glsl");
+    private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
+    private static final String ANIMATED_SHADOW_TOOLTIP = """
+            Only affects materials with a time animated surface shader.
+            On: the shadow follows the animation, so it cannot be cached and is redrawn every frame.
+            Off: the shadow is frozen at time 0 while the lit mesh keeps animating, so it can be cached.""";
+    private static final String LIT_TYPE_LABEL = "Lit";
+    private static final String CUSTOM_TYPE_LABEL = "Custom Shader";
+    private static final String DEFAULT_CUSTOM_VERTEX = "custom_default.vert.glsl";
+    private static final String DEFAULT_CUSTOM_FRAGMENT = "custom_default.frag.glsl";
     private static final int SLOT_HEADER_FLAGS = ImGuiTreeNodeFlags.DefaultOpen
             | ImGuiTreeNodeFlags.SpanAvailWidth;
 
     private final Supplier<SceneDocument> activeDocument;
     private final ThumbnailCache thumbnails;
+    private final AssetFilePicker filePicker;
+    private String samplerCachePath = "";
+    private Map<String, Integer> samplerCache = Map.of();
 
-    public MaterialsSection(Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails) {
+    public MaterialsSection(Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails, Project project) {
         this.activeDocument = activeDocument;
         this.thumbnails = thumbnails;
+        this.filePicker = new AssetFilePicker(project, thumbnails);
     }
 
     private EditorHistory history() {
@@ -51,6 +81,7 @@ public final class MaterialsSection {
         for (int slot = 0; slot < slotCount; slot++) {
             renderSlot(renderer, slot);
         }
+        filePicker.render();
     }
 
     private static int slotCount(MeshRenderer renderer) {
@@ -85,10 +116,120 @@ public final class MaterialsSection {
             }
             return;
         }
-        renderMaterialEditor(material.get());
+        renderTypeCombo(renderer, slot, material.get());
+        if (material.get() instanceof ShaderMaterial shaderMaterial) {
+            renderShaderMaterialEditor(renderer, slot, shaderMaterial);
+        } else {
+            renderMaterialEditor(material.get());
+        }
+    }
+
+    private void renderTypeCombo(MeshRenderer renderer, int slot, Material material) {
+        boolean custom = material instanceof ShaderMaterial;
+        if (!ImGui.beginCombo("Type", custom ? CUSTOM_TYPE_LABEL : LIT_TYPE_LABEL)) {
+            return;
+        }
+        if (ImGui.selectable(LIT_TYPE_LABEL, !custom) && custom) {
+            replaceSlot(renderer, slot, new LitMaterial());
+        }
+        if (ImGui.selectable(CUSTOM_TYPE_LABEL, custom) && !custom) {
+            replaceSlot(renderer, slot, new ShaderMaterial(DEFAULT_CUSTOM_VERTEX, DEFAULT_CUSTOM_FRAGMENT));
+        }
+        ImGui.endCombo();
+    }
+
+    private void replaceSlot(MeshRenderer renderer, int slot, Material replacement) {
+        List<Material> materials = new ArrayList<>(renderer.materials());
+        while (materials.size() <= slot) {
+            materials.add(new LitMaterial());
+        }
+        materials.set(slot, replacement);
+        history().execute(new SetMaterialsCommand(renderer, materials));
+    }
+
+    private void renderShaderMaterialEditor(MeshRenderer renderer, int slot, ShaderMaterial material) {
+        renderShaderPathRow("Vertex Shader", material.vertexShaderPath(),
+                path -> replaceSlot(renderer, slot, copyWithPaths(material, path, material.fragmentShaderPath())));
+        renderShaderPathRow("Fragment Shader", material.fragmentShaderPath(),
+                path -> replaceSlot(renderer, slot, copyWithPaths(material, material.vertexShaderPath(), path)));
+        renderSamplerRows(material);
+        renderTransparentRow(material);
+        renderDoubleSidedRow(material);
+    }
+
+    private static ShaderMaterial copyWithPaths(ShaderMaterial source, String vertexPath, String fragmentPath) {
+        ShaderMaterial copy = new ShaderMaterial(vertexPath, fragmentPath);
+        copy.setTransparent(source.transparent());
+        copy.setDoubleSided(source.doubleSided());
+        for (Map.Entry<String, String> entry : source.texturePaths().entrySet()) {
+            copy.setTexturePath(entry.getKey(), entry.getValue());
+        }
+        return copy;
+    }
+
+    private void renderShaderPathRow(String label, String currentPath, Consumer<String> onPathChosen) {
+        ImGui.pushID(label);
+        if (ImGui.button(shaderPathButtonLabel(currentPath), SHADER_PATH_BUTTON_WIDTH, 0.0f)) {
+            filePicker.open(SHADER_EXTENSIONS, false, onPathChosen);
+        }
+        if (ImGui.isItemHovered() && !currentPath.isEmpty()) {
+            ImGui.setTooltip(currentPath);
+        }
+        acceptShaderDrop(currentPath, onPathChosen);
+        ImGui.sameLine();
+        ImGui.textUnformatted(label);
+        ImGui.popID();
+    }
+
+    private static String shaderPathButtonLabel(String currentPath) {
+        if (currentPath.isEmpty()) {
+            return "None";
+        }
+        return Path.of(currentPath).getFileName().toString();
+    }
+
+    private void acceptShaderDrop(String currentPath, Consumer<String> onPathChosen) {
+        if (!ImGui.beginDragDropTarget()) {
+            return;
+        }
+        String droppedPath = ImGui.acceptDragDropPayload(AssetMimeTypes.SHADER, String.class);
+        if (droppedPath != null && !droppedPath.equals(currentPath)) {
+            onPathChosen.accept(droppedPath);
+        }
+        ImGui.endDragDropTarget();
+    }
+
+    private void renderSamplerRows(ShaderMaterial material) {
+        for (Map.Entry<String, Integer> sampler : detectedSamplers(material).entrySet()) {
+            ImGui.textDisabled("Sampler '" + sampler.getKey() + "' (binding " + sampler.getValue()
+                    + ") is bound by the shader");
+        }
+    }
+
+    private Map<String, Integer> detectedSamplers(ShaderMaterial material) {
+        if (material.fragmentShaderPath().equals(samplerCachePath)) {
+            return samplerCache;
+        }
+        samplerCachePath = material.fragmentShaderPath();
+        samplerCache = parseSamplers(Path.of(material.fragmentShaderPath()));
+        return samplerCache;
+    }
+
+    private static Map<String, Integer> parseSamplers(Path fragmentPath) {
+        if (!fragmentPath.isAbsolute() || !Files.isRegularFile(fragmentPath)) {
+            return Map.of();
+        }
+        try {
+            return new TreeMap<>(MaterialClassMetadata.samplerBindings(Files.readString(fragmentPath)));
+        } catch (IOException error) {
+            return Map.of();
+        }
     }
 
     private void renderMaterialEditor(Material material) {
+        if (material instanceof LitMaterial lit) {
+            renderSurfaceShaderRow(lit);
+        }
         for (Field field : MaterialFields.uniformFields(material.getClass())) {
             renderUniformRow(material, field);
         }
@@ -97,6 +238,73 @@ public final class MaterialsSection {
         }
         renderTransparentRow(material);
         renderDoubleSidedRow(material);
+        if (material instanceof LitMaterial lit) {
+            renderAnimatedShadowRow(lit);
+        }
+    }
+
+    private void renderAnimatedShadowRow(LitMaterial material) {
+        boolean hasSurfaceShader = !material.surfaceShaderPath().isEmpty();
+        if (!hasSurfaceShader) {
+            ImGui.beginDisabled();
+        }
+        boolean current = material.animatedShadow();
+        if (ImGui.checkbox("Animate shadow", current)) {
+            history().execute(new SetMaterialPropertyCommand(material,
+                    SetMaterialPropertyCommand.Target.ANIMATED_SHADOW, "", current, !current));
+        }
+        if (!hasSurfaceShader) {
+            ImGui.endDisabled();
+        }
+        if (ImGui.isItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) {
+            ImGui.setTooltip(ANIMATED_SHADOW_TOOLTIP);
+        }
+    }
+
+    private void renderSurfaceShaderRow(LitMaterial material) {
+        ImGui.pushID("surface-shader");
+        String currentPath = material.surfaceShaderPath();
+        if (ImGui.button(shaderPathButtonLabel(currentPath), SHADER_PATH_BUTTON_WIDTH, 0.0f)) {
+            filePicker.open(SURFACE_SHADER_EXTENSIONS, true,
+                    pickedPath -> executeSurfaceShaderChange(material, currentPath, pickedPath));
+        }
+        if (ImGui.isItemHovered() && !currentPath.isEmpty()) {
+            ImGui.setTooltip(currentPath);
+        }
+        acceptSurfaceShaderDrop(material, currentPath);
+        renderSurfaceShaderLabel(material, currentPath);
+        ImGui.popID();
+    }
+
+    private void renderSurfaceShaderLabel(LitMaterial material, String currentPath) {
+        ImGui.sameLine();
+        ImGui.textUnformatted("Surface Shader");
+        if (currentPath.isEmpty()) {
+            return;
+        }
+        ImGui.sameLine();
+        if (ImGui.smallButton("X")) {
+            executeSurfaceShaderChange(material, currentPath, "");
+        }
+    }
+
+    private void acceptSurfaceShaderDrop(LitMaterial material, String currentPath) {
+        if (!ImGui.beginDragDropTarget()) {
+            return;
+        }
+        String droppedPath = ImGui.acceptDragDropPayload(AssetMimeTypes.SHADER, String.class);
+        if (droppedPath != null && droppedPath.endsWith(SURFACE_SHADER_SUFFIX) && !droppedPath.equals(currentPath)) {
+            executeSurfaceShaderChange(material, currentPath, droppedPath);
+        }
+        ImGui.endDragDropTarget();
+    }
+
+    private void executeSurfaceShaderChange(LitMaterial material, String before, String after) {
+        if (before.equals(after)) {
+            return;
+        }
+        history().execute(new SetMaterialPropertyCommand(material,
+                SetMaterialPropertyCommand.Target.SURFACE_SHADER, "", before, after));
     }
 
     private void renderUniformRow(Material material, Field field) {
@@ -144,14 +352,26 @@ public final class MaterialsSection {
 
     private void renderTextureWell(Material material, Field field, String currentPath) {
         OptionalInt thumbnail = currentPath.isEmpty() ? OptionalInt.empty() : thumbnails.get(currentPath);
+        boolean clicked;
         if (thumbnail.isPresent()) {
-            ImGui.imageButton(thumbnail.getAsInt(), TEXTURE_WELL_SIZE, TEXTURE_WELL_SIZE);
+            clicked = ImGui.imageButton(thumbnail.getAsInt(), TEXTURE_WELL_SIZE, TEXTURE_WELL_SIZE);
         } else {
-            ImGui.button(currentPath.isEmpty() ? "None" : "…", TEXTURE_WELL_SIZE + 8.0f, TEXTURE_WELL_SIZE);
+            clicked = ImGui.button(currentPath.isEmpty() ? "None" : "…", TEXTURE_WELL_SIZE + 8.0f, TEXTURE_WELL_SIZE);
         }
         if (ImGui.isItemHovered() && !currentPath.isEmpty()) {
             ImGui.setTooltip(currentPath);
         }
+        if (clicked) {
+            openTexturePicker(material, field, currentPath);
+        }
+    }
+
+    private void openTexturePicker(Material material, Field field, String currentPath) {
+        filePicker.open(TEXTURE_EXTENSIONS, true, pickedPath -> {
+            if (!pickedPath.equals(currentPath)) {
+                executeTextureChange(material, field, currentPath, pickedPath);
+            }
+        });
     }
 
     private void acceptTextureDrop(Material material, Field field, String currentPath) {

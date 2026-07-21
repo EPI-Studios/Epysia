@@ -47,7 +47,9 @@ public final class ViewportView {
 
     public enum ViewMode { SCENE, GAME }
 
-    private static final int SUPERSAMPLE_FACTOR = 2;
+    private static final int DEFAULT_SUPERSAMPLE_FACTOR = 2;
+    private static final int MINIMUM_SUPERSAMPLE_FACTOR = 1;
+    private static final int MAXIMUM_SUPERSAMPLE_FACTOR = 2;
     private static final float FALLBACK_SPAWN_DISTANCE = 4.0f;
     private static final float RAYCAST_MAX_DISTANCE = 1000.0f;
     private static final int WINDOW_FLAGS = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
@@ -69,6 +71,7 @@ public final class ViewportView {
     private static final float AXIS_INDICATOR_MARGIN = 8.0f;
     private static final float FRAME_MINIMUM_RADIUS = 1.0f;
     private static final String CONTEXT_POPUP = "##viewport-context";
+    private static final float CONTEXT_MENU_DRAG_TOLERANCE = 4.0f;
 
     private final EditorScene3DHost sceneHost;
     private final EditorCamera editorCamera;
@@ -96,6 +99,7 @@ public final class ViewportView {
     private boolean showColliderWireframes;
     private float overlayThicknessMultiplier = 1.0f;
     private float gridFadeDistance = GridOverlay.DEFAULT_MINOR_FADE_DISTANCE;
+    private int supersampleFactor = DEFAULT_SUPERSAMPLE_FACTOR;
     private boolean viewportHoveredThisFrame;
     private boolean billboardClickConsumed;
     private ViewMode viewMode = ViewMode.SCENE;
@@ -136,6 +140,14 @@ public final class ViewportView {
 
     public void setGridFadeDistance(float distance) {
         gridFadeDistance = Math.clamp(distance, MINIMUM_GRID_FADE_DISTANCE, MAXIMUM_GRID_FADE_DISTANCE);
+    }
+
+    public int supersampleFactor() {
+        return supersampleFactor;
+    }
+
+    public void setSupersampleFactor(int factor) {
+        supersampleFactor = Math.clamp(factor, MINIMUM_SUPERSAMPLE_FACTOR, MAXIMUM_SUPERSAMPLE_FACTOR);
     }
 
     public boolean isHovered() {
@@ -191,8 +203,8 @@ public final class ViewportView {
     }
 
     private void drawSceneImage(int width, int height, boolean gameView) {
-        int renderWidth = width * SUPERSAMPLE_FACTOR;
-        int renderHeight = height * SUPERSAMPLE_FACTOR;
+        int renderWidth = width * supersampleFactor;
+        int renderHeight = height * supersampleFactor;
         float alpha = renderAlpha();
         int textureId = gameView
                 ? renderGameViewTexture(renderWidth, renderHeight, alpha)
@@ -227,7 +239,7 @@ public final class ViewportView {
     }
 
     private float overlayThicknessScale() {
-        return SUPERSAMPLE_FACTOR * overlayThicknessMultiplier;
+        return supersampleFactor * overlayThicknessMultiplier;
     }
 
     private void drawGridOverlay(float imageX, float imageY, int width, int height) {
@@ -238,7 +250,7 @@ public final class ViewportView {
             }
             gridOverlay.render(editorCamera.camera().viewProjection(),
                     editorCamera.camera().position(new Vector3f()),
-                    width * SUPERSAMPLE_FACTOR, height * SUPERSAMPLE_FACTOR,
+                    width * supersampleFactor, height * supersampleFactor,
                     overlayThicknessScale(), gridFadeDistance);
         } finally {
             snapshot.restore();
@@ -254,7 +266,7 @@ public final class ViewportView {
             }
             colliderOverlay.render(activeDocument.get().scene(), editorCamera.camera().viewProjection(),
                     editorCamera.camera().position(new Vector3f()),
-                    width * SUPERSAMPLE_FACTOR, height * SUPERSAMPLE_FACTOR, overlayThicknessScale());
+                    width * supersampleFactor, height * supersampleFactor, overlayThicknessScale());
         } finally {
             snapshot.restore();
         }
@@ -273,7 +285,7 @@ public final class ViewportView {
             selectionOverlay.render(activeDocument.get().selection().all(),
                     editorCamera.camera().viewProjection(),
                     editorCamera.camera().position(new Vector3f()),
-                    width * SUPERSAMPLE_FACTOR, height * SUPERSAMPLE_FACTOR, overlayThicknessScale());
+                    width * supersampleFactor, height * supersampleFactor, overlayThicknessScale());
         } finally {
             snapshot.restore();
         }
@@ -704,7 +716,7 @@ public final class ViewportView {
         int previewWidth = Math.max(64, (int) (width * PREVIEW_WIDTH_FRACTION));
         int previewHeight = Math.max(36, (int) (previewWidth / PREVIEW_ASPECT));
         int textureId = sceneHost.renderPreviewFrom(selectedCamera.get(),
-                previewWidth * SUPERSAMPLE_FACTOR, previewHeight * SUPERSAMPLE_FACTOR);
+                previewWidth * supersampleFactor, previewHeight * supersampleFactor);
         float x0 = imageX + width - previewWidth - PREVIEW_MARGIN;
         float y0 = imageY + height - previewHeight - PREVIEW_MARGIN;
         drawPreviewFrame(textureId, x0, y0, previewWidth, previewHeight);
@@ -730,7 +742,10 @@ public final class ViewportView {
         if (playSession.isActive()) {
             return;
         }
-        if (!ImGui.beginPopupContextWindow(CONTEXT_POPUP)) {
+        if (shouldOpenContextMenu()) {
+            ImGui.openPopup(CONTEXT_POPUP);
+        }
+        if (!ImGui.beginPopup(CONTEXT_POPUP)) {
             return;
         }
         Vector3f spawn = dropPointAtMouse(imageX, imageY, width, height);
@@ -739,6 +754,15 @@ public final class ViewportView {
             ImGui.endMenu();
         }
         ImGui.endPopup();
+    }
+
+    private boolean shouldOpenContextMenu() {
+        if (!ImGui.isWindowHovered() || !ImGui.isMouseReleased(ImGuiMouseButton.Right)) {
+            return false;
+        }
+        float draggedX = Math.abs(ImGui.getMouseDragDeltaX(ImGuiMouseButton.Right));
+        float draggedY = Math.abs(ImGui.getMouseDragDeltaY(ImGuiMouseButton.Right));
+        return Math.max(draggedX, draggedY) <= CONTEXT_MENU_DRAG_TOLERANCE;
     }
 
     private void renderCreateMenuItems(Vector3f spawn) {

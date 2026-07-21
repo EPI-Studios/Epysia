@@ -1,8 +1,11 @@
 package fr.epistudio.epysia.editor.shell;
 
+import imgui.ImFont;
 import imgui.ImGui;
 import imgui.ImGuiStyle;
 import imgui.flag.ImGuiCol;
+
+import java.util.Optional;
 
 public final class EditorStyle {
 
@@ -42,6 +45,17 @@ public final class EditorStyle {
     public static final float ICON_SIZE_MEDIUM = 16.0f;
     public static final float ICON_SIZE_TOOLBAR = 18.0f;
     public static final float FONT_PIXEL_HEIGHT = 16.0f;
+    public static final float MONOSPACE_FONT_PIXEL_HEIGHT = 15.0f;
+
+    private static ImFont monospaceFont;
+
+    public static void setMonospaceFont(ImFont font) {
+        monospaceFont = font;
+    }
+
+    public static Optional<ImFont> monospaceFont() {
+        return Optional.ofNullable(monospaceFont);
+    }
 
     private EditorStyle() {
     }

@@ -12,6 +12,8 @@ import fr.epistudio.epysia.editor.notify.ToastCenter;
 import fr.epistudio.epysia.editor.play.EmbeddedPlaySession;
 import fr.epistudio.epysia.editor.play.PlayController;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
+import fr.epistudio.epysia.editor.preview.ShaderGraphPreviewService;
+import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.editor.runtime.EditorCamera;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
@@ -23,6 +25,7 @@ import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.graph.GraphSystem;
 import fr.epistudio.epysia.prefab.PrefabWriter;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
@@ -46,11 +49,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import fr.epistudio.epysia.project.EditorSettings;
 import java.util.List;
 
 public final class EditorView implements FrameView {
+
+    private static final float TOOLBAR_GROUP_SPACING = 8.0f;
+    private static final float TOOLBAR_SEPARATOR_INSET = 4.0f;
+    private static final float TOOLBAR_SEPARATOR_HEIGHT = 22.0f;
+    private static final int TOOLBAR_SEPARATOR_COLOR = EditorStyle.rgba(255, 255, 255, 30);
 
     private static final float TOOLBAR_HEIGHT = 64.0f;
     private static final float STATUS_BAR_HEIGHT = 26.0f;
@@ -59,6 +68,8 @@ public final class EditorView implements FrameView {
     private static final String PREFAB_EXTENSION = ".epyprefab";
     private static final String ABOUT_POPUP = "About Epysia";
     private static final String CLOSE_SCENE_POPUP = "Unsaved changes";
+    private static final Set<String> COMPILED_SCRIPT_EXTENSIONS = Set.of(".java");
+    private static final Set<String> SHADER_FILE_EXTENSIONS = Set.of(".glsl", ".vert", ".frag");
     private static final int HOST_WINDOW_FLAGS = ImGuiWindowFlags.NoTitleBar
             | ImGuiWindowFlags.NoCollapse
             | ImGuiWindowFlags.NoResize
@@ -115,18 +126,23 @@ public final class EditorView implements FrameView {
     private final ConsoleView consoleView;
     private final AssetBrowserView assetBrowserView;
     private final ScriptEditorView scriptEditorView;
+    private final ProfilerView profilerView;
+    private final GraphEditorView graphEditorView;
     private final SettingsDialog settingsDialog;
+    private final PostEffectsSection settingsPostEffectsSection;
     private final MeshBakeDialog meshBakeDialog;
     private final ExportGameDialog exportGameDialog;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
     private final ThumbnailCache thumbnailCache;
     private final MeshThumbnailer meshThumbnailer;
+    private final ShaderGraphPreviewService shaderGraphPreviews;
     private EditorPreferences preferences;
     private SceneDocument playedDocument;
     private SceneDocument pendingCloseDocument;
     private boolean previousPlayRunning;
     private boolean aboutRequested;
     private boolean closeSceneRequested;
+    private boolean graphRegistryInjected;
     private float secondsSinceAutosave;
 
     public EditorView(Project project, ComponentRegistry componentRegistry, ProjectStore projectStore,
@@ -153,7 +169,12 @@ public final class EditorView implements FrameView {
         this.playSession = new EmbeddedPlaySession(sceneHost, serializer, project, projectStore,
                 active, toasts, editorConsole);
         this.objectFactory = new GameObjectFactory(active, sceneHost.engine());
-        this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::reloadScripts);
+        this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::onScriptFileSaved);
+        this.shaderGraphPreviews = new ShaderGraphPreviewService(sceneHost.window(), sceneHost.backend());
+        this.graphEditorView = new GraphEditorView(componentRegistry, toasts, active,
+                thumbnailCache, this::onShaderGraphGenerated, shaderGraphPreviews,
+                new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
+                this::onShaderNodePreviewsToggled);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage);
         this.viewportView = new ViewportView(sceneHost, editorCamera, active, gizmoState,
@@ -161,15 +182,19 @@ public final class EditorView implements FrameView {
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
-                new AssetPicker(project), thumbnailCache, this::createScriptAndAttach);
+                new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
+                graphEditorView::open);
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
         this.meshBakeDialog = new MeshBakeDialog(toasts, this::onMeshBaked);
         this.assetBrowserView = new AssetBrowserView(project, toasts, icons, thumbnailCache, meshThumbnailer,
                 scriptEditorView::open, meshBakeDialog::openFor,
-                this::instantiatePrefabAtOrigin, this::openScenePath, this::attachScriptToSelected);
+                this::instantiatePrefabAtOrigin, this::openScenePath, this::attachScriptToSelected,
+                graphEditorView::open);
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onViewportTuningChanged);
+        this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
+        this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView);
         this.exportGameDialog = new ExportGameDialog(project, toasts);
         shell.setFileDropHandler(assetBrowserView::importExternalFiles);
         finishSetup();
@@ -213,6 +238,7 @@ public final class EditorView implements FrameView {
     }
 
     private void pollBackgroundState(float deltaSeconds) {
+        injectGraphComponentRegistryOnce();
         playController.pollExit();
         scriptService.poll(System.currentTimeMillis());
         boolean runningNow = playController.isRunning();
@@ -222,6 +248,17 @@ public final class EditorView implements FrameView {
         }
         previousPlayRunning = runningNow;
         runAutosave(deltaSeconds);
+    }
+
+    private void injectGraphComponentRegistryOnce() {
+        if (graphRegistryInjected) {
+            return;
+        }
+        GraphSystem graphSystem = sceneHost.engine().systems().get(GraphSystem.class);
+        if (graphSystem != null) {
+            graphSystem.setComponentRegistry(componentRegistry);
+            graphRegistryInjected = true;
+        }
     }
 
     private void runAutosave(float deltaSeconds) {
@@ -263,6 +300,8 @@ public final class EditorView implements FrameView {
         consoleView.render();
         assetBrowserView.render();
         scriptEditorView.render();
+        graphEditorView.render();
+        profilerView.render();
     }
 
     private void renderDialogs() {
@@ -427,6 +466,9 @@ public final class EditorView implements FrameView {
         if (ImGui.menuItem("Collider Wireframes", "", viewportView.showColliderWireframes())) {
             viewportView.setShowColliderWireframes(!viewportView.showColliderWireframes());
         }
+        if (ImGui.menuItem("Profiler", "", profilerView.isVisible())) {
+            profilerView.setVisible(!profilerView.isVisible());
+        }
         ImGui.endMenu();
     }
 
@@ -469,9 +511,19 @@ public final class EditorView implements FrameView {
 
     private void renderToolButtons() {
         renderGizmoToolButtons();
-        ImGui.sameLine();
+        renderToolbarSeparator();
         renderToggleButtons();
         renderPlayControls();
+    }
+
+    private static void renderToolbarSeparator() {
+        ImGui.sameLine(0.0f, TOOLBAR_GROUP_SPACING);
+        float x = ImGui.getCursorScreenPosX();
+        float y = ImGui.getCursorScreenPosY();
+        ImGui.getWindowDrawList().addLine(x, y + TOOLBAR_SEPARATOR_INSET,
+                x, y + TOOLBAR_SEPARATOR_HEIGHT, TOOLBAR_SEPARATOR_COLOR);
+        ImGui.dummy(1.0f, TOOLBAR_SEPARATOR_HEIGHT);
+        ImGui.sameLine(0.0f, TOOLBAR_GROUP_SPACING);
     }
 
     private void renderGizmoToolButtons() {
@@ -548,7 +600,7 @@ public final class EditorView implements FrameView {
         tooltip("Pause / resume");
         ImGui.sameLine();
         ImGui.beginDisabled(playSession.state() != EmbeddedPlaySession.State.PAUSED);
-        if (ImGui.button("Step")) {
+        if (icons.iconButton("toolbar-step", EditorIcon.REDO, EditorStyle.ICON_SIZE_TOOLBAR)) {
             playSession.step();
         }
         ImGui.endDisabled();
@@ -562,6 +614,7 @@ public final class EditorView implements FrameView {
     }
 
     private void renderRunGameButton() {
+        renderToolbarSeparator();
         boolean subprocessRunning = playController.isRunning();
         ImGui.beginDisabled(subprocessRunning || playSession.isActive());
         if (ImGui.button("Run Game")) {
@@ -927,10 +980,31 @@ public final class EditorView implements FrameView {
         attachScriptComponent(className, selected.get());
     }
 
+    private void onShaderNodePreviewsToggled(boolean enabled) {
+        preferences = preferences.withShaderNodePreviewsEnabled(enabled);
+        persistPreferences();
+    }
+
+    private void onShaderGraphGenerated(Path generatedFile) {
+        sceneHost.notifyShaderFileSaved(generatedFile);
+        assetBrowserView.refreshAssets();
+    }
+
+    private void onScriptFileSaved(Path savedFile) {
+        String name = savedFile.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (COMPILED_SCRIPT_EXTENSIONS.stream().anyMatch(name::endsWith)) {
+            reloadScripts();
+        }
+        if (SHADER_FILE_EXTENSIONS.stream().anyMatch(name::endsWith)) {
+            sceneHost.notifyShaderFileSaved(savedFile);
+        }
+    }
+
     private void reloadScripts() {
         scriptEditorView.clearDiagnostics();
         scriptService.reload();
         assetBrowserView.refreshAssets();
+        graphEditorView.refreshReflectionNodes();
     }
 
     private void onScriptMessage(String message) {
@@ -952,6 +1026,9 @@ public final class EditorView implements FrameView {
             settingsDialog.attachRenderTuning(sceneHost.postProcessSettings(), sceneHost.skySettings(),
                     sceneHost.meshRenderSystem());
         }
+        settingsDialog.attachPostEffects(settingsPostEffectsSection,
+                () -> workspace.active().scene().postEffects(),
+                () -> workspace.active().markDirty());
         settingsDialog.openFor(projectStore.readSettings(project), preferences, project);
     }
 
@@ -971,6 +1048,7 @@ public final class EditorView implements FrameView {
     }
 
     private void persistPreferences() {
+        GpuLauncher.persist(preferences.gpuPreference());
         try {
             preferences.save(EditorPreferences.defaultFile());
         } catch (IOException error) {
@@ -1006,6 +1084,7 @@ public final class EditorView implements FrameView {
         playSession.stop();
         playController.stop();
         viewportView.dispose();
+        graphEditorView.shutdown();
         thumbnailCache.shutdown();
         meshThumbnailer.shutdown();
     }

@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "kind": "SHADER_POST",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "shader.input.sceneColor",
+      "x": 80.0,
+      "y": 140.0,
+      "values": {}
+    },
+    {
+      "id": 2,
+      "type": "shader.output.post",
+      "x": 420.0,
+      "y": 130.0,
+      "values": {}
+    }
+  ],
+  "edges": [
+    {
+      "fromNode": 1,
+      "fromPin": "Result",
+      "toNode": 2,
+      "toPin": "Color"
+    }
+  ],
+  "variables": []
+}

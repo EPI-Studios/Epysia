@@ -29,6 +29,7 @@ import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.window.Window;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -54,6 +55,8 @@ public final class EditorScene3DHost {
     private int previewHeight;
     private MeshRenderSystem meshRenderSystem;
     private PostProcessSystem postProcessSystem;
+    private ShaderLoader shaderLoader;
+    private ShaderWatcher shaderWatcher;
     private int currentWidth;
     private int currentHeight;
     private boolean initialized;
@@ -84,6 +87,10 @@ public final class EditorScene3DHost {
         return backend;
     }
 
+    public Window window() {
+        return window;
+    }
+
     public Scene scene() {
         return scene;
     }
@@ -96,10 +103,11 @@ public final class EditorScene3DHost {
         backend.initialize(renderSurface);
         engine.addScene(scene);
         loadEngineModules();
-        ShaderLoader shaderLoader = ShaderLoader.autoDetect();
-        ShaderWatcher shaderWatcher = new ShaderWatcher(shaderLoader.filesystemRoot());
+        shaderLoader = ShaderLoader.autoDetect();
+        shaderWatcher = new ShaderWatcher(shaderLoader.filesystemRoot());
         meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
         postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());
+        postProcessSystem.setShaderWatcher(shaderWatcher);
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(postProcessSystem);
         engine.initialize();
@@ -287,6 +295,12 @@ public final class EditorScene3DHost {
 
     public MeshRenderSystem meshRenderSystem() {
         return meshRenderSystem;
+    }
+
+    public void notifyShaderFileSaved(Path savedFile) {
+        if (shaderWatcher != null) {
+            shaderWatcher.notifyFileSaved(savedFile);
+        }
     }
 
     public int currentWidth() {

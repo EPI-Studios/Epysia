@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "event.onStart",
+      "x": 80.0,
+      "y": 120.0,
+      "values": {}
+    }
+  ],
+  "edges": [],
+  "variables": []
+}

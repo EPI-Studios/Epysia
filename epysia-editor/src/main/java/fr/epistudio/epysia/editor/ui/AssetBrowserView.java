@@ -1,5 +1,12 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.AssetMetaFile;
+import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
+import fr.epistudio.epysia.editor.assets.AssetEntry;
+import fr.epistudio.epysia.editor.assets.AssetQuery;
+import fr.epistudio.epysia.editor.assets.AssetScanner;
+import fr.epistudio.epysia.editor.assets.AssetType;
+import fr.epistudio.epysia.editor.assets.BuiltinAssets;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
@@ -10,11 +17,16 @@ import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
+import imgui.flag.ImGuiPopupFlags;
 import imgui.flag.ImGuiTreeNodeFlags;
+import imgui.type.ImString;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -31,13 +43,38 @@ public final class AssetBrowserView {
 
     private static final float FOLDER_TREE_WIDTH = 200.0f;
     private static final float THUMBNAIL_SIZE = 28.0f;
+    private static final float ENTRY_LIST_BOTTOM_PADDING = 6.0f;
+    private static final float SEARCH_FIELD_WIDTH = 180.0f;
+    private static final float SMALL_COMBO_WIDTH = 110.0f;
+    private static final float BREADCRUMB_SPACING = 4.0f;
+    private static final String BREADCRUMB_SEPARATOR = "\u203a";
+    private static final int SEARCH_CAPACITY = 128;
     private static final String PREFAB_EXTENSION = ".epyprefab";
     private static final String SCENE_EXTENSION = ".epyscene";
     private static final String OBJ_EXTENSION = ".obj";
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
 
-    private enum Kind { PRESET, MESH, TEXTURE, AUDIO, SCRIPT, PREFAB, SCENE, OTHER }
+    
+    private static final String GRAPH_EXTENSION = ".epygraph";
+    private static final String GRAPH_TEMPLATE_RESOURCE = "/templates/NewGraph.epygraph";
+    private static final String STATE_MACHINE_TEMPLATE_RESOURCE = "/templates/NewStateMachine.epygraph";
+    private static final String SURFACE_SHADER_GRAPH_TEMPLATE_RESOURCE = "/templates/NewSurfaceShaderGraph.epygraph";
+    private static final String POST_SHADER_GRAPH_TEMPLATE_RESOURCE = "/templates/NewPostShaderGraph.epygraph";
+
+    private static final String SHADERS_CATEGORY = "Shaders";
+    private static final String POST_CATEGORY = "Post Processing";
+    private static final String SCRIPTING_CATEGORY = "Scripting";
+
+    private static final String VERTEX_SHADER_SUFFIX = ".vert.glsl";
+    private static final String FRAGMENT_SHADER_SUFFIX = ".frag.glsl";
+    private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
+    private static final String POST_EFFECT_SUFFIX = ".post.glsl";
+    private static final String VERTEX_SHADER_TEMPLATE_RESOURCE = "/templates/NewShader.vert.glsl";
+    private static final String FRAGMENT_SHADER_TEMPLATE_RESOURCE = "/templates/NewShader.frag.glsl";
+    private static final String SURFACE_SHADER_TEMPLATE_RESOURCE = "/templates/NewSurfaceShader.surf.glsl";
+    private static final String POST_EFFECT_TEMPLATE_RESOURCE = "/templates/NewPostEffect.post.glsl";
+
 
     private final Project project;
     private final Notifier notifier;
@@ -49,9 +86,15 @@ public final class AssetBrowserView {
     private final Consumer<Path> onInstantiatePrefab;
     private final Consumer<Path> onOpenScene;
     private final Consumer<Path> onAttachScript;
+    private final Consumer<Path> onOpenGraph;
     private final NameDialog nameDialog = new NameDialog("##asset-name-dialog");
+    private final NewAssetDialog newAssetDialog;
     private final ConfirmDialog deleteConfirm = new ConfirmDialog("Delete this file?", "Delete");
-    private final List<Entry> entries = new ArrayList<>();
+    private final List<AssetEntry> entries = new ArrayList<>();
+    private final AssetQuery query = new AssetQuery();
+    private boolean showingBuiltins;
+    private final ImString searchInput = new ImString(SEARCH_CAPACITY);
+    private final AssetEntryGrid grid;
     private Path currentDirectory;
     private String selectedPath = "";
     private boolean initialized;
@@ -60,7 +103,7 @@ public final class AssetBrowserView {
                             ThumbnailCache thumbnails, MeshThumbnailer meshThumbnails,
                             Consumer<Path> onOpenScript, Consumer<Path> onBakeMesh,
                             Consumer<Path> onInstantiatePrefab, Consumer<Path> onOpenScene,
-                            Consumer<Path> onAttachScript) {
+                            Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph) {
         this.project = project;
         this.notifier = notifier;
         this.icons = icons;
@@ -71,7 +114,10 @@ public final class AssetBrowserView {
         this.onInstantiatePrefab = onInstantiatePrefab;
         this.onOpenScene = onOpenScene;
         this.onAttachScript = onAttachScript;
+        this.onOpenGraph = onOpenGraph;
         this.currentDirectory = project.rootDirectory();
+        this.newAssetDialog = new NewAssetDialog("##new-asset-dialog", icons);
+        this.grid = new AssetEntryGrid(icons, thumbnails, meshThumbnails);
     }
 
     public void refreshAssets() {
@@ -90,6 +136,7 @@ public final class AssetBrowserView {
         ImGui.sameLine();
         renderEntryList();
         nameDialog.render();
+        newAssetDialog.render();
         deleteConfirm.render();
         ImGui.end();
     }
@@ -102,6 +149,11 @@ public final class AssetBrowserView {
     }
 
     private void renderHeader() {
+        if (icons.iconButton("assets-new", EditorIcon.ADD, EditorStyle.ICON_SIZE_SMALL)) {
+            newAssetDialog.setKinds(assetKinds());
+            newAssetDialog.open();
+        }
+        ImGui.sameLine();
         if (icons.iconButton("assets-new-folder", EditorIcon.FOLDER, EditorStyle.ICON_SIZE_SMALL)) {
             nameDialog.open("New folder", "NewFolder", this::createFolder);
         }
@@ -110,13 +162,85 @@ public final class AssetBrowserView {
             refresh();
         }
         ImGui.sameLine();
-        ImGui.textDisabled(project.rootDirectory().relativize(currentDirectory).toString());
+        renderBreadcrumb();
+        renderSearchField();
+    }
+
+    private void renderBreadcrumb() {
+        if (showingBuiltins) {
+            ImGui.textDisabled(BuiltinAssets.FOLDER_LABEL);
+            return;
+        }
+        Path root = project.rootDirectory();
+        List<Path> segments = breadcrumbSegments(root);
+        for (int index = 0; index < segments.size(); index++) {
+            if (index > 0) {
+                ImGui.sameLine(0.0f, BREADCRUMB_SPACING);
+                ImGui.textDisabled(BREADCRUMB_SEPARATOR);
+                ImGui.sameLine(0.0f, BREADCRUMB_SPACING);
+            }
+            renderBreadcrumbSegment(segments.get(index), index == segments.size() - 1);
+        }
+    }
+
+    private List<Path> breadcrumbSegments(Path root) {
+        List<Path> segments = new ArrayList<>();
+        Path cursor = currentDirectory;
+        while (cursor != null && cursor.startsWith(root)) {
+            segments.add(0, cursor);
+            if (cursor.equals(root)) {
+                break;
+            }
+            cursor = cursor.getParent();
+        }
+        return segments;
+    }
+
+    private void renderBreadcrumbSegment(Path segment, boolean last) {
+        String label = segment.equals(project.rootDirectory())
+                ? project.name() : segment.getFileName().toString();
+        if (last) {
+            ImGui.textUnformatted(label);
+            return;
+        }
+        if (ImGui.smallButton(label + "##crumb-" + segment)) {
+            navigateTo(segment);
+        }
+    }
+
+    private void renderSearchField() {
+        ImGui.sameLine();
+        float offset = ImGui.getContentRegionMaxX() - SEARCH_FIELD_WIDTH;
+        if (offset > ImGui.getCursorPosX()) {
+            ImGui.setCursorPosX(offset);
+        }
+        ImGui.setNextItemWidth(SEARCH_FIELD_WIDTH);
+        if (ImGui.inputTextWithHint("##assets-search", "Search", searchInput)) {
+            query.setSearchText(searchInput.get());
+            refresh();
+        }
     }
 
     private void renderFolderTreeColumn() {
         ImGui.beginChild("##asset-folders", FOLDER_TREE_WIDTH, 0.0f, true);
         renderFolderNode(project.rootDirectory(), project.name());
+        ImGui.separator();
+        renderBuiltinFolderNode();
         ImGui.endChild();
+    }
+
+    private void renderBuiltinFolderNode() {
+        int flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.SpanAvailWidth
+                | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+        if (showingBuiltins) {
+            flags |= ImGuiTreeNodeFlags.Selected;
+        }
+        ImGui.treeNodeEx(BuiltinAssets.FOLDER_LABEL, flags, BuiltinAssets.FOLDER_LABEL);
+        if (ImGui.isItemClicked()) {
+            showingBuiltins = true;
+            grid.clearSelection();
+            refresh();
+        }
     }
 
     private void renderFolderNode(Path directory, String label) {
@@ -128,6 +252,7 @@ public final class AssetBrowserView {
             flags |= ImGuiTreeNodeFlags.DefaultOpen;
         }
         boolean opened = ImGui.treeNodeEx(directory.toString(), flags, label);
+        acceptAssetDrop(directory);
         if (ImGui.isItemClicked() && !ImGui.isItemToggledOpen()) {
             navigateTo(directory);
         }
@@ -161,71 +286,260 @@ public final class AssetBrowserView {
 
     private void renderEntryList() {
         ImGui.beginChild("##asset-entries", 0.0f, 0.0f, true);
-        for (Entry entry : new ArrayList<>(entries)) {
-            renderEntryRow(entry);
-        }
+        renderViewControls();
+        ImGui.separator();
+        grid.render(query.apply(new ArrayList<>(entries)), this::activateEntry, this::decorateEntry);
+        ImGui.dummy(0.0f, ENTRY_LIST_BOTTOM_PADDING);
+        renderBrowserContextMenu();
         ImGui.endChild();
     }
 
-    private void renderEntryRow(Entry entry) {
-        ImGui.pushID(entry.assetPath());
-        drawEntryThumbnail(entry);
-        ImGui.sameLine();
-        boolean selected = entry.assetPath().equals(selectedPath);
-        if (ImGui.selectable(entry.displayName(), selected)) {
-            selectedPath = entry.assetPath();
-        }
-        handleEntryInteractions(entry);
-        ImGui.popID();
-    }
-
-    private void handleEntryInteractions(Entry entry) {
+    private void decorateEntry(AssetEntry entry) {
         renderEntryDragSource(entry);
         renderEntryContextMenu(entry);
-        if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
-            activateEntry(entry);
+    }
+
+    private void renderViewControls() {
+        boolean gridMode = grid.mode() == AssetEntryGrid.Mode.GRID;
+        if (icons.toggleButton("assets-grid", EditorIcon.GRID, EditorStyle.ICON_SIZE_SMALL, gridMode)) {
+            grid.setMode(gridMode ? AssetEntryGrid.Mode.LIST : AssetEntryGrid.Mode.GRID);
+        }
+        ImGui.sameLine();
+        renderSortCombo();
+        ImGui.sameLine();
+        renderTypeCombo();
+        ImGui.sameLine();
+        ImGui.textDisabled(entries.size() + " items");
+    }
+
+    private void renderSortCombo() {
+        ImGui.setNextItemWidth(SMALL_COMBO_WIDTH);
+        if (ImGui.beginCombo("##assets-sort", "Sort: " + query.sortField().label())) {
+            for (AssetQuery.SortField field : AssetQuery.SortField.values()) {
+                if (ImGui.selectable(field.label(), field == query.sortField())) {
+                    query.setSortField(field);
+                }
+            }
+            ImGui.endCombo();
+        }
+        ImGui.sameLine();
+        if (ImGui.smallButton(query.ascending() ? "Asc" : "Desc")) {
+            query.toggleDirection();
         }
     }
 
-    private void drawEntryThumbnail(Entry entry) {
-        OptionalInt texture = thumbnailFor(entry);
-        if (texture.isPresent()) {
-            drawThumbnailImage(entry, texture.getAsInt());
-        } else {
-            icons.draw(iconFor(entry.kind()), EditorStyle.ICON_SIZE_MEDIUM);
+    private void renderTypeCombo() {
+        String label = query.typeFilter().map(AssetType::pluralLabel).orElse("All");
+        ImGui.setNextItemWidth(SMALL_COMBO_WIDTH);
+        if (!ImGui.beginCombo("##assets-type", "Type: " + label)) {
+            return;
+        }
+        if (ImGui.selectable("All", query.typeFilter().isEmpty())) {
+            query.setTypeFilter(null);
+        }
+        for (AssetType type : AssetType.values()) {
+            if (ImGui.selectable(type.pluralLabel(), query.typeFilter().orElse(null) == type)) {
+                query.setTypeFilter(type);
+            }
+        }
+        ImGui.endCombo();
+    }
+
+    private void renderBrowserContextMenu() {
+        int flags = ImGuiPopupFlags.MouseButtonRight | ImGuiPopupFlags.NoOpenOverItems;
+        if (!ImGui.beginPopupContextWindow("##asset-browser-context", flags)) {
+            return;
+        }
+        if (ImGui.menuItem("New Asset...")) {
+            newAssetDialog.setKinds(assetKinds());
+            newAssetDialog.open();
+        }
+        ImGui.endPopup();
+    }
+
+    private List<NewAssetDialog.AssetKind> assetKinds() {
+        return List.of(
+                kind("Surface Shader", SHADERS_CATEGORY, "GLSL injected into the lit pipeline",
+                        EditorIcon.MESH, "MySurfaceShader", this::createSurfaceShader),
+                kind("Shader Graph", SHADERS_CATEGORY, "nodes, compiles to a surface shader",
+                        EditorIcon.GRID, "MySurfaceGraph", this::createSurfaceShaderGraph),
+                kind("Shader Pair", SHADERS_CATEGORY, "vert + frag, replaces the pipeline",
+                        EditorIcon.FILE, "MyShader", this::createShaderPair),
+                kind("Post Effect", POST_CATEGORY, "fullscreen pass",
+                        EditorIcon.VISIBILITY_VISIBLE, "MyPostEffect", this::createPostEffect),
+                kind("Post Graph", POST_CATEGORY, "nodes, compiles to a post effect",
+                        EditorIcon.GRID, "MyPostGraph", this::createPostShaderGraph),
+                kind("Logic Graph", SCRIPTING_CATEGORY, "attaches like a script",
+                        EditorIcon.SCRIPT, "MyGraph", this::createGraph),
+                kind("State Machine", SCRIPTING_CATEGORY, "states and transitions",
+                        EditorIcon.ANIMATION_PLAYER, "MyStateMachine", this::createStateMachine));
+    }
+
+    private static NewAssetDialog.AssetKind kind(String label, String category, String description,
+                                                 EditorIcon icon, String defaultName, Consumer<String> create) {
+        return new NewAssetDialog.AssetKind(label, category, description, icon, defaultName, create);
+    }
+
+    private void createPostEffect(String requestedName) {
+        createShaderAsset(requestedName, this::writePostEffect);
+    }
+
+    private void createGraph(String requestedName) {
+        createGraphFromTemplate(requestedName, GRAPH_TEMPLATE_RESOURCE);
+    }
+
+    private void createSurfaceShaderGraph(String requestedName) {
+        createShaderGraphFromTemplate(requestedName, SURFACE_SHADER_GRAPH_TEMPLATE_RESOURCE);
+    }
+
+    private void createPostShaderGraph(String requestedName) {
+        createShaderGraphFromTemplate(requestedName, POST_SHADER_GRAPH_TEMPLATE_RESOURCE);
+    }
+
+    private void createShaderGraphFromTemplate(String requestedName, String templateResource) {
+        String name = requestedName.replace("\0", "").strip();
+        if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
+            notifier.show("Invalid graph name: " + requestedName);
+            return;
+        }
+        try {
+            Path createdFile = writeShaderGraphTemplate(name, templateResource);
+            refresh();
+            onOpenGraph.accept(createdFile);
+        } catch (IOException | InvalidPathException error) {
+            notifier.show("Shader graph creation failed: " + error.getMessage());
         }
     }
 
-    private void drawThumbnailImage(Entry entry, int textureId) {
-        if (entry.kind() == Kind.TEXTURE) {
-            ImGui.image(textureId, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-        } else {
-            ImGui.image(textureId, THUMBNAIL_SIZE, THUMBNAIL_SIZE, 0.0f, 1.0f, 1.0f, 0.0f);
+    private Path writeShaderGraphTemplate(String name, String templateResource) throws IOException {
+        Path directory = targetDirectory();
+        Files.createDirectories(directory);
+        Path graphFile = directory.resolve(name + GRAPH_EXTENSION);
+        if (Files.exists(graphFile)) {
+            throw new IOException("Graph already exists: " + name);
+        }
+        Files.writeString(graphFile, loadTemplate(templateResource));
+        notifier.show("Shader graph created: " + name);
+        return graphFile;
+    }
+
+    private void createStateMachine(String requestedName) {
+        createGraphFromTemplate(requestedName, STATE_MACHINE_TEMPLATE_RESOURCE);
+    }
+
+    private void createGraphFromTemplate(String requestedName, String templateResource) {
+        String name = requestedName.replace("\0", "").strip();
+        if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
+            notifier.show("Invalid graph name: " + requestedName);
+            return;
+        }
+        try {
+            Path createdFile = writeGraphTemplate(name, templateResource);
+            refresh();
+            onOpenGraph.accept(createdFile);
+        } catch (IOException | InvalidPathException error) {
+            notifier.show("Graph creation failed: " + error.getMessage());
         }
     }
 
-    private OptionalInt thumbnailFor(Entry entry) {
-        if (entry.kind() == Kind.TEXTURE) {
-            return thumbnails.get(entry.assetPath());
+    private Path writeGraphTemplate(String name, String templateResource) throws IOException {
+        Path directory = targetDirectory();
+        Files.createDirectories(directory);
+        Path graphFile = directory.resolve(name + GRAPH_EXTENSION);
+        if (Files.exists(graphFile)) {
+            throw new IOException("Graph already exists: " + name);
         }
-        if (entry.kind() == Kind.MESH || entry.kind() == Kind.PRESET) {
-            return meshThumbnails.get(entry.assetPath());
-        }
-        return OptionalInt.empty();
+        Files.writeString(graphFile, loadTemplate(templateResource));
+        notifier.show("Graph created: " + name);
+        return graphFile;
     }
 
-    private void renderEntryDragSource(Entry entry) {
-        String mimeType = mimeFor(entry.kind());
+    private static String loadTemplate(String templateResource) throws IOException {
+        try (InputStream stream = AssetBrowserView.class.getResourceAsStream(templateResource)) {
+            if (stream == null) {
+                throw new IOException("Missing template resource: " + templateResource);
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private Path writePostEffect(String name) throws IOException {
+        Path directory = targetDirectory();
+        Files.createDirectories(directory);
+        Path effectFile = directory.resolve(name + POST_EFFECT_SUFFIX);
+        if (Files.exists(effectFile)) {
+            throw new IOException("Shader already exists: " + name);
+        }
+        Files.writeString(effectFile, loadTemplate(POST_EFFECT_TEMPLATE_RESOURCE));
+        notifier.show("Post effect created: " + name);
+        return effectFile;
+    }
+
+    private void createSurfaceShader(String requestedName) {
+        createShaderAsset(requestedName, this::writeSurfaceShader);
+    }
+
+    private void createShaderPair(String requestedName) {
+        createShaderAsset(requestedName, this::writeShaderPair);
+    }
+
+    private void createShaderAsset(String requestedName, ShaderTemplateWriter templateWriter) {
+        String name = requestedName.replace("\0", "").strip();
+        if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
+            notifier.show("Invalid shader name: " + requestedName);
+            return;
+        }
+        try {
+            Path createdFile = templateWriter.write(name);
+            refresh();
+            onOpenScript.accept(createdFile);
+        } catch (IOException | InvalidPathException error) {
+            notifier.show("Shader creation failed: " + error.getMessage());
+        }
+    }
+
+    private interface ShaderTemplateWriter {
+        Path write(String name) throws IOException;
+    }
+
+    private Path writeSurfaceShader(String name) throws IOException {
+        Path directory = targetDirectory();
+        Files.createDirectories(directory);
+        Path surfaceFile = directory.resolve(name + SURFACE_SHADER_SUFFIX);
+        if (Files.exists(surfaceFile)) {
+            throw new IOException("Shader already exists: " + name);
+        }
+        Files.writeString(surfaceFile, loadTemplate(SURFACE_SHADER_TEMPLATE_RESOURCE));
+        notifier.show("Surface shader created: " + name);
+        return surfaceFile;
+    }
+
+    private Path writeShaderPair(String name) throws IOException {
+        Path directory = targetDirectory();
+        Files.createDirectories(directory);
+        Path vertexFile = directory.resolve(name + VERTEX_SHADER_SUFFIX);
+        Path fragmentFile = directory.resolve(name + FRAGMENT_SHADER_SUFFIX);
+        if (Files.exists(vertexFile) || Files.exists(fragmentFile)) {
+            throw new IOException("Shader already exists: " + name);
+        }
+        Files.writeString(vertexFile, loadTemplate(VERTEX_SHADER_TEMPLATE_RESOURCE));
+        Files.writeString(fragmentFile, loadTemplate(FRAGMENT_SHADER_TEMPLATE_RESOURCE));
+        notifier.show("Shader created: " + name);
+        return fragmentFile;
+    }
+
+    private void renderEntryDragSource(AssetEntry entry) {
+        String mimeType = mimeFor(entry.type());
         if (mimeType.isEmpty() || !ImGui.beginDragDropSource()) {
             return;
         }
         ImGui.setDragDropPayload(mimeType, entry.assetPath());
-        icons.drawInline(iconFor(entry.kind()), EditorStyle.ICON_SIZE_SMALL);
+        icons.drawInline(iconFor(entry.type()), EditorStyle.ICON_SIZE_SMALL);
         ImGui.textUnformatted(entry.displayName());
         ImGui.endDragDropSource();
     }
 
-    private void renderEntryContextMenu(Entry entry) {
+    private void renderEntryContextMenu(AssetEntry entry) {
         if (!ImGui.beginPopupContextItem("asset-context")) {
             return;
         }
@@ -234,29 +548,35 @@ public final class AssetBrowserView {
         ImGui.endPopup();
     }
 
-    private void renderContextItems(Entry entry) {
+    private void renderContextItems(AssetEntry entry) {
         Path path = Path.of(entry.assetPath());
-        if (entry.kind() == Kind.PREFAB && ImGui.menuItem("Instantiate")) {
+        if (entry.type() == AssetType.PREFAB && ImGui.menuItem("Instantiate")) {
             onInstantiatePrefab.accept(path);
         }
-        if (entry.kind() == Kind.SCENE && ImGui.menuItem("Open Scene")) {
+        if (entry.type() == AssetType.SCENE && ImGui.menuItem("Open Scene")) {
             onOpenScene.accept(path);
         }
-        if (entry.kind() == Kind.SCRIPT && ImGui.menuItem("Attach to selected")) {
+        if (entry.type() == AssetType.SCRIPT && ImGui.menuItem("Attach to selected")) {
             onAttachScript.accept(path);
+        }
+        if (entry.type() == AssetType.GRAPH && ImGui.menuItem("Open in Graph Editor")) {
+            onOpenGraph.accept(path);
         }
         if (isBakeable(entry) && ImGui.menuItem("Bake Mesh")) {
             onBakeMesh.accept(path);
         }
-        if (entry.kind() != Kind.PRESET) {
+        if (entry.type() != AssetType.PRESET) {
             renderFileManagementItems(entry, path);
         }
     }
 
-    private void renderFileManagementItems(Entry entry, Path path) {
+    private void renderFileManagementItems(AssetEntry entry, Path path) {
         if (ImGui.menuItem("Rename")) {
             nameDialog.open("Rename " + path.getFileName(), path.getFileName().toString(),
                     newName -> renameFile(path, newName));
+        }
+        if (ImGui.menuItem("Duplicate")) {
+            duplicateFile(path);
         }
         if (ImGui.menuItem("Delete")) {
             deleteConfirm.open(path.getFileName() + " will be permanently removed from disk.",
@@ -268,17 +588,18 @@ public final class AssetBrowserView {
         }
     }
 
-    private static boolean isBakeable(Entry entry) {
-        return entry.kind() == Kind.MESH
+    private static boolean isBakeable(AssetEntry entry) {
+        return entry.type() == AssetType.MESH
                 && entry.assetPath().toLowerCase(Locale.ROOT).endsWith(OBJ_EXTENSION);
     }
 
-    private void activateEntry(Entry entry) {
+    private void activateEntry(AssetEntry entry) {
         Path path = Path.of(entry.assetPath());
-        switch (entry.kind()) {
-            case SCRIPT -> onOpenScript.accept(path);
+        switch (entry.type()) {
+            case SCRIPT, SHADER -> onOpenScript.accept(path);
             case PREFAB -> onInstantiatePrefab.accept(path);
             case SCENE -> onOpenScene.accept(path);
+            case GRAPH -> onOpenGraph.accept(path);
             default -> {
             }
         }
@@ -293,6 +614,7 @@ public final class AssetBrowserView {
         try {
             Path target = path.resolveSibling(sanitized);
             Files.move(path, target);
+            AssetMetaFile.moveAlongside(path, target);
             renamePublicClassIfScript(target, sanitized);
             refresh();
         } catch (IOException error) {
@@ -393,14 +715,77 @@ public final class AssetBrowserView {
         return 1;
     }
 
+    private void duplicateFile(Path source) {
+        try {
+            Path target = uniqueSibling(source);
+            Files.copy(source, target);
+            refresh();
+            notifier.show("Duplicated: " + target.getFileName());
+        } catch (IOException error) {
+            notifier.show("Duplicate failed: " + error.getMessage());
+        }
+    }
+
+    private static Path uniqueSibling(Path source) {
+        String name = source.getFileName().toString();
+        int dot = name.indexOf('.');
+        String base = dot > 0 ? name.substring(0, dot) : name;
+        String extension = dot > 0 ? name.substring(dot) : "";
+        int index = 2;
+        Path candidate = source.resolveSibling(base + " " + index + extension);
+        while (Files.exists(candidate)) {
+            index++;
+            candidate = source.resolveSibling(base + " " + index + extension);
+        }
+        return candidate;
+    }
+
+    private void moveFile(Path source, Path targetDirectory) {
+        if (source.getParent().equals(targetDirectory)) {
+            return;
+        }
+        try {
+            Path target = targetDirectory.resolve(source.getFileName());
+            if (Files.exists(target)) {
+                notifier.show("Already exists there: " + source.getFileName());
+                return;
+            }
+            Files.move(source, target);
+            AssetMetaFile.moveAlongside(source, target);
+            refresh();
+            notifier.show("Moved: " + source.getFileName());
+        } catch (IOException error) {
+            notifier.show("Move failed: " + error.getMessage());
+        }
+    }
+
+    private void acceptAssetDrop(Path targetDirectory) {
+        if (!ImGui.beginDragDropTarget()) {
+            return;
+        }
+        for (String mimeType : AssetMimeTypes.ALL) {
+            String payload = ImGui.acceptDragDropPayload(mimeType);
+            if (payload != null && !payload.startsWith(MeshAssetLoader.PRESET_PREFIX)) {
+                moveFile(Path.of(payload), targetDirectory);
+                break;
+            }
+        }
+        ImGui.endDragDropTarget();
+    }
+
     private void deleteFile(Path path) {
         try {
             Files.deleteIfExists(path);
+            AssetMetaFile.deleteAlongside(path);
             notifier.show("Deleted: " + path.getFileName());
             refresh();
         } catch (IOException error) {
             notifier.show("Delete failed: " + error.getMessage());
         }
+    }
+
+    private Path targetDirectory() {
+        return showingBuiltins ? project.rootDirectory() : currentDirectory;
     }
 
     private void createFolder(String name) {
@@ -413,93 +798,52 @@ public final class AssetBrowserView {
     }
 
     private void navigateTo(Path directory) {
+        showingBuiltins = false;
         currentDirectory = directory;
         refresh();
     }
 
     private void refresh() {
         entries.clear();
-        if (!Files.isDirectory(currentDirectory)) {
+        if (!showingBuiltins && !Files.isDirectory(currentDirectory)) {
             currentDirectory = project.rootDirectory();
         }
-        if (currentDirectory.equals(project.rootDirectory())) {
-            entries.add(new Entry("preset:cube", "preset:cube", Kind.PRESET));
-            entries.add(new Entry("preset:plane", "preset:plane", Kind.PRESET));
-            entries.add(new Entry("preset:capsule", "preset:capsule", Kind.PRESET));
-        }
-        listCurrentDirectoryFiles();
+        entries.addAll(showingBuiltins ? BuiltinAssets.entries() : scanCurrentDirectory());
     }
 
-    private void listCurrentDirectoryFiles() {
-        List<Entry> files = new ArrayList<>();
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(currentDirectory, Files::isRegularFile)) {
-            for (Path path : stream) {
-                classifyFile(path, files);
-            }
+    private List<AssetEntry> scanCurrentDirectory() {
+        try {
+            return query.isSearching()
+                    ? AssetScanner.searchRecursively(currentDirectory)
+                    : AssetScanner.listDirectory(currentDirectory);
         } catch (IOException error) {
             notifier.show("Could not list directory: " + error.getMessage());
+            return List.of();
         }
-        files.sort(Comparator.comparing(Entry::displayName));
-        entries.addAll(files);
     }
 
-    private void classifyFile(Path path, List<Entry> files) {
-        String name = path.getFileName().toString();
-        if (name.startsWith(".") || name.endsWith(".project") || name.equals(Project.MARKER_FILENAME)) {
-            return;
-        }
-        files.add(new Entry(name, path.toAbsolutePath().toString(), classify(name)));
-    }
-
-    private static Kind classify(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".java")) {
-            return Kind.SCRIPT;
-        }
-        if (lower.endsWith(PREFAB_EXTENSION)) {
-            return Kind.PREFAB;
-        }
-        if (lower.endsWith(SCENE_EXTENSION)) {
-            return Kind.SCENE;
-        }
-        return classifyBinary(lower);
-    }
-
-    private static Kind classifyBinary(String lower) {
-        if (lower.endsWith(".obj") || lower.endsWith(".epymesh")) {
-            return Kind.MESH;
-        }
-        if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
-                || lower.endsWith(".tga") || lower.endsWith(".bmp")) {
-            return Kind.TEXTURE;
-        }
-        if (lower.endsWith(".wav") || lower.endsWith(".ogg") || lower.endsWith(".mp3") || lower.endsWith(".flac")) {
-            return Kind.AUDIO;
-        }
-        return Kind.OTHER;
-    }
-
-    private static String mimeFor(Kind kind) {
-        return switch (kind) {
+    private static String mimeFor(AssetType type) {
+        return switch (type) {
             case MESH, PRESET -> AssetMimeTypes.MESH;
             case TEXTURE -> AssetMimeTypes.TEXTURE;
             case AUDIO -> AssetMimeTypes.AUDIO;
+            case SHADER -> AssetMimeTypes.SHADER;
             case PREFAB -> AssetMimeTypes.PREFAB;
+            case GRAPH -> AssetMimeTypes.GRAPH;
             case SCENE, SCRIPT, OTHER -> AssetMimeTypes.NONE;
         };
     }
 
-    private static EditorIcon iconFor(Kind kind) {
-        return switch (kind) {
+    private static EditorIcon iconFor(AssetType type) {
+        return switch (type) {
             case MESH, PRESET -> EditorIcon.MESH;
-            case SCRIPT -> EditorIcon.SCRIPT;
+            case SCRIPT, SHADER -> EditorIcon.SCRIPT;
             case PREFAB -> EditorIcon.NODE_3D;
+            case GRAPH -> EditorIcon.GRID;
             case SCENE -> EditorIcon.LOAD;
             case AUDIO -> EditorIcon.ANIMATION_PLAYER;
             case TEXTURE, OTHER -> EditorIcon.FILE;
         };
     }
 
-    private record Entry(String displayName, String assetPath, Kind kind) {
-    }
 }
