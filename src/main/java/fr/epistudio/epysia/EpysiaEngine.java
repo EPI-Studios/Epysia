@@ -114,6 +114,20 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         renderSystems.add(renderSystem);
     }
 
+    @Override
+    public void removeRenderSystem(RenderSystem renderSystem) {
+        if (!renderSystems.remove(renderSystem)) {
+            return;
+        }
+        if (initialized) {
+            renderSystem.shutdown(renderBackend);
+        }
+    }
+
+    public List<RenderSystem> renderSystems() {
+        return List.copyOf(renderSystems);
+    }
+
     public <T extends RenderSystem> T renderSystem(Class<T> type) {
         for (RenderSystem system : renderSystems) {
             if (type.isInstance(system)) {
