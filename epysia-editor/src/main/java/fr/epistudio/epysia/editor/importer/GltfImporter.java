@@ -759,6 +759,26 @@ public final class GltfImporter {
         } else if (alphaMode == MaterialModelV2.AlphaMode.MASK) {
             litMaterial.setAlphaCutoff(material.getAlphaCutoff());
         }
+        float[] baseColorFactor = material.getBaseColorFactor();
+        if (baseColorFactor.length >= 4 && baseColorFactor[3] < 0.999f) {
+            litMaterial.setTransparent(true);
+        }
+        if (transmissionFactor(material) > 0.0f) {
+            litMaterial.setTransparent(true);
+        }
+    }
+
+    private static float transmissionFactor(MaterialModelV2 material) {
+        Object extensions = material.getExtensions();
+        if (!(extensions instanceof Map<?, ?> extensionMap)) {
+            return 0.0f;
+        }
+        Object transmission = extensionMap.get("KHR_materials_transmission");
+        if (!(transmission instanceof Map<?, ?> transmissionMap)) {
+            return 0.0f;
+        }
+        Object factor = transmissionMap.get("transmissionFactor");
+        return factor instanceof Number number ? number.floatValue() : 1.0f;
     }
 
     private static void applyTexture(LitMaterial litMaterial, String fieldName, TextureModel texture, Path outputDirectory,
