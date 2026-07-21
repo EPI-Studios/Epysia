@@ -51,6 +51,14 @@ tasks.register('runMaterialPixelCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runSkinnedBindPoseCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders a skinned quad in bind pose through the skinned pipeline and checks the pixels.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.SkinnedBindPoseCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
