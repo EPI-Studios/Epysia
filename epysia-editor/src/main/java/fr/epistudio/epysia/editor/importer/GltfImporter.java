@@ -927,11 +927,29 @@ public final class GltfImporter {
     private static void applyWorldTransform(Transform3D transform, float[] worldMatrix) {
         Matrix4f matrix = new Matrix4f().set(worldMatrix);
         Vector3f translation = matrix.getTranslation(new Vector3f());
-        Quaternionf rotation = matrix.getNormalizedRotation(new Quaternionf());
         Vector3f scale = matrix.getScale(new Vector3f());
+        if (matrix.determinant3x3() < 0.0f) {
+            scale.z = -scale.z;
+        }
+        Quaternionf rotation = rotationWithSignedScale(matrix, scale);
         transform.setPosition(translation.x, translation.y, translation.z);
         transform.setRotation(rotation);
         transform.setScale(scale.x, scale.y, scale.z);
+    }
+
+    private static Quaternionf rotationWithSignedScale(Matrix4f matrix, Vector3f signedScale) {
+        Matrix4f rotationOnly = new Matrix4f(matrix)
+                .scale(1.0f / signedScale.x, 1.0f / signedScale.y, 1.0f / signedScale.z);
+        return rotationOnly.getUnnormalizedRotation(new Quaternionf()).normalize();
+    }
+
+    static void decomposeWorldTransformForTest(float[] worldMatrix, Vector3f translation,
+                                               Quaternionf rotation, Vector3f scale) {
+        Transform3D transform = new Transform3D();
+        applyWorldTransform(transform, worldMatrix);
+        translation.set(transform.position());
+        rotation.set(transform.rotation());
+        scale.set(transform.scale());
     }
 
     private static List<Material> buildMaterialPlaceholders(List<Optional<Path>> materialPaths) {
