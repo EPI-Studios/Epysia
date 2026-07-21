@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.editor.importer;
 
+import fr.epistudio.epysia.animation.Clip;
+import fr.epistudio.epysia.animation.ClipProperty;
+import fr.epistudio.epysia.assets.epyclip.EpyClipReader;
 import fr.epistudio.epysia.assets.epymesh.EpyMesh;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshReader;
 import org.junit.jupiter.api.Test;
@@ -18,7 +21,7 @@ class GltfImporterTest {
 
     private static final int FLOATS_PER_POSITION = 3;
     private static final int VERTEX_COUNT = 3;
-    private static final int FIXTURE_BUFFER_BYTES = 280;
+    private static final int FIXTURE_BUFFER_BYTES = 320;
 
     @Test
     void importsSkinnedTriangle(@TempDir Path directory) throws Exception {
@@ -32,6 +35,19 @@ class GltfImporterTest {
         float weightSum = decoded.mesh().jointWeights()[4] + decoded.mesh().jointWeights()[5]
                 + decoded.mesh().jointWeights()[6] + decoded.mesh().jointWeights()[7];
         assertEquals(1.0f, weightSum, 0.0001f);
+    }
+
+    @Test
+    void importsAnimationAsClip(@TempDir Path directory) throws Exception {
+        Path source = writeFixture(directory);
+        GltfImportResult result = GltfImporter.importFile(source, directory);
+        assertEquals(1, result.clipFiles().size());
+        Clip clip = EpyClipReader.readFile(result.clipFiles().get(0));
+        assertEquals("wave", clip.name());
+        assertEquals(1, clip.channels().size());
+        assertEquals(ClipProperty.ROTATION, clip.channels().get(0).property());
+        EpyMesh mesh = EpyMeshReader.readFile(result.meshFiles().get(0));
+        assertEquals(mesh.skeleton().orElseThrow().nameChecksum(), clip.skeletonChecksum());
     }
 
     @Test
@@ -119,6 +135,9 @@ class GltfImporterTest {
                 }
             }
         }
+        buffer.putFloat(0.0f).putFloat(1.0f);
+        buffer.putFloat(0.0f).putFloat(0.0f).putFloat(0.0f).putFloat(1.0f);
+        buffer.putFloat(0.0f).putFloat(0.0f).putFloat(0.7071f).putFloat(0.7071f);
         return buffer.array();
     }
 
@@ -138,6 +157,11 @@ class GltfImporterTest {
                     "attributes": {"POSITION": 0, "NORMAL": 1, "JOINTS_0": 2, "WEIGHTS_0": 3},
                     "indices": 4
                   }]}],
+                  "animations": [{
+                    "name": "wave",
+                    "channels": [{"sampler": 0, "target": {"node": 2, "path": "rotation"}}],
+                    "samplers": [{"input": 6, "interpolation": "LINEAR", "output": 7}]
+                  }],
                   "accessors": [
                     {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
                      "min": [0, 0, 0], "max": [1, 1, 0]},
@@ -145,7 +169,9 @@ class GltfImporterTest {
                     {"bufferView": 2, "componentType": 5123, "count": 3, "type": "VEC4"},
                     {"bufferView": 3, "componentType": 5126, "count": 3, "type": "VEC4"},
                     {"bufferView": 4, "componentType": 5123, "count": 3, "type": "SCALAR"},
-                    {"bufferView": 5, "componentType": 5126, "count": 2, "type": "MAT4"}
+                    {"bufferView": 5, "componentType": 5126, "count": 2, "type": "MAT4"},
+                    {"bufferView": 6, "componentType": 5126, "count": 2, "type": "SCALAR"},
+                    {"bufferView": 7, "componentType": 5126, "count": 2, "type": "VEC4"}
                   ],
                   "bufferViews": [
                     {"buffer": 0, "byteOffset": 0, "byteLength": 36},
@@ -153,9 +179,11 @@ class GltfImporterTest {
                     {"buffer": 0, "byteOffset": 72, "byteLength": 24},
                     {"buffer": 0, "byteOffset": 96, "byteLength": 48},
                     {"buffer": 0, "byteOffset": 144, "byteLength": 6},
-                    {"buffer": 0, "byteOffset": 152, "byteLength": 128}
+                    {"buffer": 0, "byteOffset": 152, "byteLength": 128},
+                    {"buffer": 0, "byteOffset": 280, "byteLength": 8},
+                    {"buffer": 0, "byteOffset": 288, "byteLength": 32}
                   ],
-                  "buffers": [{"uri": "triangle.bin", "byteLength": 280}]
+                  "buffers": [{"uri": "triangle.bin", "byteLength": 320}]
                 }
                 """;
     }
