@@ -3,8 +3,10 @@ package fr.epistudio.epysia.editor.importer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -12,6 +14,7 @@ public final class AssetImportPipeline {
 
     private final AssetImporterRegistry registry;
     private final Set<Path> failedSources = new HashSet<>();
+    private final Map<Path, Long> completedWithoutOutput = new HashMap<>();
 
     public AssetImportPipeline(AssetImporterRegistry registry) {
         this.registry = registry;
@@ -26,7 +29,30 @@ public final class AssetImportPipeline {
         if (importer.isEmpty() || failedSources.contains(source)) {
             return false;
         }
+        if (settledWithoutOutput(source)) {
+            return false;
+        }
         return isStale(importer.get(), source);
+    }
+
+    private boolean settledWithoutOutput(Path source) {
+        Long settledTime = completedWithoutOutput.get(source);
+        if (settledTime == null) {
+            return false;
+        }
+        if (sourceModifiedMillis(source) == settledTime) {
+            return true;
+        }
+        completedWithoutOutput.remove(source);
+        return false;
+    }
+
+    private static long sourceModifiedMillis(Path source) {
+        try {
+            return Files.getLastModifiedTime(source).toMillis();
+        } catch (IOException unreadable) {
+            return -1L;
+        }
     }
 
     public Optional<ImportOutcome> ensureImported(Path source) {
@@ -46,6 +72,7 @@ public final class AssetImportPipeline {
             return Optional.empty();
         }
         failedSources.remove(source);
+        completedWithoutOutput.remove(source);
         return runImport(importer.get(), source);
     }
 
@@ -69,10 +96,21 @@ public final class AssetImportPipeline {
         try {
             Path outputDirectory = outputDirectoryFor(source);
             Files.createDirectories(outputDirectory);
-            return Optional.of(importer.importSource(source, outputDirectory));
+            ImportOutcome outcome = importer.importSource(source, outputDirectory);
+            recordSettlementIfOutputMissing(importer, source);
+            return Optional.of(outcome);
         } catch (RuntimeException | IOException error) {
             failedSources.add(source);
             return Optional.empty();
+        }
+    }
+
+    private void recordSettlementIfOutputMissing(AssetImporter importer, Path source) {
+        Path primaryOutput = importer.primaryOutput(source, outputDirectoryFor(source));
+        if (!Files.exists(primaryOutput)) {
+            completedWithoutOutput.put(source, sourceModifiedMillis(source));
+        } else {
+            completedWithoutOutput.remove(source);
         }
     }
 

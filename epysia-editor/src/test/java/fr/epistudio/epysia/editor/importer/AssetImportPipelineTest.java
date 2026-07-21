@@ -59,6 +59,19 @@ class AssetImportPipelineTest {
         assertEquals(1, importer.importCount);
     }
 
+    @Test
+    void importWithoutOutputSettlesUntilSourceChanges(@TempDir Path directory) throws IOException {
+        FakeImporter importer = new FakeImporter();
+        importer.produceOutput = false;
+        AssetImportPipeline pipeline = pipelineWith(importer);
+        Path source = writeSource(directory);
+        assertTrue(pipeline.ensureImported(source).isPresent());
+        assertEquals(1, importer.importCount);
+        assertFalse(pipeline.needsImport(source));
+        Files.setLastModifiedTime(source, FileTime.fromMillis(9_000_000L));
+        assertTrue(pipeline.needsImport(source));
+    }
+
     private static AssetImportPipeline pipelineWith(AssetImporter importer) {
         AssetImporterRegistry registry = new AssetImporterRegistry();
         registry.register(importer);
@@ -84,6 +97,7 @@ class AssetImportPipelineTest {
 
         private int importCount;
         private boolean fail;
+        private boolean produceOutput = true;
 
         @Override
         public String displayName() {
@@ -107,6 +121,9 @@ class AssetImportPipelineTest {
                 throw new IllegalStateException("import failed");
             }
             Path output = primaryOutput(source, outputDirectory);
+            if (!produceOutput) {
+                return new ImportOutcome(List.of(), Optional.empty(), List.of());
+            }
             writeOutput(output);
             return new ImportOutcome(List.of(output), Optional.of(output), List.of());
         }

@@ -235,6 +235,16 @@ class GltfImporterTest {
     }
 
     @Test
+    void bakesClockwiseRotationTextureTransformIntoUvs(@TempDir Path directory) throws Exception {
+        Path source = writeUvFixture(directory, "rotation.gltf", rotationTransformFixtureJson());
+        GltfImportResult result = runImport(source, directory);
+        EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
+        float[] uvs = decoded.mesh().uvs();
+        assertEquals(0.0f, uvs[2], 0.0001f);
+        assertEquals(-1.0f, uvs[3], 0.0001f);
+    }
+
+    @Test
     void selectsUvSetFromBaseColorTexCoord(@TempDir Path directory) throws Exception {
         Path source = writeUvFixture(directory, "texcoord.gltf", texCoordSelectionFixtureJson());
         GltfImportResult result = runImport(source, directory);
@@ -282,6 +292,11 @@ class GltfImporterTest {
     private static String textureTransformFixtureJson() throws IOException {
         return uvFixtureJson("""
                 "baseColorTexture": {"index": 0, "extensions": {"KHR_texture_transform": {"offset": [0.5, 0], "scale": [2, 2]}}}""");
+    }
+
+    private static String rotationTransformFixtureJson() throws IOException {
+        return uvFixtureJson("""
+                "baseColorTexture": {"index": 0, "extensions": {"KHR_texture_transform": {"offset": [0, 0], "scale": [1, 1], "rotation": 1.5707963267948966}}}""");
     }
 
     private static String texCoordSelectionFixtureJson() throws IOException {
