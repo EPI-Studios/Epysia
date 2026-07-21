@@ -12,7 +12,7 @@ public final class GltfAssetImporter implements AssetImporter {
     private static final String GLTF_EXTENSION = ".gltf";
     private static final String GLB_EXTENSION = ".glb";
     private static final String PREFAB_EXTENSION = ".epyprefab";
-    private static final int IMPORTER_VERSION = 7;
+    private static final int IMPORTER_VERSION = 8;
 
     private final ComponentRegistry componentRegistry;
 

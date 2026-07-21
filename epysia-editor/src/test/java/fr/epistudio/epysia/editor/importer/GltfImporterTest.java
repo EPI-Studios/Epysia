@@ -229,9 +229,9 @@ class GltfImporterTest {
         EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
         float[] uvs = decoded.mesh().uvs();
         assertEquals(2.5f, uvs[2], 0.0001f);
-        assertEquals(0.0f, uvs[3], 0.0001f);
+        assertEquals(1.0f, uvs[3], 0.0001f);
         assertEquals(0.5f, uvs[4], 0.0001f);
-        assertEquals(2.0f, uvs[5], 0.0001f);
+        assertEquals(-1.0f, uvs[5], 0.0001f);
     }
 
     @Test
@@ -241,7 +241,7 @@ class GltfImporterTest {
         EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
         float[] uvs = decoded.mesh().uvs();
         assertEquals(0.0f, uvs[2], 0.0001f);
-        assertEquals(-1.0f, uvs[3], 0.0001f);
+        assertEquals(2.0f, uvs[3], 0.0001f);
     }
 
     @Test
@@ -251,7 +251,7 @@ class GltfImporterTest {
         EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
         float[] uvs = decoded.mesh().uvs();
         assertEquals(0.25f, uvs[0], 0.0001f);
-        assertEquals(0.75f, uvs[1], 0.0001f);
+        assertEquals(0.25f, uvs[1], 0.0001f);
     }
 
     @Test
