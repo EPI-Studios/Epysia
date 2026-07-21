@@ -35,5 +35,7 @@ public interface EngineServices {
 
     void addRenderSystem(RenderSystem renderSystem);
 
+    void removeRenderSystem(RenderSystem renderSystem);
+
     <T extends RenderSystem> T renderSystem(Class<T> type);
 }
