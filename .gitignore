@@ -42,3 +42,9 @@ bin/
 ### Mac OS ###
 .DS_Store
 /.idea/
+
+### Local reference clones and stray files ###
+/NonEuclidean/
+/Veil/
+/backup.zip
+/.../
