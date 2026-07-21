@@ -75,6 +75,14 @@ tasks.register('runSkinnedAnimationCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runVfxFountainCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders a GPU particle fountain and checks pixels appear above the emitter.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.VfxFountainPixelCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
