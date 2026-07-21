@@ -43,6 +43,8 @@ public final class ImGuiShell {
     private final ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
     private final ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
     private long windowHandle;
+    private long pollNanos;
+    private long uiBuildNanos;
     private long drawDataNanos;
     private long viewportsNanos;
     private long swapNanos;
@@ -169,11 +171,17 @@ public final class ImGuiShell {
     }
 
     public void beginFrame() {
+        long pollStart = System.nanoTime();
         GLFW.glfwPollEvents();
         imGuiGl3.newFrame();
         imGuiGlfw.newFrame();
         ImGui.newFrame();
         ImGuizmo.beginFrame();
+        pollNanos = System.nanoTime() - pollStart;
+    }
+
+    public void recordUiBuildNanos(long nanos) {
+        uiBuildNanos = nanos;
     }
 
     public void endFrame() {
@@ -199,6 +207,14 @@ public final class ImGuiShell {
         drawDataNanos = drawDataEnd - renderStart;
         viewportsNanos = viewportsEnd - drawDataEnd;
         swapNanos = swapEnd - viewportsEnd;
+    }
+
+    public long pollNanos() {
+        return pollNanos;
+    }
+
+    public long uiBuildNanos() {
+        return uiBuildNanos;
     }
 
     public long drawDataNanos() {

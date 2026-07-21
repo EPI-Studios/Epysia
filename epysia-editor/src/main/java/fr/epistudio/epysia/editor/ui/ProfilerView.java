@@ -9,6 +9,8 @@ import fr.epistudio.epysia.profiling.FrameProfiler;
 import fr.epistudio.epysia.render.backend.DrawStatistics;
 import fr.epistudio.epysia.render.mesh.ShadowStatistics;
 import imgui.ImGui;
+import imgui.ImGuiViewport;
+import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiTableFlags;
 
 import java.util.ArrayList;
@@ -27,6 +29,8 @@ public final class ProfilerView {
     private static final float PLOT_HEADROOM = 1.2f;
     private static final float PERCENT_SCALE = 100.0f;
     private static final float MINIMUM_FRAMERATE = 1.0f;
+    private static final float DEFAULT_WINDOW_WIDTH = 420.0f;
+    private static final float DEFAULT_WINDOW_HEIGHT = 640.0f;
     private static final int TABLE_FLAGS = ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp
             | ImGuiTableFlags.BordersInnerV;
 
@@ -38,6 +42,7 @@ public final class ProfilerView {
     private final SectionAverages gpuAverages = new SectionAverages(HISTORY_LENGTH);
     private final SectionAverages cpuAverages = new SectionAverages(HISTORY_LENGTH);
     private boolean visible = true;
+    private boolean recenterRequested;
 
     public ProfilerView(EditorScene3DHost sceneHost, ImGuiShell shell,
                         Supplier<SceneDocument> activeDocument, ViewportView viewportView) {
@@ -59,13 +64,46 @@ public final class ProfilerView {
         if (!visible) {
             return;
         }
+        applyWindowPlacement();
         if (!ImGui.begin(WINDOW_TITLE)) {
             ImGui.end();
             return;
         }
+        clampWhenFullyOffscreen();
         sampleThisFrame();
         renderSections();
         ImGui.end();
+    }
+
+    private void applyWindowPlacement() {
+        ImGuiViewport viewport = ImGui.getMainViewport();
+        ImGui.setNextWindowSize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, ImGuiCond.FirstUseEver);
+        int condition = recenterRequested ? ImGuiCond.Always : ImGuiCond.FirstUseEver;
+        ImGui.setNextWindowPos(
+                viewport.getCenterX() - DEFAULT_WINDOW_WIDTH * 0.5f,
+                viewport.getCenterY() - DEFAULT_WINDOW_HEIGHT * 0.5f,
+                condition);
+        recenterRequested = false;
+    }
+
+    private void clampWhenFullyOffscreen() {
+        if (ImGui.isWindowDocked()) {
+            return;
+        }
+        ImGuiViewport viewport = ImGui.getMainViewport();
+        recenterRequested = isFullyOutsideWorkArea(viewport,
+                ImGui.getWindowPosX(), ImGui.getWindowPosY(),
+                ImGui.getWindowSizeX(), ImGui.getWindowSizeY());
+    }
+
+    private static boolean isFullyOutsideWorkArea(ImGuiViewport viewport,
+                                                  float windowX, float windowY, float width, float height) {
+        float left = viewport.getWorkPosX();
+        float top = viewport.getWorkPosY();
+        float right = left + viewport.getWorkSizeX();
+        float bottom = top + viewport.getWorkSizeY();
+        return windowX + width <= left || windowX >= right
+                || windowY + height <= top || windowY >= bottom;
     }
 
     private void renderSections() {
@@ -183,8 +221,20 @@ public final class ProfilerView {
         }
         ImGui.endTable();
         ImGui.text(String.format("Engine CPU %.3f ms", engineMilliseconds));
-        ImGui.text(String.format("Editor UI and present %.3f ms",
-                Math.max(0.0f, frameHistory.latest() - engineMilliseconds)));
+        renderEditorShellTimings();
+    }
+
+    private void renderEditorShellTimings() {
+        ImGui.text("Editor shell (CPU, main thread)");
+        appendShellTimingRow("poll and new frame", shell.pollNanos());
+        appendShellTimingRow("ui build", shell.uiBuildNanos());
+        appendShellTimingRow("ui draw", shell.drawDataNanos());
+        appendShellTimingRow("detached viewports", shell.viewportsNanos());
+        appendShellTimingRow("present (includes vsync wait)", shell.swapNanos());
+    }
+
+    private static void appendShellTimingRow(String label, long nanos) {
+        ImGui.textDisabled(String.format("%s  %.3f ms", label, nanos / NANOS_PER_MILLISECOND));
     }
 
     private static boolean beginTimingTable(String identifier) {
