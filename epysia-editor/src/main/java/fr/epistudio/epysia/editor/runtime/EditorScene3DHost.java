@@ -31,6 +31,7 @@ import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
+import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.window.Window;
 
 import java.nio.file.Path;
@@ -58,6 +59,7 @@ public final class EditorScene3DHost {
     private int previewWidth;
     private int previewHeight;
     private MeshRenderSystem meshRenderSystem;
+    private VfxRenderSystem vfxRenderSystem;
     private PostProcessSystem postProcessSystem;
     private ShaderLoader shaderLoader;
     private ShaderWatcher shaderWatcher;
@@ -112,7 +114,9 @@ public final class EditorScene3DHost {
         meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
         postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());
         postProcessSystem.setShaderWatcher(shaderWatcher);
+        vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
         engine.addRenderSystem(meshRenderSystem);
+        engine.addRenderSystem(vfxRenderSystem);
         engine.addRenderSystem(postProcessSystem);
         engine.initialize();
         BuiltinMeshes builtins = BuiltinMeshes.uploadAll(backend);
@@ -149,13 +153,17 @@ public final class EditorScene3DHost {
     private void restoreBaselineRenderSystems() {
         List<RenderSystem> current = engine.renderSystems();
         for (RenderSystem system : current) {
-            if (system != meshRenderSystem && system != postProcessSystem) {
+            if (system != meshRenderSystem && system != vfxRenderSystem && system != postProcessSystem) {
                 engine.removeRenderSystem(system);
             }
         }
         if (!current.contains(meshRenderSystem)) {
             meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
             engine.addRenderSystem(meshRenderSystem);
+        }
+        if (!current.contains(vfxRenderSystem)) {
+            vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+            engine.addRenderSystem(vfxRenderSystem);
         }
         if (!current.contains(postProcessSystem)) {
             postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());

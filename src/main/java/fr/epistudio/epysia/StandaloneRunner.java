@@ -18,6 +18,7 @@ import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
+import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.runtime.RuntimeCommand;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.window.Window;
@@ -56,7 +57,9 @@ public final class StandaloneRunner {
         loadModulesInto(engine);
         ShaderLoader shaderLoader = ShaderLoader.autoDetect();
         ShaderWatcher shaderWatcher = new ShaderWatcher(shaderLoader.filesystemRoot());
-        engine.addRenderSystem(new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger()));
+        MeshRenderSystem meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
+        engine.addRenderSystem(meshRenderSystem);
+        engine.addRenderSystem(new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger()));
         engine.addRenderSystem(new TextRenderSystem(shaderLoader, window, engine, engine.logger()));
         window.open();
         MutableInputState inputState = new MutableInputState();
