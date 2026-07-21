@@ -120,7 +120,11 @@ public final class PickingPass {
             }
             UploadedMesh mesh = meshOpt.get();
             if (mesh.skinned()) {
-                logSkinnedExclusionOnce(gameObject, renderer);
+                logExclusionOnce(gameObject, renderer, "Skinned");
+                continue;
+            }
+            if (mesh.vertexColored()) {
+                logExclusionOnce(gameObject, renderer, "Vertex-colored");
                 continue;
             }
             PerRenderer perRenderer = resourcesByRenderer.computeIfAbsent(renderer, this::createPerRenderer);
@@ -165,11 +169,11 @@ public final class PickingPass {
         initialized = false;
     }
 
-    private void logSkinnedExclusionOnce(GameObject gameObject, MeshRenderer renderer) {
+    private void logExclusionOnce(GameObject gameObject, MeshRenderer renderer, String reason) {
         if (!loggedSkinnedExclusions.add(renderer)) {
             return;
         }
-        logger.info("Skinned mesh '" + gameObject.name() + "' excluded from picking this milestone.");
+        logger.info(reason + " mesh '" + gameObject.name() + "' excluded from picking this milestone.");
     }
 
     private PerRenderer createPerRenderer(MeshRenderer ignored) {

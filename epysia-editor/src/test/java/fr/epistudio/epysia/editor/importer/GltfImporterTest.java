@@ -84,6 +84,72 @@ class GltfImporterTest {
     }
 
     @Test
+    void importsVertexColorsFromNormalizedBytes(@TempDir Path directory) throws Exception {
+        Path source = writeColorFixture(directory);
+        GltfImportResult result = runImport(source, directory);
+        EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
+        assertTrue(decoded.mesh().hasVertexColors());
+        float[] colors = decoded.mesh().vertexColors();
+        assertEquals(12, colors.length);
+        assertEquals(1.0f, colors[0], 1.0f / 255.0f);
+        assertEquals(0.0f, colors[1], 1.0f / 255.0f);
+        assertEquals(128.0f / 255.0f, colors[5], 1.0f / 255.0f);
+        assertEquals(1.0f, colors[10], 1.0f / 255.0f);
+        assertEquals(1.0f, colors[11], 1.0f / 255.0f);
+    }
+
+    private static Path writeColorFixture(Path directory) throws Exception {
+        Files.write(directory.resolve("color.bin"), colorFixtureBuffer());
+        Path gltf = directory.resolve("color.gltf");
+        Files.writeString(gltf, colorFixtureJson());
+        return gltf;
+    }
+
+    private static byte[] colorFixtureBuffer() {
+        ByteBuffer buffer = ByteBuffer.allocate(90).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.putFloat(0).putFloat(0).putFloat(0);
+        buffer.putFloat(1).putFloat(0).putFloat(0);
+        buffer.putFloat(0).putFloat(1).putFloat(0);
+        for (int vertex = 0; vertex < VERTEX_COUNT; vertex++) {
+            buffer.putFloat(0).putFloat(0).putFloat(1);
+        }
+        buffer.put((byte) 255).put((byte) 0).put((byte) 0).put((byte) 255);
+        buffer.put((byte) 0).put((byte) 128).put((byte) 0).put((byte) 255);
+        buffer.put((byte) 0).put((byte) 0).put((byte) 255).put((byte) 255);
+        buffer.putShort((short) 0).putShort((short) 1).putShort((short) 2);
+        return buffer.array();
+    }
+
+    private static String colorFixtureJson() {
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0,
+                  "scenes": [{"nodes": [0]}],
+                  "nodes": [{"name": "model", "mesh": 0}],
+                  "meshes": [{"primitives": [{
+                    "attributes": {"POSITION": 0, "NORMAL": 1, "COLOR_0": 2},
+                    "indices": 3
+                  }]}],
+                  "accessors": [
+                    {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                     "min": [0, 0, 0], "max": [1, 1, 0]},
+                    {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                    {"bufferView": 2, "componentType": 5121, "normalized": true, "count": 3, "type": "VEC4"},
+                    {"bufferView": 3, "componentType": 5123, "count": 3, "type": "SCALAR"}
+                  ],
+                  "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 72, "byteLength": 12},
+                    {"buffer": 0, "byteOffset": 84, "byteLength": 6}
+                  ],
+                  "buffers": [{"uri": "color.bin", "byteLength": 90}]
+                }
+                """;
+    }
+
+    @Test
     void mixedSkinnedAndRigidPrimitivesImportAsStatic(@TempDir Path directory) throws Exception {
         Path source = writeMixedFixture(directory);
         GltfImportResult result = runImport(source, directory);

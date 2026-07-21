@@ -14,6 +14,7 @@ public record UploadedMesh(
         List<UploadedSubmesh> submeshes,
         Aabb localBounds,
         boolean skinned,
+        boolean vertexColored,
         Optional<Skeleton> skeleton
 ) {
 

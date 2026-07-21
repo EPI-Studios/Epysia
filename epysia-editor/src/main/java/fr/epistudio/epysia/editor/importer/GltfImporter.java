@@ -55,6 +55,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -198,8 +199,31 @@ public final class GltfImporter {
         MaterialUvHints hints = uvHints.getOrDefault(primitive.getMaterialModel(), MaterialUvHints.identity());
         float[] uvs = readUvs(attributes, hints, meshName, primitiveIndex, warnings);
         warnUnsupportedFeatures(primitive, attributes, meshName, primitiveIndex, warnings);
+        float[] colors = readColors(attributes, positions.length / 3);
         SkinAttributeData skinData = readSkinAttributes(attributes, positions.length / 3, skeletonBuild, meshName, primitiveIndex, warnings);
-        return Optional.of(new PrimitiveVertexData(positions, normals, uvs, skinData.jointIndices(), skinData.jointWeights(), indices.get()));
+        return Optional.of(new PrimitiveVertexData(positions, normals, uvs, colors,
+                skinData.jointIndices(), skinData.jointWeights(), indices.get()));
+    }
+
+    private static float[] readColors(Map<String, AccessorModel> attributes, int vertexCount) {
+        AccessorModel accessor = attributes.get("COLOR_0");
+        if (accessor == null) {
+            return new float[0];
+        }
+        int components = accessor.getElementType().getNumComponents();
+        float[] raw = readFloats(accessor, components);
+        return components >= MeshData.COLOR_COMPONENTS ? raw : padColorAlpha(raw, vertexCount);
+    }
+
+    private static float[] padColorAlpha(float[] rgb, int vertexCount) {
+        float[] rgba = new float[vertexCount * MeshData.COLOR_COMPONENTS];
+        for (int vertex = 0; vertex < vertexCount; vertex++) {
+            rgba[vertex * 4] = rgb[vertex * 3];
+            rgba[vertex * 4 + 1] = rgb[vertex * 3 + 1];
+            rgba[vertex * 4 + 2] = rgb[vertex * 3 + 2];
+            rgba[vertex * 4 + 3] = 1.0f;
+        }
+        return rgba;
     }
 
     private static Optional<int[]> readTriangleIndices(MeshPrimitiveModel primitive, String meshName, int primitiveIndex,
@@ -1044,7 +1068,7 @@ public final class GltfImporter {
         warnIfMixedSkin(primitives, plan, meshName, warnings);
         MergeBuffers buffers = new MergeBuffers(plan);
         List<Submesh> submeshes = buffers.copyAll(primitives);
-        return new MeshData(buffers.positions(), buffers.normals(), buffers.uvs(), new float[0],
+        return new MeshData(buffers.positions(), buffers.normals(), buffers.uvs(), new float[0], buffers.colors(),
                 buffers.jointIndices(), buffers.jointWeights(), buffers.indices(), submeshes);
     }
 
@@ -1184,7 +1208,7 @@ public final class GltfImporter {
         }
     }
 
-    private record PrimitiveVertexData(float[] positions, float[] normals, float[] uvs,
+    private record PrimitiveVertexData(float[] positions, float[] normals, float[] uvs, float[] colors,
                                         short[] jointIndices, float[] jointWeights, int[] indices) {
         int vertexCount() {
             return positions.length / 3;
@@ -1229,19 +1253,21 @@ public final class GltfImporter {
         }
     }
 
-    private record MergePlan(int vertexTotal, int indexTotal, boolean hasUv, boolean hasSkin) {
+    private record MergePlan(int vertexTotal, int indexTotal, boolean hasUv, boolean hasColor, boolean hasSkin) {
         static MergePlan of(List<PrimitiveVertexData> primitives) {
             int vertexTotal = 0;
             int indexTotal = 0;
             boolean hasUv = !primitives.isEmpty();
+            boolean hasColor = false;
             boolean hasSkin = !primitives.isEmpty();
             for (PrimitiveVertexData primitive : primitives) {
                 vertexTotal += primitive.vertexCount();
                 indexTotal += primitive.indices().length;
                 hasUv = hasUv && primitive.uvs().length > 0;
+                hasColor = hasColor || primitive.colors().length > 0;
                 hasSkin = hasSkin && primitive.jointIndices().length > 0;
             }
-            return new MergePlan(vertexTotal, indexTotal, hasUv, hasSkin);
+            return new MergePlan(vertexTotal, indexTotal, hasUv, hasColor, hasSkin);
         }
     }
 
@@ -1250,6 +1276,7 @@ public final class GltfImporter {
         private final float[] positions;
         private final float[] normals;
         private final float[] uvs;
+        private final float[] colors;
         private final short[] jointIndices;
         private final float[] jointWeights;
         private final int[] indices;
@@ -1260,6 +1287,7 @@ public final class GltfImporter {
             positions = new float[plan.vertexTotal() * MeshData.POSITION_COMPONENTS];
             normals = new float[plan.vertexTotal() * MeshData.NORMAL_COMPONENTS];
             uvs = plan.hasUv() ? new float[plan.vertexTotal() * MeshData.UV_COMPONENTS] : new float[0];
+            colors = plan.hasColor() ? new float[plan.vertexTotal() * MeshData.COLOR_COMPONENTS] : new float[0];
             jointIndices = plan.hasSkin() ? new short[plan.vertexTotal() * MeshData.INFLUENCES_PER_VERTEX] : new short[0];
             jointWeights = plan.hasSkin() ? new float[plan.vertexTotal() * MeshData.INFLUENCES_PER_VERTEX] : new float[0];
             indices = new int[plan.indexTotal()];
@@ -1278,6 +1306,7 @@ public final class GltfImporter {
             System.arraycopy(primitive.positions(), 0, positions, vertexOffset * MeshData.POSITION_COMPONENTS, primitive.positions().length);
             System.arraycopy(primitive.normals(), 0, normals, vertexOffset * MeshData.NORMAL_COMPONENTS, primitive.normals().length);
             copyUvs(primitive, vertexCount);
+            copyColors(primitive, vertexCount);
             copySkin(primitive, vertexCount);
             Submesh submesh = copyIndices(primitive, primitiveIndex);
             vertexOffset += vertexCount;
@@ -1290,6 +1319,19 @@ public final class GltfImporter {
                 return;
             }
             System.arraycopy(primitive.uvs(), 0, uvs, vertexOffset * MeshData.UV_COMPONENTS, vertexCount * MeshData.UV_COMPONENTS);
+        }
+
+        private void copyColors(PrimitiveVertexData primitive, int vertexCount) {
+            if (colors.length == 0) {
+                return;
+            }
+            int colorBase = vertexOffset * MeshData.COLOR_COMPONENTS;
+            int colorCount = vertexCount * MeshData.COLOR_COMPONENTS;
+            if (primitive.colors().length > 0) {
+                System.arraycopy(primitive.colors(), 0, colors, colorBase, colorCount);
+            } else {
+                Arrays.fill(colors, colorBase, colorBase + colorCount, 1.0f);
+            }
         }
 
         private void copySkin(PrimitiveVertexData primitive, int vertexCount) {
@@ -1320,6 +1362,10 @@ public final class GltfImporter {
 
         float[] uvs() {
             return uvs;
+        }
+
+        float[] colors() {
+            return colors;
         }
 
         short[] jointIndices() {

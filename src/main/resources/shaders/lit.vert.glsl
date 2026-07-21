@@ -40,6 +40,11 @@ vec3 skinDirection(vec3 direction) {
 }
 #endif
 
+#ifdef VERTEX_COLORED
+layout(location = 6) in vec4 inVertexColor;
+out vec4 vertexColor;
+#endif
+
 out vec3 vertexWorldPosition;
 out vec3 vertexWorldNormal;
 out vec3 vertexWorldTangent;
@@ -65,6 +70,9 @@ void main() {
     vertexWorldNormal = normalize(normalMatrix * localNormal);
     vertexWorldTangent = normalize(normalMatrix * localTangent);
     vertexUv = inUv;
+#ifdef VERTEX_COLORED
+    vertexColor = inVertexColor;
+#endif
     // SURFACE_VERTEX_CALL
     gl_Position = frame.cameraViewProjection * worldPosition;
     vertexViewDepth = gl_Position.w;

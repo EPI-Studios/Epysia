@@ -44,6 +44,7 @@ public final class MeshUploader {
                 uploadedSubmeshes,
                 Aabb.fromPositions(data.positions()),
                 data.hasSkin(),
+                data.hasVertexColors(),
                 skeleton
         );
     }
@@ -53,7 +54,8 @@ public final class MeshUploader {
         boolean hasUvs = data.uvs().length > 0;
         boolean hasTangents = data.tangents().length > 0;
         boolean skinned = data.hasSkin();
-        int stride = skinned ? MeshShaderBindings.SKINNED_VERTEX_STRIDE : MeshShaderBindings.VERTEX_STRIDE;
+        boolean colored = data.hasVertexColors();
+        int stride = MeshShaderBindings.vertexStride(skinned, colored);
         ByteBuffer bytes = BufferUtils.createByteBuffer(vertexCount * stride);
         for (int i = 0; i < vertexCount; i++) {
             int positionBase = i * MeshData.POSITION_COMPONENTS;
@@ -71,12 +73,22 @@ public final class MeshUploader {
             bytes.putFloat(hasTangents ? data.tangents()[tangentBase] : 1.0f);
             bytes.putFloat(hasTangents ? data.tangents()[tangentBase + 1] : 0.0f);
             bytes.putFloat(hasTangents ? data.tangents()[tangentBase + 2] : 0.0f);
+            if (colored) {
+                appendVertexColor(bytes, data, i);
+            }
             if (skinned) {
                 appendSkinInfluences(bytes, data, i);
             }
         }
         bytes.flip();
         return bytes;
+    }
+
+    private static void appendVertexColor(ByteBuffer bytes, MeshData data, int vertexIndex) {
+        int colorBase = vertexIndex * MeshData.COLOR_COMPONENTS;
+        for (int component = 0; component < MeshData.COLOR_COMPONENTS; component++) {
+            bytes.putFloat(data.vertexColors()[colorBase + component]);
+        }
     }
 
     private static void appendSkinInfluences(ByteBuffer bytes, MeshData data, int vertexIndex) {
