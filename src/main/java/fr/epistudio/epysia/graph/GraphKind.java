@@ -4,7 +4,8 @@ public enum GraphKind {
     LOGIC,
     STATE_MACHINE,
     SHADER_SURFACE,
-    SHADER_POST;
+    SHADER_POST,
+    VFX;
 
     public boolean isShader() {
         return this == SHADER_SURFACE || this == SHADER_POST;

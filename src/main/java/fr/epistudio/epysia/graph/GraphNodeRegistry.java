@@ -23,6 +23,7 @@ public final class GraphNodeRegistry {
         BuiltinNodes.registerInto(registry);
         StateNodes.registerInto(registry);
         ShaderNodes.registerInto(registry);
+        fr.epistudio.epysia.graph.vfx.VfxNodes.registerInto(registry);
         return registry;
     }
 
