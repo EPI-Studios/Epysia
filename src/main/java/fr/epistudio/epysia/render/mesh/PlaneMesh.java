@@ -28,6 +28,6 @@ public final class PlaneMesh {
                 uvTileCount,  uvTileCount,
                 0.0f,         uvTileCount
         };
-        return new MeshData(positions, NORMALS.clone(), uvs, new float[0], INDICES.clone(), List.of());
+        return new MeshData(positions, NORMALS.clone(), uvs, new float[0], new short[0], new float[0], INDICES.clone(), List.of());
     }
 }

@@ -30,7 +30,7 @@ class EpyMeshRoundTripTest {
         };
         int[] indices = {0, 1, 2, 0, 2, 3};
         List<Submesh> submeshes = List.of(new Submesh(0, 3, 0), new Submesh(3, 3, 1));
-        return new MeshData(positions, normals, uvs, tangents, indices, submeshes);
+        return new MeshData(positions, normals, uvs, tangents, new short[0], new float[0], indices, submeshes);
     }
 
     @Test
