@@ -51,6 +51,14 @@ tasks.register('runMaterialPixelCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runRemovalPixelCheck', JavaExec) {
+    group = 'verification'
+    description = 'Removes a parented mesh subtree at runtime and checks the deleted mesh stops rendering.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.RemovedObjectPixelCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runSkinnedBindPoseCheck', JavaExec) {
     group = 'verification'
     description = 'Renders a skinned quad in bind pose through the skinned pipeline and checks the pixels.'
