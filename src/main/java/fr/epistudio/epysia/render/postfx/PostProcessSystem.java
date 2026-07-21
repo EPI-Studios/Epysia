@@ -155,6 +155,10 @@ public final class PostProcessSystem implements RenderSystem {
         return sceneDepthTexture;
     }
 
+    public RenderTargetHandle sceneTarget() {
+        return sceneTarget;
+    }
+
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         activeCamera = context.primaryCamera().orElse(null);
