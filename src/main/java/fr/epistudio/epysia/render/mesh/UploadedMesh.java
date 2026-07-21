@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.render.mesh;
 
 import fr.epistudio.epysia.animation.Skeleton;
+import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 
@@ -17,6 +18,9 @@ public record UploadedMesh(
 ) {
 
     public UploadedMesh {
+        if (skinned && skeleton.isEmpty()) {
+            throw new EpysiaException("Skinned mesh requires a skeleton.");
+        }
         submeshes = List.copyOf(submeshes);
     }
 

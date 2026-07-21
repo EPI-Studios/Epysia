@@ -48,6 +48,7 @@ public final class MeshShaderBindings {
 
     public static final int VERTEX_STRIDE = MeshData.VERTEX_FLOAT_COUNT * Float.BYTES;
     public static final int SKINNED_VERTEX_STRIDE = VERTEX_STRIDE + 24;
+    public static final int JOINT_PALETTE_BYTES_PER_JOINT = 48;
 
     private MeshShaderBindings() {
     }
