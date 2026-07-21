@@ -37,6 +37,12 @@ dependencies {
     runtimeOnly "io.github.spair:imgui-java-natives-windows:${imguiVersion}"
     runtimeOnly "io.github.spair:imgui-java-natives-macos:${imguiVersion}"
 
+    implementation 'de.javagl:jgltf-model:2.0.4'
+
+    testImplementation platform('org.junit:junit-bom:6.0.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
     implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
     implementation 'org.lwjgl:lwjgl'
     implementation 'org.lwjgl:lwjgl-glfw'
@@ -52,6 +58,10 @@ dependencies {
 
 application {
     mainClass = 'fr.epistudio.epysia.editor.EditorMain'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 tasks.named('run', JavaExec) {
