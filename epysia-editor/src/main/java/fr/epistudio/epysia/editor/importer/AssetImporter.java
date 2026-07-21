@@ -12,4 +12,6 @@ public interface AssetImporter {
     Path primaryOutput(Path source, Path outputDirectory);
 
     ImportOutcome importSource(Path source, Path outputDirectory);
+
+    int version();
 }
