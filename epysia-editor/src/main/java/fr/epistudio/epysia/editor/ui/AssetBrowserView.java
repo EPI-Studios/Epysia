@@ -886,6 +886,7 @@ public final class AssetBrowserView {
             case PREFAB -> AssetMimeTypes.PREFAB;
             case GRAPH -> AssetMimeTypes.GRAPH;
             case MATERIAL -> AssetMimeTypes.MATERIAL;
+            case CLIP -> AssetMimeTypes.CLIP;
             case SCENE, SCRIPT, OTHER -> AssetMimeTypes.NONE;
         };
     }
@@ -898,7 +899,7 @@ public final class AssetBrowserView {
             case GRAPH -> EditorIcon.GRID;
             case MATERIAL -> EditorIcon.MESH;
             case SCENE -> EditorIcon.LOAD;
-            case AUDIO -> EditorIcon.ANIMATION_PLAYER;
+            case AUDIO, CLIP -> EditorIcon.ANIMATION_PLAYER;
             case TEXTURE, OTHER -> EditorIcon.FILE;
         };
     }
