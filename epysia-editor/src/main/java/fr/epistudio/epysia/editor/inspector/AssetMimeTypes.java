@@ -13,9 +13,10 @@ public final class AssetMimeTypes {
     public static final String SCENE = "asset/scene";
     public static final String GRAPH = "asset/graph";
     public static final String MATERIAL = "asset/material";
+    public static final String CLIP = "asset/clip";
     public static final String NONE = "";
 
-    public static final String[] ALL = {MESH, TEXTURE, AUDIO, PREFAB, SHADER, SCENE, GRAPH, MATERIAL};
+    public static final String[] ALL = {MESH, TEXTURE, AUDIO, PREFAB, SHADER, SCENE, GRAPH, MATERIAL, CLIP};
 
     private AssetMimeTypes() {
     }

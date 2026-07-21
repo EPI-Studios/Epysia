@@ -59,6 +59,14 @@ tasks.register('runSkinnedBindPoseCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runSkinnedAnimationCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders a skinned quad driven by an .epyclip animation and checks the pixels moved.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.SkinnedAnimationPixelCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
