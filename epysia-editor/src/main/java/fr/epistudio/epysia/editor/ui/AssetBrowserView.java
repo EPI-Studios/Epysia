@@ -11,6 +11,8 @@ import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.importer.GltfImportResult;
+import fr.epistudio.epysia.editor.importer.GltfImporter;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
@@ -52,6 +54,8 @@ public final class AssetBrowserView {
     private static final String PREFAB_EXTENSION = ".epyprefab";
     private static final String SCENE_EXTENSION = ".epyscene";
     private static final String OBJ_EXTENSION = ".obj";
+    private static final String GLTF_EXTENSION = ".gltf";
+    private static final String GLB_EXTENSION = ".glb";
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
 
@@ -595,6 +599,9 @@ public final class AssetBrowserView {
         if (isBakeable(entry) && ImGui.menuItem("Bake Mesh")) {
             onBakeMesh.accept(path);
         }
+        if (isGltfSource(entry) && ImGui.menuItem("Import glTF")) {
+            importGltf(path);
+        }
         if (entry.type() != AssetType.PRESET) {
             renderFileManagementItems(entry, path);
         }
@@ -621,6 +628,24 @@ public final class AssetBrowserView {
     private static boolean isBakeable(AssetEntry entry) {
         return entry.type() == AssetType.MESH
                 && entry.assetPath().toLowerCase(Locale.ROOT).endsWith(OBJ_EXTENSION);
+    }
+
+    private static boolean isGltfSource(AssetEntry entry) {
+        String lowerCasePath = entry.assetPath().toLowerCase(Locale.ROOT);
+        return entry.type() == AssetType.MESH
+                && (lowerCasePath.endsWith(GLTF_EXTENSION) || lowerCasePath.endsWith(GLB_EXTENSION));
+    }
+
+    private void importGltf(Path source) {
+        try {
+            GltfImportResult result = GltfImporter.importFile(source, source.getParent());
+            result.warnings().forEach(warning -> notifier.show("glTF: " + warning));
+            notifier.show("Imported " + result.meshFiles().size() + " meshes, "
+                    + result.clipFiles().size() + " clips");
+            refresh();
+        } catch (RuntimeException error) {
+            notifier.show("glTF import failed: " + error.getMessage());
+        }
     }
 
     private void activateEntry(AssetEntry entry) {
