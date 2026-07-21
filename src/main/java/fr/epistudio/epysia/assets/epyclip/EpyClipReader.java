@@ -70,8 +70,8 @@ public final class EpyClipReader {
 
     private static ClipChannel readChannel(DataInputStream stream) throws IOException {
         int jointIndex = stream.readInt();
-        ClipProperty property = ClipProperty.values()[stream.readInt()];
-        ClipInterpolation interpolation = ClipInterpolation.values()[stream.readInt()];
+        ClipProperty property = readEnum(stream, ClipProperty.values(), "property");
+        ClipInterpolation interpolation = readEnum(stream, ClipInterpolation.values(), "interpolation");
         float[] times = readFloats(stream);
         float[] values = readFloats(stream);
         return new ClipChannel(jointIndex, property, interpolation, times, values);
@@ -84,5 +84,13 @@ public final class EpyClipReader {
             values[index] = stream.readFloat();
         }
         return values;
+    }
+
+    private static <T> T readEnum(DataInputStream stream, T[] values, String label) throws IOException {
+        int ordinal = stream.readInt();
+        if (ordinal < 0 || ordinal >= values.length) {
+            throw new EpysiaException("Invalid .epyclip " + label + " ordinal: " + ordinal);
+        }
+        return values[ordinal];
     }
 }
