@@ -65,11 +65,15 @@ public final class Scene implements IScene {
             return;
         }
         detachFromParent(root);
-        List<GameObject> subtree = new ArrayList<>();
-        collectSubtree(root, subtree);
-        for (GameObject member : subtree) {
+        for (GameObject member : subtreeOf(root)) {
             removeSingle(member);
         }
+    }
+
+    public List<GameObject> subtreeOf(GameObject root) {
+        List<GameObject> subtree = new ArrayList<>();
+        collectSubtree(root, subtree);
+        return subtree;
     }
 
     private void collectSubtree(GameObject gameObject, List<GameObject> collected) {
