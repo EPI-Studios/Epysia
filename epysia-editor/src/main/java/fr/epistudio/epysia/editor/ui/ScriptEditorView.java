@@ -1,9 +1,12 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.scripteditor.CompletionEngine;
+import fr.epistudio.epysia.editor.scripteditor.CompletionKind;
 import fr.epistudio.epysia.editor.scripteditor.CompletionPopup;
 import fr.epistudio.epysia.editor.scripteditor.CompletionSymbol;
+import fr.epistudio.epysia.editor.scripteditor.ImportPlanner;
 import fr.epistudio.epysia.editor.scripteditor.JavaLanguageDefinition;
 import fr.epistudio.epysia.editor.scripteditor.JavaSymbols;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
@@ -17,6 +20,7 @@ import imgui.flag.ImGuiFocusedFlags;
 import imgui.flag.ImGuiKey;
 import imgui.flag.ImGuiTabBarFlags;
 import imgui.flag.ImGuiTabItemFlags;
+import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 
@@ -30,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,14 +46,33 @@ public final class ScriptEditorView {
     private static final float DIAGNOSTICS_INNER_HEIGHT = DIAGNOSTICS_HEIGHT - 8.0f;
     private static final float MINIMUM_EDITOR_HEIGHT = 80.0f;
     private static final int TAB_SIZE = 4;
+    private static final float MAXIMUM_AUTOSCROLL_OVERSHOOT = 120.0f;
+    private static final float AUTOSCROLL_SPEED = 0.35f;
     private static final float LINE_NUMBER_MARGIN = 10.0f;
     private static final float CHARACTER_SPACING = 1.0f;
-    private static final int BACKGROUND_COLOR_ABGR = 0xFF1E1E1E;
+    private static final int BACKGROUND_COLOR_ABGR = 0xFF14120F;
+    private static final int FOREGROUND_COLOR_ABGR = 0xFFD6D6D6;
+    private static final int KEYWORD_COLOR_ABGR = 0xFFD69C56;
+    private static final int TYPE_COLOR_ABGR = 0xFFB0B856;
+    private static final int NUMBER_COLOR_ABGR = 0xFF9CDCB8;
+    private static final int STRING_COLOR_ABGR = 0xFF8CA0CE;
+    private static final int PUNCTUATION_COLOR_ABGR = 0xFFB4B4B4;
+    private static final int COMMENT_COLOR_ABGR = 0xFF6A9955;
+    private static final int LINE_NUMBER_COLOR_ABGR = 0xFF5A5A5A;
+    private static final int CURSOR_COLOR_ABGR = 0xFFE0E0E0;
+    private static final int CURRENT_LINE_FILL_ABGR = 0x1AFFFFFF;
+    private static final int CURRENT_LINE_FILL_INACTIVE_ABGR = 0x0FFFFFFF;
+    private static final int CURRENT_LINE_EDGE_ABGR = 0x00000000;
+    private static final int ERROR_MARKER_COLOR_ABGR = 0x804B4BFF;
     private static final Pattern DIAGNOSTIC_PATTERN =
             Pattern.compile("([\\w./\\\\-]+\\.java):(\\d+):\\s*(?:error|warning)?:?\\s*(.*)");
+    private static final String[] DROPPABLE_MIME_TYPES = {
+            AssetMimeTypes.MESH, AssetMimeTypes.TEXTURE, AssetMimeTypes.AUDIO,
+            AssetMimeTypes.PREFAB, AssetMimeTypes.SHADER, AssetMimeTypes.SCENE
+    };
 
     private final Notifier notifier;
-    private final Runnable onSaved;
+    private final Consumer<Path> onSaved;
     private final CompletionEngine completionEngine;
     private final CompletionPopup completionPopup = new CompletionPopup();
     private final TextEditorLanguageDefinition languageDefinition;
@@ -58,8 +82,9 @@ public final class ScriptEditorView {
     private Path focusRequest;
     private boolean windowFocusRequest;
     private boolean markersDirty;
+    private boolean selectionDragActive;
 
-    public ScriptEditorView(ComponentRegistry componentRegistry, Notifier notifier, Runnable onSaved) {
+    public ScriptEditorView(ComponentRegistry componentRegistry, Notifier notifier, Consumer<Path> onSaved) {
         this.notifier = notifier;
         this.onSaved = onSaved;
         JavaSymbols javaSymbols = new JavaSymbols(componentRegistry);
@@ -103,6 +128,24 @@ public final class ScriptEditorView {
     private static int[] themedPalette(TextEditor editor) {
         int[] palette = editor.getDarkPalette();
         palette[TextEditorPaletteIndex.Background] = BACKGROUND_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Default] = FOREGROUND_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Identifier] = FOREGROUND_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Keyword] = KEYWORD_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Preprocessor] = KEYWORD_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.KnownIdentifier] = TYPE_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.PreprocIdentifier] = TYPE_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Number] = NUMBER_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.String] = STRING_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.CharLiteral] = STRING_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Punctuation] = PUNCTUATION_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Comment] = COMMENT_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.MultiLineComment] = COMMENT_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.LineNumber] = LINE_NUMBER_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.Cursor] = CURSOR_COLOR_ABGR;
+        palette[TextEditorPaletteIndex.CurrentLineFill] = CURRENT_LINE_FILL_ABGR;
+        palette[TextEditorPaletteIndex.CurrentLineFillInactive] = CURRENT_LINE_FILL_INACTIVE_ABGR;
+        palette[TextEditorPaletteIndex.CurrentLineEdge] = CURRENT_LINE_EDGE_ABGR;
+        palette[TextEditorPaletteIndex.ErrorMarker] = ERROR_MARKER_COLOR_ABGR;
         return palette;
     }
 
@@ -229,15 +272,101 @@ public final class ScriptEditorView {
         TextEditor editor = script.editor();
         ImGui.beginChild("##script-" + path, ImGui.getContentRegionAvailX(), height, false,
                 ImGuiWindowFlags.HorizontalScrollbar);
+        float editorOriginX = ImGui.getCursorScreenPosX();
+        float editorOriginY = ImGui.getCursorScreenPosY();
+        float editorWidth = ImGui.getContentRegionAvailX();
+        claimKeyboardFocusOnClick();
         script.consumePendingLine().ifPresent(line -> editor.setCursorPosition(line - 1, 0));
+        EditorStyle.monospaceFont().ifPresent(ImGui::pushFont);
         editor.render("##texteditor-" + path);
+        EditorStyle.monospaceFont().ifPresent(ignored -> ImGui.popFont());
+        autoScrollWhileSelecting(editorOriginY, height);
+        handleEditorShortcuts(script);
         boolean textChanged = editor.isTextChanged();
         boolean cursorMoved = editor.isCursorPositionChanged();
         if (textChanged) {
             script.markDirty();
         }
         updateCompletion(editor, textChanged, cursorMoved, forceCompletion);
+        renderAssetDropOverlay(script, editorOriginX, editorOriginY, editorWidth, height);
         ImGui.endChild();
+    }
+
+    private void handleEditorShortcuts(OpenScript script) {
+        if (!ImGui.isWindowFocused() || !ImGui.getIO().getKeyCtrl()) {
+            return;
+        }
+        TextEditor editor = script.editor();
+        if (ImGui.getIO().getKeyShift()) {
+            if (ImGui.isKeyPressed(ImGuiKey.Z)) {
+                editor.redo();
+                script.markDirty();
+            }
+            return;
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.A)) {
+            editor.selectAll();
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.X)) {
+            editor.cut();
+            script.markDirty();
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.V)) {
+            editor.paste();
+            script.markDirty();
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.Y)) {
+            editor.redo();
+            script.markDirty();
+        }
+    }
+
+    private void claimKeyboardFocusOnClick() {
+        if (ImGui.isWindowHovered() && ImGui.isMouseClicked(ImGuiMouseButton.Left)) {
+            ImGui.setWindowFocus();
+            selectionDragActive = true;
+        }
+        if (!ImGui.isMouseDown(ImGuiMouseButton.Left)) {
+            selectionDragActive = false;
+        }
+    }
+
+    private void autoScrollWhileSelecting(float originY, float height) {
+        if (!selectionDragActive || !ImGui.isMouseDown(ImGuiMouseButton.Left)) {
+            return;
+        }
+        float mouseY = ImGui.getMousePosY();
+        float aboveTop = originY - mouseY;
+        float belowBottom = mouseY - (originY + height);
+        float overshoot = aboveTop > 0.0f ? -aboveTop : Math.max(belowBottom, 0.0f);
+        if (overshoot == 0.0f) {
+            return;
+        }
+        float clamped = Math.copySign(Math.min(Math.abs(overshoot), MAXIMUM_AUTOSCROLL_OVERSHOOT), overshoot);
+        ImGui.setScrollY(Math.max(0.0f, ImGui.getScrollY() + clamped * AUTOSCROLL_SPEED));
+    }
+
+    private void renderAssetDropOverlay(OpenScript script, float originX, float originY,
+                                        float width, float height) {
+        if (ImGui.getDragDropPayload() == null) {
+            return;
+        }
+        ImGui.setCursorScreenPos(originX, originY);
+        ImGui.invisibleButton("##script-asset-drop", Math.max(1.0f, width), Math.max(1.0f, height));
+        if (ImGui.beginDragDropTarget()) {
+            insertDroppedAssetPath(script.editor());
+            ImGui.endDragDropTarget();
+        }
+    }
+
+    private void insertDroppedAssetPath(TextEditor editor) {
+        for (String mimeType : DROPPABLE_MIME_TYPES) {
+            String droppedPath = ImGui.acceptDragDropPayload(mimeType, String.class);
+            if (droppedPath != null) {
+                editor.insertText("\"" + droppedPath + "\"");
+                return;
+            }
+        }
     }
 
     private void updateCompletion(TextEditor editor, boolean textChanged, boolean cursorMoved,
@@ -269,7 +398,8 @@ public final class ScriptEditorView {
     }
 
     private static float completionAnchorY(int line) {
-        return ImGui.getWindowPosY() + (line + 1) * ImGui.getTextLineHeightWithSpacing()
+        return ImGui.getWindowPosY() + ImGui.getStyle().getWindowPaddingY()
+                + (line + 1) * ImGui.getTextLineHeight()
                 - ImGui.getScrollY();
     }
 
@@ -278,15 +408,34 @@ public final class ScriptEditorView {
         editor.getCursorPosition(cursorCoordinates);
         String lineText = editor.getCurrentLineText();
         int cursorIndex = characterIndexForColumn(lineText, cursorCoordinates.mColumn);
-        int prefixLength = completionEngine.contextAt(lineText, cursorIndex).prefix().length();
-        if (prefixLength > 0) {
-            editor.setSelection(cursorCoordinates.mLine, cursorCoordinates.mColumn - prefixLength,
+        CompletionEngine.Context context = completionEngine.contextAt(lineText, cursorIndex);
+        int replacedLength = context.importPath().orElse(context.prefix()).length();
+        if (replacedLength > 0) {
+            editor.setSelection(cursorCoordinates.mLine, cursorCoordinates.mColumn - replacedLength,
                     cursorCoordinates.mLine, cursorCoordinates.mColumn);
             editor.delete();
         }
         editor.insertText(symbol.insertText());
+        if (!context.isImport() && symbol.kind() == CompletionKind.TYPE) {
+            symbol.qualifiedName().ifPresent(qualifiedName -> ensureImport(editor, qualifiedName));
+        }
         script.markDirty();
         completionPopup.hide();
+    }
+
+    private void ensureImport(TextEditor editor, String qualifiedName) {
+        ImportPlanner.plan(editor.getText(), qualifiedName)
+                .ifPresent(plan -> insertImport(editor, plan));
+    }
+
+    private void insertImport(TextEditor editor, ImportPlanner.ImportPlan plan) {
+        editor.getCursorPosition(cursorCoordinates);
+        int restoredLine = cursorCoordinates.mLine;
+        int restoredColumn = cursorCoordinates.mColumn;
+        editor.setCursorPosition(plan.lineIndex(), 0);
+        editor.insertText(plan.insertionText());
+        int lineOffset = plan.lineIndex() <= restoredLine ? plan.addedLines() : 0;
+        editor.setCursorPosition(restoredLine + lineOffset, restoredColumn);
     }
 
     private static int characterIndexForColumn(String lineText, int column) {
@@ -353,7 +502,7 @@ public final class ScriptEditorView {
             Files.writeString(path, script.editor().getText());
             script.markSaved();
             notifier.show("Saved " + path.getFileName());
-            onSaved.run();
+            onSaved.accept(path);
         } catch (IOException error) {
             notifier.show("Save failed: " + error.getMessage());
         }

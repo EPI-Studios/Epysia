@@ -27,6 +27,8 @@ public final class LauncherConfiguration {
         arguments.add(CONTENT_DIRECTORY);
         arguments.add("--precompiled-scripts");
         arguments.add(SCRIPTS_DIRECTORY);
+        arguments.add("--gpu");
+        arguments.add("high");
         arguments.add("--title");
         arguments.add(title);
         return new LauncherConfiguration(arguments);

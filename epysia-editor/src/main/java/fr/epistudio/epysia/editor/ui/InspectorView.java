@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
@@ -15,6 +16,8 @@ import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.graph.GraphComponent;
+import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
@@ -22,15 +25,20 @@ import imgui.ImGui;
 import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImString;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import javax.lang.model.SourceVersion;
 
 public final class InspectorView {
+
+    private static final float EMPTY_STATE_LINE_GAP = 6.0f;
+    private static final float EMPTY_STATE_BLOCK_HEIGHT = 70.0f;
 
     public static final String WINDOW_TITLE = "Inspector";
 
@@ -48,19 +56,25 @@ public final class InspectorView {
     private final ConfirmDialog removeConfirm = new ConfirmDialog("Remove this component?", "Remove");
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final MaterialsSection materialsSection;
+    private final PostEffectsSection postEffectsSection;
+    private final GraphSection graphSection;
     private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
     private final BiConsumer<String, GameObject> onCreateScriptForObject;
 
     public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
                          Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
-                         ThumbnailCache thumbnails, BiConsumer<String, GameObject> onCreateScriptForObject) {
+                         ThumbnailCache thumbnails, Project project,
+                         BiConsumer<String, GameObject> onCreateScriptForObject,
+                         Consumer<Path> onOpenGraph) {
         this.activeDocument = activeDocument;
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
         this.icons = icons;
         this.assetPicker = assetPicker;
         this.propertyRows = new PropertyRows(activeDocument, assetPicker);
-        this.materialsSection = new MaterialsSection(activeDocument, thumbnails);
+        this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project);
+        this.postEffectsSection = new PostEffectsSection(project, thumbnails);
+        this.graphSection = new GraphSection(activeDocument, onOpenGraph);
         this.onCreateScriptForObject = onCreateScriptForObject;
     }
 
@@ -92,8 +106,26 @@ public final class InspectorView {
     }
 
     private void renderEmpty() {
-        ImGui.textDisabled("No selection");
-        ImGui.textDisabled("Select an object in the hierarchy.");
+        centerVertically();
+        centerText("Nothing selected");
+        ImGui.dummy(0.0f, EMPTY_STATE_LINE_GAP);
+        centerText("Pick an object in the hierarchy");
+        centerText("to edit its components.");
+    }
+
+    private static void centerVertically() {
+        float free = ImGui.getContentRegionAvailY() - EMPTY_STATE_BLOCK_HEIGHT;
+        if (free > 0.0f) {
+            ImGui.dummy(0.0f, free * 0.5f);
+        }
+    }
+
+    private static void centerText(String text) {
+        float indent = (ImGui.getContentRegionAvailX() - ImGui.calcTextSize(text).x) * 0.5f;
+        if (indent > 0.0f) {
+            ImGui.setCursorPosX(ImGui.getCursorPosX() + indent);
+        }
+        ImGui.textDisabled(text);
     }
 
     private void renderBody(GameObject gameObject) {
@@ -158,6 +190,33 @@ public final class InspectorView {
         if (component instanceof MeshRenderer renderer) {
             materialsSection.render(renderer);
         }
+        if (component instanceof Camera3D camera) {
+            renderCameraPostEffects(camera);
+        }
+        if (component instanceof GraphComponent graph) {
+            graphSection.render(graph);
+        }
+    }
+
+    private void renderCameraPostEffects(Camera3D camera) {
+        ImGui.spacing();
+        ImGui.textDisabled("Post Effects");
+        ImGui.separator();
+        boolean overrideActive = camera.postEffectStack().isPresent();
+        if (ImGui.checkbox("Override Post Effects", overrideActive)) {
+            toggleCameraPostEffects(camera, overrideActive);
+        }
+        camera.postEffectStack().ifPresent(stack ->
+                postEffectsSection.render(stack, () -> activeDocument.get().markDirty()));
+    }
+
+    private void toggleCameraPostEffects(Camera3D camera, boolean overrideActive) {
+        if (overrideActive) {
+            camera.disablePostEffectStack();
+        } else {
+            camera.enablePostEffectStack();
+        }
+        activeDocument.get().markDirty();
     }
 
     private void renderAddComponentButton(GameObject gameObject) {

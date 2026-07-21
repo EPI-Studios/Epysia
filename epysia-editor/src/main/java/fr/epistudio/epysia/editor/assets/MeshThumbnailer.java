@@ -70,8 +70,9 @@ public final class MeshThumbnailer {
         GameObject sunObject = new GameObject("Sun");
         sunObject.addComponent(new Transform3D().lookAt(-0.5f, -1.0f, -0.3f, 0.0f, 1.0f, 0.0f));
         sunObject.addComponent(new DirectionalLight()
-                .setColor(1.0f, 0.96f, 0.88f)
-                .setAmbient(0.30f, 0.32f, 0.36f));
+                .setColor(1.0f, 0.94f, 0.84f)
+                .setIntensity(2.1f)
+                .setAmbient(0.12f, 0.14f, 0.20f));
         return sunObject;
     }
 
@@ -169,6 +170,7 @@ public final class MeshThumbnailer {
     private void renderInto(RenderTargetHandle target) {
         GlStateSnapshot snapshot = GlStateSnapshot.capture();
         try {
+            scene.advanceTick();
             engine.render(List.of(thumbCamera), target, 0.0f);
         } finally {
             snapshot.restore();

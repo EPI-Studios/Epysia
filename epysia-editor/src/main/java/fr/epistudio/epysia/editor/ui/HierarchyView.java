@@ -33,12 +33,14 @@ import org.joml.Vector3f;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
+import fr.epistudio.epysia.editor.scene.UniqueObjectName;
 
 public final class HierarchyView {
 
@@ -46,8 +48,11 @@ public final class HierarchyView {
     static final String PAYLOAD_GAMEOBJECT = "gameobject";
 
     private static final String DEFAULT_NAME = "GameObject";
-    private static final String COPY_SUFFIX = " (copy)";
     private static final int RENAME_CAPACITY = 256;
+    private static final int FILTER_CAPACITY = 128;
+    private static final String ELLIPSIS = "...";
+    private static final float INDENT_GUIDE_OFFSET = 6.0f;
+    private static final int INDENT_GUIDE_COLOR = EditorStyle.rgba(255, 255, 255, 26);
 
     private final Supplier<SceneDocument> activeDocument;
     private final ComponentRegistry componentRegistry;
@@ -58,6 +63,7 @@ public final class HierarchyView {
     private final Supplier<Vector3f> spawnPoint;
     private final ConfirmDialog deleteConfirm = new ConfirmDialog("Delete selected objects?", "Delete");
     private final ImString renameInput = new ImString(RENAME_CAPACITY);
+    private final ImString filterInput = new ImString(FILTER_CAPACITY);
     private final IconWidgets icons;
     private final List<Row> rows = new ArrayList<>();
     private GameObject renameTarget;
@@ -114,13 +120,23 @@ public final class HierarchyView {
             askDeleteSelected();
         }
         ImGui.endDisabled();
+        ImGui.sameLine();
+        ImGui.setNextItemWidth(-1.0f);
+        ImGui.inputTextWithHint("##hierarchy-filter", "Filter", filterInput);
+    }
+
+    private boolean matchesFilter(GameObject gameObject) {
+        String query = filterInput.get().replace("\0", "").strip().toLowerCase(Locale.ROOT);
+        return query.isEmpty() || gameObject.name().toLowerCase(Locale.ROOT).contains(query);
     }
 
     private void renderRows() {
         for (int index = 0; index < rows.size(); index++) {
             renderRow(rows.get(index), index);
         }
-        if (rows.isEmpty()) {
+        if (rows.isEmpty() && isFiltering()) {
+            ImGui.textDisabled("No object matches the filter.");
+        } else if (rows.isEmpty()) {
             ImGui.textDisabled("The scene is empty.");
             ImGui.textDisabled("Right-click here or use the GameObject");
             ImGui.textDisabled("menu to create your first object.");
@@ -129,6 +145,7 @@ public final class HierarchyView {
 
     private void renderRow(Row row, int index) {
         ImGui.pushID(row.gameObject().id().toString());
+        drawIndentGuides(row.depth());
         ImGui.indent(row.depth() * EditorStyle.INDENT_SPACING + 1.0f);
         icons.drawInline(ComponentIcons.forGameObject(row.gameObject()), EditorStyle.ICON_SIZE_SMALL);
         if (renameTarget == row.gameObject()) {
@@ -142,8 +159,13 @@ public final class HierarchyView {
 
     private void renderSelectable(Row row, int index) {
         boolean selected = selection().isSelected(row.gameObject());
-        if (ImGui.selectable(row.gameObject().name(), selected, ImGuiSelectableFlags.AllowDoubleClick)) {
+        String name = row.gameObject().name();
+        if (ImGui.selectable(elide(name, ImGui.getContentRegionAvailX()), selected,
+                ImGuiSelectableFlags.AllowDoubleClick)) {
             handleRowClick(row, index);
+        }
+        if (ImGui.isItemHovered()) {
+            showFullNameTooltip(name);
         }
         if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
             onFrameRequested.accept(row.gameObject());
@@ -151,6 +173,37 @@ public final class HierarchyView {
         renderRowDragSource(row);
         renderRowDropTarget(row);
         renderRowContextMenu(row);
+    }
+
+    private static void drawIndentGuides(int depth) {
+        if (depth == 0) {
+            return;
+        }
+        float startX = ImGui.getCursorScreenPosX();
+        float startY = ImGui.getCursorScreenPosY();
+        float height = ImGui.getTextLineHeightWithSpacing();
+        for (int level = 0; level < depth; level++) {
+            float x = startX + level * EditorStyle.INDENT_SPACING + INDENT_GUIDE_OFFSET;
+            ImGui.getWindowDrawList().addLine(x, startY, x, startY + height, INDENT_GUIDE_COLOR);
+        }
+    }
+
+    private static void showFullNameTooltip(String name) {
+        if (ImGui.calcTextSize(name).x > ImGui.getContentRegionAvailX()) {
+            ImGui.setTooltip(name);
+        }
+    }
+
+    private static String elide(String name, float availableWidth) {
+        if (ImGui.calcTextSize(name).x <= availableWidth) {
+            return name;
+        }
+        String ellipsis = ELLIPSIS;
+        int length = name.length();
+        while (length > 1 && ImGui.calcTextSize(name.substring(0, length) + ellipsis).x > availableWidth) {
+            length--;
+        }
+        return name.substring(0, length) + ellipsis;
     }
 
     private void handleRowClick(Row row, int index) {
@@ -371,14 +424,30 @@ public final class HierarchyView {
                 .isPresent();
     }
 
+    private boolean isFiltering() {
+        return !filterInput.get().replace("\0", "").strip().isEmpty();
+    }
+
     private void rebuildRows() {
         rows.clear();
+        if (isFiltering()) {
+            rebuildFilteredRows();
+            return;
+        }
         for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {
             Optional<Transform3D> transform = gameObject.getComponent(Transform3D.class);
             if (transform.isEmpty()) {
                 rows.add(new Row(gameObject, 0));
             } else if (transform.get().parent().isEmpty()) {
                 appendDescendants(gameObject, transform.get(), 0);
+            }
+        }
+    }
+
+    private void rebuildFilteredRows() {
+        for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {
+            if (matchesFilter(gameObject)) {
+                rows.add(new Row(gameObject, 0));
             }
         }
     }
@@ -412,7 +481,8 @@ public final class HierarchyView {
     }
 
     private GameObject buildCopy(GameObject source) {
-        GameObject copy = new GameObject(source.name() + COPY_SUFFIX);
+        GameObject copy = new GameObject(
+                UniqueObjectName.in(activeDocument.get().scene(), source.name()));
         for (IComponent component : new ArrayList<>(source.components())) {
             copyComponentInto(copy, component);
         }

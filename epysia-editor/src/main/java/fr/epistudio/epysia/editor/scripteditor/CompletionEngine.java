@@ -12,17 +12,29 @@ import java.util.regex.Pattern;
 
 public final class CompletionEngine {
 
-    public record Context(String prefix, Optional<String> receiver) {
+    public record Context(String prefix, Optional<String> receiver, Optional<String> importPath) {
+
+        public Context(String prefix, Optional<String> receiver) {
+            this(prefix, receiver, Optional.empty());
+        }
 
         public boolean isMember() {
             return receiver.isPresent();
+        }
+
+        public boolean isImport() {
+            return importPath.isPresent();
         }
     }
 
     private static final Pattern IDENTIFIER_PATTERN =
             Pattern.compile("\\b[A-Za-z_][A-Za-z0-9_]{2,}\\b");
+    private static final Pattern IMPORT_LINE_PATTERN =
+            Pattern.compile("^\\s*import\\s+(static\\s+)?([A-Za-z0-9_.]*)$");
     private static final int MAX_RESULTS = 50;
     private static final int MINIMUM_PREFIX_LENGTH = 2;
+    private static final String IMPORT_STATEMENT_SUFFIX = ";";
+    private static final char PACKAGE_SEPARATOR = '.';
 
     private final JavaSymbols symbols;
 
@@ -32,6 +44,11 @@ public final class CompletionEngine {
 
     public Context contextAt(String lineText, int cursorIndex) {
         int end = Math.min(Math.max(cursorIndex, 0), lineText.length());
+        Matcher importMatcher = IMPORT_LINE_PATTERN.matcher(lineText.substring(0, end));
+        if (importMatcher.matches()) {
+            String importPath = importMatcher.group(2);
+            return new Context(wordSuffixOf(importPath), Optional.empty(), Optional.of(importPath));
+        }
         int start = end;
         while (start > 0 && isWordCharacter(lineText.charAt(start - 1))) {
             start--;
@@ -52,14 +69,76 @@ public final class CompletionEngine {
     }
 
     public boolean shouldTrigger(Context context) {
-        return context.isMember() || context.prefix().length() >= MINIMUM_PREFIX_LENGTH;
+        return context.isImport()
+                || context.isMember()
+                || context.prefix().length() >= MINIMUM_PREFIX_LENGTH;
     }
 
     public List<CompletionSymbol> candidates(Context context, String fullText) {
+        if (context.isImport()) {
+            return importPool(context.importPath().orElse(""));
+        }
         List<CompletionSymbol> pool = context.isMember()
                 ? memberPool(context.receiver().orElse(""), fullText)
                 : generalPool(fullText, context.prefix());
         return rank(pool, context.prefix());
+    }
+
+    private List<CompletionSymbol> importPool(String typedPath) {
+        List<String> matches = symbols.qualifiedTypeNames().stream()
+                .filter(qualifiedName -> qualifiedName.startsWith(typedPath)
+                        && !qualifiedName.equals(typedPath))
+                .sorted()
+                .toList();
+        Map<String, CompletionSymbol> merged = new LinkedHashMap<>();
+        for (String qualifiedName : matches) {
+            CompletionSymbol candidate = importCandidate(qualifiedName, typedPath, matches);
+            merged.putIfAbsent(candidate.insertText(), candidate);
+        }
+        return merged.values().stream().limit(MAX_RESULTS).toList();
+    }
+
+    private static CompletionSymbol importCandidate(String qualifiedName, String typedPath,
+                                                    List<String> matches) {
+        int nextSeparator = qualifiedName.indexOf(PACKAGE_SEPARATOR, typedPath.length());
+        if (nextSeparator < 0) {
+            String simpleName = qualifiedName.substring(qualifiedName.lastIndexOf(PACKAGE_SEPARATOR) + 1);
+            return new CompletionSymbol(simpleName, qualifiedName + IMPORT_STATEMENT_SUFFIX,
+                    CompletionKind.TYPE, Optional.of(qualifiedName));
+        }
+        String collapsed = collapsedPackage(qualifiedName.substring(0, nextSeparator + 1), matches);
+        return new CompletionSymbol(collapsed, collapsed, CompletionKind.PACKAGE, Optional.empty());
+    }
+
+    private static String collapsedPackage(String packagePrefix, List<String> matches) {
+        String current = packagePrefix;
+        while (true) {
+            List<String> continuations = distinctContinuations(current, matches);
+            if (continuations.size() != 1 || !continuations.getFirst().endsWith(String.valueOf(PACKAGE_SEPARATOR))) {
+                return current;
+            }
+            current = current + continuations.getFirst();
+        }
+    }
+
+    private static List<String> distinctContinuations(String packagePrefix, List<String> matches) {
+        return matches.stream()
+                .filter(qualifiedName -> qualifiedName.startsWith(packagePrefix))
+                .map(qualifiedName -> continuationOf(qualifiedName, packagePrefix))
+                .distinct()
+                .toList();
+    }
+
+    private static String continuationOf(String qualifiedName, String packagePrefix) {
+        int nextSeparator = qualifiedName.indexOf(PACKAGE_SEPARATOR, packagePrefix.length());
+        return nextSeparator < 0
+                ? qualifiedName.substring(packagePrefix.length())
+                : qualifiedName.substring(packagePrefix.length(), nextSeparator + 1);
+    }
+
+    private static String wordSuffixOf(String importPath) {
+        int lastSeparator = importPath.lastIndexOf(PACKAGE_SEPARATOR);
+        return importPath.substring(lastSeparator + 1);
     }
 
     private List<CompletionSymbol> memberPool(String receiver, String fullText) {

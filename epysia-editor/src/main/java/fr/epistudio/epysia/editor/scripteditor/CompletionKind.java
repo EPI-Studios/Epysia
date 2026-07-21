@@ -4,6 +4,7 @@ public enum CompletionKind {
     KEYWORD("K"),
     TYPE("T"),
     METHOD("M"),
+    PACKAGE("P"),
     FIELD("F"),
     LOCAL("L");
 

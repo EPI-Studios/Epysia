@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "kind": "STATE_MACHINE",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "state.state",
+      "x": 120.0,
+      "y": 120.0,
+      "values": {
+        "stateName": "Idle",
+        "initialState": true
+      }
+    }
+  ],
+  "edges": [],
+  "variables": []
+}
