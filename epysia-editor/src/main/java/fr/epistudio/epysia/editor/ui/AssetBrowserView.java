@@ -81,6 +81,8 @@ public final class AssetBrowserView {
     private static final String SHADERS_CATEGORY = "Shaders";
     private static final String POST_CATEGORY = "Post Processing";
     private static final String SCRIPTING_CATEGORY = "Scripting";
+    private static final String EFFECTS_CATEGORY = "Effects";
+    private static final String VFX_GRAPH_TEMPLATE_RESOURCE = "/templates/NewVfxGraph.epygraph";
 
     private static final String VERTEX_SHADER_SUFFIX = ".vert.glsl";
     private static final String FRAGMENT_SHADER_SUFFIX = ".frag.glsl";
@@ -434,6 +436,8 @@ public final class AssetBrowserView {
                         EditorIcon.VISIBILITY_VISIBLE, "MyPostEffect", this::createPostEffect),
                 kind("Post Graph", POST_CATEGORY, "nodes, compiles to a post effect",
                         EditorIcon.GRID, "MyPostGraph", this::createPostShaderGraph),
+                kind("VFX Graph", EFFECTS_CATEGORY, "gpu particles, compiles to compute",
+                        EditorIcon.GRID, "MyEffect", this::createVfxGraph),
                 kind("Logic Graph", SCRIPTING_CATEGORY, "attaches like a script",
                         EditorIcon.SCRIPT, "MyGraph", this::createGraph),
                 kind("State Machine", SCRIPTING_CATEGORY, "states and transitions",
@@ -447,6 +451,10 @@ public final class AssetBrowserView {
 
     private void createPostEffect(String requestedName) {
         createShaderAsset(requestedName, this::writePostEffect);
+    }
+
+    private void createVfxGraph(String requestedName) {
+        createGraphFromTemplate(requestedName, VFX_GRAPH_TEMPLATE_RESOURCE);
     }
 
     private void createGraph(String requestedName) {
