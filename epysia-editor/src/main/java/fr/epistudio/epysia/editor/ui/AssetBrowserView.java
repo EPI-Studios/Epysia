@@ -137,6 +137,8 @@ public final class AssetBrowserView {
 
     public void render() {
         ensureInitialized();
+        thumbnails.beginFrame();
+        meshThumbnails.beginFrame();
         if (!ImGui.begin(WINDOW_TITLE)) {
             ImGui.end();
             return;

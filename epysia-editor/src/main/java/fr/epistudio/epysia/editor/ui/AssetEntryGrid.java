@@ -8,6 +8,8 @@ import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import imgui.ImGui;
+import imgui.ImGuiListClipper;
+import imgui.callback.ImListClipperCallback;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiSelectableFlags;
@@ -87,8 +89,22 @@ public final class AssetEntryGrid {
                             Consumer<AssetEntry> onDecorate) {
         float cellWidth = cellSize + CELL_PADDING;
         int columns = Math.max(1, (int) (ImGui.getContentRegionAvailX() / cellWidth));
-        for (int index = 0; index < entries.size(); index++) {
-            if (index % columns != 0) {
+        int rowCount = (entries.size() + columns - 1) / columns;
+        int rowHeight = Math.round(cellSize + LABEL_HEIGHT + ImGui.getStyle().getItemSpacingY());
+        ImGuiListClipper.forEach(rowCount, rowHeight, new ImListClipperCallback() {
+            @Override
+            public void accept(int row) {
+                renderGridRow(entries, row, columns, onActivate, onDecorate);
+            }
+        });
+    }
+
+    private void renderGridRow(List<AssetEntry> entries, int row, int columns,
+                               Consumer<AssetEntry> onActivate, Consumer<AssetEntry> onDecorate) {
+        int start = row * columns;
+        int end = Math.min(start + columns, entries.size());
+        for (int index = start; index < end; index++) {
+            if (index != start) {
                 ImGui.sameLine();
             }
             renderGridCell(entries.get(index), onActivate, onDecorate);
@@ -134,9 +150,12 @@ public final class AssetEntryGrid {
 
     private void renderList(List<AssetEntry> entries, Consumer<AssetEntry> onActivate,
                             Consumer<AssetEntry> onDecorate) {
-        for (AssetEntry entry : entries) {
-            renderListRow(entry, onActivate, onDecorate);
-        }
+        ImGuiListClipper.forEach(entries.size(), Math.round(LIST_ROW_HEIGHT), new ImListClipperCallback() {
+            @Override
+            public void accept(int index) {
+                renderListRow(entries.get(index), onActivate, onDecorate);
+            }
+        });
     }
 
     private void renderListRow(AssetEntry entry, Consumer<AssetEntry> onActivate,
