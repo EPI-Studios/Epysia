@@ -12,6 +12,7 @@ public abstract class Material {
     private final Map<String, String> texturePaths = new LinkedHashMap<>();
     private boolean transparent;
     private boolean doubleSided;
+    private String assetPath = "";
 
     protected Material(String vertexShaderPath, String fragmentShaderPath) {
         this.vertexShaderPath = vertexShaderPath;
@@ -24,6 +25,15 @@ public abstract class Material {
 
     public final String fragmentShaderPath() {
         return fragmentShaderPath;
+    }
+
+    public final String assetPath() {
+        return assetPath;
+    }
+
+    public final Material setAssetPath(String path) {
+        this.assetPath = path;
+        return this;
     }
 
     public final boolean transparent() {
