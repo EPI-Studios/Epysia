@@ -52,6 +52,17 @@ public final class Animator extends Component {
         return this;
     }
 
+    public String clipPath() {
+        return clipPath;
+    }
+
+    public Animator assignClip(String path, Clip resolvedClip) {
+        clipPath = path;
+        clip = Optional.of(resolvedClip);
+        timeSeconds = 0.0f;
+        return this;
+    }
+
     public Animator setLooping(boolean value) {
         looping = value;
         return this;
