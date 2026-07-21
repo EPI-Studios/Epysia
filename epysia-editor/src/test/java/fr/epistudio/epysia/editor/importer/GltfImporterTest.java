@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -219,6 +220,155 @@ class GltfImporterTest {
         assertTrue(document.contains(result.clipFiles().get(0).toString()));
         assertTrue(document.contains("Animator"));
         assertTrue(document.contains("2.0") && document.contains("3.0") && document.contains("4.0"));
+    }
+
+    @Test
+    void bakesBaseColorTextureTransformIntoUvs(@TempDir Path directory) throws Exception {
+        Path source = writeUvFixture(directory, "transform.gltf", textureTransformFixtureJson());
+        GltfImportResult result = runImport(source, directory);
+        EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
+        float[] uvs = decoded.mesh().uvs();
+        assertEquals(2.5f, uvs[2], 0.0001f);
+        assertEquals(0.0f, uvs[3], 0.0001f);
+        assertEquals(0.5f, uvs[4], 0.0001f);
+        assertEquals(2.0f, uvs[5], 0.0001f);
+    }
+
+    @Test
+    void selectsUvSetFromBaseColorTexCoord(@TempDir Path directory) throws Exception {
+        Path source = writeUvFixture(directory, "texcoord.gltf", texCoordSelectionFixtureJson());
+        GltfImportResult result = runImport(source, directory);
+        EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
+        float[] uvs = decoded.mesh().uvs();
+        assertEquals(0.25f, uvs[0], 0.0001f);
+        assertEquals(0.75f, uvs[1], 0.0001f);
+    }
+
+    @Test
+    void triangleStripExpandsToTriangleList(@TempDir Path directory) throws Exception {
+        Path source = writeStripFixture(directory);
+        GltfImportResult result = runImport(source, directory);
+        EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
+        int[] indices = decoded.mesh().indices();
+        assertEquals(6, indices.length);
+        assertArrayEquals(new int[] {0, 1, 2, 1, 3, 2}, indices);
+    }
+
+    private static Path writeUvFixture(Path directory, String fileName, String json) throws Exception {
+        Files.write(directory.resolve("uv.bin"), uvFixtureBuffer());
+        Path gltf = directory.resolve(fileName);
+        Files.writeString(gltf, json);
+        return gltf;
+    }
+
+    private static byte[] uvFixtureBuffer() {
+        ByteBuffer buffer = ByteBuffer.allocate(126).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.putFloat(0).putFloat(0).putFloat(0);
+        buffer.putFloat(1).putFloat(0).putFloat(0);
+        buffer.putFloat(0).putFloat(1).putFloat(0);
+        for (int vertex = 0; vertex < VERTEX_COUNT; vertex++) {
+            buffer.putFloat(0).putFloat(0).putFloat(1);
+        }
+        buffer.putFloat(0).putFloat(0);
+        buffer.putFloat(1).putFloat(0);
+        buffer.putFloat(0).putFloat(1);
+        buffer.putFloat(0.25f).putFloat(0.75f);
+        buffer.putFloat(0.25f).putFloat(0.75f);
+        buffer.putFloat(0.25f).putFloat(0.75f);
+        buffer.putShort((short) 0).putShort((short) 1).putShort((short) 2);
+        return buffer.array();
+    }
+
+    private static String textureTransformFixtureJson() throws IOException {
+        return uvFixtureJson("""
+                "baseColorTexture": {"index": 0, "extensions": {"KHR_texture_transform": {"offset": [0.5, 0], "scale": [2, 2]}}}""");
+    }
+
+    private static String texCoordSelectionFixtureJson() throws IOException {
+        return uvFixtureJson("\"baseColorTexture\": {\"index\": 0, \"texCoord\": 1}");
+    }
+
+    private static String uvFixtureJson(String baseColorTexture) throws IOException {
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0,
+                  "scenes": [{"nodes": [0]}],
+                  "nodes": [{"name": "model", "mesh": 0}],
+                  "meshes": [{"primitives": [{
+                    "attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2, "TEXCOORD_1": 3},
+                    "indices": 4,
+                    "material": 0
+                  }]}],
+                  "materials": [{"name": "surface", "pbrMetallicRoughness": {%s}}],
+                  "textures": [{"source": 0}],
+                  "images": [{"uri": "%s"}],
+                  "accessors": [
+                    {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                     "min": [0, 0, 0], "max": [1, 1, 0]},
+                    {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                    {"bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC2"},
+                    {"bufferView": 3, "componentType": 5126, "count": 3, "type": "VEC2"},
+                    {"bufferView": 4, "componentType": 5123, "count": 3, "type": "SCALAR"}
+                  ],
+                  "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 72, "byteLength": 24},
+                    {"buffer": 0, "byteOffset": 96, "byteLength": 24},
+                    {"buffer": 0, "byteOffset": 120, "byteLength": 6}
+                  ],
+                  "buffers": [{"uri": "uv.bin", "byteLength": 126}]
+                }
+                """.formatted(baseColorTexture, pngDataUri());
+    }
+
+    private static Path writeStripFixture(Path directory) throws Exception {
+        Files.write(directory.resolve("strip.bin"), stripFixtureBuffer());
+        Path gltf = directory.resolve("strip.gltf");
+        Files.writeString(gltf, stripFixtureJson());
+        return gltf;
+    }
+
+    private static byte[] stripFixtureBuffer() {
+        ByteBuffer buffer = ByteBuffer.allocate(104).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.putFloat(0).putFloat(0).putFloat(0);
+        buffer.putFloat(1).putFloat(0).putFloat(0);
+        buffer.putFloat(0).putFloat(1).putFloat(0);
+        buffer.putFloat(1).putFloat(1).putFloat(0);
+        for (int vertex = 0; vertex < 4; vertex++) {
+            buffer.putFloat(0).putFloat(0).putFloat(1);
+        }
+        buffer.putShort((short) 0).putShort((short) 1).putShort((short) 2).putShort((short) 3);
+        return buffer.array();
+    }
+
+    private static String stripFixtureJson() {
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0,
+                  "scenes": [{"nodes": [0]}],
+                  "nodes": [{"name": "model", "mesh": 0}],
+                  "meshes": [{"primitives": [{
+                    "attributes": {"POSITION": 0, "NORMAL": 1},
+                    "indices": 2,
+                    "mode": 5
+                  }]}],
+                  "accessors": [
+                    {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3",
+                     "min": [0, 0, 0], "max": [1, 1, 0]},
+                    {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
+                    {"bufferView": 2, "componentType": 5123, "count": 4, "type": "SCALAR"}
+                  ],
+                  "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 48},
+                    {"buffer": 0, "byteOffset": 48, "byteLength": 48},
+                    {"buffer": 0, "byteOffset": 96, "byteLength": 8}
+                  ],
+                  "buffers": [{"uri": "strip.bin", "byteLength": 104}]
+                }
+                """;
     }
 
     private static GltfImportResult runImport(Path source, Path directory) {
