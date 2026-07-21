@@ -367,6 +367,10 @@ public final class GltfImporter {
     private static final int COMPONENT_TYPE_UNSIGNED_BYTE = 5121;
     private static final int COMPONENT_TYPE_UNSIGNED_SHORT = 5123;
 
+    static float[] readFloatsForDiagnostic(AccessorModel accessor, int componentsPerElement) {
+        return readFloats(accessor, componentsPerElement);
+    }
+
     private static float[] readFloats(AccessorModel accessor, int componentsPerElement) {
         AccessorData data = accessor.getAccessorData();
         if (data instanceof AccessorFloatData floatData) {
