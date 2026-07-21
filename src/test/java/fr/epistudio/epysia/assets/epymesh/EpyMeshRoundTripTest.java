@@ -1,15 +1,21 @@
 package fr.epistudio.epysia.assets.epymesh;
 
+import fr.epistudio.epysia.animation.Joint;
+import fr.epistudio.epysia.animation.Skeleton;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.mesh.MeshData;
 import fr.epistudio.epysia.render.mesh.Submesh;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -65,6 +71,96 @@ class EpyMeshRoundTripTest {
         byte[] corrupt = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
 
         assertThrows(EpysiaException.class, () -> EpyMeshReader.read(corrupt));
+    }
+
+    @Test
+    void skinnedMeshRoundTripsWithSkeleton() {
+        MeshData mesh = skinnedTriangle();
+        Skeleton skeleton = new Skeleton(List.of(
+                new Joint("root", -1, identityMatrix(), identityMatrix()),
+                new Joint("tip", 0, identityMatrix(), identityMatrix())));
+
+        byte[] encoded = EpyMeshWriter.write(mesh, Optional.empty(), Optional.of(skeleton));
+        EpyMesh decoded = EpyMeshReader.read(encoded);
+
+        assertTrue(decoded.mesh().hasSkin());
+        assertArrayEquals(mesh.jointIndices(), decoded.mesh().jointIndices());
+        assertArrayEquals(mesh.jointWeights(), decoded.mesh().jointWeights(), 0.0f);
+        assertEquals(2, decoded.skeleton().orElseThrow().jointCount());
+        assertEquals(skeleton.nameChecksum(), decoded.skeleton().orElseThrow().nameChecksum());
+    }
+
+    @Test
+    void versionOneFilesStillLoad() {
+        byte[] versionOne = encodeVersionOne(staticTriangle());
+
+        EpyMesh decoded = EpyMeshReader.read(versionOne);
+
+        assertFalse(decoded.mesh().hasSkin());
+        assertTrue(decoded.skeleton().isEmpty());
+    }
+
+    private static MeshData staticTriangle() {
+        float[] positions = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f};
+        float[] normals = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
+        float[] uvs = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f};
+        float[] tangents = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+        int[] indices = {0, 1, 2};
+        return new MeshData(positions, normals, uvs, tangents, new short[0], new float[0], indices, List.of());
+    }
+
+    private static MeshData skinnedTriangle() {
+        MeshData base = staticTriangle();
+        short[] jointIndices = {0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0};
+        float[] jointWeights = {1.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+        return new MeshData(base.positions(), base.normals(), base.uvs(), base.tangents(),
+                jointIndices, jointWeights, base.indices(), base.submeshes());
+    }
+
+    private static float[] identityMatrix() {
+        float[] matrix = new float[16];
+        matrix[0] = 1.0f;
+        matrix[5] = 1.0f;
+        matrix[10] = 1.0f;
+        matrix[15] = 1.0f;
+        return matrix;
+    }
+
+    private static byte[] encodeVersionOne(MeshData mesh) {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (DataOutputStream stream = new DataOutputStream(buffer)) {
+            stream.writeInt(EpyMeshFormat.MAGIC);
+            stream.writeInt(1);
+            stream.writeInt(0);
+            writeFloatsForVersionOne(stream, mesh.positions());
+            writeFloatsForVersionOne(stream, mesh.normals());
+            writeFloatsForVersionOne(stream, mesh.uvs());
+            writeFloatsForVersionOne(stream, mesh.tangents());
+            writeIntsForVersionOne(stream, mesh.indices());
+            stream.writeInt(mesh.submeshes().size());
+            for (Submesh submesh : mesh.submeshes()) {
+                stream.writeInt(submesh.indexOffset());
+                stream.writeInt(submesh.indexCount());
+                stream.writeInt(submesh.materialSlot());
+            }
+        } catch (IOException exception) {
+            throw new EpysiaException("Failed to encode version 1 fixture: " + exception.getMessage(), exception);
+        }
+        return buffer.toByteArray();
+    }
+
+    private static void writeFloatsForVersionOne(DataOutputStream stream, float[] values) throws IOException {
+        stream.writeInt(values.length);
+        for (float value : values) {
+            stream.writeFloat(value);
+        }
+    }
+
+    private static void writeIntsForVersionOne(DataOutputStream stream, int[] values) throws IOException {
+        stream.writeInt(values.length);
+        for (int value : values) {
+            stream.writeInt(value);
+        }
     }
 
     private static void assertMeshEquals(MeshData expected, MeshData actual) {
