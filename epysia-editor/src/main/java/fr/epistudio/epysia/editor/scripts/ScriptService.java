@@ -8,6 +8,7 @@ import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentFieldCodec;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
+import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.scripting.compile.ScriptLoadResult;
 import fr.epistudio.epysia.scripting.compile.ScriptModule;
 
@@ -25,16 +26,19 @@ public final class ScriptService {
     private final SceneSerializer serializer;
     private final SceneWorkspace workspace;
     private final Consumer<String> log;
+    private final Consumer<List<Class<? extends ProjectRenderSetup>>> renderSetupSink;
     private long lastSeenStamp;
     private long pendingSinceMillis;
 
     public ScriptService(Project project, ComponentRegistry registry, SceneSerializer serializer,
-                         SceneWorkspace workspace, Consumer<String> log) {
+                         SceneWorkspace workspace, Consumer<String> log,
+                         Consumer<List<Class<? extends ProjectRenderSetup>>> renderSetupSink) {
         this.project = project;
         this.registry = registry;
         this.serializer = serializer;
         this.workspace = workspace;
         this.log = log;
+        this.renderSetupSink = renderSetupSink;
         this.lastSeenStamp = latestModified(project.scriptsDirectory());
     }
 
@@ -78,7 +82,9 @@ public final class ScriptService {
         Set<String> userTypes = new HashSet<>();
         result.components().forEach(component -> userTypes.add(component.componentClass().getName()));
         reinstantiate(userTypes);
-        log.accept("Scripts compiled (" + result.components().size() + " components).");
+        renderSetupSink.accept(result.renderSetups());
+        log.accept("Scripts compiled (" + result.components().size() + " components, "
+                + result.renderSetups().size() + " render setups).");
     }
 
     private void reinstantiate(Set<String> userTypes) {

@@ -176,7 +176,7 @@ public final class EditorView implements FrameView {
                 new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
                 this::onShaderNodePreviewsToggled);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
-                this::onScriptMessage);
+                this::onScriptMessage, sceneHost::applyProjectRenderSetups);
         this.viewportView = new ViewportView(sceneHost, editorCamera, active, gizmoState,
                 shell.windowHandle(), playSession, icons, objectFactory);
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,

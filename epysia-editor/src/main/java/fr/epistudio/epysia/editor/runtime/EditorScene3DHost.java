@@ -27,7 +27,9 @@ import fr.epistudio.epysia.render.postfx.PostProcessSettings;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
+import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.window.Window;
 
 import java.nio.file.Path;
@@ -121,6 +123,43 @@ public final class EditorScene3DHost {
         currentHeight = renderSurface.framebufferHeight();
         createRenderTarget(currentWidth, currentHeight);
         initialized = true;
+    }
+
+    public void applyProjectRenderSetups(List<Class<? extends ProjectRenderSetup>> setups) {
+        if (!initialized) {
+            return;
+        }
+        restoreBaselineRenderSystems();
+        for (Class<? extends ProjectRenderSetup> setupClass : setups) {
+            runRenderSetup(setupClass);
+        }
+    }
+
+    private void runRenderSetup(Class<? extends ProjectRenderSetup> setupClass) {
+        try {
+            setupClass.getDeclaredConstructor().newInstance().configure(engine);
+            engine.logger().info("[editor] applied render setup " + setupClass.getName());
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            engine.logger().error("[editor] render setup failed: " + setupClass.getName(), error);
+        }
+    }
+
+    private void restoreBaselineRenderSystems() {
+        List<RenderSystem> current = engine.renderSystems();
+        for (RenderSystem system : current) {
+            if (system != meshRenderSystem && system != postProcessSystem) {
+                engine.removeRenderSystem(system);
+            }
+        }
+        if (!current.contains(meshRenderSystem)) {
+            meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
+            engine.addRenderSystem(meshRenderSystem);
+        }
+        if (!current.contains(postProcessSystem)) {
+            postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());
+            postProcessSystem.setShaderWatcher(shaderWatcher);
+            engine.addRenderSystem(postProcessSystem);
+        }
     }
 
     private void loadEngineModules() {
