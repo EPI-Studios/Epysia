@@ -24,6 +24,12 @@ public final class LitMaterial extends Material {
     @Uniform
     public float alphaCutoff = 0.0f;
 
+    @Uniform
+    public float normalScale = 1.0f;
+
+    @Uniform
+    public float occlusionStrength = 1.0f;
+
     @Texture(srgb = true)
     public TextureHandle albedo;
 
@@ -136,6 +142,16 @@ public final class LitMaterial extends Material {
 
     public LitMaterial setAlphaCutoff(float value) {
         this.alphaCutoff = value;
+        return this;
+    }
+
+    public LitMaterial setNormalScale(float value) {
+        this.normalScale = value;
+        return this;
+    }
+
+    public LitMaterial setOcclusionStrength(float value) {
+        this.occlusionStrength = value;
         return this;
     }
 

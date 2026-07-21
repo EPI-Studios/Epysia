@@ -28,6 +28,8 @@ layout(std140, binding = 2) uniform MaterialUbo {
     float roughness;
     float emissiveStrength;
     float alphaCutoff;
+    float normalScale;
+    float occlusionStrength;
 } material;
 
 layout(binding = 4) uniform sampler2D albedo;
@@ -60,6 +62,7 @@ vec3 imageBasedAmbient(vec3 normal, vec3 viewDirection, vec3 albedoColor,
 
 vec3 computeWorldNormal() {
     vec3 sampledNormal = texture(normalMap, vertexUv).rgb * 2.0 - 1.0;
+    sampledNormal *= vec3(material.normalScale, material.normalScale, 1.0);
     vec3 normal = normalize(vertexWorldNormal) * (gl_FrontFacing ? 1.0 : -1.0);
     vec3 tangent = normalize(vertexWorldTangent - normal * dot(normal, vertexWorldTangent));
     vec3 bitangent = cross(normal, tangent);
@@ -135,7 +138,7 @@ void main() {
     vec3 sampledAlbedo = albedoColor.rgb;
     roughness = clamp(roughness, 0.04, 1.0);
     metallic = clamp(metallic, 0.0, 1.0);
-    float occlusion = texture(occlusionMap, vertexUv).r;
+    float occlusion = mix(1.0, texture(occlusionMap, vertexUv).r, material.occlusionStrength);
 
     vec3 direct = vec3(0.0);
     int lightCount = frame.lightCountAndShadowIndex.x;
