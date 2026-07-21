@@ -38,6 +38,9 @@ public final class EpyMeshReader {
             Optional<BakedCollider> collider = readCollider(stream, header.flags());
             SkinArrays skinArrays = skinned ? readSkinArrays(stream) : emptySkinArrays();
             Optional<Skeleton> skeleton = skinned ? Optional.of(readJoints(stream)) : Optional.empty();
+            if (skeleton.isPresent()) {
+                validateJointIndices(skinArrays.jointIndices(), skeleton.orElseThrow());
+            }
             MeshData mesh = buildMesh(body, skinArrays);
             return new EpyMesh(mesh, collider, skeleton);
         } catch (IOException exception) {
@@ -116,6 +119,16 @@ public final class EpyMeshReader {
             joints.add(new Joint(name, parentIndex, localBindTransform, inverseBindMatrix));
         }
         return new Skeleton(joints);
+    }
+
+    private static void validateJointIndices(short[] jointIndices, Skeleton skeleton) {
+        int jointCount = skeleton.jointCount();
+        for (int i = 0; i < jointIndices.length; i++) {
+            short index = jointIndices[i];
+            if (index < 0 || index >= jointCount) {
+                throw new EpysiaException("Invalid joint index " + index + " (skeleton has " + jointCount + " joints)");
+            }
+        }
     }
 
     private static float[] readRawFloats(DataInputStream stream, int count) throws IOException {
