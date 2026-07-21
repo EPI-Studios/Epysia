@@ -69,7 +69,7 @@ public final class MaterialFields {
 
     private static String resolvePath(Field field, String path) {
         Texture annotation = field.getAnnotation(Texture.class);
-        if (annotation != null && annotation.srgb()) {
+        if (annotation != null && annotation.srgb() && !path.startsWith(TextureAssetLoader.SRGB_PREFIX)) {
             return TextureAssetLoader.SRGB_PREFIX + path;
         }
         return path;

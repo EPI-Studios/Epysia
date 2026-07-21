@@ -64,6 +64,7 @@ import static org.lwjgl.opengl.GL11.glTexSubImage2D;
 import static org.lwjgl.opengl.GL11.glViewport;
 import static org.lwjgl.opengl.GL11.GL_REPEAT;
 import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
+import static org.lwjgl.opengl.GL14.GL_MIRRORED_REPEAT;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
 import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
@@ -494,6 +495,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return switch (wrap) {
             case CLAMP_TO_EDGE -> GL_CLAMP_TO_EDGE;
             case REPEAT -> GL_REPEAT;
+            case MIRRORED_REPEAT -> GL_MIRRORED_REPEAT;
         };
     }
 

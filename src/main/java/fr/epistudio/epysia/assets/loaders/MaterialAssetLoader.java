@@ -68,11 +68,18 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
         }
         Path baseDirectory = originPath.toAbsolutePath().getParent();
         for (Map.Entry<String, String> entry : Map.copyOf(material.texturePaths()).entrySet()) {
-            Path texturePath = Path.of(entry.getValue());
-            if (!texturePath.isAbsolute()) {
-                material.setTexturePath(entry.getKey(), baseDirectory.resolve(texturePath).normalize().toString());
-            }
+            material.setTexturePath(entry.getKey(), rebaseTexturePath(entry.getValue(), baseDirectory));
         }
+    }
+
+    private static String rebaseTexturePath(String storedPath, Path baseDirectory) {
+        String unprefixedPath = TexturePathPrefixes.stripPrefixes(storedPath);
+        String prefix = storedPath.substring(0, storedPath.length() - unprefixedPath.length());
+        Path texturePath = Path.of(unprefixedPath);
+        if (texturePath.isAbsolute()) {
+            return storedPath;
+        }
+        return prefix + baseDirectory.resolve(texturePath).normalize();
     }
 
     private static String readFileText(Path file) {
