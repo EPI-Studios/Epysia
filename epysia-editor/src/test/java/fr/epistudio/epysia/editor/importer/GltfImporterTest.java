@@ -97,7 +97,7 @@ class GltfImporterTest {
     void duplicateMaterialNamesGetDistinctFiles(@TempDir Path directory) throws Exception {
         Path source = writeDuplicateMaterialNamesFixture(directory);
         GltfImportResult result = runImport(source, directory);
-        assertEquals(2, result.materialFiles().size());
+        assertEquals(3, result.materialFiles().size());
         Path first = result.materialFiles().get(0);
         Path second = result.materialFiles().get(1);
         assertTrue(Files.exists(first));
@@ -130,7 +130,9 @@ class GltfImporterTest {
                   ]}],
                   "materials": [
                     {"name": "Shared", "pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0]}},
-                    {"name": "Shared", "pbrMetallicRoughness": {"baseColorFactor": [0.5, 0.5, 0.5, 1.0]}, "alphaMode": "BLEND"}
+                    {"name": "Shared", "pbrMetallicRoughness": {"baseColorFactor": [0.5, 0.5, 0.5, 1.0]}, "alphaMode": "BLEND"},
+                    {"name": "Glass", "pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0]},
+                     "extensions": {"KHR_materials_transmission": {"transmissionFactor": 0.9}}}
                   ],
                   "accessors": [
                     {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
@@ -159,6 +161,15 @@ class GltfImporterTest {
         Path source = writeDuplicateMaterialNamesFixture(directory);
         GltfImportResult result = runImport(source, directory);
         String document = Files.readString(result.materialFiles().get(1));
+        Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
+        assertTrue(((LitMaterial) material).transparent());
+    }
+
+    @Test
+    void transmissionMarksMaterialTransparent(@TempDir Path directory) throws Exception {
+        Path source = writeDuplicateMaterialNamesFixture(directory);
+        GltfImportResult result = runImport(source, directory);
+        String document = Files.readString(result.materialFiles().get(2));
         Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
         assertTrue(((LitMaterial) material).transparent());
     }
