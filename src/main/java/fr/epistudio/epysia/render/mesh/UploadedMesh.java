@@ -1,15 +1,19 @@
 package fr.epistudio.epysia.render.mesh;
 
+import fr.epistudio.epysia.animation.Skeleton;
 import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 
 import java.util.List;
+import java.util.Optional;
 
 public record UploadedMesh(
         BufferHandle vertexBuffer,
         BufferHandle indexBuffer,
         List<UploadedSubmesh> submeshes,
-        Aabb localBounds
+        Aabb localBounds,
+        boolean skinned,
+        Optional<Skeleton> skeleton
 ) {
 
     public UploadedMesh {

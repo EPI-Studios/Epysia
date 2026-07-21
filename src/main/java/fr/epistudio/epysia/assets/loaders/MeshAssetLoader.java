@@ -39,7 +39,7 @@ public final class MeshAssetLoader implements AssetLoader<UploadedMesh> {
         }
         if (path.endsWith(EpyMeshFormat.EXTENSION)) {
             EpyMesh decoded = EpyMeshSource.load(path);
-            return MeshUploader.upload(services.renderBackend(), decoded.mesh());
+            return MeshUploader.upload(services.renderBackend(), decoded.mesh(), decoded.skeleton());
         }
         if (path.endsWith(".obj")) {
             LoadedObj loaded = ObjLoader.load(services.renderBackend(), path);

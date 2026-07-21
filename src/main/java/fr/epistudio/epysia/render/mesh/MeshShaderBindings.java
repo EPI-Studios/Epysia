@@ -8,6 +8,7 @@ public final class MeshShaderBindings {
     public static final int CLUSTER_INDEX_SSBO_BINDING = 2;
     public static final int OBJECT_UBO_BINDING = 1;
     public static final int INSTANCE_SSBO_BINDING = 3;
+    public static final int JOINT_PALETTE_SSBO_BINDING = 4;
     public static final int MATERIAL_UBO_BINDING = 2;
     public static final int SHADOW_MAP_BINDING = 3;
     public static final int PICKING_UBO_BINDING = 2;
@@ -46,6 +47,7 @@ public final class MeshShaderBindings {
     public static final int CASCADE_UBO_SIZE = 16;
 
     public static final int VERTEX_STRIDE = MeshData.VERTEX_FLOAT_COUNT * Float.BYTES;
+    public static final int SKINNED_VERTEX_STRIDE = VERTEX_STRIDE + 24;
 
     private MeshShaderBindings() {
     }

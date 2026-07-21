@@ -356,6 +356,30 @@ public final class OpenGlRenderBackend implements RenderBackend {
         glBindVertexArray(vao);
         for (VertexAttribute attribute : layout.attributes()) {
             glEnableVertexAttribArray(attribute.location());
+            attributeFormat(attribute);
+            glVertexAttribBinding(attribute.location(), VERTEX_BINDING_INDEX);
+        }
+        if (instanceLayout != null) {
+            for (VertexAttribute attribute : instanceLayout.attributes()) {
+                glEnableVertexAttribArray(attribute.location());
+                attributeFormat(attribute);
+                glVertexAttribBinding(attribute.location(), INSTANCE_BINDING_INDEX);
+            }
+            glVertexBindingDivisor(INSTANCE_BINDING_INDEX, 1);
+        }
+        glBindVertexArray(0);
+        return vao;
+    }
+
+    private void attributeFormat(VertexAttribute attribute) {
+        if (attribute.format().integer()) {
+            org.lwjgl.opengl.GL43.glVertexAttribIFormat(
+                    attribute.location(),
+                    attribute.format().componentCount(),
+                    org.lwjgl.opengl.GL11.GL_UNSIGNED_SHORT,
+                    attribute.byteOffset()
+            );
+        } else {
             glVertexAttribFormat(
                     attribute.location(),
                     attribute.format().componentCount(),
@@ -363,24 +387,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
                     false,
                     attribute.byteOffset()
             );
-            glVertexAttribBinding(attribute.location(), VERTEX_BINDING_INDEX);
         }
-        if (instanceLayout != null) {
-            for (VertexAttribute attribute : instanceLayout.attributes()) {
-                glEnableVertexAttribArray(attribute.location());
-                glVertexAttribFormat(
-                        attribute.location(),
-                        attribute.format().componentCount(),
-                        GL_FLOAT,
-                        false,
-                        attribute.byteOffset()
-                );
-                glVertexAttribBinding(attribute.location(), INSTANCE_BINDING_INDEX);
-            }
-            glVertexBindingDivisor(INSTANCE_BINDING_INDEX, 1);
-        }
-        glBindVertexArray(0);
-        return vao;
     }
 
     private int compileProgram(ShaderSource source) {
