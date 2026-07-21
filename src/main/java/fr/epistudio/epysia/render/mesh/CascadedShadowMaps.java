@@ -11,7 +11,6 @@ import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.BufferUsage;
 import fr.epistudio.epysia.render.backend.CullMode;
 import fr.epistudio.epysia.render.backend.DrawCommand;
-import fr.epistudio.epysia.render.backend.PassClear;
 import fr.epistudio.epysia.render.backend.PipelineDescriptor;
 import fr.epistudio.epysia.render.backend.PipelineHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
@@ -28,21 +27,21 @@ import fr.epistudio.epysia.render.backend.VertexLayout;
 import fr.epistudio.epysia.render.shader.LoadedShader;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 final class CascadedShadowMaps {
 
-    static final int CASCADE_COUNT = 3;
-    private static final int SHADOW_MAP_SIZE = 2048;
+    static final int CASCADE_COUNT = Integer.getInteger("epysia.shadow.cascades", 3);
+    private static final int SHADOW_MAP_SIZE = Integer.getInteger("epysia.shadow.size", 1024);
     private static final float SPLIT_LAMBDA = 0.75f;
     private static final String SHADOW_VERTEX_PATH = "shadow.vert.glsl";
     private static final String SHADOW_FRAGMENT_PATH = "shadow.frag.glsl";
@@ -58,11 +57,19 @@ final class CascadedShadowMaps {
     private final ShaderLoader shaderLoader;
     private final ShaderWatcher shaderWatcher;
     private final Logger logger;
+    private final SurfaceShadowVariants surfaceVariants;
+    private final SurfaceShadowVariants maskedSurfaceVariants;
 
     private final Matrix4f[] cascadeMatrices = createMatrices();
+    private static final float CASTER_CULL_LIGHT_EXTENSION = 64.0f;
+    private final Matrix4f[] cascadeCullMatrices = createMatrices();
+    private final FrustumIntersection[] cascadeFrusta = createCascadeFrusta();
     private final float[] cascadeSplits = new float[CASCADE_COUNT];
     private final float[] cascadeTexelSizes = new float[CASCADE_COUNT];
-    private final List<DrawCommand> casters = new ArrayList<>(256);
+    private final ShadowCasterSet casters = new ShadowCasterSet();
+    private final ShadowSplitRenderer splitRenderer;
+    private final ShadowStatistics statistics;
+    private long sceneModificationCount;
     private final ByteBuffer cascadeScratch = BufferUtils.createByteBuffer(MeshShaderBindings.CASCADE_UBO_SIZE);
 
     private final Matrix4f scratchInverseViewProjection = new Matrix4f();
@@ -86,10 +93,36 @@ final class CascadedShadowMaps {
     private BindingSetLayout maskedBindingLayout;
     private boolean cascadesActive;
 
-    CascadedShadowMaps(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger) {
+    CascadedShadowMaps(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger,
+                       ShadowStatistics statistics, Runnable pipelineInvalidation) {
         this.shaderLoader = shaderLoader;
         this.shaderWatcher = shaderWatcher;
         this.logger = logger;
+        this.statistics = statistics;
+        this.splitRenderer = new ShadowSplitRenderer(statistics, SHADOW_MAP_SIZE, CASCADE_COUNT);
+        this.splitRenderer.setLayerFilter(this::casterVisibleInCascade);
+        this.surfaceVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
+                SHADOW_VERTEX_PATH, SHADOW_FRAGMENT_PATH, RenderState.OPAQUE_3D, pipelineInvalidation);
+        this.maskedSurfaceVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
+                MASKED_VERTEX_PATH, MASKED_FRAGMENT_PATH, MASKED_STATE, pipelineInvalidation);
+    }
+
+    void setCachingEnabled(boolean enabled) {
+        splitRenderer.setCachingEnabled(enabled);
+    }
+
+    void setSplitEnabled(boolean enabled) {
+        casters.setSplitEnabled(enabled);
+        splitRenderer.invalidateAll();
+    }
+
+    void invalidateCache() {
+        splitRenderer.invalidateAll();
+        casters.requestRebuild();
+    }
+
+    long staticVideoMemoryBytes() {
+        return splitRenderer.staticVideoMemoryBytes();
     }
 
     void initialize(RenderBackend backend) {
@@ -99,10 +132,13 @@ final class CascadedShadowMaps {
         texture = backend.createTexture(TextureDescriptor.depthArray(
                 SHADOW_MAP_SIZE, CASCADE_COUNT, TextureUsage.SAMPLED_DEPTH_SHADOW));
         createCascadeTargets();
+        splitRenderer.initialize(backend, texture, cascadeTargets);
         cascadeUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(MeshShaderBindings.CASCADE_UBO_SIZE)));
         pipeline = backend.createPipeline(buildShadowPipelineDescriptor());
         maskedPipeline = backend.createPipeline(buildMaskedPipelineDescriptor());
+        surfaceVariants.initialize(backend, bindingLayout, pipeline);
+        maskedSurfaceVariants.initialize(backend, maskedBindingLayout, maskedPipeline);
         registerHotReload();
     }
 
@@ -110,6 +146,7 @@ final class CascadedShadowMaps {
         return new BindingSetLayout(List.of(
                 new BindingSlot(MeshShaderBindings.FRAME_UBO_BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(MeshShaderBindings.OBJECT_UBO_BINDING, BindingType.UNIFORM_BUFFER),
+                new BindingSlot(MeshShaderBindings.INSTANCE_SSBO_BINDING, BindingType.STORAGE_BUFFER),
                 new BindingSlot(MeshShaderBindings.CASCADE_UBO_BINDING, BindingType.UNIFORM_BUFFER)
         ));
     }
@@ -118,6 +155,7 @@ final class CascadedShadowMaps {
         return new BindingSetLayout(List.of(
                 new BindingSlot(MeshShaderBindings.FRAME_UBO_BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(MeshShaderBindings.OBJECT_UBO_BINDING, BindingType.UNIFORM_BUFFER),
+                new BindingSlot(MeshShaderBindings.INSTANCE_SSBO_BINDING, BindingType.STORAGE_BUFFER),
                 new BindingSlot(MeshShaderBindings.CASCADE_UBO_BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(MeshShaderBindings.SHADOW_MASK_MATERIAL_UBO_BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(MeshShaderBindings.SHADOW_MASK_ALBEDO_BINDING, BindingType.SAMPLED_TEXTURE_2D)
@@ -144,6 +182,11 @@ final class CascadedShadowMaps {
         return maskedPipeline;
     }
 
+    PipelineHandle pipelineFor(String surfacePath, boolean masked, boolean frozenTime) {
+        SurfaceShadowVariants variants = masked ? maskedSurfaceVariants : surfaceVariants;
+        return variants.pipelineFor(surfacePath, frozenTime);
+    }
+
     BindingSetLayout bindingLayout() {
         return bindingLayout;
     }
@@ -151,6 +194,7 @@ final class CascadedShadowMaps {
     BindingSetLayout maskedBindingLayout() {
         return maskedBindingLayout;
     }
+
 
     BufferHandle cascadeUbo() {
         return cascadeUbo;
@@ -176,13 +220,19 @@ final class CascadedShadowMaps {
         return cascadeTexelSizes[cascade];
     }
 
-    void beginFrame() {
-        casters.clear();
+    void beginFrame(long sceneModificationCount) {
+        casters.beginFrame();
+        this.sceneModificationCount = sceneModificationCount;
         cascadesActive = false;
     }
 
-    void submitCaster(DrawCommand command) {
-        casters.add(command);
+    void submitCaster(DrawCommand command, long casterIdentity, long casterSignature, boolean casterTimeAnimated) {
+        casters.submit(command, casterIdentity, casterSignature, casterTimeAnimated);
+    }
+
+    void submitCaster(DrawCommand command, long casterIdentity, long casterSignature,
+                      boolean casterTimeAnimated, Vector3f worldMin, Vector3f worldMax) {
+        casters.submit(command, casterIdentity, casterSignature, casterTimeAnimated, worldMin, worldMax);
     }
 
     void update(Camera3D camera, Vector3f lightTravelDirection, float maxShadowDistance, float alpha) {
@@ -255,6 +305,14 @@ final class CascadedShadowMaps {
         matrix.setOrtho(-radius, radius, -radius, radius, 0.0f, radius * 4.0f);
         matrix.mul(scratchLightView);
         snapToTexelGrid(matrix);
+        buildCascadeCullMatrix(cascade, radius);
+    }
+
+    private void buildCascadeCullMatrix(int cascade, float radius) {
+        Matrix4f cullMatrix = cascadeCullMatrices[cascade];
+        cullMatrix.setOrtho(-radius, radius, -radius, radius,
+                -radius * CASTER_CULL_LIGHT_EXTENSION, radius * 4.0f);
+        cullMatrix.mul(scratchLightView);
     }
 
     private void snapToTexelGrid(Matrix4f matrix) {
@@ -278,16 +336,42 @@ final class CascadedShadowMaps {
         if (!cascadesActive || casters.isEmpty()) {
             return;
         }
+        statistics.recordCasters(casters.submittedCount());
+        casters.classify();
+        refreshCascadeFrusta();
         backend.beginProfileSection("SHADOW_CASCADES");
         for (int cascade = 0; cascade < CASCADE_COUNT; cascade++) {
-            writeCascadeIndex(cascade);
-            backend.beginPass(cascadeTargets[cascade], PassClear.depthOnly());
-            for (int i = 0; i < casters.size(); i++) {
-                backend.execute(casters.get(i));
-            }
-            backend.endPass();
+            splitRenderer.renderTarget(cascade, cascadeViewSignature(cascade), casters, this::writeCascadeIndex);
         }
         backend.endProfileSection();
+    }
+
+    private static FrustumIntersection[] createCascadeFrusta() {
+        FrustumIntersection[] frusta = new FrustumIntersection[CASCADE_COUNT];
+        for (int cascade = 0; cascade < CASCADE_COUNT; cascade++) {
+            frusta[cascade] = new FrustumIntersection();
+        }
+        return frusta;
+    }
+
+    private void refreshCascadeFrusta() {
+        for (int cascade = 0; cascade < CASCADE_COUNT; cascade++) {
+            cascadeFrusta[cascade].set(cascadeCullMatrices[cascade]);
+        }
+    }
+
+    private boolean casterVisibleInCascade(int cascade, ShadowCaster caster) {
+        if (!caster.bounded()) {
+            return true;
+        }
+        return cascadeFrusta[cascade].testAab(
+                caster.minX(), caster.minY(), caster.minZ(),
+                caster.maxX(), caster.maxY(), caster.maxZ());
+    }
+
+    private long cascadeViewSignature(int cascade) {
+        long signature = ShadowSignatures.mix(ShadowSignatures.seed(), sceneModificationCount);
+        return ShadowSignatures.mixMatrix(signature, cascadeMatrices[cascade]);
     }
 
     private void writeCascadeIndex(int cascade) {
@@ -311,14 +395,16 @@ final class CascadedShadowMaps {
     }
 
     private ShaderSource loadShaderSource() {
-        LoadedShader vertex = shaderLoader.load(SHADOW_VERTEX_PATH);
-        LoadedShader fragment = shaderLoader.load(SHADOW_FRAGMENT_PATH);
-        return new ShaderSource(vertex.source(), fragment.source());
+        return shadowShaderSource(SHADOW_VERTEX_PATH, SHADOW_FRAGMENT_PATH);
     }
 
     private ShaderSource loadMaskedShaderSource() {
-        LoadedShader vertex = shaderLoader.load(MASKED_VERTEX_PATH);
-        LoadedShader fragment = shaderLoader.load(MASKED_FRAGMENT_PATH);
+        return shadowShaderSource(MASKED_VERTEX_PATH, MASKED_FRAGMENT_PATH);
+    }
+
+    private ShaderSource shadowShaderSource(String vertexPath, String fragmentPath) {
+        LoadedShader vertex = shaderLoader.load(vertexPath);
+        LoadedShader fragment = shaderLoader.load(fragmentPath);
         return new ShaderSource(vertex.source(), fragment.source());
     }
 
@@ -338,6 +424,7 @@ final class CascadedShadowMaps {
         try {
             backend.updatePipelineShaders(pipeline, loadShaderSource());
             backend.updatePipelineShaders(maskedPipeline, loadMaskedShaderSource());
+            invalidateCache();
             logger.info("Reloaded shadow cascade pipelines");
         } catch (EpysiaException exception) {
             logger.error("Shadow shader reload failed, keeping previous program", exception);
@@ -348,6 +435,9 @@ final class CascadedShadowMaps {
         if (backend == null) {
             return;
         }
+        surfaceVariants.shutdown();
+        maskedSurfaceVariants.shutdown();
+        splitRenderer.shutdown();
         if (pipeline != null) backend.destroy(pipeline);
         if (maskedPipeline != null) backend.destroy(maskedPipeline);
         if (cascadeTargets != null) {

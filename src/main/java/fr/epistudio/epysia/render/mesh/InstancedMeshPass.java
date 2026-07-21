@@ -3,7 +3,8 @@ package fr.epistudio.epysia.render.mesh;
 import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.FrameBuilder;
-import fr.epistudio.epysia.render.Stage;
+import fr.epistudio.epysia.render.RenderPass;
+import fr.epistudio.epysia.render.RenderPasses;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
 import fr.epistudio.epysia.render.backend.BindingSetHandle;
@@ -19,6 +20,7 @@ import fr.epistudio.epysia.render.backend.PipelineHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.RenderState;
 import fr.epistudio.epysia.render.backend.ShaderSource;
+import fr.epistudio.epysia.render.backend.StorageBufferBinding;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
 import fr.epistudio.epysia.render.backend.VertexAttribute;
 import fr.epistudio.epysia.render.backend.VertexFormat;
@@ -35,8 +37,9 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
-final class InstancedMeshPass {
+public final class InstancedMeshPass {
 
     private static final int INSTANCE_STRIDE_BYTES = 64;
 
@@ -47,15 +50,17 @@ final class InstancedMeshPass {
             new VertexAttribute(3, VertexFormat.FLOAT3, 32)
     ), MeshShaderBindings.VERTEX_STRIDE);
 
-    private static final VertexLayout INSTANCE_LAYOUT = new VertexLayout(List.of(
+    public static final VertexLayout INSTANCE_LAYOUT = new VertexLayout(List.of(
             new VertexAttribute(4, VertexFormat.FLOAT4, 0),
             new VertexAttribute(5, VertexFormat.FLOAT4, 16),
             new VertexAttribute(6, VertexFormat.FLOAT4, 32),
             new VertexAttribute(7, VertexFormat.FLOAT4, 48)
     ), INSTANCE_STRIDE_BYTES);
 
-    private static final BindingSetLayout FRAME_ONLY_LAYOUT = new BindingSetLayout(List.of(
-            new BindingSlot(MeshShaderBindings.FRAME_UBO_BINDING, BindingType.UNIFORM_BUFFER)
+    private static final BindingSetLayout FRAME_LIGHT_LAYOUT = new BindingSetLayout(List.of(
+            new BindingSlot(MeshShaderBindings.FRAME_UBO_BINDING, BindingType.UNIFORM_BUFFER),
+            new BindingSlot(MeshShaderBindings.LIGHT_SSBO_BINDING, BindingType.STORAGE_BUFFER),
+            new BindingSlot(MeshShaderBindings.INSTANCE_SSBO_BINDING, BindingType.STORAGE_BUFFER)
     ));
 
     private final ShaderLoader shaderLoader;
@@ -66,14 +71,16 @@ final class InstancedMeshPass {
 
     private RenderBackend backend;
     private BufferHandle frameUbo;
+    private LightStorage lightStorage;
 
     InstancedMeshPass(ShaderLoader shaderLoader) {
         this.shaderLoader = shaderLoader;
     }
 
-    void initialize(RenderBackend backend, BufferHandle frameUbo) {
+    public void initialize(RenderBackend backend, BufferHandle frameUbo, LightStorage lightStorage) {
         this.backend = backend;
         this.frameUbo = frameUbo;
+        this.lightStorage = lightStorage;
     }
 
     void collect(Scene scene, FrameBuilder frame) {
@@ -90,9 +97,8 @@ final class InstancedMeshPass {
             PipelineHandle pipeline = pipelineFor(material);
             InstancedResources instanceResources = resourcesFor(renderer);
             for (UploadedSubmesh submesh : mesh.submeshes()) {
-                frame.submit(Stage.OPAQUE_3D, DrawCommand.instanced(
-                        pipeline, submesh.handle(), instanceResources.bindingSet(),
-                        instanceResources.instanceBuffer(), renderer.instanceCount()));
+                frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, submesh.handle(),
+                        instanceResources.bindingSet(), 0L, renderer.instanceCount()));
             }
         }
     }
@@ -109,9 +115,13 @@ final class InstancedMeshPass {
                 new ShaderSource(vertex.source(), fragment.source()),
                 MESH_LAYOUT,
                 RenderState.OPAQUE_3D,
-                FRAME_ONLY_LAYOUT,
-                INSTANCE_LAYOUT
+                FRAME_LIGHT_LAYOUT
         ));
+    }
+
+    public Optional<BufferHandle> instanceBufferFor(MultiMeshRenderer renderer) {
+        InstancedResources cached = resources.get(renderer);
+        return cached == null ? Optional.empty() : Optional.of(cached.instanceBuffer());
     }
 
     private InstancedResources resourcesFor(MultiMeshRenderer renderer) {
@@ -131,11 +141,18 @@ final class InstancedMeshPass {
         float[] data = renderer.instanceData();
         ByteBuffer bytes = BufferUtils.createByteBuffer(data.length * Float.BYTES);
         bytes.asFloatBuffer().put(data);
-        BufferHandle instanceBuffer = backend.createBuffer(new BufferDescriptor(BufferUsage.VERTEX, bytes));
+        BufferHandle instanceBuffer = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, bytes));
+        long instanceByteSize = (long) data.length * Float.BYTES;
         BindingSetHandle bindingSet = backend.createBindingSet(new BindingSetDescriptor(
-                FRAME_ONLY_LAYOUT,
-                List.of(new Binding(MeshShaderBindings.FRAME_UBO_BINDING,
-                        UniformBufferBinding.whole(frameUbo, MeshShaderBindings.FRAME_UBO_SIZE)))
+                FRAME_LIGHT_LAYOUT,
+                List.of(
+                        new Binding(MeshShaderBindings.FRAME_UBO_BINDING,
+                                UniformBufferBinding.whole(frameUbo, MeshShaderBindings.FRAME_UBO_SIZE)),
+                        new Binding(MeshShaderBindings.LIGHT_SSBO_BINDING,
+                                StorageBufferBinding.whole(lightStorage.handle(), lightStorage.byteSize())),
+                        new Binding(MeshShaderBindings.INSTANCE_SSBO_BINDING,
+                                StorageBufferBinding.whole(instanceBuffer, instanceByteSize))
+                )
         ));
         ownedBuffers.add(instanceBuffer);
         ownedBindings.add(bindingSet);

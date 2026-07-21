@@ -2,7 +2,9 @@ package fr.epistudio.epysia;
 
 import fr.epistudio.epysia.assets.AssetRegistry;
 import fr.epistudio.epysia.logging.Logger;
+import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.backend.RenderBackend;
+import fr.epistudio.epysia.render.postfx.PostEffects;
 import fr.epistudio.epysia.render.text.FontRegistry;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.Hud;
@@ -28,4 +30,10 @@ public interface EngineServices {
     Scheduler scheduler();
 
     Hud hud();
+
+    PostEffects postEffects();
+
+    void addRenderSystem(RenderSystem renderSystem);
+
+    <T extends RenderSystem> T renderSystem(Class<T> type);
 }

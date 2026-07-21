@@ -23,12 +23,15 @@ import fr.epistudio.epysia.window.Window;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.function.Consumer;
 
 public final class StandaloneRunner {
 
+    private static final long PROFILE_REPORT_INTERVAL_NANOS = 1_000_000_000L;
+    private static final double NANOS_PER_MILLI = 1_000_000.0;
     private static final double FIXED_TIMESTEP_SECONDS = 1.0 / 60.0;
     private static final double MAX_FRAME_SECONDS = 0.25;
     private static final double NANOS_PER_SECOND = 1_000_000_000.0;
@@ -63,7 +66,7 @@ public final class StandaloneRunner {
         engine.assets().register(new TextureAssetLoader());
         engine.assets().register(new PhysicsMaterialLoader());
         runPopulator(engine, populator);
-        ensurePostProcessing(engine, shaderLoader, window);
+        ensurePostProcessing(engine, shaderLoader, shaderWatcher, window);
         dispatchPlayStart(engine);
         loop(engine, window, inputState);
         dispatchPlayStop(engine);
@@ -72,11 +75,14 @@ public final class StandaloneRunner {
         window.close();
     }
 
-    private static void ensurePostProcessing(EpysiaEngine engine, ShaderLoader shaderLoader, Window window) {
+    private static void ensurePostProcessing(EpysiaEngine engine, ShaderLoader shaderLoader,
+                                             ShaderWatcher shaderWatcher, Window window) {
         if (engine.hasRenderSystem(PostProcessSystem.class)) {
             return;
         }
-        engine.addRenderSystem(new PostProcessSystem(shaderLoader, window, engine.logger()));
+        PostProcessSystem postProcess = new PostProcessSystem(shaderLoader, window, engine.logger());
+        postProcess.setShaderWatcher(shaderWatcher);
+        engine.addRenderSystem(postProcess);
     }
 
     private static void loadModulesInto(EpysiaEngine engine) {
@@ -141,6 +147,8 @@ public final class StandaloneRunner {
 
     private static void loop(EpysiaEngine engine, Window window, MutableInputState inputState) {
         long previousNanos = System.nanoTime();
+        long lastProfileReportNanos = previousNanos;
+        int framesSinceReport = 0;
         double accumulator = 0.0;
         while (!window.shouldClose() && !engine.isShutdownRequested()) {
             long pollStart = System.nanoTime();
@@ -168,7 +176,33 @@ public final class StandaloneRunner {
             engine.setCpuTimingNanos(CpuTimings.UPDATE, updateEnd - updateStart);
             engine.setCpuTimingNanos(CpuTimings.RENDER, renderEnd - renderStart);
             engine.setCpuTimingNanos(CpuTimings.SWAP_BUFFERS, swapEnd - swapStart);
+            framesSinceReport++;
+            if (swapEnd - lastProfileReportNanos >= PROFILE_REPORT_INTERVAL_NANOS) {
+                reportProfile(engine, framesSinceReport, swapEnd - lastProfileReportNanos);
+                lastProfileReportNanos = swapEnd;
+                framesSinceReport = 0;
+            }
         }
+    }
+
+    private static void reportProfile(EpysiaEngine engine, int frames, long elapsedNanos) {
+        if (frames <= 0 || !Boolean.getBoolean("epysia.gpu.profiling")) {
+            return;
+        }
+        double frameMillis = elapsedNanos / NANOS_PER_MILLI / frames;
+        StringBuilder report = new StringBuilder();
+        report.append(String.format("%.2f ms/frame (%.0f fps)", frameMillis, frames * NANOS_PER_SECOND / elapsedNanos));
+        for (CpuTimings slot : CpuTimings.values()) {
+            report.append(String.format(" | cpu.%s %.3f", slot.label(),
+                    engine.cpuTimingNanos(slot) / NANOS_PER_MILLI));
+        }
+        for (Map.Entry<String, Long> entry : engine.profiler().sections().entrySet()) {
+            report.append(String.format(" | %s %.3f", entry.getKey(), entry.getValue() / NANOS_PER_MILLI));
+        }
+        for (Map.Entry<String, Long> entry : engine.renderBackend().latestProfileTimingsNanos().entrySet()) {
+            report.append(String.format(" | gpu.%s %.3f", entry.getKey(), entry.getValue() / NANOS_PER_MILLI));
+        }
+        engine.logger().info(report.toString());
     }
 
     private static double drainFixedSteps(EpysiaEngine engine, MutableInputState input, double accumulator) {

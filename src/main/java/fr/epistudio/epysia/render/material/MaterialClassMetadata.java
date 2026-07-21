@@ -122,6 +122,10 @@ public final class MaterialClassMetadata {
         return ((offset + alignment - 1) / alignment) * alignment;
     }
 
+    public static Map<String, Integer> samplerBindings(String shaderSource) {
+        return parseSamplerBindings(shaderSource);
+    }
+
     private static Map<String, Integer> parseSamplerBindings(String shaderSource) {
         Map<String, Integer> result = new HashMap<>();
         Matcher matcher = SAMPLER_BINDING_PATTERN.matcher(shaderSource);

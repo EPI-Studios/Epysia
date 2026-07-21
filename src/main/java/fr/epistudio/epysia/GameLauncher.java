@@ -4,6 +4,8 @@ import fr.epistudio.epysia.assets.AssetDatabase;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.gpu.GpuLauncher;
+import fr.epistudio.epysia.gpu.GpuPreference;
 import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.physics.PhysicsSystem;
@@ -19,6 +21,7 @@ import fr.epistudio.epysia.runtime.RuntimeEvent;
 import fr.epistudio.epysia.runtime.StdioRuntimeChannel;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
+import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.scripting.compile.ScriptLoadResult;
 import fr.epistudio.epysia.scripting.compile.ScriptModule;
 
@@ -36,6 +39,7 @@ public final class GameLauncher {
     }
 
     public static void main(String[] args) {
+        GpuLauncher.enforce(GpuPreference.fromId(parseStringOr(args, "--gpu", "system")));
         Path scenePath = parseRequiredPath(args, "--scene");
         Optional<Path> projectRoot = parseOptionalPath(args, "--project");
         Optional<Path> precompiledScripts = parseOptionalPath(args, "--precompiled-scripts");
@@ -58,6 +62,7 @@ public final class GameLauncher {
                     logger.info("[scripts] " + message);
                 }
                 registry.setUserComponents(scripts.components());
+                runRenderSetups(scripts, services, logger);
             });
             projectRoot.ifPresent(root -> attachAssetDatabase(services, root, logger));
             SceneSerializer serializer = new SceneSerializer(registry);
@@ -69,6 +74,17 @@ public final class GameLauncher {
         });
         channel.send(new RuntimeEvent.Stopped("normal"));
         channel.close();
+    }
+
+    private static void runRenderSetups(ScriptLoadResult scripts, EngineServices services, Logger logger) {
+        for (Class<? extends ProjectRenderSetup> setupClass : scripts.renderSetups()) {
+            try {
+                setupClass.getDeclaredConstructor().newInstance().configure(services);
+                logger.info("[scripts] applied render setup " + setupClass.getName());
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                logger.error("[scripts] render setup failed: " + setupClass.getName(), error);
+            }
+        }
     }
 
     private static ScriptLoadResult loadScripts(Path projectRoot, Optional<Path> precompiledScripts) {

@@ -60,6 +60,10 @@ import static org.lwjgl.glfw.GLFW.glfwWindowShouldClose;
 
 public final class Window implements RenderSurface {
 
+    private static final String NATIVE_WAYLAND_PROPERTY = "epysia.window.nativeWayland";
+    private static final String WIDTH_PROPERTY = "epysia.window.width";
+    private static final String HEIGHT_PROPERTY = "epysia.window.height";
+
     private final String title;
     private int width;
     private int height;
@@ -77,8 +81,8 @@ public final class Window implements RenderSurface {
 
     public Window(String title, int width, int height) {
         this.title = title;
-        this.width = width;
-        this.height = height;
+        this.width = Integer.getInteger(WIDTH_PROPERTY, width);
+        this.height = Integer.getInteger(HEIGHT_PROPERTY, height);
     }
 
     public void open() {
@@ -158,12 +162,11 @@ public final class Window implements RenderSurface {
             glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
             return;
         }
-        String sessionType = System.getenv("XDG_SESSION_TYPE");
-        if ("wayland".equalsIgnoreCase(sessionType)) {
+        if (Boolean.getBoolean(NATIVE_WAYLAND_PROPERTY)) {
             glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
-        } else {
-            glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+            return;
         }
+        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     }
 
     private void applyWindowHints() {
@@ -174,7 +177,8 @@ public final class Window implements RenderSurface {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT,
+                Boolean.getBoolean("epysia.gl.debug") ? GLFW_TRUE : GLFW_FALSE);
     }
 
     private void refreshFramebufferSize() {

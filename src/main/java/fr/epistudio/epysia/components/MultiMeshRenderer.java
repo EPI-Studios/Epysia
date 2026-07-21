@@ -11,6 +11,7 @@ import java.util.Optional;
 public final class MultiMeshRenderer extends Component {
 
     private static final int MATRIX_FLOAT_COUNT = 16;
+    private static final int TRANSFORM_FLOAT_COUNT = MATRIX_FLOAT_COUNT * 2;
 
     private UploadedMesh mesh;
     private Material material;
@@ -29,11 +30,15 @@ public final class MultiMeshRenderer extends Component {
     }
 
     public MultiMeshRenderer setInstances(List<Matrix4f> transforms) {
-        instanceData = new float[transforms.size() * MATRIX_FLOAT_COUNT];
+        instanceData = new float[transforms.size() * TRANSFORM_FLOAT_COUNT];
         float[] scratch = new float[MATRIX_FLOAT_COUNT];
+        Matrix4f normalMatrix = new Matrix4f();
         for (int i = 0; i < transforms.size(); i++) {
+            int base = i * TRANSFORM_FLOAT_COUNT;
             transforms.get(i).get(scratch);
-            System.arraycopy(scratch, 0, instanceData, i * MATRIX_FLOAT_COUNT, MATRIX_FLOAT_COUNT);
+            System.arraycopy(scratch, 0, instanceData, base, MATRIX_FLOAT_COUNT);
+            transforms.get(i).normal(normalMatrix).get(scratch);
+            System.arraycopy(scratch, 0, instanceData, base + MATRIX_FLOAT_COUNT, MATRIX_FLOAT_COUNT);
         }
         instanceCount = transforms.size();
         dirty = true;

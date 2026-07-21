@@ -6,7 +6,7 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.InputState;
 import org.joml.Vector3fc;
 
-public abstract class Behaviour extends Component {
+public abstract class Behaviour extends Component implements PhysicsEventListener {
 
     public void onStart(EngineServices services) {
     }
