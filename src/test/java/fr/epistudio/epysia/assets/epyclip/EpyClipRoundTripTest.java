@@ -7,6 +7,7 @@ import fr.epistudio.epysia.animation.ClipProperty;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import org.junit.jupiter.api.Test;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -48,5 +49,13 @@ class EpyClipRoundTripTest {
     void channelRejectsNonIncreasingTimes() {
         assertThrows(EpysiaException.class, () -> new ClipChannel(0, ClipProperty.TRANSLATION,
                 ClipInterpolation.LINEAR, new float[]{0.5f, 0.5f}, new float[]{0, 0, 0, 0, 0, 0}));
+    }
+
+    @Test
+    void corruptPropertyOrdinalThrows() {
+        byte[] data = EpyClipWriter.write(walkClip());
+        ByteBuffer buffer = ByteBuffer.wrap(data);
+        buffer.putInt(34, 99);
+        assertThrows(EpysiaException.class, () -> EpyClipReader.read(data));
     }
 }
