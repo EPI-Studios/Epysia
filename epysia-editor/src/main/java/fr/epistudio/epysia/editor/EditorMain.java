@@ -8,7 +8,9 @@ import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.editor.ui.EditorView;
 import fr.epistudio.epysia.editor.ui.FrameView;
+import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.ui.ProjectSelectorView;
+import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
@@ -17,6 +19,10 @@ import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.window.Window;
 import imgui.ImGui;
 import org.lwjgl.glfw.GLFW;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public final class EditorMain {
 
@@ -28,15 +34,18 @@ public final class EditorMain {
     private final ComponentRegistry componentRegistry = new ComponentRegistry();
     private final ToastCenter toasts = new ToastCenter();
     private final IconAtlas iconAtlas = new IconAtlas();
+    private Path currentLayoutFile;
     private FrameView currentView;
     private EditorScene3DHost activeSceneHost;
     private double lastFrameSeconds;
 
     public static void main(String[] arguments) {
+        GpuLauncher.enforce(EditorPreferences.load(EditorPreferences.defaultFile()).gpuPreference());
         new EditorMain().run();
     }
 
     private void run() {
+        shell.setViewportsEnabled(EditorPreferences.load(EditorPreferences.defaultFile()).detachableWindows());
         shell.initialize();
         iconAtlas.loadAll();
         componentRegistry.populateFromScan(ComponentScanner.scan());
@@ -47,18 +56,24 @@ public final class EditorMain {
 
     private void loop() {
         lastFrameSeconds = GLFW.glfwGetTime();
+        EditorFrameProfiler frameProfiler = new EditorFrameProfiler();
         while (!shell.shouldClose()) {
             double now = GLFW.glfwGetTime();
             float delta = (float) Math.max(0.0, now - lastFrameSeconds);
             lastFrameSeconds = now;
+            long frameStart = System.nanoTime();
             shell.beginFrame();
+            long pollEnd = System.nanoTime();
             currentView.render(delta);
             toasts.render();
+            long viewEnd = System.nanoTime();
             shell.endFrame();
+            frameProfiler.record(frameStart, pollEnd, viewEnd, shell);
         }
     }
 
     private void shutdown() {
+        saveCurrentLayout();
         currentView.dispose();
         closeActiveSceneHost();
         iconAtlas.dispose();
@@ -68,6 +83,7 @@ public final class EditorMain {
     private void openProjectSelector() {
         switchView(new ProjectSelectorView(projectStore, toasts, new IconWidgets(iconAtlas), this::openProject));
         ImGui.getIO().setIniFilename(null);
+        currentLayoutFile = null;
     }
 
     private void openProject(Project project) {
@@ -83,17 +99,27 @@ public final class EditorMain {
     }
 
     private void applyProjectLayoutFile(Project project) {
-        java.nio.file.Path layoutFile = project.rootDirectory()
-                .resolve(IMGUI_LAYOUT_DIRECTORY).resolve(IMGUI_LAYOUT_FILENAME);
+        Path layoutFile = project.rootDirectory().resolve(IMGUI_LAYOUT_DIRECTORY).resolve(IMGUI_LAYOUT_FILENAME);
         try {
-            java.nio.file.Files.createDirectories(layoutFile.getParent());
-        } catch (java.io.IOException error) {
+            Files.createDirectories(layoutFile.getParent());
+        } catch (IOException error) {
             toasts.show("Could not prepare layout directory: " + error.getMessage());
         }
+        currentLayoutFile = layoutFile;
         ImGui.getIO().setIniFilename(layoutFile.toString());
+        if (Files.exists(layoutFile)) {
+            ImGui.loadIniSettingsFromDisk(layoutFile.toString());
+        }
+    }
+
+    private void saveCurrentLayout() {
+        if (currentLayoutFile != null) {
+            ImGui.saveIniSettingsToDisk(currentLayoutFile.toString());
+        }
     }
 
     private void returnToProjectSelector() {
+        saveCurrentLayout();
         closeActiveSceneHost();
         openProjectSelector();
     }

@@ -17,6 +17,7 @@ public final class CompletionPopup {
 
     private static final int MAX_VISIBLE_ROWS = 10;
     private static final float POPUP_WIDTH = 420.0f;
+    private static final float DETAIL_MARGIN = 12.0f;
     private static final int WINDOW_FLAGS = ImGuiWindowFlags.NoTitleBar
             | ImGuiWindowFlags.NoResize
             | ImGuiWindowFlags.NoMove
@@ -115,12 +116,23 @@ public final class CompletionPopup {
             if (ImGui.selectable(symbol.label() + "##" + index, index == selectedIndex)) {
                 clicked = Optional.of(symbol);
             }
+            symbol.packageName().ifPresent(packageName ->
+                    renderDetail(packageName, ImGui.calcTextSizeX(symbol.label())));
             if (index == selectedIndex && scrollToSelection) {
                 ImGui.setScrollHereY();
             }
         }
         scrollToSelection = false;
         return clicked;
+    }
+
+    private void renderDetail(String packageName, float labelWidth) {
+        float detailWidth = ImGui.calcTextSizeX(packageName);
+        float offsetX = POPUP_WIDTH - detailWidth - DETAIL_MARGIN;
+        if (offsetX > labelWidth + DETAIL_MARGIN * 2.0f) {
+            ImGui.sameLine(offsetX);
+            ImGui.textDisabled(packageName);
+        }
     }
 
     private void renderTag(CompletionKind kind) {
@@ -135,6 +147,7 @@ public final class CompletionPopup {
             case TYPE -> EditorStyle.COLOR_SUCCESS;
             case METHOD -> EditorStyle.COLOR_SYSTEM;
             case FIELD -> EditorStyle.COLOR_WARNING;
+            case PACKAGE -> EditorStyle.COLOR_TEXT_MUTED;
             case LOCAL -> EditorStyle.COLOR_TEXT_MUTED;
         };
     }

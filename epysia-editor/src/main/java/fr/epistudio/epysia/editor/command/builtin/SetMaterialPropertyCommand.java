@@ -3,6 +3,7 @@ package fr.epistudio.epysia.editor.command.builtin;
 import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.exceptions.EpysiaException;
+import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialFields;
 import org.joml.Vector3f;
@@ -15,7 +16,9 @@ public final class SetMaterialPropertyCommand implements EditorCommand {
         UNIFORM,
         TEXTURE,
         TRANSPARENT,
-        DOUBLE_SIDED
+        DOUBLE_SIDED,
+        ANIMATED_SHADOW,
+        SURFACE_SHADER
     }
 
     private final Material material;
@@ -40,6 +43,20 @@ public final class SetMaterialPropertyCommand implements EditorCommand {
             case TEXTURE -> applyTexture(context);
             case TRANSPARENT -> material.setTransparent((Boolean) afterValue);
             case DOUBLE_SIDED -> material.setDoubleSided((Boolean) afterValue);
+            case ANIMATED_SHADOW -> applyAnimatedShadow();
+            case SURFACE_SHADER -> applySurfaceShader();
+        }
+    }
+
+    private void applyAnimatedShadow() {
+        if (material instanceof LitMaterial lit) {
+            lit.setAnimatedShadow((Boolean) afterValue);
+        }
+    }
+
+    private void applySurfaceShader() {
+        if (material instanceof LitMaterial lit) {
+            lit.setSurfaceShaderPath((String) afterValue);
         }
     }
 

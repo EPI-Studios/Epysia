@@ -55,9 +55,11 @@ application {
 }
 
 tasks.named('run', JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
+    classpath = files(rootProject.sourceSets.main.output) + sourceSets.main.runtimeClasspath
     mainClass = 'fr.epistudio.epysia.editor.EditorMain'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    systemProperty 'epysia.gpu.profiling', 'true'
+    systemProperties System.getProperties().findAll { it.key.toString().startsWith('epysia.') }
 }
 
 def buildInfoDirectory = layout.buildDirectory.dir('generated/build-info')

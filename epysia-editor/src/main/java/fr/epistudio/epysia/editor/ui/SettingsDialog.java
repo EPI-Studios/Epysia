@@ -1,10 +1,12 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
+import fr.epistudio.epysia.gpu.GpuPreference;
 import fr.epistudio.epysia.project.EditorSettings;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.render.environment.SkySettings;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
+import fr.epistudio.epysia.render.postfx.PostEffectStack;
 import fr.epistudio.epysia.render.postfx.PostProcessSettings;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -14,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class SettingsDialog {
 
@@ -50,6 +53,8 @@ public final class SettingsDialog {
     private final int[] autosaveInterval = new int[1];
     private final float[] overlayThickness = new float[1];
     private final float[] gridFadeDistance = new float[1];
+    private final GpuPreference[] gpuPreferences = GpuPreference.values();
+    private int selectedGpuIndex;
     private final float[] skyIntensity = new float[1];
     private final float[] ambientIntensity = new float[1];
     private final float[] exposure = new float[1];
@@ -60,6 +65,8 @@ public final class SettingsDialog {
     private final float[] shadowDistance = new float[1];
     private int[] collisionMatrix = new int[EditorSettings.LAYER_COUNT];
     private boolean autosaveEnabled;
+    private boolean detachableWindows;
+    private boolean lightCullingEnabled = true;
     private boolean bloomEnabled;
     private boolean ambientOcclusionEnabled;
     private boolean antiAliasEnabled;
@@ -67,6 +74,10 @@ public final class SettingsDialog {
     private Optional<PostProcessSettings> postProcessSettings = Optional.empty();
     private Optional<SkySettings> skySettings = Optional.empty();
     private Optional<MeshRenderSystem> meshRenderSystem = Optional.empty();
+    private Optional<PostEffectsSection> postEffectsSection = Optional.empty();
+    private Optional<Supplier<PostEffectStack>> globalPostEffectStack = Optional.empty();
+    private Runnable onPostEffectsChanged = () -> {
+    };
     private Project project;
     private boolean openRequested;
 
@@ -88,6 +99,12 @@ public final class SettingsDialog {
         meshRenderSystem = Optional.of(meshSystem);
     }
 
+    public void attachPostEffects(PostEffectsSection section, Supplier<PostEffectStack> stack, Runnable onChanged) {
+        postEffectsSection = Optional.of(section);
+        globalPostEffectStack = Optional.of(stack);
+        onPostEffectsChanged = onChanged;
+    }
+
     public void openFor(EditorSettings settings, EditorPreferences preferences, Project openedProject) {
         collisionMatrix = settings.collisionMatrix();
         for (int i = 0; i < layerNames.length; i++) {
@@ -105,8 +122,19 @@ public final class SettingsDialog {
         cameraBoost[0] = preferences.cameraBoost();
         autosaveInterval[0] = preferences.autosaveIntervalSeconds();
         autosaveEnabled = preferences.autosaveEnabled();
+        detachableWindows = preferences.detachableWindows();
         overlayThickness[0] = preferences.overlayThickness();
         gridFadeDistance[0] = preferences.gridFadeDistance();
+        selectedGpuIndex = indexOf(preferences.gpuPreference());
+    }
+
+    private int indexOf(GpuPreference preference) {
+        for (int index = 0; index < gpuPreferences.length; index++) {
+            if (gpuPreferences[index] == preference) {
+                return index;
+            }
+        }
+        return 0;
     }
 
     private void loadRenderTuning() {
@@ -124,6 +152,7 @@ public final class SettingsDialog {
         bloomEnabled = postProcess.bloomEnabled();
         ambientOcclusionEnabled = postProcess.ambientOcclusionEnabled();
         antiAliasEnabled = postProcess.antiAliasingEnabled();
+        meshRenderSystem.ifPresent(system -> lightCullingEnabled = system.clusteringEnabled());
     }
 
     public void render() {
@@ -199,6 +228,9 @@ public final class SettingsDialog {
         }
         ImGui.dragFloat("Camera speed", cameraSpeed, 0.1f, MIN_CAMERA_SPEED, MAX_CAMERA_SPEED);
         ImGui.dragFloat("Camera boost multiplier", cameraBoost, 0.1f, MIN_CAMERA_BOOST, MAX_CAMERA_BOOST);
+        if (ImGui.checkbox("Detachable windows (multi-monitor, restart required)", detachableWindows)) {
+            detachableWindows = !detachableWindows;
+        }
         if (ImGui.checkbox("Autosave scenes", autosaveEnabled)) {
             autosaveEnabled = !autosaveEnabled;
         }
@@ -207,7 +239,23 @@ public final class SettingsDialog {
                     MIN_AUTOSAVE_SECONDS, MAX_AUTOSAVE_SECONDS);
         }
         renderViewportSection();
+        renderGpuSection();
         ImGui.endTabItem();
+    }
+
+    private void renderGpuSection() {
+        ImGui.separator();
+        ImGui.text("Graphics");
+        ImGui.setNextItemWidth(220.0f);
+        if (ImGui.beginCombo("Preferred GPU", gpuPreferences[selectedGpuIndex].displayName())) {
+            for (int index = 0; index < gpuPreferences.length; index++) {
+                if (ImGui.selectable(gpuPreferences[index].displayName(), index == selectedGpuIndex)) {
+                    selectedGpuIndex = index;
+                }
+            }
+            ImGui.endCombo();
+        }
+        ImGui.textDisabled("Applies to launched and exported games now, and to the editor after a restart.");
     }
 
     private void renderViewportSection() {
@@ -240,6 +288,9 @@ public final class SettingsDialog {
         ImGui.dragFloat("Exposure", exposure, 0.02f, MIN_EXPOSURE, MAX_EXPOSURE);
         ImGui.dragFloat("Vignette", vignette, 0.01f, 0.0f, 1.0f);
         ImGui.dragFloat("Shadow distance", shadowDistance, 1.0f, MIN_SHADOW_DISTANCE, MAX_SHADOW_DISTANCE);
+        if (ImGui.checkbox("GPU light culling", lightCullingEnabled)) {
+            lightCullingEnabled = !lightCullingEnabled;
+        }
         renderToggleRows();
     }
 
@@ -260,6 +311,17 @@ public final class SettingsDialog {
         if (ImGui.checkbox("Anti-aliasing (FXAA)", antiAliasEnabled)) {
             antiAliasEnabled = !antiAliasEnabled;
         }
+        renderPostEffectsSection();
+    }
+
+    private void renderPostEffectsSection() {
+        if (postEffectsSection.isEmpty() || globalPostEffectStack.isEmpty()) {
+            return;
+        }
+        ImGui.separator();
+        ImGui.text("Post Effects");
+        ImGui.textDisabled("Scene-wide stack, applied live. Cameras can override it in the Inspector.");
+        postEffectsSection.get().render(globalPostEffectStack.get().get(), onPostEffectsChanged);
     }
 
     private void renderProjectTab() {
@@ -293,7 +355,8 @@ public final class SettingsDialog {
         onPreferencesSaved.accept(new EditorPreferences(cameraSpeed[0], cameraBoost[0],
                 autosaveEnabled, autosaveInterval[0],
                 basePreferences.gridVisible(), basePreferences.snapEnabled(),
-                overlayThickness[0], gridFadeDistance[0]));
+                overlayThickness[0], gridFadeDistance[0], gpuPreferences[selectedGpuIndex], detachableWindows,
+                basePreferences.shaderNodePreviewsEnabled()));
     }
 
     private EditorSettings buildSettings() {
@@ -312,6 +375,7 @@ public final class SettingsDialog {
         skySettings.get().setAmbientIntensity(ambientIntensity[0]);
         applyPostProcess(postProcessSettings.get());
         meshRenderSystem.get().setShadowDistance(shadowDistance[0]);
+        meshRenderSystem.get().setClusteringEnabled(lightCullingEnabled);
     }
 
     private void applyPostProcess(PostProcessSettings postProcess) {

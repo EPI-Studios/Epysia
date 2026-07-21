@@ -68,7 +68,7 @@ public final class NameDialog {
     }
 
     private void accept() {
-        String value = nameInput.get().trim();
+        String value = nameInput.get().replace("\0", "").strip();
         if (value.isEmpty()) {
             return;
         }

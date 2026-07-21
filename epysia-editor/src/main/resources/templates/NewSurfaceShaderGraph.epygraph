@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "kind": "SHADER_SURFACE",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "shader.texture.sample",
+      "x": 80.0,
+      "y": 140.0,
+      "values": {
+        "path": "",
+        "materialSampler": "albedo"
+      }
+    },
+    {
+      "id": 2,
+      "type": "shader.output.surface",
+      "x": 460.0,
+      "y": 120.0,
+      "values": {
+        "master": "Lit"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "fromNode": 1,
+      "fromPin": "RGBA",
+      "toNode": 2,
+      "toPin": "Albedo"
+    }
+  ],
+  "variables": []
+}

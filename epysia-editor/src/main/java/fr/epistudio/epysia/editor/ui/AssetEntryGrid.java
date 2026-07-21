@@ -1,0 +1,242 @@
+package fr.epistudio.epysia.editor.ui;
+
+import fr.epistudio.epysia.editor.assets.AssetEntry;
+import fr.epistudio.epysia.editor.assets.AssetType;
+import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
+import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.editor.icons.EditorIcon;
+import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.shell.EditorStyle;
+import imgui.ImGui;
+import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiMouseButton;
+import imgui.flag.ImGuiSelectableFlags;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.Set;
+import java.util.function.Consumer;
+
+public final class AssetEntryGrid {
+
+    public enum Mode { GRID, LIST }
+
+    private static final String ELLIPSIS = "...";
+    private static final float CELL_PADDING = 10.0f;
+    private static final float LABEL_HEIGHT = 20.0f;
+    private static final float LIST_ROW_HEIGHT = 22.0f;
+    private static final float LIST_THUMBNAIL_SIZE = 16.0f;
+    private static final float SIZE_COLUMN_WIDTH = 90.0f;
+    private static final float ELLIPSIS_MINIMUM = 1;
+
+    private final IconWidgets icons;
+    private final ThumbnailCache thumbnails;
+    private final MeshThumbnailer meshThumbnails;
+    private final Set<String> selection = new LinkedHashSet<>();
+
+    private Mode mode = Mode.GRID;
+    private float cellSize = 72.0f;
+
+    public AssetEntryGrid(IconWidgets icons, ThumbnailCache thumbnails, MeshThumbnailer meshThumbnails) {
+        this.icons = icons;
+        this.thumbnails = thumbnails;
+        this.meshThumbnails = meshThumbnails;
+    }
+
+    public Mode mode() {
+        return mode;
+    }
+
+    public void setMode(Mode value) {
+        this.mode = value;
+    }
+
+    public float cellSize() {
+        return cellSize;
+    }
+
+    public void setCellSize(float value) {
+        this.cellSize = value;
+    }
+
+    public Set<String> selection() {
+        return Set.copyOf(selection);
+    }
+
+    public Optional<String> primarySelection() {
+        return selection.stream().reduce((first, second) -> second);
+    }
+
+    public void clearSelection() {
+        selection.clear();
+    }
+
+    public void render(List<AssetEntry> entries, Consumer<AssetEntry> onActivate,
+                       Consumer<AssetEntry> onDecorate) {
+        if (mode == Mode.GRID) {
+            renderGrid(entries, onActivate, onDecorate);
+        } else {
+            renderList(entries, onActivate, onDecorate);
+        }
+    }
+
+    private void renderGrid(List<AssetEntry> entries, Consumer<AssetEntry> onActivate,
+                            Consumer<AssetEntry> onDecorate) {
+        float cellWidth = cellSize + CELL_PADDING;
+        int columns = Math.max(1, (int) (ImGui.getContentRegionAvailX() / cellWidth));
+        for (int index = 0; index < entries.size(); index++) {
+            if (index % columns != 0) {
+                ImGui.sameLine();
+            }
+            renderGridCell(entries.get(index), onActivate, onDecorate);
+        }
+    }
+
+    private void renderGridCell(AssetEntry entry, Consumer<AssetEntry> onActivate,
+                                Consumer<AssetEntry> onDecorate) {
+        ImGui.pushID(entry.assetPath());
+        ImGui.beginGroup();
+        float startX = ImGui.getCursorPosX();
+        float startY = ImGui.getCursorPosY();
+        boolean selected = selection.contains(entry.assetPath());
+        if (ImGui.selectable("##cell", selected, ImGuiSelectableFlags.AllowDoubleClick,
+                cellSize, cellSize + LABEL_HEIGHT)) {
+            applyClick(entry);
+            if (ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
+                onActivate.accept(entry);
+            }
+        }
+        onDecorate.accept(entry);
+        drawCellContent(entry, startX, startY);
+        ImGui.endGroup();
+        ImGui.popID();
+    }
+
+    private void drawCellContent(AssetEntry entry, float startX, float startY) {
+        ImGui.setCursorPos(startX, startY);
+        drawThumbnail(entry, cellSize);
+        ImGui.setCursorPos(startX, startY + cellSize);
+        drawCenteredLabel(entry.displayName(), cellSize);
+        ImGui.setCursorPos(startX, startY + cellSize + LABEL_HEIGHT);
+    }
+
+    private void drawCenteredLabel(String name, float width) {
+        String label = elide(name, width);
+        float indent = (width - ImGui.calcTextSize(label).x) * 0.5f;
+        if (indent > 0.0f) {
+            ImGui.setCursorPosX(ImGui.getCursorPosX() + indent);
+        }
+        ImGui.textUnformatted(label);
+    }
+
+    private void renderList(List<AssetEntry> entries, Consumer<AssetEntry> onActivate,
+                            Consumer<AssetEntry> onDecorate) {
+        for (AssetEntry entry : entries) {
+            renderListRow(entry, onActivate, onDecorate);
+        }
+    }
+
+    private void renderListRow(AssetEntry entry, Consumer<AssetEntry> onActivate,
+                               Consumer<AssetEntry> onDecorate) {
+        ImGui.pushID(entry.assetPath());
+        float startY = ImGui.getCursorPosY();
+        boolean selected = selection.contains(entry.assetPath());
+        if (ImGui.selectable("##row", selected, ImGuiSelectableFlags.AllowDoubleClick,
+                0.0f, LIST_ROW_HEIGHT)) {
+            applyClick(entry);
+            if (ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
+                onActivate.accept(entry);
+            }
+        }
+        onDecorate.accept(entry);
+        drawListRowContent(entry, startY);
+        ImGui.popID();
+    }
+
+    private void drawListRowContent(AssetEntry entry, float startY) {
+        ImGui.setCursorPosY(startY + (LIST_ROW_HEIGHT - LIST_THUMBNAIL_SIZE) * 0.5f);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + CELL_PADDING * 0.5f);
+        drawThumbnail(entry, LIST_THUMBNAIL_SIZE);
+        ImGui.sameLine();
+        ImGui.setCursorPosY(startY + (LIST_ROW_HEIGHT - ImGui.getTextLineHeight()) * 0.5f);
+        ImGui.textUnformatted(entry.displayName());
+        drawSizeColumn(entry, startY);
+        ImGui.setCursorPosY(startY + LIST_ROW_HEIGHT);
+    }
+
+    private static void drawSizeColumn(AssetEntry entry, float startY) {
+        if (entry.isBuiltin()) {
+            return;
+        }
+        ImGui.sameLine();
+        ImGui.setCursorPosX(ImGui.getContentRegionMaxX() - SIZE_COLUMN_WIDTH);
+        ImGui.setCursorPosY(startY + (LIST_ROW_HEIGHT - ImGui.getTextLineHeight()) * 0.5f);
+        ImGui.pushStyleColor(ImGuiCol.Text, EditorStyle.COLOR_TEXT_MUTED);
+        ImGui.textUnformatted(entry.formattedSize());
+        ImGui.popStyleColor();
+    }
+
+    private void applyClick(AssetEntry entry) {
+        if (ImGui.getIO().getKeyCtrl()) {
+            toggle(entry.assetPath());
+            return;
+        }
+        selection.clear();
+        selection.add(entry.assetPath());
+    }
+
+    private void toggle(String assetPath) {
+        if (!selection.remove(assetPath)) {
+            selection.add(assetPath);
+        }
+    }
+
+    private void drawThumbnail(AssetEntry entry, float size) {
+        OptionalInt texture = thumbnailFor(entry);
+        if (texture.isEmpty()) {
+            icons.draw(iconFor(entry.type()), size);
+            return;
+        }
+        if (entry.type() == AssetType.TEXTURE) {
+            ImGui.image(texture.getAsInt(), size, size);
+        } else {
+            ImGui.image(texture.getAsInt(), size, size, 0.0f, 1.0f, 1.0f, 0.0f);
+        }
+    }
+
+    private OptionalInt thumbnailFor(AssetEntry entry) {
+        if (entry.type() == AssetType.TEXTURE) {
+            return thumbnails.get(entry.assetPath());
+        }
+        if (entry.type() == AssetType.MESH || entry.type() == AssetType.PRESET) {
+            return meshThumbnails.get(entry.assetPath());
+        }
+        return OptionalInt.empty();
+    }
+
+    public static EditorIcon iconFor(AssetType type) {
+        return switch (type) {
+            case MESH, PRESET -> EditorIcon.MESH;
+            case SCRIPT -> EditorIcon.SCRIPT;
+            case SCENE -> EditorIcon.GRID;
+            case PREFAB -> EditorIcon.DUPLICATE;
+            case GRAPH -> EditorIcon.ANIMATION_PLAYER;
+            default -> EditorIcon.FILE;
+        };
+    }
+
+    private static String elide(String name, float availableWidth) {
+        if (ImGui.calcTextSize(name).x <= availableWidth) {
+            return name;
+        }
+        String ellipsis = ELLIPSIS;
+        int length = name.length();
+        while (length > ELLIPSIS_MINIMUM
+                && ImGui.calcTextSize(name.substring(0, length) + ellipsis).x > availableWidth) {
+            length--;
+        }
+        return name.substring(0, length) + ellipsis;
+    }
+}

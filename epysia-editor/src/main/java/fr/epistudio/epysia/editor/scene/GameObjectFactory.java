@@ -86,15 +86,7 @@ public final class GameObjectFactory {
     }
 
     private String uniqueName(String baseName) {
-        Scene scene = activeDocument.get().scene();
-        if (scene.findByName(baseName).isEmpty()) {
-            return baseName;
-        }
-        int suffix = 2;
-        while (scene.findByName(baseName + " " + suffix).isPresent()) {
-            suffix++;
-        }
-        return baseName + " " + suffix;
+        return UniqueObjectName.in(activeDocument.get().scene(), baseName);
     }
 
     private static String displayName(Primitive primitive) {

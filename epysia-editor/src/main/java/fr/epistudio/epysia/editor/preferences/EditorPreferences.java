@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.preferences;
 
+import fr.epistudio.epysia.gpu.GpuPreference;
 import fr.epistudio.epysia.scene.serialization.JsonReader;
 import fr.epistudio.epysia.scene.serialization.JsonWriter;
 
@@ -11,7 +12,9 @@ import java.util.Map;
 public record EditorPreferences(float cameraSpeed, float cameraBoost,
                                 boolean autosaveEnabled, int autosaveIntervalSeconds,
                                 boolean gridVisible, boolean snapEnabled,
-                                float overlayThickness, float gridFadeDistance) {
+                                float overlayThickness, float gridFadeDistance,
+                                GpuPreference gpuPreference, boolean detachableWindows,
+                                boolean shaderNodePreviewsEnabled) {
 
     public static final float MIN_OVERLAY_THICKNESS = 0.5f;
     public static final float MAX_OVERLAY_THICKNESS = 3.0f;
@@ -35,7 +38,7 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
     public static EditorPreferences defaults() {
         return new EditorPreferences(DEFAULT_CAMERA_SPEED, DEFAULT_CAMERA_BOOST,
                 false, DEFAULT_AUTOSAVE_INTERVAL_SECONDS, true, false,
-                DEFAULT_OVERLAY_THICKNESS, DEFAULT_GRID_FADE_DISTANCE);
+                DEFAULT_OVERLAY_THICKNESS, DEFAULT_GRID_FADE_DISTANCE, GpuPreference.SYSTEM_DEFAULT, true, true);
     }
 
     public static Path defaultFile() {
@@ -67,7 +70,10 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                 clamp(floatOr(root, "overlayThickness", base.overlayThickness()),
                         MIN_OVERLAY_THICKNESS, MAX_OVERLAY_THICKNESS),
                 clamp(floatOr(root, "gridFadeDistance", base.gridFadeDistance()),
-                        MIN_GRID_FADE_DISTANCE, MAX_GRID_FADE_DISTANCE));
+                        MIN_GRID_FADE_DISTANCE, MAX_GRID_FADE_DISTANCE),
+                GpuPreference.fromId(stringOr(root, "gpuPreference", base.gpuPreference().id())),
+                boolOr(root, "detachableWindows", base.detachableWindows()),
+                boolOr(root, "shaderNodePreviewsEnabled", base.shaderNodePreviewsEnabled()));
     }
 
     public void save(Path file) throws IOException {
@@ -81,22 +87,43 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                 .key("snapEnabled").valueBoolean(snapEnabled)
                 .key("overlayThickness").valueNumber(overlayThickness)
                 .key("gridFadeDistance").valueNumber(gridFadeDistance)
+                .key("gpuPreference").valueString(gpuPreference.id())
+                .key("detachableWindows").valueBoolean(detachableWindows)
+                .key("shaderNodePreviewsEnabled").valueBoolean(shaderNodePreviewsEnabled)
                 .endObject();
         Files.writeString(file, writer.toString());
     }
 
     public EditorPreferences withGridVisible(boolean visible) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
-                visible, snapEnabled, overlayThickness, gridFadeDistance);
+                visible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
+                shaderNodePreviewsEnabled);
     }
 
     public EditorPreferences withSnapEnabled(boolean enabled) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
-                gridVisible, enabled, overlayThickness, gridFadeDistance);
+                gridVisible, enabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
+                shaderNodePreviewsEnabled);
+    }
+
+    public EditorPreferences withGpuPreference(GpuPreference preference) {
+        return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
+                gridVisible, snapEnabled, overlayThickness, gridFadeDistance, preference, detachableWindows,
+                shaderNodePreviewsEnabled);
+    }
+
+    public EditorPreferences withShaderNodePreviewsEnabled(boolean enabled) {
+        return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
+                gridVisible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
+                enabled);
     }
 
     private static float floatOr(Map<String, Object> root, String key, float fallback) {
         return root.get(key) instanceof Number number ? number.floatValue() : fallback;
+    }
+
+    private static String stringOr(Map<String, Object> root, String key, String fallback) {
+        return root.get(key) instanceof String value ? value : fallback;
     }
 
     private static boolean boolOr(Map<String, Object> root, String key, boolean fallback) {

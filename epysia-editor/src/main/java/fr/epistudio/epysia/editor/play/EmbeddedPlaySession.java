@@ -9,6 +9,7 @@ import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.graph.GraphSystem;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
 import fr.epistudio.epysia.project.Project;
@@ -204,6 +205,8 @@ public final class EmbeddedPlaySession {
                 .ifPresent(PhysicsSystem::resetForPlaySession);
         Optional.ofNullable(engine().systems().get(AudioSystem.class))
                 .ifPresent(AudioSystem::resetForPlaySession);
+        Optional.ofNullable(engine().systems().get(GraphSystem.class))
+                .ifPresent(GraphSystem::resetForPlaySession);
     }
 
     private void applyCollisionLayers() {

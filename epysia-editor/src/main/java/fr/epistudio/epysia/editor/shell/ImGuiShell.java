@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.shell;
 
+import imgui.ImFont;
 import imgui.ImFontConfig;
 import imgui.ImGui;
 import imgui.ImGuiIO;
@@ -34,6 +35,7 @@ public final class ImGuiShell {
     private static final int OPENGL_MINOR = 3;
     private static final String GLSL_VERSION = "#version 430";
     private static final String FONT_RESOURCE = "/fonts/inter.ttf";
+    private static final String MONOSPACE_FONT_RESOURCE = "/fonts/noto-sans-mono.ttf";
     private static final float CLEAR_RED = 0.117f;
     private static final float CLEAR_GREEN = 0.117f;
     private static final float CLEAR_BLUE = 0.117f;
@@ -41,7 +43,26 @@ public final class ImGuiShell {
     private final ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
     private final ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
     private long windowHandle;
+    private long drawDataNanos;
+    private long viewportsNanos;
+    private long swapNanos;
+    private ImFont monospaceFont;
     private Consumer<List<Path>> fileDropHandler = paths -> { };
+    private boolean viewportsEnabled = true;
+    private boolean vsyncEnabled = true;
+
+    public boolean isVsyncEnabled() {
+        return vsyncEnabled;
+    }
+
+    public void setVsyncEnabled(boolean enabled) {
+        vsyncEnabled = enabled;
+        GLFW.glfwSwapInterval(enabled ? 1 : 0);
+    }
+
+    public void setViewportsEnabled(boolean enabled) {
+        this.viewportsEnabled = enabled;
+    }
 
     public void setFileDropHandler(Consumer<List<Path>> handler) {
         this.fileDropHandler = handler;
@@ -103,21 +124,31 @@ public final class ImGuiShell {
         ImGui.createContext();
         ImGuiIO io = ImGui.getIO();
         io.addConfigFlags(ImGuiConfigFlags.DockingEnable);
+        if (viewportsEnabled) {
+            io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);
+        }
         io.setIniFilename(null);
         ImFontConfig fontConfig = new ImFontConfig();
         fontConfig.setFontDataOwnedByAtlas(false);
-        io.getFonts().addFontFromMemoryTTF(readFontBytes(), EditorStyle.FONT_PIXEL_HEIGHT, fontConfig);
+        io.getFonts().addFontFromMemoryTTF(readFontBytes(FONT_RESOURCE), EditorStyle.FONT_PIXEL_HEIGHT, fontConfig);
+        monospaceFont = io.getFonts().addFontFromMemoryTTF(readFontBytes(MONOSPACE_FONT_RESOURCE),
+                EditorStyle.MONOSPACE_FONT_PIXEL_HEIGHT, fontConfig);
         io.getFonts().build();
         fontConfig.destroy();
+        EditorStyle.setMonospaceFont(monospaceFont);
         EditorStyle.apply();
         imGuiGlfw.init(windowHandle, true);
         imGuiGl3.init(GLSL_VERSION);
     }
 
-    private static byte[] readFontBytes() {
-        try (InputStream stream = ImGuiShell.class.getResourceAsStream(FONT_RESOURCE)) {
+    public ImFont monospaceFont() {
+        return monospaceFont;
+    }
+
+    private static byte[] readFontBytes(String fontResource) {
+        try (InputStream stream = ImGuiShell.class.getResourceAsStream(fontResource)) {
             if (stream == null) {
-                throw new UncheckedIOException(new IOException("Missing font resource " + FONT_RESOURCE));
+                throw new UncheckedIOException(new IOException("Missing font resource " + fontResource));
             }
             return stream.readAllBytes();
         } catch (IOException error) {
@@ -146,6 +177,7 @@ public final class ImGuiShell {
     }
 
     public void endFrame() {
+        long renderStart = System.nanoTime();
         ImGui.render();
         int[] width = new int[1];
         int[] height = new int[1];
@@ -154,7 +186,31 @@ public final class ImGuiShell {
         glClearColor(CLEAR_RED, CLEAR_GREEN, CLEAR_BLUE, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         imGuiGl3.renderDrawData(ImGui.getDrawData());
+        long drawDataEnd = System.nanoTime();
+        if (ImGui.getIO().hasConfigFlags(ImGuiConfigFlags.ViewportsEnable)) {
+            long contextBackup = GLFW.glfwGetCurrentContext();
+            ImGui.updatePlatformWindows();
+            ImGui.renderPlatformWindowsDefault();
+            GLFW.glfwMakeContextCurrent(contextBackup);
+        }
+        long viewportsEnd = System.nanoTime();
         GLFW.glfwSwapBuffers(windowHandle);
+        long swapEnd = System.nanoTime();
+        drawDataNanos = drawDataEnd - renderStart;
+        viewportsNanos = viewportsEnd - drawDataEnd;
+        swapNanos = swapEnd - viewportsEnd;
+    }
+
+    public long drawDataNanos() {
+        return drawDataNanos;
+    }
+
+    public long viewportsNanos() {
+        return viewportsNanos;
+    }
+
+    public long swapNanos() {
+        return swapNanos;
     }
 
     public int framebufferWidth() {
