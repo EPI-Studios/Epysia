@@ -36,6 +36,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -509,11 +510,13 @@ public final class GltfImporter {
     private static List<Path> importMaterials(GltfModel model, Path outputDirectory, List<String> warnings) {
         Map<ImageModel, Integer> imageIndices = buildImageIndices(model);
         Map<ImageModel, String> writtenImages = new IdentityHashMap<>();
+        FileNameAllocator materialFileNames = new FileNameAllocator();
+        FileNameAllocator imageFileNames = new FileNameAllocator();
         List<Path> materialFiles = new ArrayList<>();
         List<MaterialModel> materialModels = model.getMaterialModels();
         for (int materialIndex = 0; materialIndex < materialModels.size(); materialIndex++) {
             importMaterial(materialModels.get(materialIndex), materialIndex, outputDirectory, imageIndices,
-                    writtenImages, warnings).ifPresent(materialFiles::add);
+                    writtenImages, materialFileNames, imageFileNames, warnings).ifPresent(materialFiles::add);
         }
         return materialFiles;
     }
@@ -528,35 +531,51 @@ public final class GltfImporter {
     }
 
     private static Optional<Path> importMaterial(MaterialModel materialModel, int materialIndex, Path outputDirectory,
-            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, List<String> warnings) {
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages,
+            FileNameAllocator materialFileNames, FileNameAllocator imageFileNames, List<String> warnings) {
         if (!(materialModel instanceof MaterialModelV2 material)) {
             warnings.add("Material " + materialIndex + " is not a PBR metallic-roughness material; skipped.");
             return Optional.empty();
         }
         String materialName = Optional.ofNullable(material.getName()).orElse("material" + materialIndex);
-        LitMaterial litMaterial = buildLitMaterial(material, outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
-        Path outputPath = outputDirectory.resolve(sanitizeFileName(materialName, "material" + materialIndex) + ".epymaterial");
+        LitMaterial litMaterial = buildLitMaterial(material, outputDirectory, imageIndices, writtenImages, imageFileNames,
+                materialIndex, warnings);
+        String fileName = materialFileNames.allocate(sanitizeFileName(materialName, "material" + materialIndex),
+                ".epymaterial", materialName, "Material", warnings);
+        Path outputPath = outputDirectory.resolve(fileName);
         writeMaterialFile(outputPath, litMaterial);
         return Optional.of(outputPath);
     }
 
     private static LitMaterial buildLitMaterial(MaterialModelV2 material, Path outputDirectory,
-            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, int materialIndex, List<String> warnings) {
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, FileNameAllocator imageFileNames,
+            int materialIndex, List<String> warnings) {
         LitMaterial litMaterial = new LitMaterial();
         float[] baseColorFactor = material.getBaseColorFactor();
         litMaterial.setBaseColor(baseColorFactor[0], baseColorFactor[1], baseColorFactor[2]);
         litMaterial.setMetallic(material.getMetallicFactor());
         litMaterial.setRoughness(material.getRoughnessFactor());
-        applyTexture(litMaterial, "albedo", material.getBaseColorTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
-        applyTexture(litMaterial, "normalMap", material.getNormalTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
-        applyTexture(litMaterial, "metallicRoughnessMap", material.getMetallicRoughnessTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
-        applyTexture(litMaterial, "occlusionMap", material.getOcclusionTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
-        applyTexture(litMaterial, "emissiveMap", material.getEmissiveTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
+        applyAlphaMode(litMaterial, material);
+        applyTexture(litMaterial, "albedo", material.getBaseColorTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
+        applyTexture(litMaterial, "normalMap", material.getNormalTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
+        applyTexture(litMaterial, "metallicRoughnessMap", material.getMetallicRoughnessTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
+        applyTexture(litMaterial, "occlusionMap", material.getOcclusionTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
+        applyTexture(litMaterial, "emissiveMap", material.getEmissiveTexture(), outputDirectory, imageIndices, writtenImages, imageFileNames, materialIndex, warnings);
         return litMaterial;
     }
 
+    private static void applyAlphaMode(LitMaterial litMaterial, MaterialModelV2 material) {
+        MaterialModelV2.AlphaMode alphaMode = material.getAlphaMode();
+        if (alphaMode == MaterialModelV2.AlphaMode.BLEND) {
+            litMaterial.setTransparent(true);
+        } else if (alphaMode == MaterialModelV2.AlphaMode.MASK) {
+            litMaterial.setAlphaCutoff(material.getAlphaCutoff());
+        }
+    }
+
     private static void applyTexture(LitMaterial litMaterial, String fieldName, TextureModel texture, Path outputDirectory,
-            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, int materialIndex, List<String> warnings) {
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, FileNameAllocator imageFileNames,
+            int materialIndex, List<String> warnings) {
         if (texture == null) {
             return;
         }
@@ -565,17 +584,19 @@ public final class GltfImporter {
             warnings.add("Material " + materialIndex + " texture " + fieldName + " has no image; skipped.");
             return;
         }
-        litMaterial.setTexturePath(fieldName, resolveImagePath(image, outputDirectory, imageIndices, writtenImages));
+        litMaterial.setTexturePath(fieldName, resolveImagePath(image, outputDirectory, imageIndices, writtenImages, imageFileNames, warnings));
     }
 
     private static String resolveImagePath(ImageModel image, Path outputDirectory,
-            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages) {
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, FileNameAllocator imageFileNames,
+            List<String> warnings) {
         String cachedPath = writtenImages.get(image);
         if (cachedPath != null) {
             return cachedPath;
         }
         int imageIndex = imageIndices.getOrDefault(image, 0);
-        String path = isEmbeddedImage(image) ? writeEmbeddedImage(image, outputDirectory, imageIndex) : image.getUri();
+        String path = isEmbeddedImage(image) ? writeEmbeddedImage(image, outputDirectory, imageIndex, imageFileNames, warnings)
+                : image.getUri();
         writtenImages.put(image, path);
         return path;
     }
@@ -585,9 +606,13 @@ public final class GltfImporter {
         return uri == null || uri.startsWith("data:");
     }
 
-    private static String writeEmbeddedImage(ImageModel image, Path outputDirectory, int imageIndex) {
+    private static String writeEmbeddedImage(ImageModel image, Path outputDirectory, int imageIndex,
+            FileNameAllocator imageFileNames, List<String> warnings) {
         byte[] imageBytes = readImageBytes(image);
-        String fileName = sanitizeFileName(imageBaseName(image, imageIndex), "image" + imageIndex) + sniffImageExtension(imageBytes);
+        String imageName = imageBaseName(image, imageIndex);
+        String extension = sniffImageExtension(imageBytes);
+        String fileName = imageFileNames.allocate(sanitizeFileName(imageName, "image" + imageIndex), extension,
+                imageName, "Image", warnings);
         writeBytes(outputDirectory.resolve(fileName), imageBytes);
         return fileName;
     }
@@ -680,6 +705,25 @@ public final class GltfImporter {
     }
 
     private record JointReference(SkinModel skin, int jointIndex) {
+    }
+
+    private static final class FileNameAllocator {
+
+        private final Map<String, Integer> occurrenceCounts = new HashMap<>();
+        private final Map<String, String> firstDisplayNames = new HashMap<>();
+
+        String allocate(String baseName, String extension, String displayName, String kind, List<String> warnings) {
+            String key = baseName + extension;
+            int occurrence = occurrenceCounts.merge(key, 1, Integer::sum) - 1;
+            if (occurrence == 0) {
+                firstDisplayNames.put(key, displayName);
+                return key;
+            }
+            String uniqueName = baseName + "_" + occurrence + extension;
+            warnings.add(kind + " \"" + firstDisplayNames.get(key) + "\" and " + kind.toLowerCase() + " \"" + displayName
+                    + "\" both resolve to \"" + key + "\"; the second was renamed to \"" + uniqueName + "\".");
+            return uniqueName;
+        }
     }
 
     private record MergePlan(int vertexTotal, int indexTotal, boolean hasUv, boolean hasSkin) {
