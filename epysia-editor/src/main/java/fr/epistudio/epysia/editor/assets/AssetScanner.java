@@ -131,7 +131,8 @@ public final class AssetScanner {
     }
 
     private static AssetType classifyBinary(String lower) {
-        if (lower.endsWith(".obj") || lower.endsWith(".epymesh")) {
+        if (lower.endsWith(".obj") || lower.endsWith(".epymesh")
+                || lower.endsWith(".gltf") || lower.endsWith(".glb")) {
             return AssetType.MESH;
         }
         if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
