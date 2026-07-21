@@ -26,4 +26,16 @@ class MaterialAssetLoaderTest {
         assertSame(first, second);
         assertEquals("shaders/dissolve.surf.glsl", ((LitMaterial) first).surfaceShaderPath());
     }
+
+    @Test
+    void clampPrefixedRelativeTexturePathRebasesWithThePrefixPreserved(@TempDir Path directory) throws Exception {
+        LitMaterial material = new LitMaterial();
+        material.setTexturePath("albedo", "clamp:tex.png");
+        Path file = directory.resolve("prefixed.epymaterial");
+        Files.writeString(file, new MaterialJsonCodec().writeSingle(material));
+        MaterialAssetLoader loader = new MaterialAssetLoader();
+        Material loaded = loader.loadFromFile(file);
+        String albedoPath = loaded.texturePath("albedo").orElseThrow();
+        assertEquals("clamp:" + directory.toAbsolutePath().normalize().resolve("tex.png"), albedoPath);
+    }
 }

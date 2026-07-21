@@ -7,6 +7,7 @@ import de.javagl.jgltf.model.AccessorIntData;
 import de.javagl.jgltf.model.AccessorModel;
 import de.javagl.jgltf.model.AccessorShortData;
 import de.javagl.jgltf.model.AnimationModel;
+import de.javagl.jgltf.model.GltfConstants;
 import de.javagl.jgltf.model.GltfModel;
 import de.javagl.jgltf.model.GltfModels;
 import de.javagl.jgltf.model.ImageModel;
@@ -31,6 +32,7 @@ import fr.epistudio.epysia.animation.ClipProperty;
 import fr.epistudio.epysia.animation.Joint;
 import fr.epistudio.epysia.animation.Skeleton;
 import fr.epistudio.epysia.assets.epyclip.EpyClipWriter;
+import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshWriter;
 import fr.epistudio.epysia.components.Animator;
 import fr.epistudio.epysia.components.MeshRenderer;
@@ -805,7 +807,29 @@ public final class GltfImporter {
             warnings.add("Material " + materialIndex + " texture " + fieldName + " has no image; skipped.");
             return;
         }
-        litMaterial.setTexturePath(fieldName, resolveImagePath(image, outputDirectory, imageIndices, writtenImages, imageFileNames, warnings));
+        String imagePath = resolveImagePath(image, outputDirectory, imageIndices, writtenImages, imageFileNames, warnings);
+        String wrapPrefix = wrapPrefixFor(texture, fieldName, materialIndex, warnings);
+        litMaterial.setTexturePath(fieldName, wrapPrefix + imagePath);
+    }
+
+    private static String wrapPrefixFor(TextureModel texture, String fieldName, int materialIndex, List<String> warnings) {
+        int wrapS = wrapModeOf(texture.getWrapS());
+        int wrapT = wrapModeOf(texture.getWrapT());
+        if (wrapS != wrapT) {
+            warnings.add("Material " + materialIndex + " texture " + fieldName
+                    + " has different wrapS and wrapT; using wrapS for both.");
+        }
+        if (wrapS == GltfConstants.GL_CLAMP_TO_EDGE) {
+            return TextureAssetLoader.CLAMP_PREFIX;
+        }
+        if (wrapS == GltfConstants.GL_MIRRORED_REPEAT) {
+            return TextureAssetLoader.MIRROR_PREFIX;
+        }
+        return "";
+    }
+
+    private static int wrapModeOf(Integer wrapMode) {
+        return wrapMode == null ? GltfConstants.GL_REPEAT : wrapMode;
     }
 
     private static String resolveImagePath(ImageModel image, Path outputDirectory,

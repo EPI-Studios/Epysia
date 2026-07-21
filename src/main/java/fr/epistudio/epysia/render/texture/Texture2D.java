@@ -28,7 +28,11 @@ public final class Texture2D {
     }
 
     public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format) {
-        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, TextureWrap.REPEAT);
+        return loadFrom(backend, source, format, TextureWrap.REPEAT);
+    }
+
+    public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format, TextureWrap wrap) {
+        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, wrap);
     }
 
     public static TextureHandle load(RenderBackend backend, String path) {
@@ -36,9 +40,13 @@ public final class Texture2D {
     }
 
     public static TextureHandle load(RenderBackend backend, String path, TextureFormat format) {
+        return load(backend, path, format, TextureWrap.REPEAT);
+    }
+
+    public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap) {
         AssetSource source = AssetResolvers.forPath(path, "").source()
                 .orElseThrow(() -> new EpysiaException("Texture resource not found: " + path));
-        return loadFrom(backend, source, format);
+        return loadFrom(backend, source, format, wrap);
     }
 
     public static TextureHandle loadFromFile(RenderBackend backend, Path imagePath) {
