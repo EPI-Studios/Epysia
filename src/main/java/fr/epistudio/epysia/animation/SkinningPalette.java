@@ -14,12 +14,16 @@ public final class SkinningPalette {
     }
 
     public static void pack(Matrix4f[] matrices, ByteBuffer target) {
-        Vector4f row = new Vector4f();
+        pack(matrices, target, new Vector4f());
+    }
+
+    public static void pack(Matrix4f[] matrices, ByteBuffer target, Vector4f rowScratch) {
         target.clear();
         for (Matrix4f matrix : matrices) {
             for (int rowIndex = 0; rowIndex < ROWS_PER_JOINT; rowIndex++) {
-                matrix.getRow(rowIndex, row);
-                target.putFloat(row.x).putFloat(row.y).putFloat(row.z).putFloat(row.w);
+                matrix.getRow(rowIndex, rowScratch);
+                target.putFloat(rowScratch.x).putFloat(rowScratch.y)
+                        .putFloat(rowScratch.z).putFloat(rowScratch.w);
             }
         }
         target.flip();
