@@ -42,7 +42,6 @@ public final class SkinnedAnimationPixelCheck {
     private static final int SAMPLE_Y = 180;
     private static final int SAMPLE_STRIDE = 2;
     private static final int WARMUP_FRAMES = 5;
-    private static final long LATE_SAMPLE_DELAY_NANOS = 400_000_000L;
     private static final int MAXIMUM_FRAMES = 1200;
     private static final int RED_DOMINANCE_MARGIN = 60;
     private static final float MINIMUM_CENTROID_SHIFT = 40.0f;
@@ -147,8 +146,10 @@ public final class SkinnedAnimationPixelCheck {
         transform.setPosition(0.0f, 0.0f, -6.0f);
         quad.addComponent(transform);
         quad.addComponent(new MeshRenderer().setMesh(mesh).setMaterial(material));
-        quad.addComponent(new Animator().setClipPath(clipPath.toAbsolutePath().toString())
-                .setLooping(true).setSpeed(1.0f));
+        Animator animator = new Animator().setClipPath(clipPath.toAbsolutePath().toString())
+                .setLooping(false).setSpeed(1.0f);
+        animator.pause();
+        quad.addComponent(animator);
         return quad;
     }
 
@@ -158,7 +159,6 @@ public final class SkinnedAnimationPixelCheck {
         private RenderBackend backend;
         private int frameCount;
         private float earlyCentroid = -1.0f;
-        private long earlyCaptureNanos = -1L;
 
         private PixelCheckSystem(EpysiaEngine engine) {
             this.engine = engine;
@@ -175,22 +175,36 @@ public final class SkinnedAnimationPixelCheck {
             if (frameCount < WARMUP_FRAMES) {
                 return;
             }
-            if (earlyCaptureNanos < 0L) {
-                captureEarly();
-                return;
-            }
-            if (System.nanoTime() - earlyCaptureNanos < LATE_SAMPLE_DELAY_NANOS) {
+            Optional<Animator> animator = findAnimator(scene);
+            if (animator.isEmpty()) {
                 failIfExceededMaximumFrames();
                 return;
             }
-            float lateCentroid = redCentroidX();
-            report(lateCentroid);
+            if (earlyCentroid < 0.0f) {
+                captureEarly(animator.get());
+                return;
+            }
+            if (animator.get().currentTimeSeconds() < CLIP_DURATION_SECONDS) {
+                failIfExceededMaximumFrames();
+                return;
+            }
+            report(redCentroidX());
         }
 
-        private void captureEarly() {
+        private static Optional<Animator> findAnimator(Scene scene) {
+            for (GameObject gameObject : scene.gameObjects()) {
+                Animator found = gameObject.getComponentOrNull(Animator.class);
+                if (found != null && found.resolvedClip().isPresent()) {
+                    return Optional.of(found);
+                }
+            }
+            return Optional.empty();
+        }
+
+        private void captureEarly(Animator animator) {
             earlyCentroid = redCentroidX();
             if (earlyCentroid >= 0.0f) {
-                earlyCaptureNanos = System.nanoTime();
+                animator.play();
             }
         }
 
