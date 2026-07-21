@@ -22,6 +22,10 @@ in vec3 vertexWorldTangent;
 in vec2 vertexUv;
 in float vertexViewDepth;
 
+#ifdef VERTEX_COLORED
+in vec4 vertexColor;
+#endif
+
 layout(std140, binding = 2) uniform MaterialUbo {
     vec3 baseColor;
     float metallic;
@@ -121,6 +125,9 @@ vec3 shadeLight(int lightIndex, int shadowIndex, vec3 worldNormal, vec3 viewDire
 void main() {
     vec4 albedoSample = texture(albedo, vertexUv);
     vec4 albedoColor = vec4(albedoSample.rgb * material.baseColor, albedoSample.a);
+#ifdef VERTEX_COLORED
+    albedoColor *= vertexColor;
+#endif
     vec4 metallicRoughnessSample = texture(metallicRoughnessMap, vertexUv);
     float metallic = clamp(metallicRoughnessSample.b * material.metallic, 0.0, 1.0);
     float roughness = clamp(metallicRoughnessSample.g * material.roughness, 0.04, 1.0);

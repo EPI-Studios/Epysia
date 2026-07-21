@@ -489,8 +489,11 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         }
         UploadedMesh mesh = meshOpt.get();
         renderersSeenThisFrame.add(renderer);
+        boolean excludedFromShadows = mesh.skinned() || mesh.vertexColored();
         if (mesh.skinned()) {
-            logSkinnedExclusionOnce(gameObject, renderer);
+            logExclusionOnce(gameObject, renderer, "Skinned");
+        } else if (mesh.vertexColored()) {
+            logExclusionOnce(gameObject, renderer, "Vertex-colored");
         }
         RenderableMesh renderable = resolvePerSubmeshes(renderer, mesh);
         List<PerSubmesh> perSubmeshes = renderable.submeshes();
@@ -514,22 +517,22 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             PerSubmesh perSubmesh = perSubmeshes.get(i);
             materialCache.writeMaterialUboIfNeeded(perSubmesh.material(), perSubmesh.classResources());
             surfaceUniforms.writeIfNeeded(perSubmesh.material(), perSubmesh.classResources().surfaceUniforms());
-            if (!mesh.skinned() && batchable(perSubmesh)
+            if (!excludedFromShadows && batchable(perSubmesh)
                     && instanceBatches.add(submesh, perSubmesh,
                             materialStates.snapshotFor(perSubmesh, materialCache, surfaceUniforms),
                             modelMatrix, depthBits, visible, scratchCasterMin, scratchCasterMax)) {
                 continue;
             }
             writeObjectUboIfChanged(perSubmesh.modelUbo(), modelMatrix, transformHash);
-            submitSubmesh(frame, submesh, perSubmesh, depthBits, transformHash, visible, mesh.skinned());
+            submitSubmesh(frame, submesh, perSubmesh, depthBits, transformHash, visible, excludedFromShadows);
         }
     }
 
-    private void logSkinnedExclusionOnce(GameObject gameObject, MeshRenderer renderer) {
+    private void logExclusionOnce(GameObject gameObject, MeshRenderer renderer, String reason) {
         if (!loggedSkinnedExclusions.add(renderer)) {
             return;
         }
-        logger.info("Skinned mesh '" + gameObject.name()
+        logger.info(reason + " mesh '" + gameObject.name()
                 + "' excluded from shadow casting and picking this milestone.");
     }
 
@@ -626,7 +629,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private void submitSubmesh(FrameBuilder frame, UploadedSubmesh submesh, PerSubmesh perSubmesh,
-                               long depthBits, long transformHash, boolean visible, boolean skinned) {
+                               long depthBits, long transformHash, boolean visible, boolean excludedFromShadows) {
         PipelineHandle pipeline = perSubmesh.classResources().pipeline();
         if (perSubmesh.material().transparent()) {
             if (!visible) {
@@ -636,7 +639,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             frame.submit(RenderPasses.TRANSPARENT_3D, new DrawCommand(pipeline, submesh.handle(), perSubmesh.litBindings(), backToFrontKey, 1));
             return;
         }
-        if (!skinned) {
+        if (!excludedFromShadows) {
             String surfacePath = MaterialPipelineCache.surfaceShaderPathOf(perSubmesh.material());
             submitShadowCasters(submesh, perSubmesh, surfacePath, transformHash);
         }
@@ -842,15 +845,15 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
                                                 Optional<JointPalette> jointPalette) {
         List<PerSubmesh> result = new ArrayList<>(mesh.submeshes().size());
         for (UploadedSubmesh submesh : mesh.submeshes()) {
-            result.add(createPerSubmesh(renderer, submesh, mesh.skinned(), jointPalette));
+            result.add(createPerSubmesh(renderer, submesh, mesh.skinned(), mesh.vertexColored(), jointPalette));
         }
         return result;
     }
 
     private PerSubmesh createPerSubmesh(MeshRenderer renderer, UploadedSubmesh submesh, boolean skinned,
-                                        Optional<JointPalette> jointPalette) {
+                                        boolean colored, Optional<JointPalette> jointPalette) {
         Material material = resolveMaterial(renderer, submesh.materialSlot());
-        MaterialClassResources classResources = materialCache.classResourcesFor(material, skinned);
+        MaterialClassResources classResources = materialCache.classResourcesFor(material, skinned, colored);
         BufferHandle materialUbo = materialCache.ensureMaterialUbo(material, classResources);
         ByteBuffer empty = BufferUtils.createByteBuffer(MeshShaderBindings.OBJECT_UBO_SIZE);
         BufferHandle modelUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, empty));
@@ -936,22 +939,23 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private void refreshStalePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh, List<PerSubmesh> perSubmeshes,
                                           Optional<JointPalette> jointPalette) {
         boolean skinned = mesh.skinned();
+        boolean colored = mesh.vertexColored();
         for (int i = 0; i < perSubmeshes.size(); i++) {
             PerSubmesh existing = perSubmeshes.get(i);
             UploadedSubmesh submesh = mesh.submeshes().get(i);
             Material current = resolveMaterial(renderer, submesh.materialSlot());
-            if (materialOrPipelineChanged(current, existing, skinned)) {
+            if (materialOrPipelineChanged(current, existing, skinned, colored)) {
                 destroyPerSubmesh(existing);
-                perSubmeshes.set(i, createPerSubmesh(renderer, submesh, skinned, jointPalette));
+                perSubmeshes.set(i, createPerSubmesh(renderer, submesh, skinned, colored, jointPalette));
                 continue;
             }
             refreshTextureBindingsAt(perSubmeshes, i, jointPalette);
         }
     }
 
-    private boolean materialOrPipelineChanged(Material current, PerSubmesh existing, boolean skinned) {
+    private boolean materialOrPipelineChanged(Material current, PerSubmesh existing, boolean skinned, boolean colored) {
         return current != existing.material()
-                || materialCache.classResourcesFor(current, skinned) != existing.classResources();
+                || materialCache.classResourcesFor(current, skinned, colored) != existing.classResources();
     }
 
     private void refreshTextureBindingsAt(List<PerSubmesh> perSubmeshes, int index,

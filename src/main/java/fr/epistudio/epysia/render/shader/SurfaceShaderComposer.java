@@ -17,6 +17,7 @@ public final class SurfaceShaderComposer {
     public static final int USER_UNIFORM_BINDING = 4;
     public static final int FIRST_SAMPLER_BINDING = 14;
     public static final String SKINNED_DEFINE = "#define SKINNED\n";
+    public static final String VERTEX_COLORED_DEFINE = "#define VERTEX_COLORED\n";
     private static final String VERSION_DIRECTIVE = "#version";
 
     private static final String UNIFORM_BLOCK_NAME = "SurfaceUniforms";
@@ -71,6 +72,10 @@ public final class SurfaceShaderComposer {
 
     public static LoadedShader injectSkinningDefine(LoadedShader vertex) {
         return new LoadedShader(insertAfterVersion(vertex.source(), SKINNED_DEFINE), vertex.dependencyPaths());
+    }
+
+    public static LoadedShader injectVertexColoredDefine(LoadedShader shader) {
+        return new LoadedShader(insertAfterVersion(shader.source(), VERTEX_COLORED_DEFINE), shader.dependencyPaths());
     }
 
     private static String insertAfterVersion(String source, String directive) {

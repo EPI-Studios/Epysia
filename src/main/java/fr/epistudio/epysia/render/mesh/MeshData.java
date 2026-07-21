@@ -9,6 +9,7 @@ public record MeshData(
         float[] normals,
         float[] uvs,
         float[] tangents,
+        float[] vertexColors,
         short[] jointIndices,
         float[] jointWeights,
         int[] indices,
@@ -19,6 +20,7 @@ public record MeshData(
     public static final int NORMAL_COMPONENTS = 3;
     public static final int UV_COMPONENTS = 2;
     public static final int TANGENT_COMPONENTS = 3;
+    public static final int COLOR_COMPONENTS = 4;
     public static final int VERTEX_FLOAT_COUNT = POSITION_COMPONENTS + NORMAL_COMPONENTS + UV_COMPONENTS + TANGENT_COMPONENTS;
     public static final int INFLUENCES_PER_VERTEX = 4;
 
@@ -35,6 +37,9 @@ public record MeshData(
         }
         if (tangents.length != 0 && tangents.length != vertexCount * TANGENT_COMPONENTS) {
             throw new EpysiaException("MeshData tangents must be empty or match positions count.");
+        }
+        if (vertexColors.length != 0 && vertexColors.length != vertexCount * COLOR_COMPONENTS) {
+            throw new EpysiaException("MeshData vertex colors must be empty or vertexCount * 4.");
         }
         if (indices.length == 0) {
             throw new EpysiaException("MeshData must have at least one index.");
@@ -53,11 +58,20 @@ public record MeshData(
                 : List.copyOf(submeshes);
     }
 
+    public MeshData(float[] positions, float[] normals, float[] uvs, float[] tangents,
+                    short[] jointIndices, float[] jointWeights, int[] indices, List<Submesh> submeshes) {
+        this(positions, normals, uvs, tangents, new float[0], jointIndices, jointWeights, indices, submeshes);
+    }
+
     public int vertexCount() {
         return positions.length / POSITION_COMPONENTS;
     }
 
     public boolean hasSkin() {
         return jointIndices.length > 0;
+    }
+
+    public boolean hasVertexColors() {
+        return vertexColors.length > 0;
     }
 }

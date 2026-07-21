@@ -34,6 +34,7 @@ public final class EpyMeshReader {
         try (DataInputStream stream = new DataInputStream(new ByteArrayInputStream(data))) {
             Header header = readHeader(stream);
             boolean skinned = (header.flags() & EpyMeshFormat.HAS_SKIN) != 0;
+            boolean colored = (header.flags() & EpyMeshFormat.HAS_VERTEX_COLORS) != 0;
             MeshBody body = readMeshBody(stream);
             Optional<BakedCollider> collider = readCollider(stream, header.flags());
             SkinArrays skinArrays = skinned ? readSkinArrays(stream) : emptySkinArrays();
@@ -41,7 +42,8 @@ public final class EpyMeshReader {
             if (skeleton.isPresent()) {
                 validateJointIndices(skinArrays.jointIndices(), skeleton.orElseThrow());
             }
-            MeshData mesh = buildMesh(body, skinArrays);
+            float[] vertexColors = colored ? readFloats(stream) : new float[0];
+            MeshData mesh = buildMesh(body, skinArrays, vertexColors);
             return new EpyMesh(mesh, collider, skeleton);
         } catch (IOException exception) {
             throw new EpysiaException("Failed to decode .epymesh: " + exception.getMessage(), exception);
@@ -79,8 +81,8 @@ public final class EpyMeshReader {
         return new MeshBody(positions, normals, uvs, tangents, indices, submeshes);
     }
 
-    private static MeshData buildMesh(MeshBody body, SkinArrays skinArrays) {
-        return new MeshData(body.positions(), body.normals(), body.uvs(), body.tangents(),
+    private static MeshData buildMesh(MeshBody body, SkinArrays skinArrays, float[] vertexColors) {
+        return new MeshData(body.positions(), body.normals(), body.uvs(), body.tangents(), vertexColors,
                 skinArrays.jointIndices(), skinArrays.jointWeights(), body.indices(), body.submeshes());
     }
 
