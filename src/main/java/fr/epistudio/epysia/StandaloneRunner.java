@@ -1,5 +1,6 @@
 package fr.epistudio.epysia;
 
+import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
@@ -65,6 +66,7 @@ public final class StandaloneRunner {
         engine.assets().register(new MeshAssetLoader(builtins));
         engine.assets().register(new TextureAssetLoader());
         engine.assets().register(new PhysicsMaterialLoader());
+        engine.assets().register(new MaterialAssetLoader());
         runPopulator(engine, populator);
         ensurePostProcessing(engine, shaderLoader, shaderWatcher, window);
         dispatchPlayStart(engine);
