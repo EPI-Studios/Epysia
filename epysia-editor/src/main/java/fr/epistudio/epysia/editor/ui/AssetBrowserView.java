@@ -641,7 +641,7 @@ public final class AssetBrowserView {
             GltfImportResult result = GltfImporter.importFile(source, source.getParent());
             result.warnings().forEach(warning -> notifier.show("glTF: " + warning));
             notifier.show("Imported " + result.meshFiles().size() + " meshes, "
-                    + result.clipFiles().size() + " clips");
+                    + result.clipFiles().size() + " clips, " + result.materialFiles().size() + " materials");
             refresh();
         } catch (RuntimeException error) {
             notifier.show("glTF import failed: " + error.getMessage());
