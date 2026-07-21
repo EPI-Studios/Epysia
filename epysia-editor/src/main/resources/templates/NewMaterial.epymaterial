@@ -1,0 +1,15 @@
+{
+  "class": "fr.epistudio.epysia.render.material.LitMaterial",
+  "vertexShader": "lit.vert.glsl",
+  "fragmentShader": "lit.frag.glsl",
+  "transparent": false,
+  "doubleSided": false,
+  "uniforms": {
+    "baseColor": [1.0, 1.0, 1.0],
+    "metallic": 0.0,
+    "roughness": 0.6,
+    "emissiveStrength": 0.0,
+    "alphaCutoff": 0.0
+  },
+  "textures": {}
+}
