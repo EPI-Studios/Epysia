@@ -19,17 +19,32 @@ final class FrustumCuller {
         if (localBounds == null) {
             return false;
         }
-        scratchMin.set(Float.POSITIVE_INFINITY);
-        scratchMax.set(Float.NEGATIVE_INFINITY);
-        for (int corner = 0; corner < 8; corner++) {
-            float x = (corner & 1) == 0 ? localBounds.minX() : localBounds.maxX();
-            float y = (corner & 2) == 0 ? localBounds.minY() : localBounds.maxY();
-            float z = (corner & 4) == 0 ? localBounds.minZ() : localBounds.maxZ();
-            scratchCorner.set(x, y, z);
-            modelMatrix.transformPosition(scratchCorner);
-            scratchMin.min(scratchCorner);
-            scratchMax.max(scratchCorner);
-        }
+        computeWorldBounds(localBounds, modelMatrix, scratchMin, scratchMax);
         return !frustum.testAab(scratchMin, scratchMax);
+    }
+
+    boolean isCulled(Vector3f worldMin, Vector3f worldMax) {
+        return !frustum.testAab(worldMin, worldMax);
+    }
+
+    void computeWorldBounds(Aabb localBounds, Matrix4f modelMatrix,
+                            Vector3f outMin, Vector3f outMax) {
+        if (localBounds == null) {
+            outMin.set(Float.NEGATIVE_INFINITY);
+            outMax.set(Float.POSITIVE_INFINITY);
+            return;
+        }
+        outMin.set(Float.POSITIVE_INFINITY);
+        outMax.set(Float.NEGATIVE_INFINITY);
+        Vector3f corner = scratchCorner;
+        for (int index = 0; index < 8; index++) {
+            float x = (index & 1) == 0 ? localBounds.minX() : localBounds.maxX();
+            float y = (index & 2) == 0 ? localBounds.minY() : localBounds.maxY();
+            float z = (index & 4) == 0 ? localBounds.minZ() : localBounds.maxZ();
+            corner.set(x, y, z);
+            modelMatrix.transformPosition(corner);
+            outMin.min(corner);
+            outMax.max(corner);
+        }
     }
 }

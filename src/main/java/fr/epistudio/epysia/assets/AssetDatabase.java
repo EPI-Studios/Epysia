@@ -45,15 +45,25 @@ public final class AssetDatabase {
     }
 
     public void refresh() {
-        Map<String, String> previousGuidByPath = new HashMap<>(guidByPath);
         guidByPath.clear();
         pathByGuid.clear();
         for (String path : scanAssetPaths()) {
-            String guid = previousGuidByPath.getOrDefault(path, UUID.randomUUID().toString());
+            String guid = resolveGuid(path);
             guidByPath.put(path, guid);
             pathByGuid.put(guid, path);
         }
         saveIndex();
+    }
+
+    private String resolveGuid(String path) {
+        Path metaFile = AssetMetaFile.pathFor(projectRoot.resolve(path));
+        Optional<String> declared = AssetMetaFile.readGuid(metaFile);
+        if (declared.isPresent() && !pathByGuid.containsKey(declared.get())) {
+            return declared.get();
+        }
+        String guid = UUID.randomUUID().toString();
+        AssetMetaFile.writeGuid(metaFile, guid);
+        return guid;
     }
 
     private List<String> scanAssetPaths() {
@@ -67,6 +77,7 @@ public final class AssetDatabase {
                     .map(AssetDatabase::normalize)
                     .filter(path -> !path.startsWith(INDEX_DIRECTORY + "/"))
                     .filter(path -> !path.startsWith("."))
+                    .filter(path -> !AssetMetaFile.isMetaPath(path))
                     .sorted()
                     .toList();
         } catch (IOException error) {

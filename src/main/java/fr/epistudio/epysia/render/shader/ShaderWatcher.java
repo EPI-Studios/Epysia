@@ -31,27 +31,49 @@ public final class ShaderWatcher {
     }
 
     private void startPollingThread() {
-        if (filesystemRoot.isEmpty()) {
-            return;
-        }
         pollingThread = new Thread(this::pollLoop, "epysia-shader-watcher");
         pollingThread.setDaemon(true);
         pollingThread.start();
     }
 
     public boolean active() {
-        return filesystemRoot.isPresent();
+        return true;
     }
 
-    public synchronized void watch(List<String> relativePaths, Runnable onChange) {
-        if (filesystemRoot.isEmpty()) {
-            return;
+    public synchronized void watch(List<String> shaderPaths, Runnable onChange) {
+        for (String shaderPath : shaderPaths) {
+            watchedPaths.add(shaderPath);
+            lastModifiedByPath.putIfAbsent(shaderPath, readModifiedMillis(shaderPath));
+            listenersByPath.computeIfAbsent(shaderPath, ignored -> new ArrayList<>()).add(onChange);
         }
-        Path root = filesystemRoot.get();
-        for (String relativePath : relativePaths) {
-            watchedPaths.add(relativePath);
-            lastModifiedByPath.putIfAbsent(relativePath, readMTime(root, relativePath));
-            listenersByPath.computeIfAbsent(relativePath, ignored -> new ArrayList<>()).add(onChange);
+    }
+
+    public synchronized void notifyFileSaved(Path savedFile) {
+        for (String shaderPath : watchedPaths) {
+            if (referencesFile(shaderPath, savedFile)) {
+                lastModifiedByPath.put(shaderPath, readModifiedMillis(shaderPath));
+                pendingChanges.add(shaderPath);
+            }
+        }
+    }
+
+    public synchronized void notifyPathChanged(String shaderPath) {
+        if (watchedPaths.contains(shaderPath)) {
+            pendingChanges.add(shaderPath);
+        }
+    }
+
+    private boolean referencesFile(String shaderPath, Path savedFile) {
+        return resolveFile(shaderPath)
+                .map(resolved -> sameFile(resolved, savedFile))
+                .orElse(false);
+    }
+
+    private static boolean sameFile(Path first, Path second) {
+        try {
+            return Files.isSameFile(first, second);
+        } catch (IOException unreadable) {
+            return first.toAbsolutePath().normalize().equals(second.toAbsolutePath().normalize());
         }
     }
 
@@ -63,7 +85,6 @@ public final class ShaderWatcher {
     }
 
     private void pollLoop() {
-        Path root = filesystemRoot.orElseThrow();
         while (!stopped) {
             try {
                 Thread.sleep(POLL_INTERVAL_MILLIS);
@@ -71,21 +92,21 @@ public final class ShaderWatcher {
                 Thread.currentThread().interrupt();
                 return;
             }
-            scanWatchedPaths(root);
+            scanWatchedPaths();
         }
     }
 
-    private void scanWatchedPaths(Path root) {
+    private void scanWatchedPaths() {
         Set<String> snapshot;
         synchronized (this) {
             snapshot = new HashSet<>(watchedPaths);
         }
-        for (String relativePath : snapshot) {
-            long current = readMTime(root, relativePath);
-            Long previous = lastModifiedByPath.get(relativePath);
+        for (String shaderPath : snapshot) {
+            long current = readModifiedMillis(shaderPath);
+            Long previous = lastModifiedByPath.get(shaderPath);
             if (previous != null && current > previous) {
-                lastModifiedByPath.put(relativePath, current);
-                pendingChanges.add(relativePath);
+                lastModifiedByPath.put(shaderPath, current);
+                pendingChanges.add(shaderPath);
             }
         }
     }
@@ -103,10 +124,21 @@ public final class ShaderWatcher {
         }
     }
 
-    private static long readMTime(Path root, String relativePath) {
-        Path absolute = root.resolve(relativePath);
+    private long readModifiedMillis(String shaderPath) {
+        return resolveFile(shaderPath).map(ShaderWatcher::modifiedMillis).orElse(0L);
+    }
+
+    private Optional<Path> resolveFile(String shaderPath) {
+        Path candidate = Path.of(shaderPath);
+        if (candidate.isAbsolute()) {
+            return Optional.of(candidate);
+        }
+        return filesystemRoot.map(root -> root.resolve(candidate));
+    }
+
+    private static long modifiedMillis(Path file) {
         try {
-            return Files.getLastModifiedTime(absolute).toMillis();
+            return Files.getLastModifiedTime(file).toMillis();
         } catch (IOException ignored) {
             return 0L;
         }

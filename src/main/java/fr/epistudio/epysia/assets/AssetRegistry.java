@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 public final class AssetRegistry {
 
@@ -69,6 +70,20 @@ public final class AssetRegistry {
         }
         cache.put(cacheKey, value);
         return Optional.of(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T resolveOrCompute(Class<T> type, String path, Supplier<T> producer) {
+        String cacheKey = type.getName() + "::" + path;
+        Object cached = cache.get(cacheKey);
+        if (cached != null) {
+            return (T) cached;
+        }
+        T produced = producer.get();
+        if (produced != null) {
+            cache.put(cacheKey, produced);
+        }
+        return produced;
     }
 
     public void unload(String path) {

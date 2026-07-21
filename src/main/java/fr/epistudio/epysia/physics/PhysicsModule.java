@@ -2,7 +2,6 @@ package fr.epistudio.epysia.physics;
 
 import fr.epistudio.epysia.EngineModule;
 import fr.epistudio.epysia.SystemRegistry;
-import fr.epistudio.epysia.physics.components.CharacterControllerPhysicsSystem;
 
 public final class PhysicsModule implements EngineModule {
 
@@ -14,6 +13,5 @@ public final class PhysicsModule implements EngineModule {
     @Override
     public void registerSystems(SystemRegistry registry) {
         registry.add(new PhysicsSystem());
-        registry.add(new CharacterControllerPhysicsSystem());
     }
 }

@@ -12,13 +12,18 @@ out vec3 vertexWorldTangent;
 out vec2 vertexUv;
 out float vertexViewDepth;
 
+// SURFACE_FUNCTIONS
+
+invariant gl_Position;
+
 void main() {
-    vec4 worldPosition = object.model * vec4(inPosition, 1.0);
-    mat3 normalMatrix = mat3(object.normalMatrix);
+    vec4 worldPosition = OBJECT_MODEL * vec4(inPosition, 1.0);
+    mat3 normalMatrix = mat3(OBJECT_NORMAL_MATRIX);
     vertexWorldPosition = worldPosition.xyz;
     vertexWorldNormal = normalize(normalMatrix * inNormal);
     vertexWorldTangent = normalize(normalMatrix * inTangent);
     vertexUv = inUv;
+    // SURFACE_VERTEX_CALL
     gl_Position = frame.cameraViewProjection * worldPosition;
     vertexViewDepth = gl_Position.w;
 }

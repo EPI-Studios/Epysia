@@ -14,11 +14,11 @@ public final class PostProcessSettings {
     private float fogHeightOrigin = 1.0f;
     private float fogHeightFalloff = 0.35f;
     private float fogHeightDensity = 0.6f;
-    private boolean bloomEnabled = true;
+    private boolean bloomEnabled = false;
     private float bloomThreshold = 1.0f;
     private float bloomKnee = 0.5f;
     private float bloomIntensity = 0.35f;
-    private boolean ambientOcclusionEnabled = true;
+    private boolean ambientOcclusionEnabled = false;
     private float ambientOcclusionRadius = 0.5f;
     private float ambientOcclusionIntensity = 1.0f;
     private float ambientOcclusionPower = 1.5f;

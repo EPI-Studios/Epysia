@@ -161,3 +161,7 @@ tasks.register('psyhouJar', ShadowJar) {
     mergeServiceFiles()
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
+
+tasks.withType(JavaExec).configureEach {
+    systemProperties System.getProperties().findAll { it.key.toString().startsWith('epysia.') }
+}

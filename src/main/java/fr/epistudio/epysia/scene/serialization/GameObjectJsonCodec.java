@@ -1,12 +1,15 @@
 package fr.epistudio.epysia.scene.serialization;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.graph.GraphComponent;
+import fr.epistudio.epysia.graph.GraphValueJson;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 
@@ -29,6 +32,7 @@ public final class GameObjectJsonCodec {
     private final ComponentRegistry componentRegistry;
     private final ComponentFieldsCodec fieldsCodec = new ComponentFieldsCodec();
     private final MaterialJsonCodec materialCodec = new MaterialJsonCodec();
+    private final PostEffectStackJsonCodec postEffectCodec = new PostEffectStackJsonCodec();
 
     public GameObjectJsonCodec(ComponentRegistry componentRegistry) {
         this.componentRegistry = componentRegistry;
@@ -81,6 +85,20 @@ public final class GameObjectJsonCodec {
                 target -> encodeReference(target, indexByGameObject));
         writer.endObject();
         writeMaterialsIfPresent(writer, component);
+        writePostEffectsIfPresent(writer, component);
+        writeGraphOverridesIfPresent(writer, component);
+        writer.endObject();
+    }
+
+    private void writeGraphOverridesIfPresent(JsonWriter writer, IComponent component) {
+        if (!(component instanceof GraphComponent graph) || graph.variableOverrides().isEmpty()) {
+            return;
+        }
+        writer.key("graphVariables").beginObject();
+        for (Map.Entry<String, Object> entry : graph.variableOverrides().entrySet()) {
+            writer.key(entry.getKey());
+            GraphValueJson.write(writer, entry.getValue());
+        }
         writer.endObject();
     }
 
@@ -90,6 +108,14 @@ public final class GameObjectJsonCodec {
         }
         writer.key("materials");
         materialCodec.writeMaterialArray(writer, renderer.materials());
+    }
+
+    private void writePostEffectsIfPresent(JsonWriter writer, IComponent component) {
+        if (!(component instanceof Camera3D camera) || camera.postEffectStack().isEmpty()) {
+            return;
+        }
+        writer.key("postEffects");
+        postEffectCodec.writeStack(writer, camera.postEffectStack().get());
     }
 
     private static String encodeReference(GameObject target, Map<GameObject, Integer> indexByGameObject) {
@@ -213,6 +239,8 @@ public final class GameObjectJsonCodec {
                 IComponent component = entry.factory().get();
                 fieldsCodec.applyFields(component, fields, this);
                 applyMaterialsIfPresent(component, componentJson);
+                applyPostEffectsIfPresent(component, componentJson);
+                applyGraphOverridesIfPresent(component, componentJson);
                 gameObject.addComponent(component);
             });
         }
@@ -234,6 +262,28 @@ public final class GameObjectJsonCodec {
             }
             if (!materials.isEmpty()) {
                 renderer.setMaterials(materials);
+            }
+        }
+
+        private void applyGraphOverridesIfPresent(IComponent component, Map<String, Object> componentJson) {
+            if (!(component instanceof GraphComponent graph)) {
+                return;
+            }
+            if (!(componentJson.get("graphVariables") instanceof Map<?, ?> overridesJson)) {
+                return;
+            }
+            for (Map.Entry<?, ?> entry : overridesJson.entrySet()) {
+                graph.variableOverrides().put(String.valueOf(entry.getKey()),
+                        GraphValueJson.normalize(entry.getValue()));
+            }
+        }
+
+        private void applyPostEffectsIfPresent(IComponent component, Map<String, Object> componentJson) {
+            if (!(component instanceof Camera3D camera)) {
+                return;
+            }
+            if (componentJson.get("postEffects") instanceof List<?> stackJson) {
+                postEffectCodec.readStack(stackJson, camera.enablePostEffectStack());
             }
         }
 

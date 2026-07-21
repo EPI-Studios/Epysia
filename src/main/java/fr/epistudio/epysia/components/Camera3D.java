@@ -2,8 +2,11 @@ package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
+import fr.epistudio.epysia.render.postfx.PostEffectStack;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+
+import java.util.Optional;
 
 @EpysiaComponent(name = "Camera 3D", category = "Rendering")
 @RequiresComponent(Transform3D.class)
@@ -18,6 +21,12 @@ public final class Camera3D extends Component {
     @Export(label = "Far", min = 1.0f, max = 5000.0f, step = 1.0f)
     private float farPlane = 100.0f;
     private float aspectRatio = 16.0f / 9.0f;
+    private final PostEffectStack postEffectOverrideStack = new PostEffectStack();
+    private boolean postEffectOverrideEnabled;
+    private float projectionFieldOfViewDegrees = Float.NaN;
+    private float projectionNearPlane = Float.NaN;
+    private float projectionFarPlane = Float.NaN;
+    private float projectionAspectRatio = Float.NaN;
     private final Matrix4f viewMatrix = new Matrix4f();
     private final Matrix4f projectionMatrix = new Matrix4f();
     private final Matrix4f viewProjectionMatrix = new Matrix4f();
@@ -63,6 +72,19 @@ public final class Camera3D extends Component {
         return farPlane;
     }
 
+    public Optional<PostEffectStack> postEffectStack() {
+        return postEffectOverrideEnabled ? Optional.of(postEffectOverrideStack) : Optional.empty();
+    }
+
+    public PostEffectStack enablePostEffectStack() {
+        postEffectOverrideEnabled = true;
+        return postEffectOverrideStack;
+    }
+
+    public void disablePostEffectStack() {
+        postEffectOverrideEnabled = false;
+    }
+
     public static final float CURRENT_STATE_ALPHA = 1.0f;
 
     public Vector3f position(Vector3f destination) {
@@ -82,6 +104,14 @@ public final class Camera3D extends Component {
     }
 
     public Matrix4f projection() {
+        if (projectionFieldOfViewDegrees == fieldOfViewDegrees && projectionAspectRatio == aspectRatio
+                && projectionNearPlane == nearPlane && projectionFarPlane == farPlane) {
+            return projectionMatrix;
+        }
+        projectionFieldOfViewDegrees = fieldOfViewDegrees;
+        projectionAspectRatio = aspectRatio;
+        projectionNearPlane = nearPlane;
+        projectionFarPlane = farPlane;
         return projectionMatrix.identity().perspective(
                 (float) Math.toRadians(fieldOfViewDegrees),
                 aspectRatio,

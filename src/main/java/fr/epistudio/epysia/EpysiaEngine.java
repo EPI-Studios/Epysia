@@ -11,7 +11,8 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.Frame;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
-import fr.epistudio.epysia.render.Stage;
+import fr.epistudio.epysia.render.RenderPass;
+import fr.epistudio.epysia.render.RenderPasses;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.mesh.PickingPass;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
@@ -19,6 +20,11 @@ import fr.epistudio.epysia.render.backend.DrawCommand;
 import fr.epistudio.epysia.render.backend.PassClear;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
+import fr.epistudio.epysia.profiling.FrameProfiler;
+import fr.epistudio.epysia.render.postfx.PostEffects;
+import fr.epistudio.epysia.render.postfx.PostProcessSettings;
+import fr.epistudio.epysia.render.postfx.PostProcessSystem;
+import fr.epistudio.epysia.render.postfx.ScenePostEffects;
 import fr.epistudio.epysia.render.text.FontRegistry;
 import fr.epistudio.epysia.runtime.NullRuntimeChannel;
 import fr.epistudio.epysia.runtime.RuntimeChannel;
@@ -31,7 +37,7 @@ import fr.epistudio.epysia.window.Window;
 
 import java.util.ArrayList;
 import java.util.Optional;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -47,12 +53,16 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     private final SystemRegistryImpl systemRegistry = new SystemRegistryImpl();
     private final List<RenderSystem> renderSystems = new ArrayList<>();
     private final Frame frame = new Frame();
-    private final Map<Stage, StageBinding> stageBindings = defaultStageBindings();
-    private final Map<Stage, List<Runnable>> stagePreparations = new EnumMap<>(Stage.class);
+    private final Map<RenderPass, StageBinding> stageBindings = defaultStageBindings();
+    private final Map<RenderPass, List<Runnable>> stagePreparations = new HashMap<>();
+    private final Map<RenderPass, RenderPass> stageFollowers = new HashMap<>();
     private final AssetRegistry assetRegistry = new AssetRegistry(this);
     private final long[] cpuTimingsNanosArray = new long[CpuTimings.values().length];
+    private final FrameProfiler profiler = new FrameProfiler();
     private final DefaultScheduler scheduler = new DefaultScheduler();
     private final DefaultHud hud = new DefaultHud();
+    private final PostProcessSettings detachedPostProcessSettings = new PostProcessSettings();
+    private final PostEffects postEffectsAccess = new ScenePostEffects(this::scene, this::resolvePostProcessSettings);
     private RuntimeChannel runtimeChannel = new NullRuntimeChannel();
     private Logger logger = new ConsoleLogger();
     private FontRegistry fontRegistry;
@@ -95,10 +105,22 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     public void addRenderSystem(RenderSystem renderSystem) {
+        if (renderSystem instanceof fr.epistudio.epysia.render.ProfiledRenderSystem profiled) {
+            profiled.setProfiler(profiler);
+        }
         if (initialized) {
             renderSystem.initialize(renderBackend, this);
         }
         renderSystems.add(renderSystem);
+    }
+
+    public <T extends RenderSystem> T renderSystem(Class<T> type) {
+        for (RenderSystem system : renderSystems) {
+            if (type.isInstance(system)) {
+                return type.cast(system);
+            }
+        }
+        throw new EpysiaException("No render system registered for " + type.getName());
     }
 
     public boolean hasRenderSystem(Class<? extends RenderSystem> type) {
@@ -131,7 +153,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     private void rebindScreenStagesToDefaultClear() {
-        for (Map.Entry<Stage, StageBinding> entry : new ArrayList<>(stageBindings.entrySet())) {
+        for (Map.Entry<RenderPass, StageBinding> entry : new ArrayList<>(stageBindings.entrySet())) {
             StageBinding binding = entry.getValue();
             if (binding.target().id() == RenderTargetHandle.SCREEN.id()
                     && !binding.clear().equals(PassClear.none())) {
@@ -153,15 +175,27 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     public void tick(InputState input, float deltaTimeSeconds) {
+        long tickStart = System.nanoTime();
         scheduler.tick(deltaTimeSeconds);
-        if (activeScene == null) {
-            return;
+        if (activeScene != null) {
+            activeScene.advanceTick();
+            captureTransformInterpolationSnapshots(activeScene);
+            updateGameSystems(input, deltaTimeSeconds);
         }
-        activeScene.advanceTick();
-        captureTransformInterpolationSnapshots(activeScene);
+        profiler.record(FrameProfiler.TICK_SECTION, System.nanoTime() - tickStart);
+    }
+
+    private void updateGameSystems(InputState input, float deltaTimeSeconds) {
         for (GameSystem system : gameSystems) {
+            long systemStart = System.nanoTime();
             system.update(activeScene, input, deltaTimeSeconds);
+            profiler.record(FrameProfiler.SYSTEM_PREFIX + system.getClass().getSimpleName(),
+                    System.nanoTime() - systemStart);
         }
+    }
+
+    public FrameProfiler profiler() {
+        return profiler;
     }
 
     private void captureTransformInterpolationSnapshots(Scene scene) {
@@ -185,17 +219,31 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     public void render(List<Camera3D> activeCameras, RenderTargetHandle screenTarget, float interpolationAlpha) {
+        long renderStart = System.nanoTime();
         frame.reset();
-        RenderContext context = RenderContext.of(activeCameras, screenTarget, interpolationAlpha);
-        if (activeScene != null) {
-            for (RenderSystem system : renderSystems) {
-                system.collect(activeScene, frame, context);
-            }
-        }
+        collectRenderSystems(RenderContext.of(activeCameras, screenTarget, interpolationAlpha));
         renderBackend.beginFrame();
+        long drainStart = System.nanoTime();
         drainStages(screenTarget);
         renderBackend.endFrame();
+        profiler.record(FrameProfiler.DRAIN_SECTION, System.nanoTime() - drainStart);
+        profiler.record(FrameProfiler.RENDER_SECTION, System.nanoTime() - renderStart);
+        profiler.publishFrame();
         hud.clear();
+    }
+
+    private void collectRenderSystems(RenderContext context) {
+        if (activeScene == null) {
+            return;
+        }
+        long collectStart = System.nanoTime();
+        for (RenderSystem system : renderSystems) {
+            long systemStart = System.nanoTime();
+            system.collect(activeScene, frame, context);
+            profiler.record(FrameProfiler.COLLECT_PREFIX + system.getClass().getSimpleName(),
+                    System.nanoTime() - systemStart);
+        }
+        profiler.record(FrameProfiler.COLLECT_SECTION, System.nanoTime() - collectStart);
     }
 
     public void onResize(int width, int height) {
@@ -232,13 +280,13 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     @Override
-    public void bindStageTarget(Stage stage, RenderTargetHandle target, PassClear clear) {
-        stageBindings.put(stage, new StageBinding(target, clear));
+    public void bindStageTarget(RenderPass pass, RenderTargetHandle target, PassClear clear) {
+        stageBindings.put(pass, new StageBinding(target, clear));
     }
 
     @Override
-    public void bindStagePreparation(Stage stage, Runnable preparation) {
-        stagePreparations.computeIfAbsent(stage, ignored -> new ArrayList<>()).add(preparation);
+    public void bindStagePreparation(RenderPass pass, Runnable preparation) {
+        stagePreparations.computeIfAbsent(pass, ignored -> new ArrayList<>()).add(preparation);
     }
 
     @Override
@@ -290,6 +338,20 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         return hud;
     }
 
+    @Override
+    public PostEffects postEffects() {
+        return postEffectsAccess;
+    }
+
+    private PostProcessSettings resolvePostProcessSettings() {
+        for (RenderSystem system : renderSystems) {
+            if (system instanceof PostProcessSystem postProcess) {
+                return postProcess.settings();
+            }
+        }
+        return detachedPostProcessSettings;
+    }
+
     public DefaultHud hudEntries() {
         return hud;
     }
@@ -308,15 +370,15 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
 
     private void drainStages(RenderTargetHandle screenTarget) {
         boolean screenWasOpened = false;
-        for (Stage stage : Stage.values()) {
-            List<DrawCommand> commands = frame.commandsFor(stage);
+        for (RenderPass pass : RenderPasses.ordered()) {
+            List<DrawCommand> commands = frame.commandsFor(pass);
             if (commands.isEmpty()) {
                 continue;
             }
-            runStagePreparations(stage);
-            frame.sortByKey(stage);
-            StageBinding binding = effectiveBinding(stage, screenTarget);
-            renderBackend.beginProfileSection(stage.name());
+            runStagePreparations(pass);
+            frame.sortByKey(pass);
+            StageBinding binding = effectiveBinding(pass, screenTarget);
+            renderBackend.beginProfileSection(pass.name());
             renderBackend.beginPass(binding.target(), binding.clear());
             for (DrawCommand command : commands) {
                 renderBackend.execute(command);
@@ -333,8 +395,8 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         }
     }
 
-    private void runStagePreparations(Stage stage) {
-        List<Runnable> preparations = stagePreparations.get(stage);
+    private void runStagePreparations(RenderPass pass) {
+        List<Runnable> preparations = stagePreparations.get(pass);
         if (preparations == null) {
             return;
         }
@@ -343,24 +405,39 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         }
     }
 
-    private StageBinding effectiveBinding(Stage stage, RenderTargetHandle screenTarget) {
-        StageBinding configured = stageBindings.get(stage);
+    private StageBinding effectiveBinding(RenderPass pass, RenderTargetHandle screenTarget) {
+        StageBinding configured = resolveFollowedBinding(pass);
         if (configured.target().id() == RenderTargetHandle.SCREEN.id() && screenTarget.id() != RenderTargetHandle.SCREEN.id()) {
             return new StageBinding(screenTarget, configured.clear());
         }
         return configured;
     }
 
-    private Map<Stage, StageBinding> defaultStageBindings() {
-        Map<Stage, StageBinding> bindings = new EnumMap<>(Stage.class);
+    private StageBinding resolveFollowedBinding(RenderPass pass) {
+        StageBinding configured = stageBindings.get(pass);
+        RenderPass followed = stageFollowers.get(pass);
+        if (followed == null) {
+            return configured;
+        }
+        return new StageBinding(stageBindings.get(followed).target(), configured.clear());
+    }
+
+    @Override
+    public void bindStageTargetFollowing(RenderPass pass, RenderPass followed, PassClear clear) {
+        stageFollowers.put(pass, followed);
+        stageBindings.put(pass, new StageBinding(RenderTargetHandle.SCREEN, clear));
+    }
+
+    private Map<RenderPass, StageBinding> defaultStageBindings() {
+        Map<RenderPass, StageBinding> bindings = new HashMap<>();
         StageBinding screenWithClear = new StageBinding(RenderTargetHandle.SCREEN, defaultClear);
         StageBinding screenNoClear = new StageBinding(RenderTargetHandle.SCREEN, PassClear.none());
-        bindings.put(Stage.PRE_3D, screenWithClear);
-        bindings.put(Stage.OPAQUE_3D, screenWithClear);
-        bindings.put(Stage.TRANSPARENT_3D, screenNoClear);
-        bindings.put(Stage.WORLD_2D, screenNoClear);
-        bindings.put(Stage.UI, screenNoClear);
-        bindings.put(Stage.POST, screenNoClear);
+        bindings.put(RenderPasses.PRE_3D, screenWithClear);
+        bindings.put(RenderPasses.OPAQUE_3D, screenWithClear);
+        bindings.put(RenderPasses.TRANSPARENT_3D, screenNoClear);
+        bindings.put(RenderPasses.WORLD_2D, screenNoClear);
+        bindings.put(RenderPasses.UI, screenNoClear);
+        bindings.put(RenderPasses.POST, screenNoClear);
         return bindings;
     }
 

@@ -4,6 +4,7 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.reflection.DiscoveredComponent;
 import fr.epistudio.epysia.scripting.Behaviour;
+import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
@@ -22,34 +23,53 @@ public final class ScriptModule {
     public static ScriptLoadResult load(Path scriptsDirectory, Path outputDirectory) {
         ScriptCompiler.Result compiled = new ScriptCompiler().compile(scriptsDirectory, outputDirectory);
         if (!compiled.ok()) {
-            return new ScriptLoadResult(false, List.of(), compiled.messages(), null);
+            return new ScriptLoadResult(false, List.of(), List.of(), compiled.messages(), null);
         }
         URL outputUrl = toUrl(outputDirectory);
         if (outputUrl == null) {
-            return new ScriptLoadResult(false, List.of(), List.of("Invalid script output path."), null);
+            return new ScriptLoadResult(false, List.of(), List.of(), List.of("Invalid script output path."), null);
         }
         ScriptClassLoader loader = new ScriptClassLoader(new URL[]{outputUrl}, ScriptModule.class.getClassLoader());
-        List<DiscoveredComponent> components = discover(loader);
-        return new ScriptLoadResult(true, components, compiled.messages(), loader);
+        try (ScanResult scan = openScan(loader)) {
+            return new ScriptLoadResult(true, discoverComponents(scan), discoverRenderSetups(scan),
+                    compiled.messages(), loader);
+        }
     }
 
     public static ScriptLoadResult loadPrecompiled(Path classesDirectory) {
         URL classesUrl = toUrl(classesDirectory);
         if (classesUrl == null) {
-            return new ScriptLoadResult(false, List.of(), List.of("Invalid precompiled scripts path."), null);
+            return new ScriptLoadResult(false, List.of(), List.of(), List.of("Invalid precompiled scripts path."), null);
         }
         ScriptClassLoader loader = new ScriptClassLoader(new URL[]{classesUrl}, ScriptModule.class.getClassLoader());
-        List<DiscoveredComponent> components = discover(loader);
-        return new ScriptLoadResult(true, components, List.of(), loader);
+        try (ScanResult scan = openScan(loader)) {
+            return new ScriptLoadResult(true, discoverComponents(scan), discoverRenderSetups(scan),
+                    List.of(), loader);
+        }
     }
 
-    private static List<DiscoveredComponent> discover(ScriptClassLoader loader) {
-        List<DiscoveredComponent> discovered = new ArrayList<>();
-        try (ScanResult scan = new ClassGraph()
+    private static ScanResult openScan(ScriptClassLoader loader) {
+        return new ClassGraph()
                 .overrideClassLoaders(loader)
                 .ignoreParentClassLoaders()
                 .enableAllInfo()
-                .scan()) {
+                .scan();
+    }
+
+    private static List<Class<? extends ProjectRenderSetup>> discoverRenderSetups(ScanResult scan) {
+        List<Class<? extends ProjectRenderSetup>> discovered = new ArrayList<>();
+        for (ClassInfo info : scan.getClassesImplementing(ProjectRenderSetup.class.getName())) {
+            if (info.isAbstract() || info.isInterface()) {
+                continue;
+            }
+            discovered.add(info.loadClass().asSubclass(ProjectRenderSetup.class));
+        }
+        return discovered;
+    }
+
+    private static List<DiscoveredComponent> discoverComponents(ScanResult scan) {
+        List<DiscoveredComponent> discovered = new ArrayList<>();
+        {
             for (ClassInfo info : scan.getClassesWithAnnotation(EpysiaComponent.class.getName())) {
                 Class<?> raw = info.loadClass();
                 if (!Behaviour.class.isAssignableFrom(raw) || !IComponent.class.isAssignableFrom(raw)) {
