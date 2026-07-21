@@ -15,8 +15,13 @@ import de.javagl.jgltf.model.MeshPrimitiveModel;
 import de.javagl.jgltf.model.NodeModel;
 import de.javagl.jgltf.model.SkinModel;
 import de.javagl.jgltf.model.TextureModel;
+import de.javagl.jgltf.model.io.GltfAsset;
+import de.javagl.jgltf.model.io.GltfAssetReader;
 import de.javagl.jgltf.model.io.GltfModelReader;
 import de.javagl.jgltf.model.v2.MaterialModelV2;
+import de.javagl.jgltf.impl.v2.GlTF;
+import de.javagl.jgltf.impl.v2.MaterialPbrMetallicRoughness;
+import de.javagl.jgltf.impl.v2.TextureInfo;
 import fr.epistudio.epysia.animation.Clip;
 import fr.epistudio.epysia.animation.ClipChannel;
 import fr.epistudio.epysia.animation.ClipInterpolation;
@@ -54,14 +59,24 @@ import java.util.Optional;
 
 public final class GltfImporter {
 
+    private static final int MODE_POINTS = 0;
+    private static final int MODE_LINES = 1;
+    private static final int MODE_LINE_LOOP = 2;
+    private static final int MODE_LINE_STRIP = 3;
+    private static final int MODE_TRIANGLES = 4;
+    private static final int MODE_TRIANGLE_STRIP = 5;
+    private static final int MODE_TRIANGLE_FAN = 6;
+    private static final String TEXTURE_TRANSFORM = "KHR_texture_transform";
+
     private GltfImporter() {
     }
 
     public static GltfImportResult importFile(Path source, Path outputDirectory, ComponentRegistry componentRegistry) {
         GltfModel model = readModel(source);
         List<String> warnings = new ArrayList<>();
+        Map<MaterialModel, MaterialUvHints> uvHints = buildMaterialUvHints(model, source, warnings);
         Map<SkinModel, SkeletonBuild> skeletonBuilds = buildSkeletonBuilds(model);
-        List<Path> meshFiles = importMeshes(model, skeletonBuilds, outputDirectory, warnings);
+        List<Path> meshFiles = importMeshes(model, skeletonBuilds, uvHints, outputDirectory, warnings);
         List<Path> clipFiles = importAnimations(model, skeletonBuilds, outputDirectory, warnings);
         MaterialImport materials = importMaterials(model, outputDirectory, warnings);
         Optional<Path> prefabFile = buildPrefab(model, source, outputDirectory, meshFiles, clipFiles,
@@ -86,21 +101,22 @@ public final class GltfImporter {
     }
 
     private static List<Path> importMeshes(GltfModel model, Map<SkinModel, SkeletonBuild> skeletonBuilds,
-            Path outputDirectory, List<String> warnings) {
+            Map<MaterialModel, MaterialUvHints> uvHints, Path outputDirectory, List<String> warnings) {
         List<Path> meshFiles = new ArrayList<>();
         List<MeshModel> meshModels = model.getMeshModels();
         for (int meshIndex = 0; meshIndex < meshModels.size(); meshIndex++) {
-            meshFiles.add(importMesh(model, meshModels.get(meshIndex), meshIndex, skeletonBuilds, outputDirectory, warnings));
+            meshFiles.add(importMesh(model, meshModels.get(meshIndex), meshIndex, skeletonBuilds, uvHints, outputDirectory, warnings));
         }
         return meshFiles;
     }
 
     private static Path importMesh(GltfModel model, MeshModel meshModel, int meshIndex,
-            Map<SkinModel, SkeletonBuild> skeletonBuilds, Path outputDirectory, List<String> warnings) {
+            Map<SkinModel, SkeletonBuild> skeletonBuilds, Map<MaterialModel, MaterialUvHints> uvHints,
+            Path outputDirectory, List<String> warnings) {
         String meshName = meshName(meshModel, meshIndex);
         Optional<SkinModel> skinModel = findSkinForMesh(model, meshModel);
         Optional<SkeletonBuild> skeletonBuild = skinModel.map(skeletonBuilds::get);
-        List<PrimitiveVertexData> primitives = readPrimitives(meshModel, meshName, skeletonBuild, warnings);
+        List<PrimitiveVertexData> primitives = readPrimitives(meshModel, uvHints, meshName, skeletonBuild, warnings);
         MeshData meshData = mergePrimitives(primitives, meshName, warnings);
         Optional<Skeleton> skeleton = meshData.hasSkin() ? skeletonBuild.map(SkeletonBuild::skeleton) : Optional.empty();
         Path outputPath = outputDirectory.resolve(meshName + ".epymesh");
@@ -121,26 +137,92 @@ public final class GltfImporter {
         return Optional.empty();
     }
 
-    private static List<PrimitiveVertexData> readPrimitives(MeshModel meshModel, String meshName,
-            Optional<SkeletonBuild> skeletonBuild, List<String> warnings) {
+    private static List<PrimitiveVertexData> readPrimitives(MeshModel meshModel, Map<MaterialModel, MaterialUvHints> uvHints,
+            String meshName, Optional<SkeletonBuild> skeletonBuild, List<String> warnings) {
         List<PrimitiveVertexData> primitives = new ArrayList<>();
         List<MeshPrimitiveModel> primitiveModels = meshModel.getMeshPrimitiveModels();
         for (int primitiveIndex = 0; primitiveIndex < primitiveModels.size(); primitiveIndex++) {
-            primitives.add(readPrimitive(primitiveModels.get(primitiveIndex), meshName, primitiveIndex, skeletonBuild, warnings));
+            readPrimitive(primitiveModels.get(primitiveIndex), uvHints, meshName, primitiveIndex, skeletonBuild, warnings)
+                    .ifPresent(primitives::add);
         }
         return primitives;
     }
 
-    private static PrimitiveVertexData readPrimitive(MeshPrimitiveModel primitive, String meshName, int primitiveIndex,
+    private static Optional<PrimitiveVertexData> readPrimitive(MeshPrimitiveModel primitive,
+            Map<MaterialModel, MaterialUvHints> uvHints, String meshName, int primitiveIndex,
             Optional<SkeletonBuild> skeletonBuild, List<String> warnings) {
+        Optional<int[]> indices = readTriangleIndices(primitive, meshName, primitiveIndex, warnings);
+        if (indices.isEmpty()) {
+            return Optional.empty();
+        }
         Map<String, AccessorModel> attributes = primitive.getAttributes();
         float[] positions = readFloats(requireAttribute(attributes, "POSITION", meshName, primitiveIndex), 3);
         float[] normals = readNormals(attributes, meshName, primitiveIndex);
-        float[] uvs = readUvs(attributes, meshName, primitiveIndex, warnings);
-        int[] indices = readIndices(primitive, meshName, primitiveIndex);
+        MaterialUvHints hints = uvHints.getOrDefault(primitive.getMaterialModel(), MaterialUvHints.identity());
+        float[] uvs = readUvs(attributes, hints, meshName, primitiveIndex, warnings);
         warnUnsupportedFeatures(primitive, attributes, meshName, primitiveIndex, warnings);
         SkinAttributeData skinData = readSkinAttributes(attributes, positions.length / 3, skeletonBuild, meshName, primitiveIndex, warnings);
-        return new PrimitiveVertexData(positions, normals, uvs, skinData.jointIndices(), skinData.jointWeights(), indices);
+        return Optional.of(new PrimitiveVertexData(positions, normals, uvs, skinData.jointIndices(), skinData.jointWeights(), indices.get()));
+    }
+
+    private static Optional<int[]> readTriangleIndices(MeshPrimitiveModel primitive, String meshName, int primitiveIndex,
+            List<String> warnings) {
+        int mode = primitive.getMode();
+        if (!isTriangleMode(mode)) {
+            warnings.add("Mesh " + meshName + " primitive " + primitiveIndex + " uses primitive mode " + modeName(mode)
+                    + "; skipped because only triangle primitives are supported.");
+            return Optional.empty();
+        }
+        return Optional.of(triangulate(mode, readIndices(primitive, meshName, primitiveIndex)));
+    }
+
+    private static int[] triangulate(int mode, int[] indices) {
+        if (mode == MODE_TRIANGLE_STRIP) {
+            return triangulateStrip(indices);
+        }
+        if (mode == MODE_TRIANGLE_FAN) {
+            return triangulateFan(indices);
+        }
+        return indices;
+    }
+
+    private static int[] triangulateStrip(int[] indices) {
+        int triangleCount = Math.max(0, indices.length - 2);
+        int[] result = new int[triangleCount * 3];
+        for (int triangle = 0; triangle < triangleCount; triangle++) {
+            int base = triangle * 3;
+            boolean even = (triangle & 1) == 0;
+            result[base] = indices[triangle];
+            result[base + 1] = indices[triangle + (even ? 1 : 2)];
+            result[base + 2] = indices[triangle + (even ? 2 : 1)];
+        }
+        return result;
+    }
+
+    private static int[] triangulateFan(int[] indices) {
+        int triangleCount = Math.max(0, indices.length - 2);
+        int[] result = new int[triangleCount * 3];
+        for (int triangle = 0; triangle < triangleCount; triangle++) {
+            int base = triangle * 3;
+            result[base] = indices[0];
+            result[base + 1] = indices[triangle + 1];
+            result[base + 2] = indices[triangle + 2];
+        }
+        return result;
+    }
+
+    private static boolean isTriangleMode(int mode) {
+        return mode == MODE_TRIANGLES || mode == MODE_TRIANGLE_STRIP || mode == MODE_TRIANGLE_FAN;
+    }
+
+    private static String modeName(int mode) {
+        return switch (mode) {
+            case MODE_POINTS -> "POINTS";
+            case MODE_LINES -> "LINES";
+            case MODE_LINE_LOOP -> "LINE_LOOP";
+            case MODE_LINE_STRIP -> "LINE_STRIP";
+            default -> "UNKNOWN(" + mode + ")";
+        };
     }
 
     private static float[] readNormals(Map<String, AccessorModel> attributes, String meshName, int primitiveIndex) {
@@ -151,15 +233,28 @@ public final class GltfImporter {
         return readFloats(accessor, 3);
     }
 
-    private static float[] readUvs(Map<String, AccessorModel> attributes, String meshName, int primitiveIndex, List<String> warnings) {
-        AccessorModel accessor = attributes.get("TEXCOORD_0");
-        if (accessor == null) {
+    private static float[] readUvs(Map<String, AccessorModel> attributes, MaterialUvHints hints, String meshName,
+            int primitiveIndex, List<String> warnings) {
+        Optional<AccessorModel> accessor = selectUvAccessor(attributes, hints.baseColorTexCoord(), meshName, primitiveIndex, warnings);
+        if (accessor.isEmpty()) {
             return new float[0];
         }
-        if (attributes.containsKey("TEXCOORD_1")) {
-            warnings.add("Mesh " + meshName + " primitive " + primitiveIndex + " has extra UV sets beyond TEXCOORD_0; ignored.");
+        float[] uvs = readFloats(accessor.get(), 2);
+        return hints.baseColorTransform().map(transform -> transform.apply(uvs)).orElse(uvs);
+    }
+
+    private static Optional<AccessorModel> selectUvAccessor(Map<String, AccessorModel> attributes, int texCoordSet,
+            String meshName, int primitiveIndex, List<String> warnings) {
+        AccessorModel selected = attributes.get("TEXCOORD_" + texCoordSet);
+        if (selected != null) {
+            return Optional.of(selected);
         }
-        return readFloats(accessor, 2);
+        AccessorModel fallback = attributes.get("TEXCOORD_0");
+        if (fallback != null && texCoordSet != 0) {
+            warnings.add("Mesh " + meshName + " primitive " + primitiveIndex + " has no TEXCOORD_" + texCoordSet
+                    + "; using TEXCOORD_0 instead.");
+        }
+        return Optional.ofNullable(fallback);
     }
 
     private static int[] readIndices(MeshPrimitiveModel primitive, String meshName, int primitiveIndex) {
@@ -742,7 +837,9 @@ public final class GltfImporter {
     private static List<Optional<Path>> materialPathsForMesh(MeshModel meshModel, Map<MaterialModel, Path> materialsByModel) {
         List<Optional<Path>> materialPaths = new ArrayList<>();
         for (MeshPrimitiveModel primitive : meshModel.getMeshPrimitiveModels()) {
-            materialPaths.add(Optional.ofNullable(materialsByModel.get(primitive.getMaterialModel())));
+            if (isTriangleMode(primitive.getMode())) {
+                materialPaths.add(Optional.ofNullable(materialsByModel.get(primitive.getMaterialModel())));
+            }
         }
         return materialPaths;
     }
@@ -820,9 +917,130 @@ public final class GltfImporter {
         }
     }
 
+    private static Map<MaterialModel, MaterialUvHints> buildMaterialUvHints(GltfModel model, Path source, List<String> warnings) {
+        Map<MaterialModel, MaterialUvHints> hints = new IdentityHashMap<>();
+        Optional<GlTF> rawGltf = readRawGltf(source);
+        if (rawGltf.isEmpty() || rawGltf.get().getMaterials() == null) {
+            return hints;
+        }
+        List<de.javagl.jgltf.impl.v2.Material> rawMaterials = rawGltf.get().getMaterials();
+        List<MaterialModel> materialModels = model.getMaterialModels();
+        for (int index = 0; index < materialModels.size() && index < rawMaterials.size(); index++) {
+            hints.put(materialModels.get(index), analyzeMaterial(rawMaterials.get(index), index, warnings));
+        }
+        return hints;
+    }
+
+    private static Optional<GlTF> readRawGltf(Path source) {
+        try {
+            GltfAsset asset = new GltfAssetReader().readWithoutReferences(source.toUri());
+            return asset.getGltf() instanceof GlTF gltf ? Optional.of(gltf) : Optional.empty();
+        } catch (IOException exception) {
+            throw new EpysiaException("Failed to read glTF material extensions from " + source + ": " + exception.getMessage(), exception);
+        }
+    }
+
+    private static MaterialUvHints analyzeMaterial(de.javagl.jgltf.impl.v2.Material material, int materialIndex, List<String> warnings) {
+        MaterialPbrMetallicRoughness pbr = material.getPbrMetallicRoughness();
+        Optional<TextureInfo> baseColor = Optional.ofNullable(pbr == null ? null : pbr.getBaseColorTexture());
+        Optional<UvTransform> baseColorTransform = baseColor.flatMap(GltfImporter::readTextureTransform);
+        int baseColorTexCoord = baseColor.map(GltfImporter::resolveTexCoord).orElse(0);
+        warnUvDivergence(material, baseColorTransform, baseColorTexCoord, materialIndex, warnings);
+        return new MaterialUvHints(baseColorTexCoord, baseColorTransform);
+    }
+
+    private static void warnUvDivergence(de.javagl.jgltf.impl.v2.Material material, Optional<UvTransform> baseColorTransform,
+            int baseColorTexCoord, int materialIndex, List<String> warnings) {
+        List<TextureInfo> otherSlots = otherTextureSlots(material);
+        List<UvTransform> otherTransforms = otherSlots.stream().flatMap(info -> readTextureTransform(info).stream()).toList();
+        if (baseColorTransform.isPresent() && otherTransforms.stream().anyMatch(transform -> !transform.equals(baseColorTransform.get()))) {
+            warnings.add("Material " + materialIndex + " has a KHR_texture_transform on a non-baseColor texture that differs"
+                    + " from baseColor; only the baseColor transform was baked into the mesh UVs.");
+        } else if (baseColorTransform.isEmpty() && !otherTransforms.isEmpty()) {
+            warnings.add("Material " + materialIndex + " has KHR_texture_transform only on non-baseColor textures;"
+                    + " none was baked because the engine uses a single UV stream.");
+        }
+        if (otherSlots.stream().anyMatch(info -> resolveTexCoord(info) != baseColorTexCoord)) {
+            warnings.add("Material " + materialIndex + " uses different texCoord sets across textures; the engine has a single"
+                    + " UV stream, so TEXCOORD_" + baseColorTexCoord + " is used for every texture.");
+        }
+    }
+
+    private static List<TextureInfo> otherTextureSlots(de.javagl.jgltf.impl.v2.Material material) {
+        List<TextureInfo> slots = new ArrayList<>();
+        MaterialPbrMetallicRoughness pbr = material.getPbrMetallicRoughness();
+        addTextureSlot(slots, pbr == null ? null : pbr.getMetallicRoughnessTexture());
+        addTextureSlot(slots, material.getNormalTexture());
+        addTextureSlot(slots, material.getOcclusionTexture());
+        addTextureSlot(slots, material.getEmissiveTexture());
+        return slots;
+    }
+
+    private static void addTextureSlot(List<TextureInfo> slots, TextureInfo info) {
+        if (info != null) {
+            slots.add(info);
+        }
+    }
+
+    private static int resolveTexCoord(TextureInfo info) {
+        Object node = extensionNode(info);
+        if (node instanceof Map<?, ?> map && map.get("texCoord") instanceof Number number) {
+            return number.intValue();
+        }
+        return info.getTexCoord() == null ? 0 : info.getTexCoord();
+    }
+
+    private static Optional<UvTransform> readTextureTransform(TextureInfo info) {
+        if (!(extensionNode(info) instanceof Map<?, ?> map)) {
+            return Optional.empty();
+        }
+        float[] offset = readVector2(map.get("offset"), 0.0f, 0.0f);
+        float[] scale = readVector2(map.get("scale"), 1.0f, 1.0f);
+        float rotation = readScalar(map.get("rotation"), 0.0f);
+        return Optional.of(new UvTransform(offset[0], offset[1], scale[0], scale[1], rotation));
+    }
+
+    private static Object extensionNode(TextureInfo info) {
+        Map<String, Object> extensions = info.getExtensions();
+        return extensions == null ? null : extensions.get(TEXTURE_TRANSFORM);
+    }
+
+    private static float[] readVector2(Object node, float defaultX, float defaultY) {
+        if (node instanceof List<?> list && list.size() >= 2
+                && list.get(0) instanceof Number first && list.get(1) instanceof Number second) {
+            return new float[] {first.floatValue(), second.floatValue()};
+        }
+        return new float[] {defaultX, defaultY};
+    }
+
+    private static float readScalar(Object node, float defaultValue) {
+        return node instanceof Number number ? number.floatValue() : defaultValue;
+    }
+
     @FunctionalInterface
     private interface IntElementReader {
         int read(int element, int component);
+    }
+
+    private record UvTransform(float offsetX, float offsetY, float scaleX, float scaleY, float rotation) {
+        float[] apply(float[] uvs) {
+            float cos = (float) Math.cos(rotation);
+            float sin = (float) Math.sin(rotation);
+            float[] result = new float[uvs.length];
+            for (int index = 0; index + 1 < uvs.length; index += 2) {
+                float u = uvs[index];
+                float v = uvs[index + 1];
+                result[index] = offsetX + scaleX * u * cos - scaleY * v * sin;
+                result[index + 1] = offsetY + scaleX * u * sin + scaleY * v * cos;
+            }
+            return result;
+        }
+    }
+
+    private record MaterialUvHints(int baseColorTexCoord, Optional<UvTransform> baseColorTransform) {
+        static MaterialUvHints identity() {
+            return new MaterialUvHints(0, Optional.empty());
+        }
     }
 
     private record PrimitiveVertexData(float[] positions, float[] normals, float[] uvs,
