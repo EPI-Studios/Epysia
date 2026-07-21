@@ -8,11 +8,15 @@ import de.javagl.jgltf.model.AccessorModel;
 import de.javagl.jgltf.model.AccessorShortData;
 import de.javagl.jgltf.model.AnimationModel;
 import de.javagl.jgltf.model.GltfModel;
+import de.javagl.jgltf.model.ImageModel;
+import de.javagl.jgltf.model.MaterialModel;
 import de.javagl.jgltf.model.MeshModel;
 import de.javagl.jgltf.model.MeshPrimitiveModel;
 import de.javagl.jgltf.model.NodeModel;
 import de.javagl.jgltf.model.SkinModel;
+import de.javagl.jgltf.model.TextureModel;
 import de.javagl.jgltf.model.io.GltfModelReader;
+import de.javagl.jgltf.model.v2.MaterialModelV2;
 import fr.epistudio.epysia.animation.Clip;
 import fr.epistudio.epysia.animation.ClipChannel;
 import fr.epistudio.epysia.animation.ClipInterpolation;
@@ -22,10 +26,14 @@ import fr.epistudio.epysia.animation.Skeleton;
 import fr.epistudio.epysia.assets.epyclip.EpyClipWriter;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshWriter;
 import fr.epistudio.epysia.exceptions.EpysiaException;
+import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.mesh.MeshData;
 import fr.epistudio.epysia.render.mesh.Submesh;
+import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -44,7 +52,8 @@ public final class GltfImporter {
         Map<SkinModel, SkeletonBuild> skeletonBuilds = buildSkeletonBuilds(model);
         List<Path> meshFiles = importMeshes(model, skeletonBuilds, outputDirectory, warnings);
         List<Path> clipFiles = importAnimations(model, skeletonBuilds, outputDirectory, warnings);
-        return new GltfImportResult(meshFiles, clipFiles, warnings);
+        List<Path> materialFiles = importMaterials(model, outputDirectory, warnings);
+        return new GltfImportResult(meshFiles, clipFiles, materialFiles, warnings);
     }
 
     private static GltfModel readModel(Path source) {
@@ -489,8 +498,145 @@ public final class GltfImporter {
     }
 
     private static String clipFileName(String animationName, int animationIndex) {
-        String sanitized = animationName.replaceAll("[^A-Za-z0-9_-]", "");
-        return sanitized.isEmpty() ? "clip" + animationIndex : sanitized;
+        return sanitizeFileName(animationName, "clip" + animationIndex);
+    }
+
+    private static String sanitizeFileName(String name, String fallback) {
+        String sanitized = name.replaceAll("[^A-Za-z0-9_-]", "");
+        return sanitized.isEmpty() ? fallback : sanitized;
+    }
+
+    private static List<Path> importMaterials(GltfModel model, Path outputDirectory, List<String> warnings) {
+        Map<ImageModel, Integer> imageIndices = buildImageIndices(model);
+        Map<ImageModel, String> writtenImages = new IdentityHashMap<>();
+        List<Path> materialFiles = new ArrayList<>();
+        List<MaterialModel> materialModels = model.getMaterialModels();
+        for (int materialIndex = 0; materialIndex < materialModels.size(); materialIndex++) {
+            importMaterial(materialModels.get(materialIndex), materialIndex, outputDirectory, imageIndices,
+                    writtenImages, warnings).ifPresent(materialFiles::add);
+        }
+        return materialFiles;
+    }
+
+    private static Map<ImageModel, Integer> buildImageIndices(GltfModel model) {
+        Map<ImageModel, Integer> imageIndices = new IdentityHashMap<>();
+        List<ImageModel> images = model.getImageModels();
+        for (int imageIndex = 0; imageIndex < images.size(); imageIndex++) {
+            imageIndices.put(images.get(imageIndex), imageIndex);
+        }
+        return imageIndices;
+    }
+
+    private static Optional<Path> importMaterial(MaterialModel materialModel, int materialIndex, Path outputDirectory,
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, List<String> warnings) {
+        if (!(materialModel instanceof MaterialModelV2 material)) {
+            warnings.add("Material " + materialIndex + " is not a PBR metallic-roughness material; skipped.");
+            return Optional.empty();
+        }
+        String materialName = Optional.ofNullable(material.getName()).orElse("material" + materialIndex);
+        LitMaterial litMaterial = buildLitMaterial(material, outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
+        Path outputPath = outputDirectory.resolve(sanitizeFileName(materialName, "material" + materialIndex) + ".epymaterial");
+        writeMaterialFile(outputPath, litMaterial);
+        return Optional.of(outputPath);
+    }
+
+    private static LitMaterial buildLitMaterial(MaterialModelV2 material, Path outputDirectory,
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, int materialIndex, List<String> warnings) {
+        LitMaterial litMaterial = new LitMaterial();
+        float[] baseColorFactor = material.getBaseColorFactor();
+        litMaterial.setBaseColor(baseColorFactor[0], baseColorFactor[1], baseColorFactor[2]);
+        litMaterial.setMetallic(material.getMetallicFactor());
+        litMaterial.setRoughness(material.getRoughnessFactor());
+        applyTexture(litMaterial, "albedo", material.getBaseColorTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
+        applyTexture(litMaterial, "normalMap", material.getNormalTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
+        applyTexture(litMaterial, "metallicRoughnessMap", material.getMetallicRoughnessTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
+        applyTexture(litMaterial, "occlusionMap", material.getOcclusionTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
+        applyTexture(litMaterial, "emissiveMap", material.getEmissiveTexture(), outputDirectory, imageIndices, writtenImages, materialIndex, warnings);
+        return litMaterial;
+    }
+
+    private static void applyTexture(LitMaterial litMaterial, String fieldName, TextureModel texture, Path outputDirectory,
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages, int materialIndex, List<String> warnings) {
+        if (texture == null) {
+            return;
+        }
+        ImageModel image = texture.getImageModel();
+        if (image == null) {
+            warnings.add("Material " + materialIndex + " texture " + fieldName + " has no image; skipped.");
+            return;
+        }
+        litMaterial.setTexturePath(fieldName, resolveImagePath(image, outputDirectory, imageIndices, writtenImages));
+    }
+
+    private static String resolveImagePath(ImageModel image, Path outputDirectory,
+            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages) {
+        String cachedPath = writtenImages.get(image);
+        if (cachedPath != null) {
+            return cachedPath;
+        }
+        int imageIndex = imageIndices.getOrDefault(image, 0);
+        String path = isEmbeddedImage(image) ? writeEmbeddedImage(image, outputDirectory, imageIndex) : image.getUri();
+        writtenImages.put(image, path);
+        return path;
+    }
+
+    private static boolean isEmbeddedImage(ImageModel image) {
+        String uri = image.getUri();
+        return uri == null || uri.startsWith("data:");
+    }
+
+    private static String writeEmbeddedImage(ImageModel image, Path outputDirectory, int imageIndex) {
+        byte[] imageBytes = readImageBytes(image);
+        String fileName = sanitizeFileName(imageBaseName(image, imageIndex), "image" + imageIndex) + sniffImageExtension(imageBytes);
+        writeBytes(outputDirectory.resolve(fileName), imageBytes);
+        return fileName;
+    }
+
+    private static byte[] readImageBytes(ImageModel image) {
+        ByteBuffer data = image.getImageData().duplicate();
+        byte[] imageBytes = new byte[data.remaining()];
+        data.get(imageBytes);
+        return imageBytes;
+    }
+
+    private static String imageBaseName(ImageModel image, int imageIndex) {
+        String name = image.getName();
+        if (name != null && !name.isEmpty()) {
+            return name;
+        }
+        String uri = image.getUri();
+        if (uri != null && !uri.startsWith("data:")) {
+            return uriStem(uri);
+        }
+        return "image" + imageIndex;
+    }
+
+    private static String uriStem(String uri) {
+        String fileName = uri.contains("/") ? uri.substring(uri.lastIndexOf('/') + 1) : uri;
+        int extensionSeparator = fileName.lastIndexOf('.');
+        return extensionSeparator > 0 ? fileName.substring(0, extensionSeparator) : fileName;
+    }
+
+    private static String sniffImageExtension(byte[] imageBytes) {
+        boolean isPng = imageBytes.length >= 4 && imageBytes[0] == (byte) 0x89 && imageBytes[1] == 0x50
+                && imageBytes[2] == 0x4E && imageBytes[3] == 0x47;
+        return isPng ? ".png" : ".jpg";
+    }
+
+    private static void writeBytes(Path path, byte[] bytes) {
+        try {
+            Files.write(path, bytes);
+        } catch (IOException exception) {
+            throw new EpysiaException("Failed to write texture image to " + path + ": " + exception.getMessage(), exception);
+        }
+    }
+
+    private static void writeMaterialFile(Path path, LitMaterial litMaterial) {
+        try {
+            Files.writeString(path, new MaterialJsonCodec().writeSingle(litMaterial));
+        } catch (IOException exception) {
+            throw new EpysiaException("Failed to write .epymaterial to " + path + ": " + exception.getMessage(), exception);
+        }
     }
 
     private static MeshData mergePrimitives(List<PrimitiveVertexData> primitives, String meshName, List<String> warnings) {

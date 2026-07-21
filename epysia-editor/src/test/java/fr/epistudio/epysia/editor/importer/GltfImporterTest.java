@@ -5,13 +5,21 @@ import fr.epistudio.epysia.animation.ClipProperty;
 import fr.epistudio.epysia.assets.epyclip.EpyClipReader;
 import fr.epistudio.epysia.assets.epymesh.EpyMesh;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshReader;
+import fr.epistudio.epysia.render.material.LitMaterial;
+import fr.epistudio.epysia.render.material.Material;
+import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -48,6 +56,19 @@ class GltfImporterTest {
         assertEquals(ClipProperty.ROTATION, clip.channels().get(0).property());
         EpyMesh mesh = EpyMeshReader.readFile(result.meshFiles().get(0));
         assertEquals(mesh.skeleton().orElseThrow().nameChecksum(), clip.skeletonChecksum());
+    }
+
+    @Test
+    void importsMaterialWithEmbeddedTexture(@TempDir Path directory) throws Exception {
+        Path source = writeFixture(directory);
+        GltfImportResult result = GltfImporter.importFile(source, directory);
+        assertEquals(1, result.materialFiles().size());
+        String document = Files.readString(result.materialFiles().get(0));
+        Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
+        LitMaterial litMaterial = (LitMaterial) material;
+        assertEquals(0.8f, litMaterial.roughness, 0.0001f);
+        String albedoPath = litMaterial.texturePath("albedo").orElseThrow();
+        assertTrue(Files.exists(directory.resolve(albedoPath)));
     }
 
     @Test
@@ -141,7 +162,7 @@ class GltfImporterTest {
         return buffer.array();
     }
 
-    private static String fixtureJson() {
+    private static String fixtureJson() throws IOException {
         return """
                 {
                   "asset": {"version": "2.0"},
@@ -155,8 +176,20 @@ class GltfImporterTest {
                   "skins": [{"joints": [0, 2], "inverseBindMatrices": 5}],
                   "meshes": [{"primitives": [{
                     "attributes": {"POSITION": 0, "NORMAL": 1, "JOINTS_0": 2, "WEIGHTS_0": 3},
-                    "indices": 4
+                    "indices": 4,
+                    "material": 0
                   }]}],
+                  "materials": [{
+                    "name": "skin",
+                    "pbrMetallicRoughness": {
+                      "baseColorFactor": [0.5, 0.25, 1.0, 1.0],
+                      "metallicFactor": 0.0,
+                      "roughnessFactor": 0.8,
+                      "baseColorTexture": {"index": 0}
+                    }
+                  }],
+                  "textures": [{"source": 0}],
+                  "images": [{"uri": "%s"}],
                   "animations": [{
                     "name": "wave",
                     "channels": [{"sampler": 0, "target": {"node": 2, "path": "rotation"}}],
@@ -185,6 +218,14 @@ class GltfImporterTest {
                   ],
                   "buffers": [{"uri": "triangle.bin", "byteLength": 320}]
                 }
-                """;
+                """.formatted(pngDataUri());
+    }
+
+    private static String pngDataUri() throws IOException {
+        BufferedImage image = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        image.setRGB(0, 0, 0xFFFFFFFF);
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", buffer);
+        return "data:image/png;base64," + Base64.getEncoder().encodeToString(buffer.toByteArray());
     }
 }
