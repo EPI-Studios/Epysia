@@ -174,6 +174,118 @@ class GltfImporterTest {
         assertTrue(((LitMaterial) material).transparent());
     }
 
+    @Test
+    void importsNormalScaleOcclusionStrengthAndUntexturedEmissive(@TempDir Path directory) throws Exception {
+        Path source = writeUvFixture(directory, "pbrfactors.gltf", pbrFactorsFixtureJson());
+        GltfImportResult result = runImport(source, directory);
+        String document = Files.readString(result.materialFiles().get(0));
+        LitMaterial material = (LitMaterial) new MaterialJsonCodec().readSingle(document).orElseThrow();
+        assertEquals(0.5f, material.normalScale, 0.0001f);
+        assertEquals(0.25f, material.occlusionStrength, 0.0001f);
+        assertEquals(3.0f, material.emissiveStrength, 0.0001f);
+        assertTrue(material.texturePath("emissiveMap").isEmpty());
+    }
+
+    private String pbrFactorsFixtureJson() throws IOException {
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0,
+                  "scenes": [{"nodes": [0]}],
+                  "nodes": [{"name": "model", "mesh": 0}],
+                  "meshes": [{"primitives": [{
+                    "attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2, "TEXCOORD_1": 3},
+                    "indices": 4,
+                    "material": 0
+                  }]}],
+                  "materials": [{
+                    "name": "pbr",
+                    "pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0]},
+                    "normalTexture": {"index": 0, "scale": 0.5},
+                    "occlusionTexture": {"index": 0, "strength": 0.25},
+                    "emissiveFactor": [1.0, 0.0, 0.0],
+                    "extensions": {"KHR_materials_emissive_strength": {"emissiveStrength": 3.0}}
+                  }],
+                  "textures": [{"source": 0}],
+                  "images": [{"uri": "%s"}],
+                  "accessors": [
+                    {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                     "min": [0, 0, 0], "max": [1, 1, 0]},
+                    {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                    {"bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC2"},
+                    {"bufferView": 3, "componentType": 5126, "count": 3, "type": "VEC2"},
+                    {"bufferView": 4, "componentType": 5123, "count": 3, "type": "SCALAR"}
+                  ],
+                  "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 72, "byteLength": 24},
+                    {"buffer": 0, "byteOffset": 96, "byteLength": 24},
+                    {"buffer": 0, "byteOffset": 120, "byteLength": 6}
+                  ],
+                  "buffers": [{"uri": "uv.bin", "byteLength": 126}]
+                }
+                """.formatted(pngDataUri());
+    }
+
+    @Test
+    void morphTargetsAreSkippedWithWarning(@TempDir Path directory) throws Exception {
+        Path source = writeMorphFixture(directory);
+        GltfImportResult result = runImport(source, directory);
+        assertEquals(1, result.meshFiles().size());
+        EpyMesh decoded = EpyMeshReader.readFile(result.meshFiles().get(0));
+        assertEquals(VERTEX_COUNT, decoded.mesh().vertexCount());
+        assertFalse(decoded.mesh().hasSkin());
+        assertTrue(result.warnings().stream().anyMatch(warning -> warning.contains("morph target")));
+    }
+
+    private static Path writeMorphFixture(Path directory) throws Exception {
+        Files.write(directory.resolve("morph.bin"), morphFixtureBuffer());
+        Path gltf = directory.resolve("morph.gltf");
+        Files.writeString(gltf, morphFixtureJson());
+        return gltf;
+    }
+
+    private static byte[] morphFixtureBuffer() {
+        ByteBuffer buffer = ByteBuffer.allocate(78).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.putFloat(0).putFloat(0).putFloat(0);
+        buffer.putFloat(1).putFloat(0).putFloat(0);
+        buffer.putFloat(0).putFloat(1).putFloat(0);
+        for (int vertex = 0; vertex < VERTEX_COUNT; vertex++) {
+            buffer.putFloat(0).putFloat(0).putFloat(1);
+        }
+        buffer.putShort((short) 0).putShort((short) 1).putShort((short) 2);
+        return buffer.array();
+    }
+
+    private static String morphFixtureJson() {
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0,
+                  "scenes": [{"nodes": [0]}],
+                  "nodes": [{"name": "model", "mesh": 0}],
+                  "meshes": [{"primitives": [{
+                    "attributes": {"POSITION": 0, "NORMAL": 1},
+                    "indices": 2,
+                    "targets": [{"POSITION": 0}]
+                  }]}],
+                  "accessors": [
+                    {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                     "min": [0, 0, 0], "max": [1, 1, 0]},
+                    {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                    {"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}
+                  ],
+                  "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 72, "byteLength": 6}
+                  ],
+                  "buffers": [{"uri": "morph.bin", "byteLength": 78}]
+                }
+                """;
+    }
+
     private static Path writeMixedFixture(Path directory) throws Exception {
         Files.write(directory.resolve("mixed.bin"), fixtureBuffer());
         Path gltf = directory.resolve("mixed.gltf");
