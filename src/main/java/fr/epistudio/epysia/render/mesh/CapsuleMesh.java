@@ -63,6 +63,6 @@ public final class CapsuleMesh {
                 indices[triangleVertexIndex++] = belowRight;
             }
         }
-        return new MeshData(positions, normals, uvs, new float[0], indices, List.of());
+        return new MeshData(positions, normals, uvs, new float[0], new short[0], new float[0], indices, List.of());
     }
 }

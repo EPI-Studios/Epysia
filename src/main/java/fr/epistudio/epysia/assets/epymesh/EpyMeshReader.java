@@ -56,7 +56,7 @@ public final class EpyMeshReader {
         float[] tangents = readFloats(stream);
         int[] indices = readInts(stream);
         List<Submesh> submeshes = readSubmeshes(stream);
-        return new MeshData(positions, normals, uvs, tangents, indices, submeshes);
+        return new MeshData(positions, normals, uvs, tangents, new short[0], new float[0], indices, submeshes);
     }
 
     private static Optional<BakedCollider> readCollider(DataInputStream stream, int flags) throws IOException {
