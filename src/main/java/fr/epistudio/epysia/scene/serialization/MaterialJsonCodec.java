@@ -28,9 +28,19 @@ public final class MaterialJsonCodec {
     public void writeMaterialArray(JsonWriter writer, List<Material> materials) {
         writer.beginArray();
         for (Material material : materials) {
-            writeMaterial(writer, material);
+            if (material.assetPath().isEmpty()) {
+                writeMaterial(writer, material);
+            } else {
+                writeMaterialReference(writer, material);
+            }
         }
         writer.endArray();
+    }
+
+    private void writeMaterialReference(JsonWriter writer, Material material) {
+        writer.beginObject();
+        writer.key("asset").valueString(material.assetPath());
+        writer.endObject();
     }
 
     private void writeMaterial(JsonWriter writer, Material material) {
@@ -115,6 +125,11 @@ public final class MaterialJsonCodec {
 
     @SuppressWarnings("unchecked")
     public Optional<Material> readMaterial(Map<String, Object> materialJson) {
+        if (materialJson.get("asset") instanceof String referencedPath && !referencedPath.isEmpty()) {
+            LitMaterial placeholder = new LitMaterial();
+            placeholder.setAssetPath(referencedPath);
+            return Optional.of(placeholder);
+        }
         String className = materialJson.get("class") instanceof String name ? name : "";
         Optional<Material> instantiated = instantiate(className,
                 stringValue(materialJson, "vertexShader"), stringValue(materialJson, "fragmentShader"));
