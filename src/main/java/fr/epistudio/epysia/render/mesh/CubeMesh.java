@@ -67,6 +67,6 @@ public final class CubeMesh {
     }
 
     public static MeshData data() {
-        return new MeshData(POSITIONS.clone(), NORMALS.clone(), UVS.clone(), new float[0], INDICES.clone(), List.of());
+        return new MeshData(POSITIONS.clone(), NORMALS.clone(), UVS.clone(), new float[0], new short[0], new float[0], INDICES.clone(), List.of());
     }
 }

@@ -22,7 +22,7 @@ public final class SphereMesh {
         float[] normals = new float[totalVertices * 3];
         float[] uvs = new float[totalVertices * 2];
         fillVertices(radius, latitudeSegments, longitudeSegments, positions, normals, uvs);
-        return new MeshData(positions, normals, uvs, new float[0],
+        return new MeshData(positions, normals, uvs, new float[0], new short[0], new float[0],
                 buildIndices(latitudeSegments, longitudeSegments), List.of());
     }
 

@@ -163,6 +163,8 @@ public final class ObjMesh {
                     toFloatArray(outNormals),
                     toFloatArray(outUvs),
                     new float[0],
+                    new short[0],
+                    new float[0],
                     toIntArray(outIndices),
                     submeshes
             );

@@ -9,6 +9,8 @@ public record MeshData(
         float[] normals,
         float[] uvs,
         float[] tangents,
+        short[] jointIndices,
+        float[] jointWeights,
         int[] indices,
         List<Submesh> submeshes
 ) {
@@ -18,6 +20,7 @@ public record MeshData(
     public static final int UV_COMPONENTS = 2;
     public static final int TANGENT_COMPONENTS = 3;
     public static final int VERTEX_FLOAT_COUNT = POSITION_COMPONENTS + NORMAL_COMPONENTS + UV_COMPONENTS + TANGENT_COMPONENTS;
+    public static final int INFLUENCES_PER_VERTEX = 4;
 
     public MeshData {
         if (positions.length % POSITION_COMPONENTS != 0) {
@@ -39,6 +42,12 @@ public record MeshData(
         if (tangents.length == 0) {
             tangents = TangentCalculator.compute(positions, normals, uvs, indices);
         }
+        if (jointIndices.length != jointWeights.length) {
+            throw new EpysiaException("MeshData joint indices and weights must have equal length.");
+        }
+        if (jointIndices.length != 0 && jointIndices.length != vertexCount * INFLUENCES_PER_VERTEX) {
+            throw new EpysiaException("MeshData skin arrays must be empty or vertexCount * 4.");
+        }
         submeshes = submeshes.isEmpty()
                 ? List.of(new Submesh(0, indices.length, 0))
                 : List.copyOf(submeshes);
@@ -46,5 +55,9 @@ public record MeshData(
 
     public int vertexCount() {
         return positions.length / POSITION_COMPONENTS;
+    }
+
+    public boolean hasSkin() {
+        return jointIndices.length > 0;
     }
 }
