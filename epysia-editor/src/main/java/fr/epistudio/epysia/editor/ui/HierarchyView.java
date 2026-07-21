@@ -23,6 +23,8 @@ import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
 import imgui.ImGui;
+import imgui.ImGuiListClipper;
+import imgui.callback.ImListClipperCallback;
 import imgui.flag.ImGuiInputTextFlags;
 import imgui.flag.ImGuiKey;
 import imgui.flag.ImGuiMouseButton;
@@ -131,16 +133,26 @@ public final class HierarchyView {
     }
 
     private void renderRows() {
-        for (int index = 0; index < rows.size(); index++) {
-            renderRow(rows.get(index), index);
+        if (rows.isEmpty()) {
+            renderEmptyState();
+            return;
         }
-        if (rows.isEmpty() && isFiltering()) {
+        ImGuiListClipper.forEach(rows.size(), new ImListClipperCallback() {
+            @Override
+            public void accept(int index) {
+                renderRow(rows.get(index), index);
+            }
+        });
+    }
+
+    private void renderEmptyState() {
+        if (isFiltering()) {
             ImGui.textDisabled("No object matches the filter.");
-        } else if (rows.isEmpty()) {
-            ImGui.textDisabled("The scene is empty.");
-            ImGui.textDisabled("Right-click here or use the GameObject");
-            ImGui.textDisabled("menu to create your first object.");
+            return;
         }
+        ImGui.textDisabled("The scene is empty.");
+        ImGui.textDisabled("Right-click here or use the GameObject");
+        ImGui.textDisabled("menu to create your first object.");
     }
 
     private void renderRow(Row row, int index) {
