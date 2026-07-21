@@ -427,6 +427,23 @@ class GltfImporterTest {
     }
 
     @Test
+    void clampToEdgeSamplerPrependsClampPrefixToTexturePath(@TempDir Path directory) throws Exception {
+        Path source = writeUvFixture(directory, "clamp.gltf", clampSamplerFixtureJson());
+        GltfImportResult result = runImport(source, directory);
+        String document = Files.readString(result.materialFiles().get(0));
+        Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
+        String albedoPath = ((LitMaterial) material).texturePath("albedo").orElseThrow();
+        assertTrue(albedoPath.startsWith("clamp:"));
+    }
+
+    private static String clampSamplerFixtureJson() throws IOException {
+        return uvFixtureJson("\"baseColorTexture\": {\"index\": 0}")
+                .replace("\"textures\": [{\"source\": 0}],",
+                        "\"textures\": [{\"source\": 0, \"sampler\": 0}], "
+                                + "\"samplers\": [{\"wrapS\": 33071, \"wrapT\": 33071}],");
+    }
+
+    @Test
     void missingExternalTextureFallsBackToPlaceholder(@TempDir Path directory) throws Exception {
         Files.write(directory.resolve("uv.bin"), uvFixtureBuffer());
         Path gltf = directory.resolve("missing.gltf");

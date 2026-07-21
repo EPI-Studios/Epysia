@@ -3,13 +3,14 @@ package fr.epistudio.epysia.assets.loaders;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetLoader;
 import fr.epistudio.epysia.render.backend.RenderBackend;
-import fr.epistudio.epysia.render.backend.TextureFormat;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.texture.Texture2D;
 
 public final class TextureAssetLoader implements AssetLoader<TextureHandle> {
 
-    public static final String SRGB_PREFIX = "srgb:";
+    public static final String SRGB_PREFIX = TexturePathPrefixes.SRGB_PREFIX;
+    public static final String CLAMP_PREFIX = TexturePathPrefixes.CLAMP_PREFIX;
+    public static final String MIRROR_PREFIX = TexturePathPrefixes.MIRROR_PREFIX;
 
     @Override
     public Class<TextureHandle> assetType() {
@@ -32,9 +33,7 @@ public final class TextureAssetLoader implements AssetLoader<TextureHandle> {
     }
 
     private static TextureHandle loadTexture(RenderBackend backend, String path) {
-        if (path.startsWith(SRGB_PREFIX)) {
-            return Texture2D.load(backend, path.substring(SRGB_PREFIX.length()), TextureFormat.SRGB8_ALPHA8);
-        }
-        return Texture2D.load(backend, path);
+        TexturePathPrefixes.ParsedPath parsed = TexturePathPrefixes.parse(path);
+        return Texture2D.load(backend, parsed.remainder(), parsed.format(), parsed.wrap());
     }
 }
