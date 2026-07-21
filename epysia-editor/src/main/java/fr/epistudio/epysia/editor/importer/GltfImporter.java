@@ -6,14 +6,20 @@ import de.javagl.jgltf.model.AccessorFloatData;
 import de.javagl.jgltf.model.AccessorIntData;
 import de.javagl.jgltf.model.AccessorModel;
 import de.javagl.jgltf.model.AccessorShortData;
+import de.javagl.jgltf.model.AnimationModel;
 import de.javagl.jgltf.model.GltfModel;
 import de.javagl.jgltf.model.MeshModel;
 import de.javagl.jgltf.model.MeshPrimitiveModel;
 import de.javagl.jgltf.model.NodeModel;
 import de.javagl.jgltf.model.SkinModel;
 import de.javagl.jgltf.model.io.GltfModelReader;
+import fr.epistudio.epysia.animation.Clip;
+import fr.epistudio.epysia.animation.ClipChannel;
+import fr.epistudio.epysia.animation.ClipInterpolation;
+import fr.epistudio.epysia.animation.ClipProperty;
 import fr.epistudio.epysia.animation.Joint;
 import fr.epistudio.epysia.animation.Skeleton;
+import fr.epistudio.epysia.assets.epyclip.EpyClipWriter;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshWriter;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.mesh.MeshData;
@@ -22,6 +28,7 @@ import fr.epistudio.epysia.render.mesh.Submesh;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,13 +40,11 @@ public final class GltfImporter {
 
     public static GltfImportResult importFile(Path source, Path outputDirectory) {
         GltfModel model = readModel(source);
-        List<Path> meshFiles = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-        List<MeshModel> meshModels = model.getMeshModels();
-        for (int meshIndex = 0; meshIndex < meshModels.size(); meshIndex++) {
-            meshFiles.add(importMesh(model, meshModels.get(meshIndex), meshIndex, outputDirectory, warnings));
-        }
-        return new GltfImportResult(meshFiles, List.of(), warnings);
+        Map<SkinModel, SkeletonBuild> skeletonBuilds = buildSkeletonBuilds(model);
+        List<Path> meshFiles = importMeshes(model, skeletonBuilds, outputDirectory, warnings);
+        List<Path> clipFiles = importAnimations(model, skeletonBuilds, outputDirectory, warnings);
+        return new GltfImportResult(meshFiles, clipFiles, warnings);
     }
 
     private static GltfModel readModel(Path source) {
@@ -50,10 +55,29 @@ public final class GltfImporter {
         }
     }
 
-    private static Path importMesh(GltfModel model, MeshModel meshModel, int meshIndex, Path outputDirectory, List<String> warnings) {
+    private static Map<SkinModel, SkeletonBuild> buildSkeletonBuilds(GltfModel model) {
+        Map<SkinModel, SkeletonBuild> skeletonBuilds = new IdentityHashMap<>();
+        for (SkinModel skin : model.getSkinModels()) {
+            skeletonBuilds.put(skin, buildSkeleton(skin));
+        }
+        return skeletonBuilds;
+    }
+
+    private static List<Path> importMeshes(GltfModel model, Map<SkinModel, SkeletonBuild> skeletonBuilds,
+            Path outputDirectory, List<String> warnings) {
+        List<Path> meshFiles = new ArrayList<>();
+        List<MeshModel> meshModels = model.getMeshModels();
+        for (int meshIndex = 0; meshIndex < meshModels.size(); meshIndex++) {
+            meshFiles.add(importMesh(model, meshModels.get(meshIndex), meshIndex, skeletonBuilds, outputDirectory, warnings));
+        }
+        return meshFiles;
+    }
+
+    private static Path importMesh(GltfModel model, MeshModel meshModel, int meshIndex,
+            Map<SkinModel, SkeletonBuild> skeletonBuilds, Path outputDirectory, List<String> warnings) {
         String meshName = meshName(meshModel, meshIndex);
         Optional<SkinModel> skinModel = findSkinForMesh(model, meshModel);
-        Optional<SkeletonBuild> skeletonBuild = skinModel.map(GltfImporter::buildSkeleton);
+        Optional<SkeletonBuild> skeletonBuild = skinModel.map(skeletonBuilds::get);
         List<PrimitiveVertexData> primitives = readPrimitives(meshModel, meshName, skeletonBuild, warnings);
         MeshData meshData = mergePrimitives(primitives, meshName, warnings);
         Optional<Skeleton> skeleton = meshData.hasSkin() ? skeletonBuild.map(SkeletonBuild::skeleton) : Optional.empty();
@@ -343,6 +367,132 @@ public final class GltfImporter {
         return matrix;
     }
 
+    private static List<Path> importAnimations(GltfModel model, Map<SkinModel, SkeletonBuild> skeletonBuilds,
+            Path outputDirectory, List<String> warnings) {
+        Map<NodeModel, JointReference> jointReferences = buildJointReferences(model);
+        List<Path> clipFiles = new ArrayList<>();
+        List<AnimationModel> animationModels = model.getAnimationModels();
+        for (int animationIndex = 0; animationIndex < animationModels.size(); animationIndex++) {
+            importAnimation(animationModels.get(animationIndex), animationIndex, jointReferences, skeletonBuilds,
+                    outputDirectory, warnings).ifPresent(clipFiles::add);
+        }
+        return clipFiles;
+    }
+
+    private static Map<NodeModel, JointReference> buildJointReferences(GltfModel model) {
+        Map<NodeModel, JointReference> jointReferences = new IdentityHashMap<>();
+        for (SkinModel skin : model.getSkinModels()) {
+            addJointReferences(skin, jointReferences);
+        }
+        return jointReferences;
+    }
+
+    private static void addJointReferences(SkinModel skin, Map<NodeModel, JointReference> jointReferences) {
+        List<NodeModel> joints = skin.getJoints();
+        for (int jointIndex = 0; jointIndex < joints.size(); jointIndex++) {
+            jointReferences.putIfAbsent(joints.get(jointIndex), new JointReference(skin, jointIndex));
+        }
+    }
+
+    private static Optional<Path> importAnimation(AnimationModel animation, int animationIndex,
+            Map<NodeModel, JointReference> jointReferences, Map<SkinModel, SkeletonBuild> skeletonBuilds,
+            Path outputDirectory, List<String> warnings) {
+        String animationName = Optional.ofNullable(animation.getName()).orElse("clip" + animationIndex);
+        Optional<SkinModel> owningSkin = findOwningSkin(animation, jointReferences);
+        if (owningSkin.isEmpty()) {
+            warnings.add("Animation " + animationName + " has no channels targeting a skinned joint; skipped.");
+            return Optional.empty();
+        }
+        SkeletonBuild skeletonBuild = skeletonBuilds.get(owningSkin.get());
+        List<ClipChannel> channels = buildClipChannels(animation, animationName, owningSkin.get(), jointReferences,
+                skeletonBuild.remap(), warnings);
+        if (channels.isEmpty()) {
+            warnings.add("Animation " + animationName + " has no valid channels; skipped.");
+            return Optional.empty();
+        }
+        Clip clip = new Clip(animationName, computeDuration(channels), skeletonBuild.skeleton().nameChecksum(), channels);
+        return Optional.of(writeClip(clip, animationName, animationIndex, outputDirectory));
+    }
+
+    private static Path writeClip(Clip clip, String animationName, int animationIndex, Path outputDirectory) {
+        Path outputPath = outputDirectory.resolve(clipFileName(animationName, animationIndex) + ".epyclip");
+        EpyClipWriter.writeToFile(outputPath, clip);
+        return outputPath;
+    }
+
+    private static Optional<SkinModel> findOwningSkin(AnimationModel animation, Map<NodeModel, JointReference> jointReferences) {
+        for (AnimationModel.Channel channel : animation.getChannels()) {
+            JointReference reference = jointReferences.get(channel.getNodeModel());
+            if (reference != null) {
+                return Optional.of(reference.skin());
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static List<ClipChannel> buildClipChannels(AnimationModel animation, String animationName, SkinModel owningSkin,
+            Map<NodeModel, JointReference> jointReferences, int[] remap, List<String> warnings) {
+        List<ClipChannel> channels = new ArrayList<>();
+        for (AnimationModel.Channel channel : animation.getChannels()) {
+            buildClipChannel(channel, animationName, owningSkin, jointReferences, remap, warnings).ifPresent(channels::add);
+        }
+        return channels;
+    }
+
+    private static Optional<ClipChannel> buildClipChannel(AnimationModel.Channel channel, String animationName,
+            SkinModel owningSkin, Map<NodeModel, JointReference> jointReferences, int[] remap, List<String> warnings) {
+        Optional<ClipProperty> property = mapProperty(channel.getPath());
+        if (property.isEmpty()) {
+            warnings.add("Animation " + animationName + " channel targets morph target weights; dropped.");
+            return Optional.empty();
+        }
+        JointReference reference = jointReferences.get(channel.getNodeModel());
+        if (reference == null || reference.skin() != owningSkin) {
+            warnings.add("Animation " + animationName + " channel targets a node outside the skin; dropped.");
+            return Optional.empty();
+        }
+        return Optional.of(buildClipChannel(channel, property.get(), remap[reference.jointIndex()]));
+    }
+
+    private static ClipChannel buildClipChannel(AnimationModel.Channel channel, ClipProperty property, int jointIndex) {
+        AnimationModel.Sampler sampler = channel.getSampler();
+        ClipInterpolation interpolation = mapInterpolation(sampler.getInterpolation());
+        float[] times = readFloats(sampler.getInput(), 1);
+        float[] values = readFloats(sampler.getOutput(), property.componentCount());
+        return new ClipChannel(jointIndex, property, interpolation, times, values);
+    }
+
+    private static Optional<ClipProperty> mapProperty(String path) {
+        return switch (path) {
+            case "translation" -> Optional.of(ClipProperty.TRANSLATION);
+            case "rotation" -> Optional.of(ClipProperty.ROTATION);
+            case "scale" -> Optional.of(ClipProperty.SCALE);
+            default -> Optional.empty();
+        };
+    }
+
+    private static ClipInterpolation mapInterpolation(AnimationModel.Interpolation interpolation) {
+        return switch (interpolation) {
+            case STEP -> ClipInterpolation.STEP;
+            case LINEAR -> ClipInterpolation.LINEAR;
+            case CUBICSPLINE -> ClipInterpolation.CUBIC_SPLINE;
+        };
+    }
+
+    private static float computeDuration(List<ClipChannel> channels) {
+        float duration = 0.0f;
+        for (ClipChannel channel : channels) {
+            float[] times = channel.times();
+            duration = Math.max(duration, times[times.length - 1]);
+        }
+        return duration;
+    }
+
+    private static String clipFileName(String animationName, int animationIndex) {
+        String sanitized = animationName.replaceAll("[^A-Za-z0-9_-]", "");
+        return sanitized.isEmpty() ? "clip" + animationIndex : sanitized;
+    }
+
     private static MeshData mergePrimitives(List<PrimitiveVertexData> primitives, String meshName, List<String> warnings) {
         MergePlan plan = MergePlan.of(primitives);
         warnIfMixedSkin(primitives, plan, meshName, warnings);
@@ -381,6 +531,9 @@ public final class GltfImporter {
     }
 
     private record SkeletonBuild(Skeleton skeleton, int[] remap) {
+    }
+
+    private record JointReference(SkinModel skin, int jointIndex) {
     }
 
     private record MergePlan(int vertexTotal, int indexTotal, boolean hasUv, boolean hasSkin) {
