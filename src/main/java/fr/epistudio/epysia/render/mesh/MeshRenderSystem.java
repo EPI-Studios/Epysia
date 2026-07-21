@@ -76,6 +76,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     private final ShaderWatcher shaderWatcher;
     private final ShadowStatistics shadowStatistics = new ShadowStatistics();
+    private final Logger logger;
     private final SurfaceTimeDependence surfaceTimeDependence;
     private boolean shadowCachingEnabled = true;
     private boolean shadowSplitEnabled = true;
@@ -101,6 +102,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private final Vector3f scratchCasterMin = new Vector3f();
     private final Vector3f scratchCasterMax = new Vector3f();
     private final Set<MeshRenderer> renderersSeenThisFrame =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<MeshRenderer> loggedSkinnedExclusions =
             Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<BufferHandle> ownedBuffers = new ArrayList<>();
     private final List<BindingSetHandle> ownedBindings = new ArrayList<>();
@@ -128,6 +131,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private long startNanos;
 
     public MeshRenderSystem(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger) {
+        this.logger = logger;
         this.shaderWatcher = shaderWatcher;
         this.surfaceTimeDependence = new SurfaceTimeDependence(shaderLoader, logger);
         this.shadowCascades = new CascadedShadowMaps(shaderLoader, shaderWatcher, logger,
@@ -340,6 +344,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         ownedBuffers.clear();
         objectResources.clear();
         renderersSeenThisFrame.clear();
+        loggedSkinnedExclusions.clear();
         instanceBatches.shutdown();
         instancedPass.shutdown();
         surfaceUniforms.shutdown();
@@ -466,8 +471,12 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         }
         UploadedMesh mesh = meshOpt.get();
         renderersSeenThisFrame.add(renderer);
-        List<PerSubmesh> perSubmeshes = resolvePerSubmeshes(renderer, mesh);
-        refreshStalePerSubmeshes(renderer, mesh, perSubmeshes);
+        if (mesh.skinned()) {
+            logSkinnedExclusionOnce(gameObject, renderer);
+        }
+        RenderableMesh renderable = resolvePerSubmeshes(renderer, mesh);
+        List<PerSubmesh> perSubmeshes = renderable.submeshes();
+        refreshStalePerSubmeshes(renderer, mesh, perSubmeshes, renderable.jointPalette());
         Matrix4f modelMatrix = transformComponent.worldMatrix(alpha);
         culler.computeWorldBounds(mesh.localBounds(), modelMatrix, scratchCasterMin, scratchCasterMax);
         boolean visible = mesh.localBounds() == null
@@ -484,15 +493,23 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             PerSubmesh perSubmesh = perSubmeshes.get(i);
             materialCache.writeMaterialUboIfNeeded(perSubmesh.material(), perSubmesh.classResources());
             surfaceUniforms.writeIfNeeded(perSubmesh.material(), perSubmesh.classResources().surfaceUniforms());
-            if (batchable(perSubmesh)
+            if (!mesh.skinned() && batchable(perSubmesh)
                     && instanceBatches.add(submesh, perSubmesh,
                             materialStates.snapshotFor(perSubmesh, materialCache, surfaceUniforms),
                             modelMatrix, depthBits, visible, scratchCasterMin, scratchCasterMax)) {
                 continue;
             }
             writeObjectUboIfChanged(perSubmesh.modelUbo(), modelMatrix, transformHash);
-            submitSubmesh(frame, submesh, perSubmesh, depthBits, transformHash, visible);
+            submitSubmesh(frame, submesh, perSubmesh, depthBits, transformHash, visible, mesh.skinned());
         }
+    }
+
+    private void logSkinnedExclusionOnce(GameObject gameObject, MeshRenderer renderer) {
+        if (!loggedSkinnedExclusions.add(renderer)) {
+            return;
+        }
+        logger.info("Skinned mesh '" + gameObject.name()
+                + "' excluded from shadow casting and picking this milestone.");
     }
 
     private boolean batchable(PerSubmesh perSubmesh) {
@@ -520,7 +537,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         writeObjectUbo(perSubmesh.modelUbo(), batch.firstModel());
         long transformHash = ShadowSignatures.mixMatrix(ShadowSignatures.seed(), batch.firstModel());
         submitSubmesh(frame, batch.submesh(), perSubmesh, batch.minDepthBits(), transformHash,
-                batch.visibleCount() == 1);
+                batch.visibleCount() == 1, false);
     }
 
     private void submitInstancedBatch(FrameBuilder frame, MeshInstanceBatch batch) {
@@ -588,7 +605,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private void submitSubmesh(FrameBuilder frame, UploadedSubmesh submesh, PerSubmesh perSubmesh,
-                               long depthBits, long transformHash, boolean visible) {
+                               long depthBits, long transformHash, boolean visible, boolean skinned) {
         PipelineHandle pipeline = perSubmesh.classResources().pipeline();
         if (perSubmesh.material().transparent()) {
             if (!visible) {
@@ -598,8 +615,10 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             frame.submit(RenderPasses.TRANSPARENT_3D, new DrawCommand(pipeline, submesh.handle(), perSubmesh.litBindings(), backToFrontKey, 1));
             return;
         }
-        String surfacePath = MaterialPipelineCache.surfaceShaderPathOf(perSubmesh.material());
-        submitShadowCasters(submesh, perSubmesh, surfacePath, transformHash);
+        if (!skinned) {
+            String surfacePath = MaterialPipelineCache.surfaceShaderPathOf(perSubmesh.material());
+            submitShadowCasters(submesh, perSubmesh, surfacePath, transformHash);
+        }
         if (!visible) {
             return;
         }
@@ -688,21 +707,54 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
                 continue;
             }
             destroyPerSubmeshes(entry.getValue().submeshes());
+            entry.getValue().jointPalette().ifPresent(this::destroyJointPalette);
+            loggedSkinnedExclusions.remove(entry.getKey());
             iterator.remove();
         }
     }
 
-    private List<PerSubmesh> resolvePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh) {
+    private RenderableMesh resolvePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh) {
         RenderableMesh cached = objectResources.get(renderer);
         if (cached != null && cached.mesh() == mesh) {
-            return cached.submeshes();
+            return cached;
         }
         if (cached != null) {
             destroyPerSubmeshes(cached.submeshes());
+            cached.jointPalette().ifPresent(this::destroyJointPalette);
         }
-        RenderableMesh rebuilt = new RenderableMesh(mesh, createPerSubmeshes(renderer));
+        Optional<JointPalette> palette = createJointPaletteIfSkinned(mesh);
+        RenderableMesh rebuilt = new RenderableMesh(mesh, createPerSubmeshes(renderer, mesh, palette), palette);
         objectResources.put(renderer, rebuilt);
-        return rebuilt.submeshes();
+        return rebuilt;
+    }
+
+    private Optional<JointPalette> createJointPaletteIfSkinned(UploadedMesh mesh) {
+        if (!mesh.skinned()) {
+            return Optional.empty();
+        }
+        int jointCount = mesh.skeleton().orElseThrow(() ->
+                new EpysiaException("Skinned mesh missing skeleton at palette creation")).jointCount();
+        long byteSize = (long) jointCount * MeshShaderBindings.JOINT_PALETTE_BYTES_PER_JOINT;
+        ByteBuffer identity = BufferUtils.createByteBuffer((int) byteSize);
+        writeIdentityPalette(identity, jointCount);
+        BufferHandle buffer = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, identity));
+        ownedBuffers.add(buffer);
+        return Optional.of(new JointPalette(buffer, byteSize));
+    }
+
+    private static void writeIdentityPalette(ByteBuffer buffer, int jointCount) {
+        buffer.clear();
+        for (int joint = 0; joint < jointCount; joint++) {
+            buffer.putFloat(1.0f).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
+            buffer.putFloat(0.0f).putFloat(1.0f).putFloat(0.0f).putFloat(0.0f);
+            buffer.putFloat(0.0f).putFloat(0.0f).putFloat(1.0f).putFloat(0.0f);
+        }
+        buffer.flip();
+    }
+
+    private void destroyJointPalette(JointPalette palette) {
+        backend.destroy(palette.buffer());
+        ownedBuffers.remove(palette.buffer());
     }
 
     private void destroyPerSubmeshes(List<PerSubmesh> perSubmeshes) {
@@ -737,26 +789,27 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return fallback;
     }
 
-    private List<PerSubmesh> createPerSubmeshes(MeshRenderer renderer) {
-        UploadedMesh mesh = renderer.mesh().orElseThrow(() ->
-                new EpysiaException("createPerSubmeshes called on renderer with no mesh"));
+    private List<PerSubmesh> createPerSubmeshes(MeshRenderer renderer, UploadedMesh mesh,
+                                                Optional<JointPalette> jointPalette) {
         List<PerSubmesh> result = new ArrayList<>(mesh.submeshes().size());
         for (UploadedSubmesh submesh : mesh.submeshes()) {
-            result.add(createPerSubmesh(renderer, submesh));
+            result.add(createPerSubmesh(renderer, submesh, mesh.skinned(), jointPalette));
         }
         return result;
     }
 
-    private PerSubmesh createPerSubmesh(MeshRenderer renderer, UploadedSubmesh submesh) {
+    private PerSubmesh createPerSubmesh(MeshRenderer renderer, UploadedSubmesh submesh, boolean skinned,
+                                        Optional<JointPalette> jointPalette) {
         Material material = resolveMaterial(renderer, submesh.materialSlot());
-        MaterialClassResources classResources = materialCache.classResourcesFor(material);
+        MaterialClassResources classResources = materialCache.classResourcesFor(material, skinned);
         BufferHandle materialUbo = materialCache.ensureMaterialUbo(material, classResources);
         ByteBuffer empty = BufferUtils.createByteBuffer(MeshShaderBindings.OBJECT_UBO_SIZE);
         BufferHandle modelUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, empty));
         ownedBuffers.add(modelUbo);
         boolean shadowMasked = shadowMasked(material, materialUbo);
         BindingSetHandle shadowBindings = createShadowBindings(material, classResources, modelUbo, materialUbo, shadowMasked);
-        BindingSetHandle litBindings = backend.createBindingSet(buildLitBindingSetDescriptor(material, classResources, modelUbo, materialUbo));
+        BindingSetHandle litBindings = backend.createBindingSet(
+                buildLitBindingSetDescriptor(material, classResources, modelUbo, materialUbo, jointPalette));
         ownedBindings.add(shadowBindings);
         ownedBindings.add(litBindings);
         return new PerSubmesh(modelUbo, shadowBindings, litBindings, classResources, material,
@@ -804,7 +857,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         BufferHandle materialUbo = materialCache.materialUboFor(material);
         if (!shadow) {
             return backend.createBindingSet(buildLitBindingSetDescriptor(material, classResources, transformBindings,
-                    materialUbo, classResources.litBindingLayout()));
+                    materialUbo, classResources.litBindingLayout(), Optional.empty()));
         }
         return createShadowBindings(material, classResources, transformBindings, materialUbo,
                 perSubmesh.shadowMasked(), shadowCascades.bindingLayout(),
@@ -831,26 +884,29 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return snapshot;
     }
 
-    private void refreshStalePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh, List<PerSubmesh> perSubmeshes) {
+    private void refreshStalePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh, List<PerSubmesh> perSubmeshes,
+                                          Optional<JointPalette> jointPalette) {
+        boolean skinned = mesh.skinned();
         for (int i = 0; i < perSubmeshes.size(); i++) {
             PerSubmesh existing = perSubmeshes.get(i);
             UploadedSubmesh submesh = mesh.submeshes().get(i);
             Material current = resolveMaterial(renderer, submesh.materialSlot());
-            if (materialOrPipelineChanged(current, existing)) {
+            if (materialOrPipelineChanged(current, existing, skinned)) {
                 destroyPerSubmesh(existing);
-                perSubmeshes.set(i, createPerSubmesh(renderer, submesh));
+                perSubmeshes.set(i, createPerSubmesh(renderer, submesh, skinned, jointPalette));
                 continue;
             }
-            refreshTextureBindingsAt(perSubmeshes, i);
+            refreshTextureBindingsAt(perSubmeshes, i, jointPalette);
         }
     }
 
-    private boolean materialOrPipelineChanged(Material current, PerSubmesh existing) {
+    private boolean materialOrPipelineChanged(Material current, PerSubmesh existing, boolean skinned) {
         return current != existing.material()
-                || materialCache.classResourcesFor(current) != existing.classResources();
+                || materialCache.classResourcesFor(current, skinned) != existing.classResources();
     }
 
-    private void refreshTextureBindingsAt(List<PerSubmesh> perSubmeshes, int index) {
+    private void refreshTextureBindingsAt(List<PerSubmesh> perSubmeshes, int index,
+                                          Optional<JointPalette> jointPalette) {
         PerSubmesh existing = perSubmeshes.get(index);
         boolean masked = shadowMasked(existing.material(), materialCache.materialUboFor(existing.material()));
         boolean surfaceTexturesChanged = existing.surfaceStructureRevision()
@@ -858,13 +914,14 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         if (!texturesChangedSinceCapture(existing) && masked == existing.shadowMasked() && !surfaceTexturesChanged) {
             return;
         }
-        perSubmeshes.set(index, rebuildBindings(existing, masked));
+        perSubmeshes.set(index, rebuildBindings(existing, masked, jointPalette));
     }
 
-    private PerSubmesh rebuildBindings(PerSubmesh existing, boolean masked) {
+    private PerSubmesh rebuildBindings(PerSubmesh existing, boolean masked, Optional<JointPalette> jointPalette) {
         BufferHandle materialUbo = materialCache.materialUboFor(existing.material());
         BindingSetHandle freshLitBindings = backend.createBindingSet(
-                buildLitBindingSetDescriptor(existing.material(), existing.classResources(), existing.modelUbo(), materialUbo));
+                buildLitBindingSetDescriptor(existing.material(), existing.classResources(),
+                        existing.modelUbo(), materialUbo, jointPalette));
         BindingSetHandle freshShadowBindings = createShadowBindings(existing.material(), existing.classResources(),
                 existing.modelUbo(), materialUbo, masked);
         backend.destroy(existing.litBindings());
@@ -895,9 +952,10 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private BindingSetDescriptor buildLitBindingSetDescriptor(Material material, MaterialClassResources classResources,
-                                                              BufferHandle modelUbo, BufferHandle materialUbo) {
+                                                              BufferHandle modelUbo, BufferHandle materialUbo,
+                                                              Optional<JointPalette> jointPalette) {
         return buildLitBindingSetDescriptor(material, classResources, objectTransformBindings(modelUbo),
-                materialUbo, classResources.litBindingLayout());
+                materialUbo, classResources.litBindingLayout(), jointPalette);
     }
 
     private static List<Binding> objectTransformBindings(BufferHandle modelUbo) {
@@ -919,7 +977,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     private BindingSetDescriptor buildLitBindingSetDescriptor(Material material, MaterialClassResources classResources,
                                                               List<Binding> transformBindings, BufferHandle materialUbo,
-                                                              BindingSetLayout layout) {
+                                                              BindingSetLayout layout,
+                                                              Optional<JointPalette> jointPalette) {
         List<Binding> bindings = new ArrayList<>();
         bindings.add(new Binding(MeshShaderBindings.FRAME_UBO_BINDING,
                 UniformBufferBinding.whole(frameUboWriter.handle(), MeshShaderBindings.FRAME_UBO_SIZE)));
@@ -930,6 +989,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         bindings.add(new Binding(MeshShaderBindings.CLUSTER_INDEX_SSBO_BINDING,
                 StorageBufferBinding.whole(clusterCuller.indexBuffer(), clusterCuller.indexByteSize())));
         bindings.addAll(transformBindings);
+        jointPalette.ifPresent(palette -> bindings.add(new Binding(MeshShaderBindings.JOINT_PALETTE_SSBO_BINDING,
+                StorageBufferBinding.whole(palette.buffer(), palette.byteSize()))));
         if (classResources.metadata().hasUniformBuffer()) {
             bindings.add(new Binding(MeshShaderBindings.MATERIAL_UBO_BINDING,
                     UniformBufferBinding.whole(materialUbo, classResources.metadata().uniformBufferSize())));
@@ -955,6 +1016,10 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return new BindingSetDescriptor(layout, bindings);
     }
 
-    private record RenderableMesh(UploadedMesh mesh, List<PerSubmesh> submeshes) {
+    private record RenderableMesh(UploadedMesh mesh, List<PerSubmesh> submeshes,
+                                  Optional<JointPalette> jointPalette) {
+    }
+
+    private record JointPalette(BufferHandle buffer, long byteSize) {
     }
 }

@@ -16,6 +16,8 @@ public final class SurfaceShaderComposer {
 
     public static final int USER_UNIFORM_BINDING = 4;
     public static final int FIRST_SAMPLER_BINDING = 14;
+    public static final String SKINNED_DEFINE = "#define SKINNED\n";
+    private static final String VERSION_DIRECTIVE = "#version";
 
     private static final String UNIFORM_BLOCK_NAME = "SurfaceUniforms";
     private static final String FUNCTIONS_MARKER = "// SURFACE_FUNCTIONS";
@@ -65,6 +67,23 @@ public final class SurfaceShaderComposer {
         ParsedSource parsed = ShaderUniformParser.parse(surface.source());
         String vertexBody = ShaderComments.mask(split(parsed.body()).vertexBody());
         return TIME_IDENTIFIER_PATTERN.matcher(vertexBody).find();
+    }
+
+    public static LoadedShader injectSkinningDefine(LoadedShader vertex) {
+        return new LoadedShader(insertAfterVersion(vertex.source(), SKINNED_DEFINE), vertex.dependencyPaths());
+    }
+
+    private static String insertAfterVersion(String source, String directive) {
+        List<String> lines = new ArrayList<>();
+        boolean inserted = false;
+        for (String line : source.split("\n", -1)) {
+            lines.add(line);
+            if (!inserted && line.trim().startsWith(VERSION_DIRECTIVE)) {
+                lines.add(directive.stripTrailing());
+                inserted = true;
+            }
+        }
+        return String.join("\n", lines);
     }
 
     public static LoadedShader composeVertex(LoadedShader base, LoadedShader surface) {
