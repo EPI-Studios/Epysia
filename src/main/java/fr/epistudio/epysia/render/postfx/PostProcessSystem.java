@@ -70,11 +70,13 @@ public final class PostProcessSystem implements RenderSystem {
     private final SsaoPass ssao;
     private final BloomChain bloom;
     private final PostEffectChain effectChain;
+    private final Vector3f appliedClearColor = Scene.defaultClearColor();
     private final Matrix4f scratchInverseViewProjection = new Matrix4f();
     private final Vector3f scratchCameraPosition = new Vector3f();
     private final ByteBuffer uboScratch = BufferUtils.createByteBuffer(UBO_SIZE);
 
     private RenderBackend backend;
+    private StageConfigurer stageConfigurer;
     private TextureHandle sceneColorTexture;
     private TextureHandle sceneDepthTexture;
     private RenderTargetHandle sceneTarget;
@@ -118,6 +120,7 @@ public final class PostProcessSystem implements RenderSystem {
     @Override
     public void initialize(RenderBackend backend, StageConfigurer configurer) {
         this.backend = backend;
+        this.stageConfigurer = configurer;
         int width = Math.max(1, window.framebufferWidth());
         int height = Math.max(1, window.framebufferHeight());
         targetWidth = width;
@@ -132,12 +135,13 @@ public final class PostProcessSystem implements RenderSystem {
         effectChain.initialize(backend);
         effectChain.configure(sceneColorTexture, sceneDepthTexture, ldrColorTexture, width, height);
         createBindings();
-        bindStageTargets(configurer);
+        bindStageTargets();
         configurer.bindStagePreparation(RenderPasses.POST, this::runPostPasses);
     }
 
     @Override
     public void onResize(RenderBackend backend, StageConfigurer configurer, int width, int height) {
+        this.stageConfigurer = configurer;
         targetWidth = Math.max(1, width);
         targetHeight = Math.max(1, height);
         backend.destroy(tonemapBindings);
@@ -148,7 +152,7 @@ public final class PostProcessSystem implements RenderSystem {
         bloom.onResize(sceneColorTexture, targetWidth, targetHeight);
         effectChain.configure(sceneColorTexture, sceneDepthTexture, ldrColorTexture, targetWidth, targetHeight);
         createBindings();
-        bindStageTargets(configurer);
+        bindStageTargets();
     }
 
     public TextureHandle sceneDepthTexture() {
@@ -162,6 +166,7 @@ public final class PostProcessSystem implements RenderSystem {
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         activeCamera = context.primaryCamera().orElse(null);
+        refreshSceneClearColor(scene);
         refreshSsaoResolutionMode();
         writeUbo(activeCamera, context.interpolationAlpha());
         ssao.writeUbo(activeCamera, settings, context.interpolationAlpha());
@@ -200,6 +205,14 @@ public final class PostProcessSystem implements RenderSystem {
         backend.destroy(tonemapBindings);
         backend.destroy(antiAliasBindings);
         createBindings();
+    }
+
+    private void refreshSceneClearColor(Scene scene) {
+        if (appliedClearColor.equals(scene.clearColor())) {
+            return;
+        }
+        appliedClearColor.set(scene.clearColor());
+        bindStageTargets();
     }
 
     private void refreshSsaoResolutionMode() {
@@ -289,13 +302,13 @@ public final class PostProcessSystem implements RenderSystem {
         postUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, initial));
     }
 
-    private void bindStageTargets(StageConfigurer configurer) {
-        PassClear sceneClear = PassClear.color(0.10f, 0.12f, 0.18f);
+    private void bindStageTargets() {
+        PassClear sceneClear = PassClear.color(appliedClearColor.x, appliedClearColor.y, appliedClearColor.z);
         PassClear sceneNoClear = PassClear.none();
-        configurer.bindStageTarget(RenderPasses.OPAQUE_3D, sceneTarget, sceneClear);
-        configurer.bindStageTarget(RenderPasses.TRANSPARENT_3D, sceneTarget, sceneNoClear);
-        configurer.bindStageTarget(RenderPasses.WORLD_2D, sceneTarget, sceneNoClear);
-        configurer.bindStageTarget(RenderPasses.POST, RenderTargetHandle.SCREEN, PassClear.color(0.0f, 0.0f, 0.0f));
+        stageConfigurer.bindStageTarget(RenderPasses.OPAQUE_3D, sceneTarget, sceneClear);
+        stageConfigurer.bindStageTarget(RenderPasses.TRANSPARENT_3D, sceneTarget, sceneNoClear);
+        stageConfigurer.bindStageTarget(RenderPasses.WORLD_2D, sceneTarget, sceneNoClear);
+        stageConfigurer.bindStageTarget(RenderPasses.POST, RenderTargetHandle.SCREEN, PassClear.color(0.0f, 0.0f, 0.0f));
     }
 
     private void writeUbo(Camera3D camera, float alpha) {

@@ -884,6 +884,17 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
+    @Override
+    public PixelColor readPixelFloat(RenderTargetHandle target, int x, int y) {
+        RenderTargetResource resource = requireRenderTarget(target);
+        int previousReadFbo = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING);
+        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, resource.fboId());
+        java.nio.FloatBuffer pixel = org.lwjgl.BufferUtils.createFloatBuffer(4);
+        org.lwjgl.opengl.GL11.glReadPixels(x, y, 1, 1, GL_RGBA, org.lwjgl.opengl.GL11.GL_FLOAT, pixel);
+        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
+        return new PixelColor(pixel.get(0), pixel.get(1), pixel.get(2), pixel.get(3));
+    }
+
     private void applyPipeline(PipelineResource pipeline) {
         glUseProgram(pipeline.programId());
         glBindVertexArray(pipeline.vaoId());

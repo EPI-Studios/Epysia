@@ -70,4 +70,6 @@ public interface RenderBackend {
     void endFrame();
 
     int readPixelArgb(RenderTargetHandle target, int x, int y);
+
+    PixelColor readPixelFloat(RenderTargetHandle target, int x, int y);
 }
