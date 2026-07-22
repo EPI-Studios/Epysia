@@ -7,6 +7,7 @@ import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.StageConfigurer;
+import fr.epistudio.epysia.render.backend.PixelColor;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.scene.Scene;
@@ -20,6 +21,16 @@ public final class VfxExamplesPixelCheck {
     private static final int MINIMUM_MATCHES = 30;
     private static final int BACKGROUND_PROBE_X = 6;
     private static final int BACKGROUND_PROBE_Y = 6;
+    private static final float FLAME_MINIMUM_RED = 0.40f;
+    private static final float FLAME_RED_OVER_BLUE = 0.24f;
+    private static final float FLAME_GREEN_OVER_BLUE = 0.08f;
+    private static final float SPARK_MINIMUM_RED = 0.59f;
+    private static final float SPARK_RED_OVER_BLUE = 0.28f;
+    private static final float ARCANE_MINIMUM_BLUE = 0.40f;
+    private static final float ARCANE_BLUE_OVER_RED = 0.24f;
+    private static final float ARCANE_BLUE_OVER_GREEN = 0.10f;
+    private static final float SMOKE_MINIMUM_BRIGHTNESS = 0.25f;
+    private static final float LIT_MINIMUM_BRIGHTNESS = 0.10f;
 
     private VfxExamplesPixelCheck() {
     }
@@ -40,7 +51,7 @@ public final class VfxExamplesPixelCheck {
     }
 
     private interface ColorTest {
-        boolean matches(int red, int green, int blue);
+        boolean matches(float red, float green, float blue);
     }
 
     private static ColorTest testFor(String name) {
@@ -52,23 +63,25 @@ public final class VfxExamplesPixelCheck {
         };
     }
 
-    private static boolean isFlame(int red, int green, int blue) {
-        return red > 100 && red > blue + 60 && green > blue + 20;
+    private static boolean isFlame(float red, float green, float blue) {
+        return red > FLAME_MINIMUM_RED && red > blue + FLAME_RED_OVER_BLUE
+                && green > blue + FLAME_GREEN_OVER_BLUE;
     }
 
-    private static boolean isSpark(int red, int green, int blue) {
-        return red > 150 && red > blue + 70 && green * 10 > blue * 14;
+    private static boolean isSpark(float red, float green, float blue) {
+        return red > SPARK_MINIMUM_RED && red > blue + SPARK_RED_OVER_BLUE && green * 10.0f > blue * 14.0f;
     }
 
-    private static boolean isArcane(int red, int green, int blue) {
-        return blue > 100 && blue > red + 60 && blue > green + 25;
+    private static boolean isArcane(float red, float green, float blue) {
+        return blue > ARCANE_MINIMUM_BLUE && blue > red + ARCANE_BLUE_OVER_RED
+                && blue > green + ARCANE_BLUE_OVER_GREEN;
     }
 
-    private static boolean isSmoke(int red, int green, int blue) {
-        int brightest = Math.max(red, Math.max(green, blue));
-        int darkest = Math.min(red, Math.min(green, blue));
-        return brightest > 60 && (brightest - darkest) * 100 < brightest * 22
-                && blue * 100 >= red * 80;
+    private static boolean isSmoke(float red, float green, float blue) {
+        float brightest = Math.max(red, Math.max(green, blue));
+        float darkest = Math.min(red, Math.min(green, blue));
+        return brightest > SMOKE_MINIMUM_BRIGHTNESS && (brightest - darkest) * 100.0f < brightest * 22.0f
+                && blue * 100.0f >= red * 80.0f;
     }
 
     private static float screenX(float worldX) {
@@ -89,9 +102,7 @@ public final class VfxExamplesPixelCheck {
         private final EpysiaEngine engine;
         private RenderBackend backend;
         private int frameCount;
-        private int backgroundRed;
-        private int backgroundGreen;
-        private int backgroundBlue;
+        private PixelColor background = new PixelColor(0.0f, 0.0f, 0.0f, 1.0f);
 
         private PixelCheckSystem(EpysiaEngine engine) {
             this.engine = engine;
@@ -113,17 +124,13 @@ public final class VfxExamplesPixelCheck {
         }
 
         private void readBackground() {
-            int pixel = rawPixel(BACKGROUND_PROBE_X, BACKGROUND_PROBE_Y);
-            backgroundRed = pixel >> 16 & 0xFF;
-            backgroundGreen = pixel >> 8 & 0xFF;
-            backgroundBlue = pixel & 0xFF;
-            System.out.println("[vfx-examples] background reference: " + backgroundRed + ", "
-                    + backgroundGreen + ", " + backgroundBlue);
+            background = rawPixel(BACKGROUND_PROBE_X, BACKGROUND_PROBE_Y);
+            System.out.println("[vfx-examples] background reference: " + background);
         }
 
-        private int rawPixel(int x, int y) {
+        private PixelColor rawPixel(int x, int y) {
             PostProcessSystem postProcess = engine.renderSystem(PostProcessSystem.class);
-            return backend.readPixelArgb(postProcess.sceneTarget(), x, y);
+            return backend.readPixelFloat(postProcess.sceneTarget(), x, y);
         }
 
         private int countAll() {
@@ -142,7 +149,8 @@ public final class VfxExamplesPixelCheck {
         }
 
         private int countLit(VfxExampleScene.Placement placement) {
-            return scan(placement, (red, green, blue) -> Math.max(red, Math.max(green, blue)) > 25);
+            return scan(placement, (red, green, blue) ->
+                    Math.max(red, Math.max(green, blue)) > LIT_MINIMUM_BRIGHTNESS);
         }
 
         private int scan(VfxExampleScene.Placement placement, ColorTest test) {
@@ -159,14 +167,14 @@ public final class VfxExamplesPixelCheck {
         }
 
         private boolean sample(int x, int y, ColorTest test) {
-            int pixel = rawPixel(x, y);
-            return test.matches(above(pixel >> 16 & 0xFF, backgroundRed),
-                    above(pixel >> 8 & 0xFF, backgroundGreen),
-                    above(pixel & 0xFF, backgroundBlue));
+            PixelColor color = rawPixel(x, y);
+            return test.matches(above(color.red(), background.red()),
+                    above(color.green(), background.green()),
+                    above(color.blue(), background.blue()));
         }
 
-        private static int above(int channel, int background) {
-            return Math.max(0, channel - background);
+        private static float above(float channel, float backgroundChannel) {
+            return Math.max(0.0f, channel - backgroundChannel);
         }
 
         private void report(int failures) {

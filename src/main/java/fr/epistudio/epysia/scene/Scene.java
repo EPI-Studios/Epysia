@@ -3,6 +3,7 @@ package fr.epistudio.epysia.scene;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.postfx.PostEffectStack;
+import org.joml.Vector3f;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -16,6 +17,10 @@ import java.util.UUID;
 
 public final class Scene implements IScene {
 
+    private static final float DEFAULT_CLEAR_RED = 0.10f;
+    private static final float DEFAULT_CLEAR_GREEN = 0.12f;
+    private static final float DEFAULT_CLEAR_BLUE = 0.18f;
+
     private final String name;
     private final List<GameObject> gameObjects = new ArrayList<>();
     private final List<GameObject> gameObjectsView = Collections.unmodifiableList(gameObjects);
@@ -23,6 +28,7 @@ public final class Scene implements IScene {
     private final Deque<GameObject> pendingAdditions = new ArrayDeque<>();
     private final Deque<GameObject> pendingRemovals = new ArrayDeque<>();
     private final PostEffectStack postEffects = new PostEffectStack();
+    private final Vector3f clearColor = defaultClearColor();
     private long modificationCount;
 
     public Scene(String name) {
@@ -122,6 +128,19 @@ public final class Scene implements IScene {
 
     public PostEffectStack postEffects() {
         return postEffects;
+    }
+
+    public static Vector3f defaultClearColor() {
+        return new Vector3f(DEFAULT_CLEAR_RED, DEFAULT_CLEAR_GREEN, DEFAULT_CLEAR_BLUE);
+    }
+
+    public Vector3f clearColor() {
+        return clearColor;
+    }
+
+    public Scene setClearColor(float red, float green, float blue) {
+        clearColor.set(red, green, blue);
+        return this;
     }
 
     public Optional<GameObject> findById(UUID id) {
