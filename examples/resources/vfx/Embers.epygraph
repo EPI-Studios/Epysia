@@ -66,7 +66,8 @@
       "x": 420.0,
       "y": 580.0,
       "values": {
-        "Soft Edge": 1.6
+        "Soft Edge": 0.9,
+        "Intensity": 3.2
       }
     }
   ],
