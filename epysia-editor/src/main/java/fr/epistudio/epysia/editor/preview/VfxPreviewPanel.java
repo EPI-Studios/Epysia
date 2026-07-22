@@ -47,6 +47,7 @@ public final class VfxPreviewPanel {
     private final Camera3D camera = new Camera3D();
     private final EpysiaEngine engine;
     private final float[] speed = {1.0f};
+    private final VfxShapeGizmo shapeGizmo = new VfxShapeGizmo();
 
     private MeshRenderSystem meshRenderSystem;
     private VfxRenderSystem vfxRenderSystem;
@@ -56,6 +57,7 @@ public final class VfxPreviewPanel {
     private boolean initialized;
     private boolean playing = true;
     private boolean stepRequested;
+    private boolean showShapes = true;
 
     public VfxPreviewPanel(Window window, OpenGlRenderBackend backend) {
         this.backend = backend;
@@ -70,7 +72,7 @@ public final class VfxPreviewPanel {
             advanceFrame();
             stepRequested = false;
         }
-        drawImage();
+        drawImage(openGraphFile);
         renderControls();
         renderStatistics();
     }
@@ -148,10 +150,17 @@ public final class VfxPreviewPanel {
         }
     }
 
-    private void drawImage() {
+    private void drawImage(Path openGraphFile) {
         float width = Math.max(1.0f, ImGui.getContentRegionAvailX());
         float height = width * ASPECT_HEIGHT_FACTOR;
         ImGui.image(target.glTextureName(), width, height, 0.0f, 1.0f, 1.0f, 0.0f);
+        if (!showShapes) {
+            return;
+        }
+        VfxShapeGizmo.PreviewRect rect = new VfxShapeGizmo.PreviewRect(
+                ImGui.getItemRectMinX(), ImGui.getItemRectMinY(), width, height);
+        emitter.getComponent(Transform3D.class).ifPresent(transform ->
+                shapeGizmo.render(openGraphFile, camera.viewProjection(), transform.worldMatrix(), rect));
     }
 
     private void renderControls() {
@@ -165,6 +174,10 @@ public final class VfxPreviewPanel {
         ImGui.sameLine();
         if (ImGui.button("Step")) {
             stepRequested = true;
+        }
+        ImGui.sameLine();
+        if (ImGui.checkbox("Shapes", showShapes)) {
+            showShapes = !showShapes;
         }
         ImGui.setNextItemWidth(-1.0f);
         ImGui.sliderFloat("##vfx-speed", speed, MINIMUM_SPEED, MAXIMUM_SPEED, "speed %.2fx");
