@@ -43,6 +43,11 @@ final class GraphVfxSettingEditor {
 
     private String openIdentifier = "";
     private String openLabel = "";
+    private float swatchScale = 1.0f;
+
+    void setSwatchScale(float scale) {
+        swatchScale = scale;
+    }
 
     boolean render(String identifier, NodeSetting setting, String stored, Consumer<String> onChanged) {
         return switch (setting.kind()) {
@@ -147,12 +152,13 @@ final class GraphVfxSettingEditor {
         visited.clear();
     }
 
-    private static void drawCurveSwatch(String identifier, VfxCurve curve) {
+    private void drawCurveSwatch(String identifier, VfxCurve curve) {
         ImDrawList drawList = beginSwatch(identifier);
-        float minX = ImGui.getItemRectMinX() + SWATCH_PADDING;
-        float maxX = ImGui.getItemRectMaxX() - SWATCH_PADDING;
-        float minY = ImGui.getItemRectMinY() + SWATCH_PADDING;
-        float maxY = ImGui.getItemRectMaxY() - SWATCH_PADDING;
+        float padding = SWATCH_PADDING * swatchScale;
+        float minX = ImGui.getItemRectMinX() + padding;
+        float maxX = ImGui.getItemRectMaxX() - padding;
+        float minY = ImGui.getItemRectMinY() + padding;
+        float maxY = ImGui.getItemRectMaxY() - padding;
         float span = Math.max(MINIMUM_SPAN, curve.maximumBound() - curve.minimumBound());
         float previousX = minX;
         float previousY = curveScreenY(curve, 0.0f, span, minY, maxY);
@@ -160,7 +166,7 @@ final class GraphVfxSettingEditor {
             float progress = index / (float) (CURVE_SAMPLES - 1);
             float x = minX + (maxX - minX) * progress;
             float y = curveScreenY(curve, progress, span, minY, maxY);
-            drawList.addLine(previousX, previousY, x, y, COLOR_CURVE, CURVE_THICKNESS);
+            drawList.addLine(previousX, previousY, x, y, COLOR_CURVE, CURVE_THICKNESS * swatchScale);
             previousX = x;
             previousY = y;
         }
@@ -173,12 +179,13 @@ final class GraphVfxSettingEditor {
         return maxY - (maxY - minY) * Math.clamp(normalized, 0.0f, 1.0f);
     }
 
-    private static void drawGradientSwatch(String identifier, VfxGradient gradient) {
+    private void drawGradientSwatch(String identifier, VfxGradient gradient) {
         ImDrawList drawList = beginSwatch(identifier);
-        float minX = ImGui.getItemRectMinX() + SWATCH_PADDING;
-        float maxX = ImGui.getItemRectMaxX() - SWATCH_PADDING;
-        float minY = ImGui.getItemRectMinY() + SWATCH_PADDING;
-        float maxY = ImGui.getItemRectMaxY() - SWATCH_PADDING;
+        float padding = SWATCH_PADDING * swatchScale;
+        float minX = ImGui.getItemRectMinX() + padding;
+        float maxX = ImGui.getItemRectMaxX() - padding;
+        float minY = ImGui.getItemRectMinY() + padding;
+        float maxY = ImGui.getItemRectMaxY() - padding;
         float stripeWidth = (maxX - minX) / GRADIENT_STRIPES;
         for (int index = 0; index < GRADIENT_STRIPES; index++) {
             Vector4f color = gradient.evaluate(index / (float) (GRADIENT_STRIPES - 1));
@@ -188,18 +195,19 @@ final class GraphVfxSettingEditor {
         endSwatch(drawList);
     }
 
-    private static ImDrawList beginSwatch(String identifier) {
-        ImGui.invisibleButton("##vfx-swatch-" + identifier, SWATCH_WIDTH, SWATCH_HEIGHT);
+    private ImDrawList beginSwatch(String identifier) {
+        ImGui.invisibleButton("##vfx-swatch-" + identifier,
+                SWATCH_WIDTH * swatchScale, SWATCH_HEIGHT * swatchScale);
         ImDrawList drawList = ImGui.getWindowDrawList();
         drawList.addRectFilled(ImGui.getItemRectMinX(), ImGui.getItemRectMinY(),
                 ImGui.getItemRectMaxX(), ImGui.getItemRectMaxY(), COLOR_BACKGROUND);
         return drawList;
     }
 
-    private static void endSwatch(ImDrawList drawList) {
+    private void endSwatch(ImDrawList drawList) {
         drawList.addRect(ImGui.getItemRectMinX(), ImGui.getItemRectMinY(),
                 ImGui.getItemRectMaxX(), ImGui.getItemRectMaxY(), COLOR_BORDER,
-                0.0f, 0, BORDER_THICKNESS);
+                0.0f, 0, BORDER_THICKNESS * swatchScale);
     }
 
     private static int packColor(Vector4f color) {
