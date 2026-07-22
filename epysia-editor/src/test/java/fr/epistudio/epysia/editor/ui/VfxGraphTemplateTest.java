@@ -44,10 +44,21 @@ class VfxGraphTemplateTest {
         VfxGraphCompiler compiler = new VfxGraphCompiler(shaderSource("particle_common.glsl"),
                 shaderSource("particle_shapes.glsl"), shaderSource("particle_noise.glsl"));
         VfxGraphCompiler.VfxCompiledSources sources = compiler.compile(asset, "NewVfxGraph.epygraph");
+        String spawnBody = mainBody(sources.spawnCompute());
+        String updateBody = mainBody(sources.updateCompute());
         assertEquals(45.0f, sources.spawnRatePerSecond());
-        assertTrue(sources.spawnCompute().contains("shapeCone"));
-        assertTrue(sources.updateCompute().contains("sampleGradient"));
-        assertTrue(sources.updateCompute().contains("sampleCurve"));
+        assertTrue(spawnBody.contains(
+                "emitterSpawnPosition(shapeCone(0.250000, 1.000000, 360.000000, 22.000000, spawnKey).position)"),
+                spawnBody);
+        assertTrue(updateBody.contains("sampleGradient(0, ageNormalized)"), updateBody);
+        assertTrue(updateBody.contains("sampleCurve(0, ageNormalized)"), updateBody);
+        assertTrue(updateBody.contains("simulationSpaceOffset()"), updateBody);
+    }
+
+    private static String mainBody(String source) {
+        int start = source.indexOf("void main()");
+        assertTrue(start >= 0, "compiled source has no main function");
+        return source.substring(start);
     }
 
     private static boolean hasPin(GraphNodeRegistry registry, GraphAsset asset, int nodeId,
