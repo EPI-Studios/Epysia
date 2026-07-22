@@ -42,7 +42,7 @@ public final class SkinnedAnimationPixelCheck {
     private static final int SAMPLE_Y = 180;
     private static final int SAMPLE_STRIDE = 2;
     private static final int WARMUP_FRAMES = 5;
-    private static final int MAXIMUM_FRAMES = 1200;
+    private static final long MAXIMUM_WAIT_NANOS = 30_000_000_000L;
     private static final int RED_DOMINANCE_MARGIN = 60;
     private static final float MINIMUM_CENTROID_SHIFT = 40.0f;
     private static final int TIP_JOINT_INDEX = 1;
@@ -158,6 +158,7 @@ public final class SkinnedAnimationPixelCheck {
         private final EpysiaEngine engine;
         private RenderBackend backend;
         private int frameCount;
+        private final long startedNanos = System.nanoTime();
         private float earlyCentroid = -1.0f;
 
         private PixelCheckSystem(EpysiaEngine engine) {
@@ -209,10 +210,10 @@ public final class SkinnedAnimationPixelCheck {
         }
 
         private void failIfExceededMaximumFrames() {
-            if (frameCount < MAXIMUM_FRAMES) {
+            if (System.nanoTime() - startedNanos < MAXIMUM_WAIT_NANOS) {
                 return;
             }
-            System.out.println("[skinned-animation-check] FAIL: exceeded maximum frames waiting for late sample");
+            System.out.println("[skinned-animation-check] FAIL: exceeded maximum wait for late sample");
             System.exit(1);
         }
 
