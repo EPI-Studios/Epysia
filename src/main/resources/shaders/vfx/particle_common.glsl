@@ -7,20 +7,20 @@ struct Particle {
     vec4 userExtra;
 };
 
-layout(std430, binding = 0) buffer ParticlePool {
+layout(std430, binding = 5) buffer ParticlePool {
     Particle particles[];
 };
 
-layout(std430, binding = 1) buffer AliveList {
+layout(std430, binding = 6) buffer AliveList {
     uint aliveIndices[];
 };
 
-layout(std430, binding = 2) buffer FreeList {
+layout(std430, binding = 7) buffer FreeList {
     int freeTop;
     uint freeEntries[];
 };
 
-layout(std430, binding = 3) buffer IndirectCommand {
+layout(std430, binding = 8) buffer IndirectCommand {
     uint indexCount;
     uint instanceCount;
     uint firstIndex;
