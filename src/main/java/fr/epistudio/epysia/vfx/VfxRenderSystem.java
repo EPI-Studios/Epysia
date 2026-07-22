@@ -204,6 +204,24 @@ public final class VfxRenderSystem implements RenderSystem {
         timeScale = Math.max(0.0f, scale);
     }
 
+    public String debugSnapshot(ParticleEffect effect) {
+        EffectResources resources = effectResources.get(effect);
+        if (backend == null || resources == null) {
+            return "no resources";
+        }
+        ByteBuffer indirect = BufferUtils.createByteBuffer(INDIRECT_BYTES);
+        backend.readBuffer(resources.indirectBuffer(), indirect, 0L);
+        ByteBuffer freeTop = BufferUtils.createByteBuffer(Integer.BYTES);
+        backend.readBuffer(resources.freeList(), freeTop, 0L);
+        ByteBuffer firstParticle = BufferUtils.createByteBuffer(PARTICLE_BYTES);
+        backend.readBuffer(resources.pool(), firstParticle, 0L);
+        return "indexCount=" + indirect.getInt(0) + " instanceCount=" + indirect.getInt(4)
+                + " freeTop=" + freeTop.getInt(0) + "/" + resources.poolSize()
+                + " particle0.age=" + firstParticle.getFloat(12)
+                + " particle0.lifetime=" + firstParticle.getFloat(28)
+                + " particle0.y=" + firstParticle.getFloat(4);
+    }
+
     public OptionalInt aliveCountOf(ParticleEffect effect) {
         EffectResources resources = effectResources.get(effect);
         if (backend == null || resources == null) {
@@ -355,8 +373,8 @@ public final class VfxRenderSystem implements RenderSystem {
         BufferHandle effectUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(EFFECT_UBO_BYTES)));
         return new EffectResources(pool, aliveList, freeList, indirect, effectUbo,
-                createComputeBindings(pool, aliveList, freeList, indirect, effectUbo),
-                createDrawBindings(pool, aliveList, freeList, indirect, effectUbo), poolSize);
+                createComputeBindings(pool, aliveList, freeList, indirect, effectUbo, poolSize),
+                createDrawBindings(pool, aliveList, freeList, indirect, effectUbo, poolSize), poolSize);
     }
 
     private static ByteBuffer initialFreeList(int poolSize) {
@@ -370,25 +388,25 @@ public final class VfxRenderSystem implements RenderSystem {
     }
 
     private BindingSetHandle createComputeBindings(BufferHandle pool, BufferHandle aliveList,
-            BufferHandle freeList, BufferHandle indirect, BufferHandle effectUbo) {
+            BufferHandle freeList, BufferHandle indirect, BufferHandle effectUbo, int poolSize) {
         return backend.createBindingSet(new BindingSetDescriptor(computeLayout, List.of(
-                new Binding(POOL_BINDING, StorageBufferBinding.whole(pool, 0L)),
-                new Binding(ALIVE_BINDING, StorageBufferBinding.whole(aliveList, 0L)),
-                new Binding(FREE_BINDING, StorageBufferBinding.whole(freeList, 0L)),
-                new Binding(INDIRECT_BINDING, StorageBufferBinding.whole(indirect, 0L)),
+                new Binding(POOL_BINDING, StorageBufferBinding.whole(pool, (long) poolSize * PARTICLE_BYTES)),
+                new Binding(ALIVE_BINDING, StorageBufferBinding.whole(aliveList, (long) poolSize * Integer.BYTES)),
+                new Binding(FREE_BINDING, StorageBufferBinding.whole(freeList, Integer.BYTES + (long) poolSize * Integer.BYTES)),
+                new Binding(INDIRECT_BINDING, StorageBufferBinding.whole(indirect, INDIRECT_BYTES)),
                 new Binding(1, UniformBufferBinding.whole(effectUbo, EFFECT_UBO_BYTES)))));
     }
 
     private BindingSetHandle createDrawBindings(BufferHandle pool, BufferHandle aliveList,
-            BufferHandle freeList, BufferHandle indirect, BufferHandle effectUbo) {
+            BufferHandle freeList, BufferHandle indirect, BufferHandle effectUbo, int poolSize) {
         return backend.createBindingSet(new BindingSetDescriptor(drawLayout, List.of(
                 new Binding(0, UniformBufferBinding.whole(meshRenderSystem.frameUniformBuffer(),
                         MeshShaderBindings.FRAME_UBO_SIZE)),
                 new Binding(1, UniformBufferBinding.whole(effectUbo, EFFECT_UBO_BYTES)),
-                new Binding(POOL_BINDING, StorageBufferBinding.whole(pool, 0L)),
-                new Binding(ALIVE_BINDING, StorageBufferBinding.whole(aliveList, 0L)),
-                new Binding(FREE_BINDING, StorageBufferBinding.whole(freeList, 0L)),
-                new Binding(INDIRECT_BINDING, StorageBufferBinding.whole(indirect, 0L)))));
+                new Binding(POOL_BINDING, StorageBufferBinding.whole(pool, (long) poolSize * PARTICLE_BYTES)),
+                new Binding(ALIVE_BINDING, StorageBufferBinding.whole(aliveList, (long) poolSize * Integer.BYTES)),
+                new Binding(FREE_BINDING, StorageBufferBinding.whole(freeList, Integer.BYTES + (long) poolSize * Integer.BYTES)),
+                new Binding(INDIRECT_BINDING, StorageBufferBinding.whole(indirect, INDIRECT_BYTES)))));
     }
 
     private void purgeStale(List<ParticleEffect> seen) {

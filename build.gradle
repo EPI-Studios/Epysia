@@ -99,6 +99,14 @@ tasks.register('runEmbersCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runEmbersDemo', JavaExec) {
+    group = 'application'
+    description = 'Opens a window playing the Embers VFX graph until closed.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.EmbersDemo'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
@@ -220,4 +228,12 @@ tasks.register('psyhouJar', ShadowJar) {
 
 tasks.withType(JavaExec).configureEach {
     systemProperties System.getProperties().findAll { it.key.toString().startsWith('epysia.') }
+}
+
+tasks.register('runEmbersScreenshot', JavaExec) {
+    group = 'verification'
+    description = 'Saves a PNG of the embers render for inspection.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.EmbersScreenshot'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
