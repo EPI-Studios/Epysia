@@ -91,6 +91,14 @@ tasks.register('runVfxGraphCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runEmbersCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders the Embers example graph and checks pixels.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.EmbersRealFileCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
