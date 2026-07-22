@@ -797,6 +797,7 @@ public final class GraphEditorView {
         handleContextMenu();
         renderNodeSearchPopup(graph);
         ImGui.endChild();
+        graph.vfxSettings.renderOverlay();
     }
 
     private Optional<GraphInstance> debugInstanceFor(Path path) {
@@ -1123,6 +1124,9 @@ public final class GraphEditorView {
         if (ShaderNodes.isShaderNode(node.typeKey()) && renderShaderSetting(graph, node, setting)) {
             return;
         }
+        if (renderVfxSetting(graph, node, setting)) {
+            return;
+        }
         switch (setting.kind()) {
             case KEY -> renderEnumSetting(graph, node, setting, keyNames());
             case MOUSE_BUTTON -> renderEnumSetting(graph, node, setting, mouseButtonNames());
@@ -1134,6 +1138,16 @@ public final class GraphEditorView {
             case TOGGLE -> renderToggleSetting(graph, node, setting);
             case ASSET_PATH, TEXT -> renderTextSetting(graph, node, setting);
         }
+    }
+
+    private boolean renderVfxSetting(OpenGraph graph, GraphNode node, NodeSetting setting) {
+        String identifier = "node-" + node.id() + "-" + setting.key();
+        String stored = GraphValues.asString(node.values()
+                .getOrDefault(setting.key(), setting.defaultValue()));
+        return graph.vfxSettings.render(identifier, setting, stored, value -> {
+            node.values().put(setting.key(), value);
+            graph.dirty = true;
+        });
     }
 
     private boolean renderShaderSetting(OpenGraph graph, GraphNode node, NodeSetting setting) {
@@ -1758,6 +1772,7 @@ public final class GraphEditorView {
         final Set<Integer> collapsedPreviews = new HashSet<>();
         final Set<Integer> selectedNodes = new HashSet<>();
         final Map<String, ImString> textBuffers = new HashMap<>();
+        final GraphVfxSettingEditor vfxSettings = new GraphVfxSettingEditor();
         boolean dirty;
         Path graphPath = Path.of("");
 
