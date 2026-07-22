@@ -243,7 +243,7 @@ public final class VfxRenderSystem implements RenderSystem {
         compiled.ifPresent(pipelines -> applyCompiled(effect, resources, pipelines));
         EffectStages stages = stagesOf(compiled);
         runPrewarm(effect, transform, resources, stages);
-        simulateStep(effect, transform, resources, stages, delta);
+        simulateStep(effect, transform, resources, stages, effect.settledDeltaSeconds(delta));
         frame.submit(RenderPasses.TRANSPARENT_3D,
                 DrawCommand.indirect(stages.draw(), quadMesh, resources.drawBindings(),
                         Long.MAX_VALUE, resources.indirectBuffer()));
