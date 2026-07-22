@@ -54,6 +54,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -77,6 +78,7 @@ public final class VfxRenderSystem implements RenderSystem {
     private final Vector3f emitterPosition = new Vector3f();
     private final Set<ParticleEffect> warnedMissingTransform =
             Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<ParticleEffect, String> checkedBurstFit = new IdentityHashMap<>();
 
     private RenderBackend backend;
     private PipelineHandle resetPipeline;
@@ -183,6 +185,7 @@ public final class VfxRenderSystem implements RenderSystem {
                 continue;
             }
             seen.add(effect);
+            warnBurstsThatCannotFire(gameObject, effect);
             simulateAndSubmit(effect, transform, delta, frame);
         }
         purgeStale(seen);
@@ -193,6 +196,28 @@ public final class VfxRenderSystem implements RenderSystem {
             logger.warn("[VfxRenderSystem] Particle Effect on '" + gameObject.name()
                     + "' needs a Transform3D and will not simulate without one.");
         }
+    }
+
+    private void warnBurstsThatCannotFire(GameObject gameObject, ParticleEffect effect) {
+        List<ParticleBurst> overflowing = effect.burstsExceedingDuration();
+        String signature = ParticleBurst.encode(overflowing) + "@" + effect.durationSeconds();
+        String previous = checkedBurstFit.getOrDefault(effect, "");
+        checkedBurstFit.put(effect, signature);
+        if (overflowing.isEmpty() || signature.equals(previous)) {
+            return;
+        }
+        for (ParticleBurst burst : overflowing) {
+            logger.warn("[VfxRenderSystem] Particle Effect on '" + gameObject.name() + "' "
+                    + describeTruncatedBurst(burst, effect.durationSeconds()));
+        }
+    }
+
+    private static String describeTruncatedBurst(ParticleBurst burst, float durationSeconds) {
+        return String.format(Locale.ROOT,
+                "declares a burst at %.2fs repeating %d times every %.2fs, which needs a duration of %.2fs. "
+                        + "Only %d of those will fire inside the %.2fs duration; raise the duration or lower the cycles.",
+                burst.timeSeconds(), burst.repeatCount(), burst.effectiveIntervalSeconds(),
+                burst.requiredDurationSeconds(), burst.repeatsWithin(durationSeconds), durationSeconds);
     }
 
     private float advanceClock() {
@@ -430,6 +455,7 @@ public final class VfxRenderSystem implements RenderSystem {
             }
             entry.getValue().destroy();
             iterator.remove();
+            checkedBurstFit.remove(effect);
             Optional.ofNullable(compiledGraphs.remove(effect)).ifPresent(this::destroyCompiled);
         }
     }

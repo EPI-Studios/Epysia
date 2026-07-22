@@ -48,6 +48,39 @@ class ParticleEffectEmissionTest {
     }
 
     @Test
+    void aBurstTrainLongerThanTheDurationIsReportedInsteadOfTruncatedInSilence() {
+        ParticleEffect effect = new ParticleEffect()
+                .setDuration(2.0f)
+                .setBursts(List.of(new ParticleBurst(0.3f, 220, 64, 0.3f)));
+
+        List<ParticleBurst> overflowing = effect.burstsExceedingDuration();
+
+        assertEquals(1, overflowing.size());
+        assertEquals(6, overflowing.getFirst().repeatsWithin(effect.durationSeconds()));
+        assertEquals(19.2f, overflowing.getFirst().requiredDurationSeconds(), 1.0e-4f);
+
+        ParticleEffect honest = new ParticleEffect()
+                .setDuration(0.3f * 7)
+                .setBursts(List.of(new ParticleBurst(0.3f, 220, 7, 0.3f)));
+
+        assertEquals(List.of(), honest.burstsExceedingDuration());
+    }
+
+    @Test
+    void aFrameLongerThanTheCycleStillFiresTheBurstsOfEveryCycleItCrossed() {
+        ParticleEffect effect = new ParticleEffect()
+                .setEmissionRate(0.0f)
+                .setDistanceRate(0.0f)
+                .setDuration(0.2f)
+                .setLooping(true)
+                .setBursts(List.of(ParticleBurst.at(0.05f, 5)));
+
+        int spawned = effect.advanceEmission(0.5f, new Vector3f());
+
+        assertEquals(15, spawned);
+    }
+
+    @Test
     void prewarmEnabledAfterTheFirstFrameStillRuns() {
         ParticleEffect effect = new ParticleEffect().setDuration(1.0f);
 

@@ -16,16 +16,44 @@ public record ParticleBurst(float timeSeconds, int count, int cycles, float inte
     }
 
     public int firingsBetween(float fromSecondsExclusive, float toSecondsInclusive) {
-        int repeats = Math.max(1, cycles);
-        float interval = intervalSeconds > 0.0f ? intervalSeconds : 1.0f;
         int firings = 0;
-        for (int cycle = 0; cycle < repeats; cycle++) {
-            float fireTime = timeSeconds + cycle * interval;
+        for (int cycle = 0; cycle < repeatCount(); cycle++) {
+            float fireTime = fireTimeSeconds(cycle);
             if (fireTime > fromSecondsExclusive && fireTime <= toSecondsInclusive) {
                 firings += Math.max(0, count);
             }
         }
         return firings;
+    }
+
+    public int repeatCount() {
+        return Math.max(1, cycles);
+    }
+
+    public float effectiveIntervalSeconds() {
+        return intervalSeconds > 0.0f ? intervalSeconds : 1.0f;
+    }
+
+    public float fireTimeSeconds(int cycle) {
+        return timeSeconds + cycle * effectiveIntervalSeconds();
+    }
+
+    public float requiredDurationSeconds() {
+        return fireTimeSeconds(repeatCount() - 1);
+    }
+
+    public int repeatsWithin(float windowSeconds) {
+        int fitting = 0;
+        for (int cycle = 0; cycle < repeatCount(); cycle++) {
+            if (fireTimeSeconds(cycle) <= windowSeconds) {
+                fitting++;
+            }
+        }
+        return fitting;
+    }
+
+    public boolean fitsWithin(float windowSeconds) {
+        return repeatsWithin(windowSeconds) == repeatCount();
     }
 
     public static String encode(List<ParticleBurst> bursts) {
