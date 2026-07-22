@@ -16,6 +16,7 @@ import fr.epistudio.epysia.editor.play.EmbeddedPlaySession;
 import fr.epistudio.epysia.editor.play.PlayController;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.preview.ShaderGraphPreviewService;
+import fr.epistudio.epysia.editor.preview.VfxPreviewPanel;
 import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.editor.runtime.EditorCamera;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
@@ -140,6 +141,7 @@ public final class EditorView implements FrameView {
     private final ThumbnailCache thumbnailCache;
     private final MeshThumbnailer meshThumbnailer;
     private final ShaderGraphPreviewService shaderGraphPreviews;
+    private final VfxPreviewPanel vfxPreviewPanel;
     private EditorPreferences preferences;
     private SceneDocument playedDocument;
     private SceneDocument pendingCloseDocument;
@@ -176,8 +178,9 @@ public final class EditorView implements FrameView {
         this.importPipeline = new AssetImportPipeline(buildImporterRegistry(componentRegistry));
         this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::onScriptFileSaved);
         this.shaderGraphPreviews = new ShaderGraphPreviewService(sceneHost.window(), sceneHost.backend());
+        this.vfxPreviewPanel = new VfxPreviewPanel(sceneHost.window(), sceneHost.backend());
         this.graphEditorView = new GraphEditorView(componentRegistry, toasts, active,
-                thumbnailCache, this::onShaderGraphGenerated, shaderGraphPreviews,
+                thumbnailCache, this::onShaderGraphGenerated, shaderGraphPreviews, vfxPreviewPanel,
                 new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
                 this::onShaderNodePreviewsToggled);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,

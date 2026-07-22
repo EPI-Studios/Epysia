@@ -21,6 +21,7 @@ import fr.epistudio.epysia.graph.NodeDefinition;
 import fr.epistudio.epysia.graph.NodeSetting;
 import fr.epistudio.epysia.editor.preview.NodePreviewCache;
 import fr.epistudio.epysia.editor.preview.ShaderGraphPreviewService;
+import fr.epistudio.epysia.editor.preview.VfxPreviewPanel;
 import fr.epistudio.epysia.graph.PinDefinition;
 import fr.epistudio.epysia.render.mesh.UploadedMesh;
 import fr.epistudio.epysia.graph.PinType;
@@ -133,6 +134,7 @@ public final class GraphEditorView {
     private final ThumbnailCache thumbnails;
     private final Consumer<Path> onGeneratedShaderSaved;
     private final ShaderGraphPreviewService previews;
+    private final VfxPreviewPanel vfxPreview;
     private final AssetPicker assetPicker;
     private final BooleanSupplier nodePreviewsEnabled;
     private final Consumer<Boolean> onNodePreviewsToggled;
@@ -159,14 +161,15 @@ public final class GraphEditorView {
     public GraphEditorView(ComponentRegistry componentRegistry, Notifier notifier,
                            Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails,
                            Consumer<Path> onGeneratedShaderSaved, ShaderGraphPreviewService previews,
-                           AssetPicker assetPicker, BooleanSupplier nodePreviewsEnabled,
-                           Consumer<Boolean> onNodePreviewsToggled) {
+                           VfxPreviewPanel vfxPreview, AssetPicker assetPicker,
+                           BooleanSupplier nodePreviewsEnabled, Consumer<Boolean> onNodePreviewsToggled) {
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
         this.activeDocument = activeDocument;
         this.thumbnails = thumbnails;
         this.onGeneratedShaderSaved = onGeneratedShaderSaved;
         this.previews = previews;
+        this.vfxPreview = vfxPreview;
         this.assetPicker = assetPicker;
         this.nodePreviewsEnabled = nodePreviewsEnabled;
         this.onNodePreviewsToggled = onNodePreviewsToggled;
@@ -241,6 +244,7 @@ public final class GraphEditorView {
 
     public void shutdown() {
         previews.shutdown();
+        vfxPreview.shutdown();
     }
 
     private void ensureContext() {
@@ -295,7 +299,7 @@ public final class GraphEditorView {
             sidePanelWidth = renderVerticalSplitter("##graph-side-splitter", sidePanelWidth, true);
             ImGui.sameLine();
         }
-        boolean previewVisible = graph.asset.kind().isShader() && previewPanelVisible;
+        boolean previewVisible = hasPreview(graph.asset.kind()) && previewPanelVisible;
         if (!previewVisible) {
             renderCanvas(path, graph);
             return;
@@ -306,14 +310,29 @@ public final class GraphEditorView {
         ImGui.sameLine();
         previewPanelWidth = renderVerticalSplitter("##graph-preview-splitter", previewPanelWidth, false);
         ImGui.sameLine();
+        if (graph.asset.kind() == GraphKind.VFX) {
+            renderVfxPreviewPanel(path);
+            return;
+        }
         renderPreviewPanel(path, graph);
+    }
+
+    private static boolean hasPreview(GraphKind kind) {
+        return kind.isShader() || kind == GraphKind.VFX;
+    }
+
+    private void renderVfxPreviewPanel(Path path) {
+        ImGui.beginChild("##graph-vfx-preview", 0.0f, 0.0f, true);
+        ImGui.textDisabled("Effect Preview");
+        vfxPreview.render(path);
+        ImGui.endChild();
     }
 
     private void renderPanelToggles(OpenGraph graph) {
         if (ImGui.smallButton(sidePanelVisible ? "< Panel" : "> Panel")) {
             sidePanelVisible = !sidePanelVisible;
         }
-        if (graph.asset.kind().isShader()) {
+        if (hasPreview(graph.asset.kind())) {
             ImGui.sameLine();
             if (ImGui.smallButton(previewPanelVisible ? "Preview >" : "Preview <")) {
                 previewPanelVisible = !previewPanelVisible;
