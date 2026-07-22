@@ -17,6 +17,7 @@ public final class ParticleEffect extends Component {
 
     private static final float PREWARM_STEP_SECONDS = 1.0f / 30.0f;
     private static final int MAXIMUM_PREWARM_STEPS = 240;
+    private static final int PREWARM_SETTLE_FRAMES = 4;
 
     public enum SimulationSpace {
         LOCAL,
@@ -50,6 +51,7 @@ public final class ParticleEffect extends Component {
     private List<ParticleBurst> decodedBursts = List.of();
     private String decodedBurstsSource = "";
     private boolean prewarmDone;
+    private int settleFrames;
     private long totalSpawned;
 
     public String graphPath() {
@@ -200,6 +202,7 @@ public final class ParticleEffect extends Component {
             return 0;
         }
         prewarmDone = true;
+        settleFrames = PREWARM_SETTLE_FRAMES;
         return Math.min(MAXIMUM_PREWARM_STEPS, (int) Math.ceil(durationSeconds() / PREWARM_STEP_SECONDS));
     }
 
@@ -207,9 +210,18 @@ public final class ParticleEffect extends Component {
         return PREWARM_STEP_SECONDS;
     }
 
+    public float settledDeltaSeconds(float deltaSeconds) {
+        if (settleFrames <= 0) {
+            return deltaSeconds;
+        }
+        settleFrames--;
+        return Math.min(deltaSeconds, PREWARM_STEP_SECONDS);
+    }
+
     public void restart() {
         emission.restart();
         prewarmDone = false;
+        settleFrames = 0;
         totalSpawned = 0L;
     }
 
