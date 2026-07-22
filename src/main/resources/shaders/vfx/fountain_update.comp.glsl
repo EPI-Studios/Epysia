@@ -21,7 +21,7 @@ void main() {
         return;
     }
     vec3 velocity = particle.velocityLifetime.xyz + vec3(0.0, -4.0, 0.0) * delta;
-    vec3 position = particle.positionAge.xyz + velocity * delta;
+    vec3 position = particle.positionAge.xyz + velocity * delta + simulationSpaceOffset();
     particles[slot].positionAge = vec4(position, age);
     particles[slot].velocityLifetime.xyz = velocity;
     float normalizedAge = age / particle.velocityLifetime.w;
