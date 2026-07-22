@@ -1,0 +1,169 @@
+{
+  "formatVersion": 1,
+  "kind": "VFX",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "vfx.output.spawnRate",
+      "x": 900.0,
+      "y": 40.0,
+      "values": {
+        "Rate": 260.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "vfx.output.particle",
+      "x": 900.0,
+      "y": 180.0,
+      "values": {
+        "Color": [1.0, 0.92, 0.6, 1.0],
+        "Size": 0.16
+      }
+    },
+    {
+      "id": 3,
+      "type": "vfx.output.update",
+      "x": 900.0,
+      "y": 520.0,
+      "values": {}
+    },
+    {
+      "id": 4,
+      "type": "vfx.output.render",
+      "x": 900.0,
+      "y": 820.0,
+      "values": {
+        "Soft Edge": 0.9,
+        "Intensity": 3.0
+      }
+    },
+    {
+      "id": 5,
+      "type": "vfx.shape",
+      "x": 40.0,
+      "y": 60.0,
+      "values": {
+        "shape": "Cone",
+        "radius": 0.22,
+        "radiusThickness": 1.0,
+        "arcDegrees": 360.0,
+        "angleDegrees": 16.0,
+        "halfExtentsX": 0.5,
+        "halfExtentsY": 0.5,
+        "halfExtentsZ": 0.5,
+        "height": 1.0,
+        "edgeLength": 1.0
+      }
+    },
+    {
+      "id": 8,
+      "type": "vfx.randomRange",
+      "x": 520.0,
+      "y": 320.0,
+      "values": {
+        "minimum": 1.0,
+        "maximum": 1.8
+      }
+    },
+    {
+      "id": 9,
+      "type": "vfx.randomRange",
+      "x": 40.0,
+      "y": 420.0,
+      "values": {
+        "minimum": 1.9,
+        "maximum": 3.1
+      }
+    },
+    {
+      "id": 10,
+      "type": "vfx.math.multiply",
+      "x": 520.0,
+      "y": 440.0,
+      "values": {}
+    },
+    {
+      "id": 11,
+      "type": "vfx.particleAgeNormalized",
+      "x": 40.0,
+      "y": 620.0,
+      "values": {}
+    },
+    {
+      "id": 12,
+      "type": "vfx.value.gradient",
+      "x": 520.0,
+      "y": 620.0,
+      "values": {
+        "gradient": "gradient1:0.0,1.0,0.93,0.66;0.12,1.0,0.72,0.24;0.4,0.98,0.36,0.07;0.75,0.72,0.12,0.03;1.0,0.22,0.02,0.01:0.0,0.9;0.45,0.7;1.0,0.0"
+      }
+    },
+    {
+      "id": 13,
+      "type": "vfx.value.curve",
+      "x": 520.0,
+      "y": 800.0,
+      "values": {
+        "curve": "curve1:0.0,1.0:0.0,0.55,2.6,2.6;0.14,1.0,0.0,0.0;1.0,0.08,-0.9,-0.9",
+        "minimum": 0.05,
+        "maximum": 0.3
+      }
+    },
+    {
+      "id": 14,
+      "type": "vfx.particlePosition",
+      "x": 40.0,
+      "y": 980.0,
+      "values": {}
+    },
+    {
+      "id": 15,
+      "type": "vfx.noise",
+      "x": 300.0,
+      "y": 980.0,
+      "values": {
+        "mode": "Curl",
+        "frequency": 1.8,
+        "octaves": 4,
+        "strength": 0.9
+      }
+    },
+    {
+      "id": 16,
+      "type": "vfx.value.constant",
+      "x": 300.0,
+      "y": 1140.0,
+      "values": {
+        "valueX": 0.0,
+        "valueY": 3.2,
+        "valueZ": 0.0,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 17,
+      "type": "vfx.math.add",
+      "x": 640.0,
+      "y": 1040.0,
+      "values": {}
+    }
+  ],
+  "edges": [
+    {"fromNode": 5, "fromPin": "Position", "toNode": 2, "toPin": "Position"},
+    {"fromNode": 5, "fromPin": "Direction", "toNode": 10, "toPin": "A"},
+    {"fromNode": 9, "fromPin": "Result", "toNode": 10, "toPin": "B"},
+    {"fromNode": 10, "fromPin": "Result", "toNode": 2, "toPin": "Velocity"},
+    {"fromNode": 8, "fromPin": "Result", "toNode": 2, "toPin": "Lifetime"},
+    {"fromNode": 11, "fromPin": "Result", "toNode": 12, "toPin": "Time"},
+    {"fromNode": 12, "fromPin": "Result", "toNode": 3, "toPin": "Color"},
+    {"fromNode": 11, "fromPin": "Result", "toNode": 13, "toPin": "Time"},
+    {"fromNode": 13, "fromPin": "Result", "toNode": 3, "toPin": "Size"},
+    {"fromNode": 14, "fromPin": "Result", "toNode": 15, "toPin": "Position"},
+    {"fromNode": 16, "fromPin": "Result", "toNode": 17, "toPin": "A"},
+    {"fromNode": 15, "fromPin": "Result", "toNode": 17, "toPin": "B"},
+    {"fromNode": 17, "fromPin": "Result", "toNode": 3, "toPin": "Velocity"}
+  ],
+  "variables": []
+}
