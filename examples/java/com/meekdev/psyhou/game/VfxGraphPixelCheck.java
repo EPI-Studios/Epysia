@@ -21,6 +21,7 @@ import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.vfx.ParticleEffect;
+import org.joml.Vector4f;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -65,6 +66,8 @@ public final class VfxGraphPixelCheck {
         GraphNode spawnRate = asset.addNode(VfxNodes.OUTPUT_SPAWN_RATE, 0.0f, 0.0f);
         spawnRate.values().put(VfxNodes.RATE_PIN, 200.0f);
         GraphNode particleOutput = asset.addNode(VfxNodes.OUTPUT_PARTICLE, 0.0f, 0.0f);
+        particleOutput.values().put(VfxNodes.COLOR_PIN, new Vector4f(1.0f, 0.35f, 0.08f, 1.0f));
+        particleOutput.values().put(VfxNodes.SIZE_PIN, 0.2f);
         GraphNode cone = asset.addNode(VfxNodes.CONE_DIRECTION, 0.0f, 0.0f);
         cone.values().put(VfxNodes.ANGLE_SETTING, 30.0f);
         asset.edges().add(new GraphEdge(cone.id(), VfxNodes.RESULT_PIN,
