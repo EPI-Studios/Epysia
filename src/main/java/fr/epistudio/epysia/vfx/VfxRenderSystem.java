@@ -72,7 +72,7 @@ public final class VfxRenderSystem implements RenderSystem {
     private final MeshRenderSystem meshRenderSystem;
     private final Logger logger;
     private final Map<ParticleEffect, VfxEffectResources> effectResources = new IdentityHashMap<>();
-    private final Map<ParticleEffect, CompiledGraphPipelines> compiledGraphs = new IdentityHashMap<>();
+    private final Map<ParticleEffect, CompiledGraph> compiledGraphs = new IdentityHashMap<>();
     private final ByteBuffer effectUboScratch = BufferUtils.createByteBuffer(EFFECT_UBO_BYTES);
     private final Vector3f emitterPosition = new Vector3f();
     private final Set<ParticleEffect> warnedMissingTransform =
@@ -303,19 +303,22 @@ public final class VfxRenderSystem implements RenderSystem {
         }
         Path graphFile = Path.of(effect.graphPath());
         long modifiedMillis = modifiedMillisOf(graphFile);
-        CompiledGraphPipelines existing = compiledGraphs.get(effect);
-        if (existing != null && existing.modifiedMillis() == modifiedMillis) {
-            return existing.failed() ? Optional.empty() : Optional.of(existing);
+        Optional<CompiledGraph> existing = Optional.ofNullable(compiledGraphs.get(effect));
+        Optional<CompiledGraph> reusable = existing.filter(graph -> graph.modifiedMillis() == modifiedMillis);
+        if (reusable.isPresent()) {
+            return reusable.flatMap(VfxRenderSystem::pipelinesOf);
         }
-        if (existing != null) {
-            destroyCompiled(existing);
-        }
-        CompiledGraphPipelines rebuilt = compileGraph(graphFile, modifiedMillis);
+        existing.ifPresent(this::destroyCompiled);
+        CompiledGraph rebuilt = compileGraph(graphFile, modifiedMillis);
         compiledGraphs.put(effect, rebuilt);
-        return rebuilt.failed() ? Optional.empty() : Optional.of(rebuilt);
+        return pipelinesOf(rebuilt);
     }
 
-    private CompiledGraphPipelines compileGraph(Path graphFile, long modifiedMillis) {
+    private static Optional<CompiledGraphPipelines> pipelinesOf(CompiledGraph graph) {
+        return graph instanceof CompiledGraphPipelines pipelines ? Optional.of(pipelines) : Optional.empty();
+    }
+
+    private CompiledGraph compileGraph(Path graphFile, long modifiedMillis) {
         try {
             GraphAsset asset = new GraphJsonCodec().readFromFile(graphFile);
             VfxGraphCompiler.VfxCompiledSources sources = new VfxGraphCompiler(
@@ -330,11 +333,11 @@ public final class VfxRenderSystem implements RenderSystem {
             PipelineHandle draw = createGraphBillboardPipeline(sources.fragmentBody());
             logger.info("[VfxRenderSystem] VFX graph compiled: " + graphFile.getFileName()
                     + " (rate " + sources.spawnRatePerSecond() + "/s)");
-            return new CompiledGraphPipelines(modifiedMillis, false,
-                    sources, spawn, update, draw, VfxLutPack.build(asset));
+            return new CompiledGraphPipelines(modifiedMillis, sources, spawn, update, draw,
+                    VfxLutPack.build(asset));
         } catch (RuntimeException | IOException error) {
             logger.error("[VfxRenderSystem] VFX graph failed to compile: " + graphFile, error);
-            return new CompiledGraphPipelines(modifiedMillis, true, null, null, null, null, null);
+            return new FailedGraphCompile(modifiedMillis);
         }
     }
 
@@ -357,13 +360,13 @@ public final class VfxRenderSystem implements RenderSystem {
                 billboardState(), drawLayout));
     }
 
-    private void destroyCompiled(CompiledGraphPipelines compiled) {
-        if (compiled.failed()) {
+    private void destroyCompiled(CompiledGraph compiled) {
+        if (!(compiled instanceof CompiledGraphPipelines pipelines)) {
             return;
         }
-        backend.destroy(compiled.spawn());
-        backend.destroy(compiled.update());
-        backend.destroy(compiled.draw());
+        backend.destroy(pipelines.spawn());
+        backend.destroy(pipelines.update());
+        backend.destroy(pipelines.draw());
     }
 
     private static long modifiedMillisOf(Path file) {
@@ -374,10 +377,17 @@ public final class VfxRenderSystem implements RenderSystem {
         }
     }
 
-    private record CompiledGraphPipelines(long modifiedMillis, boolean failed,
+    private sealed interface CompiledGraph {
+        long modifiedMillis();
+    }
+
+    private record CompiledGraphPipelines(long modifiedMillis,
                                           VfxGraphCompiler.VfxCompiledSources sources,
                                           PipelineHandle spawn, PipelineHandle update, PipelineHandle draw,
-                                          VfxLutPack lutPack) {
+                                          VfxLutPack lutPack) implements CompiledGraph {
+    }
+
+    private record FailedGraphCompile(long modifiedMillis) implements CompiledGraph {
     }
 
     private static int groupsFor(int threads) {
@@ -420,10 +430,7 @@ public final class VfxRenderSystem implements RenderSystem {
             }
             entry.getValue().destroy();
             iterator.remove();
-            CompiledGraphPipelines compiled = compiledGraphs.remove(effect);
-            if (compiled != null) {
-                destroyCompiled(compiled);
-            }
+            Optional.ofNullable(compiledGraphs.remove(effect)).ifPresent(this::destroyCompiled);
         }
     }
 
@@ -433,7 +440,7 @@ public final class VfxRenderSystem implements RenderSystem {
             resources.destroy();
         }
         effectResources.clear();
-        for (CompiledGraphPipelines compiled : compiledGraphs.values()) {
+        for (CompiledGraph compiled : compiledGraphs.values()) {
             destroyCompiled(compiled);
         }
         compiledGraphs.clear();

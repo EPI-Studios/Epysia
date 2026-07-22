@@ -19,10 +19,11 @@ final class ParticleEmission {
 
     int advance(EmissionSettings settings, float deltaSeconds, Vector3fc emitterPosition) {
         trackMotion(emitterPosition);
+        boolean alreadyFinished = started && isFinished(settings);
         float previousCycleSeconds = started ? cycleSeconds : -1.0f;
         started = true;
         boolean wrapped = advanceClock(settings, deltaSeconds);
-        if (isFinished(settings)) {
+        if (alreadyFinished) {
             return 0;
         }
         return rateEmission(settings.emissionRate() * deltaSeconds)
@@ -116,8 +117,15 @@ final class ParticleEmission {
         return frameMotion;
     }
 
+    void suspend() {
+        hasLastEmitterPosition = false;
+        frameMotion.zero();
+    }
+
     void restart() {
         started = false;
+        hasLastEmitterPosition = false;
+        frameMotion.zero();
         cycleSeconds = 0.0f;
         elapsedSeconds = 0.0f;
         spawnAccumulator = 0.0f;

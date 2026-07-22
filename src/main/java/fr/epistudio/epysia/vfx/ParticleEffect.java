@@ -165,6 +165,7 @@ public final class ParticleEffect extends Component {
 
     public int advanceEmission(float deltaSeconds, Vector3fc emitterWorldPosition) {
         if (!playing) {
+            emission.suspend();
             return 0;
         }
         return emission.advance(emissionSettings(), deltaSeconds, emitterWorldPosition);
@@ -195,11 +196,7 @@ public final class ParticleEffect extends Component {
     }
 
     public int consumePrewarmSteps() {
-        if (!prewarm) {
-            prewarmDone = true;
-            return 0;
-        }
-        if (prewarmDone || !playing) {
+        if (!prewarm || prewarmDone || !playing) {
             return 0;
         }
         prewarmDone = true;
