@@ -91,6 +91,14 @@ tasks.register('runVfxGraphCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runVfxShaderLibraryCheck', JavaExec) {
+    group = 'verification'
+    description = 'Compiles the VFX shape and noise GLSL library into a compute pipeline.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.VfxShaderLibraryCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runEmbersCheck', JavaExec) {
     group = 'verification'
     description = 'Renders the Embers example graph and checks pixels.'
