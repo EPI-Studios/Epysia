@@ -6,6 +6,8 @@ import fr.epistudio.epysia.graph.GraphEdge;
 import fr.epistudio.epysia.graph.GraphKind;
 import fr.epistudio.epysia.graph.GraphNode;
 import fr.epistudio.epysia.graph.GraphValues;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import java.util.Locale;
 import java.util.Optional;
@@ -175,11 +177,29 @@ public final class VfxGraphCompiler {
                                  String fallback, VfxStage stage) {
         Optional<GraphEdge> edge = asset.edgeInto(outputNode.id(), pin);
         if (edge.isEmpty()) {
-            return fallback;
+            return literalOrFallback(outputNode, pin, fallback);
         }
         GraphNode source = asset.findNode(edge.get().fromNode()).orElseThrow(() ->
                 new EpysiaException("VFX graph edge references a missing node."));
         return emitSource(source, stage);
+    }
+
+    private static String literalOrFallback(GraphNode outputNode, String pin, String fallback) {
+        Object value = outputNode.values().get(pin);
+        if (value == null) {
+            return fallback;
+        }
+        if (fallback.startsWith("vec4")) {
+            Vector4f vector = GraphValues.asVector4(value);
+            return "vec4(%s, %s, %s, %s)".formatted(floatText(vector.x), floatText(vector.y),
+                    floatText(vector.z), floatText(vector.w));
+        }
+        if (fallback.startsWith("vec3") || fallback.contains(".xyz") || fallback.startsWith("coneDirection")
+                || fallback.startsWith("particle.velocityLifetime.xyz")) {
+            Vector3f vector = GraphValues.asVector(value);
+            return "vec3(%s, %s, %s)".formatted(floatText(vector.x), floatText(vector.y), floatText(vector.z));
+        }
+        return floatText(GraphValues.asFloat(value));
     }
 
     private String emitSource(GraphNode source, VfxStage stage) {
@@ -217,8 +237,10 @@ public final class VfxGraphCompiler {
         float directionY = settingFloat(source, VfxNodes.DIRECTION_Y_SETTING, 1.0f);
         float directionZ = settingFloat(source, VfxNodes.DIRECTION_Z_SETTING, 0.0f);
         float angle = settingFloat(source, VfxNodes.ANGLE_SETTING, 25.0f);
-        return "coneDirection(normalize(vec3(%s, %s, %s)), %s, spawnKey)".formatted(
-                floatText(directionX), floatText(directionY), floatText(directionZ), floatText(angle));
+        float speed = settingFloat(source, VfxNodes.SPEED_SETTING, 1.0f);
+        return "coneDirection(normalize(vec3(%s, %s, %s)), %s, spawnKey) * %s".formatted(
+                floatText(directionX), floatText(directionY), floatText(directionZ),
+                floatText(angle), floatText(speed));
     }
 
     private static void requireSpawnStage(VfxStage stage, String nodeName) {

@@ -39,6 +39,7 @@ public final class VfxNodes {
     public static final String DIRECTION_Y_SETTING = "directionY";
     public static final String DIRECTION_Z_SETTING = "directionZ";
     public static final String ANGLE_SETTING = "angleDegrees";
+    public static final String SPEED_SETTING = "speed";
 
     public static final String CATEGORY_OUTPUT = "VFX Output";
     public static final String CATEGORY_PARTICLE = "VFX Particle";
@@ -97,7 +98,8 @@ public final class VfxNodes {
                 List.of(new NodeSetting(DIRECTION_X_SETTING, SettingKind.NUMBER, 0.0f),
                         new NodeSetting(DIRECTION_Y_SETTING, SettingKind.NUMBER, 1.0f),
                         new NodeSetting(DIRECTION_Z_SETTING, SettingKind.NUMBER, 0.0f),
-                        new NodeSetting(ANGLE_SETTING, SettingKind.NUMBER, 25.0f))));
+                        new NodeSetting(ANGLE_SETTING, SettingKind.NUMBER, 25.0f),
+                        new NodeSetting(SPEED_SETTING, SettingKind.NUMBER, 2.5f))));
     }
 
     private static NodeDefinition node(String typeKey, String displayName, String category,

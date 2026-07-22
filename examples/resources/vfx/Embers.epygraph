@@ -1,0 +1,79 @@
+{
+  "formatVersion": 1,
+  "kind": "VFX",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "vfx.output.spawnRate",
+      "x": 420.0,
+      "y": 40.0,
+      "values": {
+        "Rate": 180.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "vfx.output.particle",
+      "x": 420.0,
+      "y": 170.0,
+      "values": {
+        "Color": [1.0, 0.42, 0.08, 1.0]
+      }
+    },
+    {
+      "id": 3,
+      "type": "vfx.coneDirection",
+      "x": 120.0,
+      "y": 150.0,
+      "values": {
+        "directionX": 0.0,
+        "directionY": 1.0,
+        "directionZ": 0.0,
+        "angleDegrees": 32.0,
+        "speed": 3.2
+      }
+    },
+    {
+      "id": 4,
+      "type": "vfx.randomRange",
+      "x": 120.0,
+      "y": 280.0,
+      "values": {
+        "minimum": 1.2,
+        "maximum": 3.0
+      }
+    },
+    {
+      "id": 5,
+      "type": "vfx.randomRange",
+      "x": 120.0,
+      "y": 390.0,
+      "values": {
+        "minimum": 0.03,
+        "maximum": 0.11
+      }
+    },
+    {
+      "id": 6,
+      "type": "vfx.output.update",
+      "x": 420.0,
+      "y": 420.0,
+      "values": {}
+    },
+    {
+      "id": 7,
+      "type": "vfx.output.render",
+      "x": 420.0,
+      "y": 580.0,
+      "values": {
+        "Soft Edge": 1.6
+      }
+    }
+  ],
+  "edges": [
+    {"fromNode": 3, "fromPin": "Result", "toNode": 2, "toPin": "Velocity"},
+    {"fromNode": 4, "fromPin": "Result", "toNode": 2, "toPin": "Lifetime"},
+    {"fromNode": 5, "fromPin": "Result", "toNode": 2, "toPin": "Size"}
+  ],
+  "variables": []
+}
