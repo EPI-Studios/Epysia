@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,6 +41,12 @@ class VfxGraphCompilerTest {
         GraphAsset asset = new GraphAsset();
         asset.setKind(GraphKind.VFX);
         return asset;
+    }
+
+    private static String mainBody(String source) {
+        int start = source.indexOf("void main()");
+        assertTrue(start >= 0, "compiled source has no main function");
+        return source.substring(start);
     }
 
     private static void assertBalancedBraces(String source) {
@@ -105,31 +112,90 @@ class VfxGraphCompilerTest {
                 VfxLutPack.gradientIndexOf(asset, color.id(), VfxNodes.GRADIENT_SETTING))));
     }
 
+    private static Map<String, String> shapeCalls() {
+        return Map.of(
+                VfxNodes.SHAPE_CONE, "shapeCone(1.000000, 1.000000, 360.000000, 25.000000, spawnKey)",
+                VfxNodes.SHAPE_SPHERE, "shapeSphere(1.000000, 1.000000, spawnKey)",
+                VfxNodes.SHAPE_HEMISPHERE, "shapeHemisphere(1.000000, 1.000000, spawnKey)",
+                VfxNodes.SHAPE_BOX, "shapeBox(vec3(0.500000, 0.500000, 0.500000), 1.000000, spawnKey)",
+                VfxNodes.SHAPE_CIRCLE, "shapeCircle(1.000000, 1.000000, 360.000000, spawnKey)",
+                VfxNodes.SHAPE_CYLINDER, "shapeCylinder(1.000000, 1.000000, 1.000000, 360.000000, spawnKey)",
+                VfxNodes.SHAPE_DOT, "shapeDot(spawnKey)",
+                VfxNodes.SHAPE_EDGE, "shapeEdge(1.000000, spawnKey)");
+    }
+
+    private static String shapeSpawnBody(String mode) {
+        GraphAsset asset = vfxGraph();
+        GraphNode output = asset.addNode(VfxNodes.OUTPUT_PARTICLE, 0.0f, 0.0f);
+        GraphNode shape = asset.addNode(VfxNodes.SHAPE, 0.0f, 0.0f);
+        shape.values().put(VfxNodes.SHAPE_SETTING, mode);
+        asset.edges().add(new GraphEdge(shape.id(), VfxNodes.POSITION_PIN,
+                output.id(), VfxNodes.POSITION_PIN));
+        asset.edges().add(new GraphEdge(shape.id(), VfxNodes.DIRECTION_PIN,
+                output.id(), VfxNodes.VELOCITY_PIN));
+        return mainBody(compiler().compile(asset, "shape.epygraph").spawnCompute());
+    }
+
     @Test
     void everyShapeModeEmitsItsOwnCall() {
-        Map<String, String> expectedCalls = Map.of(
-                VfxNodes.SHAPE_CONE, "shapeCone(",
-                VfxNodes.SHAPE_SPHERE, "shapeSphere(",
-                VfxNodes.SHAPE_HEMISPHERE, "shapeHemisphere(",
-                VfxNodes.SHAPE_BOX, "shapeBox(",
-                VfxNodes.SHAPE_CIRCLE, "shapeCircle(",
-                VfxNodes.SHAPE_CYLINDER, "shapeCylinder(",
-                VfxNodes.SHAPE_DOT, "shapeDot(",
-                VfxNodes.SHAPE_EDGE, "shapeEdge(");
+        Map<String, String> expectedCalls = shapeCalls();
         for (Map.Entry<String, String> expected : expectedCalls.entrySet()) {
-            GraphAsset asset = vfxGraph();
-            GraphNode output = asset.addNode(VfxNodes.OUTPUT_PARTICLE, 0.0f, 0.0f);
-            GraphNode shape = asset.addNode(VfxNodes.SHAPE, 0.0f, 0.0f);
-            shape.values().put(VfxNodes.SHAPE_SETTING, expected.getKey());
-            asset.edges().add(new GraphEdge(shape.id(), VfxNodes.POSITION_PIN,
-                    output.id(), VfxNodes.POSITION_PIN));
-            asset.edges().add(new GraphEdge(shape.id(), VfxNodes.DIRECTION_PIN,
-                    output.id(), VfxNodes.VELOCITY_PIN));
-            String spawn = compiler().compile(asset, "shape.epygraph").spawnCompute();
-            assertTrue(spawn.contains(expected.getValue() + ""), expected.getKey());
-            assertTrue(spawn.contains(").position"), expected.getKey());
-            assertTrue(spawn.contains(").direction"), expected.getKey());
+            String body = shapeSpawnBody(expected.getKey());
+            assertTrue(body.contains("emitterSpawnPosition(" + expected.getValue() + ".position)"),
+                    expected.getKey() + " position: " + body);
+            assertTrue(body.contains(expected.getValue() + ".direction"),
+                    expected.getKey() + " direction: " + body);
+            for (Map.Entry<String, String> other : expectedCalls.entrySet()) {
+                if (!other.getKey().equals(expected.getKey())) {
+                    assertFalse(body.contains(callName(other.getValue())),
+                            expected.getKey() + " leaked " + other.getKey());
+                }
+            }
         }
+    }
+
+    private static String callName(String call) {
+        return call.substring(0, call.indexOf('(') + 1);
+    }
+
+    @Test
+    void emptyGraphMainBodyCallsNoShapeFunction() {
+        String body = mainBody(compiler().compile(vfxGraph(), "empty.epygraph").spawnCompute());
+        for (String call : shapeCalls().values()) {
+            assertFalse(body.contains(callName(call)), call);
+        }
+    }
+
+    @Test
+    void unwiredSpawnPositionLandsOnTheEmitterExactlyOnce() {
+        String body = mainBody(compiler().compile(vfxGraph(), "empty.epygraph").spawnCompute());
+        assertTrue(body.contains("emitterSpawnPosition(vec3(0.0, 0.0, 0.0))"), body);
+        assertEquals(0, occurrences(body, "effect.emitterPositionDelta.xyz"), body);
+    }
+
+    @Test
+    void wiredSpawnPositionComposesWithTheEmitterWorldPosition() {
+        String body = shapeSpawnBody(VfxNodes.SHAPE_SPHERE);
+        assertTrue(body.contains(
+                "vec4(emitterSpawnPosition(shapeSphere(1.000000, 1.000000, spawnKey).position), 0.0)"), body);
+        assertEquals(1, occurrences(body, "emitterSpawnPosition("), body);
+    }
+
+    @Test
+    void compiledUpdateAppliesTheSimulationSpaceOffset() {
+        String body = mainBody(compiler().compile(vfxGraph(), "empty.epygraph").updateCompute());
+        assertTrue(body.contains("particle.positionAge.xyz + velocity * deltaTime"), body);
+        assertEquals(1, occurrences(body, "simulationSpaceOffset()"), body);
+    }
+
+    private static int occurrences(String source, String needle) {
+        int count = 0;
+        int index = source.indexOf(needle);
+        while (index >= 0) {
+            count++;
+            index = source.indexOf(needle, index + needle.length());
+        }
+        return count;
     }
 
     @Test

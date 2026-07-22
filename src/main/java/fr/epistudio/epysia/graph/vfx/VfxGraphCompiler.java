@@ -70,7 +70,7 @@ public final class VfxGraphCompiler {
     private String compileSpawn(GraphAsset asset) {
         VfxExpressionEmitter emitter = emitterFor(asset, VfxStage.PARTICLE_SPAWN);
         Optional<GraphNode> output = findOutput(asset, VfxNodes.OUTPUT_PARTICLE);
-        String position = "effect.emitterPositionDelta.xyz";
+        String position = "vec3(0.0, 0.0, 0.0)";
         String velocity = "coneDirection(vec3(0.0, 1.0, 0.0), 25.0, spawnKey) * 2.5";
         String lifetime = "2.0";
         String color = "vec4(1.0, 1.0, 1.0, 1.0)";
@@ -106,7 +106,7 @@ public final class VfxGraphCompiler {
                     uint slot = freeEntries[previousTop - 1];
                     uint spawnKey = effect.spawnSeedPool.y * 9781u + effect.spawnSeedPool.z + invocation;
                     float particleSeed = hashFloat(spawnKey);
-                    particles[slot].positionAge = vec4(%s, 0.0);
+                    particles[slot].positionAge = vec4(emitterSpawnPosition(%s), 0.0);
                     particles[slot].velocityLifetime = vec4(%s, %s);
                     particles[slot].color = %s;
                     particles[slot].sizeRotation = vec4(%s, 0.0, 0.0, 0.0);
@@ -160,7 +160,8 @@ public final class VfxGraphCompiler {
                         return;
                     }
                     vec3 velocity = %s;
-                    particles[slot].positionAge = vec4(particle.positionAge.xyz + velocity * deltaTime, age);
+                    particles[slot].positionAge = vec4(particle.positionAge.xyz + velocity * deltaTime
+                            + simulationSpaceOffset(), age);
                     particles[slot].velocityLifetime.xyz = velocity;
                     particles[slot].color = %s;
                     particles[slot].sizeRotation.x = %s;
@@ -211,6 +212,10 @@ public final class VfxGraphCompiler {
 
     private static String helperFunctions() {
         return """
+                vec3 emitterSpawnPosition(vec3 emitterSpacePosition) {
+                    return effect.emitterPositionDelta.xyz + emitterSpacePosition;
+                }
+
                 vec3 coneDirection(vec3 axis, float angleDegrees, uint spawnKey) {
                     float angle = hashFloat(spawnKey * 5u + 11u) * 6.2831853;
                     float spread = hashFloat(spawnKey * 5u + 13u) * radians(angleDegrees);
