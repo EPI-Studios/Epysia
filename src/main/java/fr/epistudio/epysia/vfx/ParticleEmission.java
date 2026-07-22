@@ -22,13 +22,13 @@ final class ParticleEmission {
         boolean alreadyFinished = started && isFinished(settings);
         float previousCycleSeconds = started ? cycleSeconds : -1.0f;
         started = true;
-        boolean wrapped = advanceClock(settings, deltaSeconds);
+        int completedCycles = advanceClock(settings, deltaSeconds);
         if (alreadyFinished) {
             return 0;
         }
         return rateEmission(settings.emissionRate() * deltaSeconds)
                 + distanceEmission(settings.distanceRate())
-                + burstEmission(settings, previousCycleSeconds, wrapped);
+                + burstEmission(settings, previousCycleSeconds, completedCycles);
     }
 
     private void trackMotion(Vector3fc emitterPosition) {
@@ -41,19 +41,20 @@ final class ParticleEmission {
         distanceTravelled += frameMotion.length();
     }
 
-    private boolean advanceClock(EmissionSettings settings, float deltaSeconds) {
+    private int advanceClock(EmissionSettings settings, float deltaSeconds) {
         elapsedSeconds += deltaSeconds;
         cycleSeconds += deltaSeconds;
         float duration = settings.durationSeconds();
         if (cycleSeconds < duration) {
-            return false;
+            return 0;
         }
         if (!settings.looping()) {
             cycleSeconds = duration;
-            return false;
+            return 0;
         }
-        cycleSeconds -= duration * (float) Math.floor(cycleSeconds / duration);
-        return true;
+        int completedCycles = (int) Math.floor(cycleSeconds / duration);
+        cycleSeconds -= duration * completedCycles;
+        return completedCycles;
     }
 
     private boolean isFinished(EmissionSettings settings) {
@@ -78,11 +79,14 @@ final class ParticleEmission {
         return count;
     }
 
-    private int burstEmission(EmissionSettings settings, float previousCycleSeconds, boolean wrapped) {
-        if (!wrapped) {
+    private int burstEmission(EmissionSettings settings, float previousCycleSeconds, int completedCycles) {
+        if (completedCycles == 0) {
             return firings(settings.bursts(), previousCycleSeconds, cycleSeconds);
         }
-        return firings(settings.bursts(), previousCycleSeconds, settings.durationSeconds())
+        float duration = settings.durationSeconds();
+        int skippedCycles = completedCycles - 1;
+        return firings(settings.bursts(), previousCycleSeconds, duration)
+                + skippedCycles * firings(settings.bursts(), -1.0f, duration)
                 + firings(settings.bursts(), -1.0f, cycleSeconds);
     }
 
