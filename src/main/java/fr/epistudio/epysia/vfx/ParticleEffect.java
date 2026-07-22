@@ -165,6 +165,11 @@ public final class ParticleEffect extends Component {
         return setBursts(merged);
     }
 
+    public List<ParticleBurst> burstsExceedingDuration() {
+        float duration = durationSeconds();
+        return bursts().stream().filter(burst -> !burst.fitsWithin(duration)).toList();
+    }
+
     public int advanceEmission(float deltaSeconds, Vector3fc emitterWorldPosition) {
         if (!playing) {
             emission.suspend();

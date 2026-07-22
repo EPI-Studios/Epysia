@@ -1,7 +1,9 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.scene.SceneDocument;
+import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.vfx.ParticleBurst;
 import fr.epistudio.epysia.vfx.ParticleEffect;
 import imgui.ImGui;
 
@@ -10,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -32,6 +35,7 @@ public final class VfxSection {
     }
 
     public void render(ParticleEffect effect) {
+        renderBurstFit(effect);
         List<Path> graphs = projectGraphs();
         if (!ImGui.beginCombo("Effect Graph", previewLabel(effect))) {
             return;
@@ -41,6 +45,16 @@ public final class VfxSection {
             renderGraphOption(effect, graph);
         }
         ImGui.endCombo();
+    }
+
+    private static void renderBurstFit(ParticleEffect effect) {
+        float duration = effect.durationSeconds();
+        for (ParticleBurst burst : effect.burstsExceedingDuration()) {
+            ImGui.textColored(EditorStyle.COLOR_WARNING, String.format(Locale.ROOT,
+                    "Burst at %.2fs fires %d of %d cycles: the train needs a duration of %.2fs, not %.2fs.",
+                    burst.timeSeconds(), burst.repeatsWithin(duration), burst.repeatCount(),
+                    burst.requiredDurationSeconds(), duration));
+        }
     }
 
     private String previewLabel(ParticleEffect effect) {
