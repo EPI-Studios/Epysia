@@ -22,6 +22,7 @@ public final class VfxNodes {
     public static final String PARTICLE_SEED = "vfx.particleSeed";
     public static final String EMITTER_POSITION = "vfx.emitterPosition";
     public static final String PARTICLE_POSITION = "vfx.particlePosition";
+    public static final String PARTICLE_VELOCITY = "vfx.particleVelocity";
     public static final String EFFECT_TIME_NORMALIZED = "vfx.effectTimeNormalized";
     public static final String DELTA_TIME = "vfx.deltaTime";
     public static final String RANDOM_RANGE = "vfx.randomRange";
@@ -111,6 +112,9 @@ public final class VfxNodes {
     public static final String FREQUENCY_SETTING = "frequency";
     public static final String OCTAVES_SETTING = "octaves";
     public static final String STRENGTH_SETTING = "strength";
+    public static final String SCROLL_SPEED_X_SETTING = "scrollSpeedX";
+    public static final String SCROLL_SPEED_Y_SETTING = "scrollSpeedY";
+    public static final String SCROLL_SPEED_Z_SETTING = "scrollSpeedZ";
 
     public static final String SHAPE_CONE = "Cone";
     public static final String SHAPE_SPHERE = "Sphere";
@@ -176,6 +180,7 @@ public final class VfxNodes {
         registry.register(source(PARTICLE_SEED, "Particle Seed", CATEGORY_PARTICLE, PinType.FLOAT));
         registry.register(source(EMITTER_POSITION, "Emitter Position", CATEGORY_PARTICLE, PinType.VECTOR3));
         registry.register(source(PARTICLE_POSITION, "Particle Position", CATEGORY_PARTICLE, PinType.VECTOR3));
+        registry.register(source(PARTICLE_VELOCITY, "Particle Velocity", CATEGORY_PARTICLE, PinType.VECTOR3));
         registry.register(source(EFFECT_TIME_NORMALIZED, "Effect Time Normalized",
                 CATEGORY_PARTICLE, PinType.FLOAT));
         registry.register(source(DELTA_TIME, "Delta Time", CATEGORY_PARTICLE, PinType.FLOAT));
@@ -226,6 +231,11 @@ public final class VfxNodes {
     }
 
     private static void registerShapeAndNoise(GraphNodeRegistry registry) {
+        registerShape(registry);
+        registerNoise(registry);
+    }
+
+    private static void registerShape(GraphNodeRegistry registry) {
         registry.register(node(SHAPE, "Shape", CATEGORY_SHAPE, List.of(),
                 List.of(new PinDefinition(POSITION_PIN, PinType.VECTOR3),
                         new PinDefinition(DIRECTION_PIN, PinType.VECTOR3)),
@@ -239,13 +249,19 @@ public final class VfxNodes {
                         new NodeSetting(HALF_EXTENTS_Z_SETTING, SettingKind.NUMBER, 0.5f),
                         new NodeSetting(HEIGHT_SETTING, SettingKind.NUMBER, 1.0f),
                         new NodeSetting(EDGE_LENGTH_SETTING, SettingKind.NUMBER, 1.0f))));
+    }
+
+    private static void registerNoise(GraphNodeRegistry registry) {
         registry.register(node(NOISE, "Noise", CATEGORY_SHAPE,
                 List.of(new PinDefinition(POSITION_PIN, PinType.VECTOR3)),
                 List.of(new PinDefinition(RESULT_PIN, PinType.NUMERIC)),
                 List.of(new NodeSetting(MODE_SETTING, SettingKind.TEXT, NOISE_PERLIN),
                         new NodeSetting(FREQUENCY_SETTING, SettingKind.NUMBER, 1.0f),
                         new NodeSetting(OCTAVES_SETTING, SettingKind.WHOLE_NUMBER, 4),
-                        new NodeSetting(STRENGTH_SETTING, SettingKind.NUMBER, 1.0f))));
+                        new NodeSetting(STRENGTH_SETTING, SettingKind.NUMBER, 1.0f),
+                        new NodeSetting(SCROLL_SPEED_X_SETTING, SettingKind.NUMBER, 0.0f),
+                        new NodeSetting(SCROLL_SPEED_Y_SETTING, SettingKind.NUMBER, 0.0f),
+                        new NodeSetting(SCROLL_SPEED_Z_SETTING, SettingKind.NUMBER, 0.0f))));
     }
 
     private static void registerBinaryMath(GraphNodeRegistry registry) {

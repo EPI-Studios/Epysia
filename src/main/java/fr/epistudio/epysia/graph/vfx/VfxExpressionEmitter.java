@@ -78,6 +78,7 @@ final class VfxExpressionEmitter {
             case VfxNodes.PARTICLE_AGE -> VfxExpression.scalar(updateVariable("age"));
             case VfxNodes.PARTICLE_AGE_NORMALIZED -> VfxExpression.scalar(updateVariable("ageNormalized"));
             case VfxNodes.PARTICLE_POSITION -> VfxExpression.vector3(updateVariable("particle.positionAge.xyz"));
+            case VfxNodes.PARTICLE_VELOCITY -> VfxExpression.vector3(updateVariable("particle.velocityLifetime.xyz"));
             case VfxNodes.PARTICLE_SEED -> VfxExpression.scalar(computeVariable("particleSeed"));
             case VfxNodes.EMITTER_POSITION -> VfxExpression.vector3(computeVariable("effect.emitterPositionDelta.xyz"));
             case VfxNodes.EFFECT_TIME_NORMALIZED -> VfxExpression.scalar(computeVariable("effectNormalizedTime()"));
@@ -237,8 +238,7 @@ final class VfxExpressionEmitter {
         if (!noiseLibrary) {
             throw new EpysiaException("Noise nodes need the noise library source passed to VfxGraphCompiler.");
         }
-        String point = "(%s) * %s".formatted(
-                inputOf(source, VfxNodes.POSITION_PIN, defaultNoisePosition()).asVector3(),
+        String point = "(%s) * %s".formatted(scrolledNoisePoint(source),
                 text(settingFloat(source, VfxNodes.FREQUENCY_SETTING, 1.0f)));
         String strength = text(settingFloat(source, VfxNodes.STRENGTH_SETTING, 1.0f));
         String mode = GraphValues.asString(source.values().getOrDefault(
@@ -251,6 +251,18 @@ final class VfxExpressionEmitter {
             return VfxExpression.scalar("(fbm3(%s, %d) * %s)".formatted(point, Math.max(octaves, 1), strength));
         }
         return VfxExpression.scalar("(perlin3(%s) * %s)".formatted(point, strength));
+    }
+
+    private String scrolledNoisePoint(GraphNode source) {
+        String position = inputOf(source, VfxNodes.POSITION_PIN, defaultNoisePosition()).asVector3();
+        float scrollX = settingFloat(source, VfxNodes.SCROLL_SPEED_X_SETTING, 0.0f);
+        float scrollY = settingFloat(source, VfxNodes.SCROLL_SPEED_Y_SETTING, 0.0f);
+        float scrollZ = settingFloat(source, VfxNodes.SCROLL_SPEED_Z_SETTING, 0.0f);
+        if (scrollX == 0.0f && scrollY == 0.0f && scrollZ == 0.0f) {
+            return position;
+        }
+        return "%s + vec3(%s, %s, %s) * %s".formatted(position, text(scrollX), text(scrollY),
+                text(scrollZ), computeVariable("effect.effectClock.y"));
     }
 
     private VfxExpression defaultNoisePosition() {

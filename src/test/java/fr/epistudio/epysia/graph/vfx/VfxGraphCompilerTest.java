@@ -232,6 +232,78 @@ class VfxGraphCompilerTest {
     }
 
     @Test
+    void particleVelocityLetsTheGraphAccumulateGravityItself() {
+        GraphAsset asset = vfxGraph();
+        GraphNode output = asset.addNode(VfxNodes.OUTPUT_UPDATE, 0.0f, 0.0f);
+        GraphNode velocity = asset.addNode(VfxNodes.PARTICLE_VELOCITY, 0.0f, 0.0f);
+        GraphNode gravity = asset.addNode(VfxNodes.CONSTANT, 0.0f, 0.0f);
+        GraphNode step = asset.addNode(VfxNodes.MATH_MULTIPLY, 0.0f, 0.0f);
+        GraphNode sum = asset.addNode(VfxNodes.MATH_ADD, 0.0f, 0.0f);
+        GraphNode deltaTime = asset.addNode(VfxNodes.DELTA_TIME, 0.0f, 0.0f);
+        gravity.values().put(VfxNodes.COMPONENTS_SETTING, 3);
+        gravity.values().put(VfxNodes.VALUE_Y_SETTING, -9.81f);
+        asset.edges().add(new GraphEdge(gravity.id(), VfxNodes.RESULT_PIN, step.id(), VfxNodes.A_PIN));
+        asset.edges().add(new GraphEdge(deltaTime.id(), VfxNodes.RESULT_PIN, step.id(), VfxNodes.B_PIN));
+        asset.edges().add(new GraphEdge(velocity.id(), VfxNodes.RESULT_PIN, sum.id(), VfxNodes.A_PIN));
+        asset.edges().add(new GraphEdge(step.id(), VfxNodes.RESULT_PIN, sum.id(), VfxNodes.B_PIN));
+        asset.edges().add(new GraphEdge(sum.id(), VfxNodes.RESULT_PIN, output.id(), VfxNodes.VELOCITY_PIN));
+        String body = mainBody(compiler().compile(asset, "gravity.epygraph").updateCompute());
+        assertTrue(body.contains("vec3 velocity = (particle.velocityLifetime.xyz + "
+                + "(vec3(0.000000, -9.810000, 0.000000) * vec3(effect.emitterPositionDelta.w)));"), body);
+    }
+
+    @Test
+    void emptyGraphMainBodyNeverAccumulatesTheGraphAuthoredGravity() {
+        String body = mainBody(compiler().compile(vfxGraph(), "empty.epygraph").updateCompute());
+        assertFalse(body.contains("vec3 velocity = (particle.velocityLifetime.xyz + "
+                + "(vec3(0.000000, -9.810000, 0.000000) * vec3(effect.emitterPositionDelta.w)));"), body);
+    }
+
+    @Test
+    void particleVelocityIsRejectedOutsideTheUpdateStage() {
+        GraphAsset asset = vfxGraph();
+        GraphNode output = asset.addNode(VfxNodes.OUTPUT_PARTICLE, 0.0f, 0.0f);
+        GraphNode velocity = asset.addNode(VfxNodes.PARTICLE_VELOCITY, 0.0f, 0.0f);
+        asset.edges().add(new GraphEdge(velocity.id(), VfxNodes.RESULT_PIN,
+                output.id(), VfxNodes.VELOCITY_PIN));
+        EpysiaException error = assertThrows(EpysiaException.class,
+                () -> compiler().compile(asset, "spawnVelocity.epygraph"));
+        assertEquals("Node reading particle.velocityLifetime.xyz is only available in the update stage.",
+                error.getMessage());
+    }
+
+    private static GraphAsset noiseGraph(float scrollSpeedY) {
+        GraphAsset asset = vfxGraph();
+        GraphNode output = asset.addNode(VfxNodes.OUTPUT_UPDATE, 0.0f, 0.0f);
+        GraphNode noise = asset.addNode(VfxNodes.NOISE, 0.0f, 0.0f);
+        noise.values().put(VfxNodes.SCROLL_SPEED_Y_SETTING, scrollSpeedY);
+        asset.edges().add(new GraphEdge(noise.id(), VfxNodes.RESULT_PIN, output.id(), VfxNodes.SIZE_PIN));
+        return asset;
+    }
+
+    @Test
+    void noiseScrollSpeedAdvancesTheSampledPointWithElapsedTime() {
+        String body = mainBody(compiler().compile(noiseGraph(0.75f), "noise.epygraph").updateCompute());
+        assertTrue(body.contains(
+                "perlin3((particle.positionAge.xyz + vec3(0.000000, 0.750000, 0.000000) "
+                        + "* effect.effectClock.y) * 1.000000)"), body);
+    }
+
+    @Test
+    void zeroNoiseScrollSpeedCompilesExactlyLikeAnUnscrolledNoise() {
+        GraphAsset unscrolled = vfxGraph();
+        GraphNode output = unscrolled.addNode(VfxNodes.OUTPUT_UPDATE, 0.0f, 0.0f);
+        GraphNode noise = unscrolled.addNode(VfxNodes.NOISE, 0.0f, 0.0f);
+        unscrolled.edges().add(new GraphEdge(noise.id(), VfxNodes.RESULT_PIN, output.id(), VfxNodes.SIZE_PIN));
+        String withoutSetting = compiler().compile(unscrolled, "noise.epygraph").updateCompute();
+        String withZeroSetting = compiler().compile(noiseGraph(0.0f), "noise.epygraph").updateCompute();
+        assertEquals(withoutSetting, withZeroSetting);
+        assertFalse(mainBody(withoutSetting).contains("effect.effectClock.y"), withoutSetting);
+        assertTrue(mainBody(withoutSetting).contains("perlin3((particle.positionAge.xyz) * 1.000000)"),
+                withoutSetting);
+    }
+
+    @Test
     void unsupportedNodeThrowsWithItsName() {
         GraphAsset asset = vfxGraph();
         GraphNode output = asset.addNode(VfxNodes.OUTPUT_PARTICLE, 0.0f, 0.0f);

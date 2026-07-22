@@ -21,7 +21,8 @@ class VfxNodesTest {
         List<String> typeKeys = List.of(VfxNodes.OUTPUT_SPAWN_RATE, VfxNodes.OUTPUT_PARTICLE,
                 VfxNodes.OUTPUT_UPDATE, VfxNodes.OUTPUT_RENDER, VfxNodes.PARTICLE_AGE,
                 VfxNodes.PARTICLE_AGE_NORMALIZED, VfxNodes.PARTICLE_SEED, VfxNodes.EMITTER_POSITION,
-                VfxNodes.DELTA_TIME, VfxNodes.RANDOM_RANGE, VfxNodes.CONE_DIRECTION);
+                VfxNodes.PARTICLE_POSITION, VfxNodes.PARTICLE_VELOCITY, VfxNodes.DELTA_TIME,
+                VfxNodes.RANDOM_RANGE, VfxNodes.CONE_DIRECTION);
         for (String typeKey : typeKeys) {
             assertTrue(registry.find(typeKey).isPresent(), typeKey);
         }
