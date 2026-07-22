@@ -20,6 +20,7 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphComponent;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.vfx.ParticleEffect;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
 import imgui.ImGui;
@@ -58,6 +59,7 @@ public final class InspectorView {
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final MaterialsSection materialsSection;
     private final AnimatorSection animatorSection;
+    private final VfxSection vfxSection;
     private final PostEffectsSection postEffectsSection;
     private final GraphSection graphSection;
     private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
@@ -76,6 +78,7 @@ public final class InspectorView {
         this.propertyRows = new PropertyRows(activeDocument, assetPicker);
         this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project);
         this.animatorSection = new AnimatorSection(activeDocument, project);
+        this.vfxSection = new VfxSection(activeDocument, project);
         this.postEffectsSection = new PostEffectsSection(project, thumbnails);
         this.graphSection = new GraphSection(activeDocument, onOpenGraph);
         this.onCreateScriptForObject = onCreateScriptForObject;
@@ -195,6 +198,9 @@ public final class InspectorView {
         }
         if (component instanceof Animator animator) {
             animatorSection.render(gameObject, animator);
+        }
+        if (component instanceof ParticleEffect particleEffect) {
+            vfxSection.render(particleEffect);
         }
         if (component instanceof Camera3D camera) {
             renderCameraPostEffects(camera);
