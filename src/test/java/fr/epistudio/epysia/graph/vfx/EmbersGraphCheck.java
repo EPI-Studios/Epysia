@@ -31,6 +31,6 @@ class EmbersGraphCheck {
         assertTrue(sources.spawnCompute().contains("randomRange(1.200000, 3.000000"));
         assertTrue(sources.spawnCompute().contains("vec4(1.000000, 0.420000, 0.080000, 1.000000)"));
         assertTrue(sources.fragmentBody().contains("0.900000"));
-        assertTrue(sources.fragmentBody().contains("6.000000"));
+        assertTrue(sources.fragmentBody().contains("3.200000"));
     }
 }
