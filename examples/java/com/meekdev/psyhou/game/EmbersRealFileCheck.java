@@ -30,7 +30,7 @@ public final class EmbersRealFileCheck {
 
     private static final int WIDTH = 640;
     private static final int HEIGHT = 360;
-    private static final int CHECK_FRAME = 30;
+    private static final int CHECK_FRAME = 300;
     private static final int SCAN_HALF_EXTENT = 60;
     private static final int RED_MARGIN = 40;
 
@@ -119,14 +119,14 @@ public final class EmbersRealFileCheck {
 
         private int warmPixelCount() {
             PostProcessSystem postProcess = engine.renderSystem(PostProcessSystem.class);
-            int background = backend.readPixelArgb(postProcess.sceneTarget(), 10, 10);
-            int backgroundRed = background >> 16 & 0xFF;
             int warm = 0;
             for (int offsetY = -SCAN_HALF_EXTENT; offsetY <= SCAN_HALF_EXTENT; offsetY += 4) {
                 for (int offsetX = -SCAN_HALF_EXTENT; offsetX <= SCAN_HALF_EXTENT; offsetX += 4) {
                     int pixel = backend.readPixelArgb(postProcess.sceneTarget(),
                             WIDTH / 2 + offsetX, HEIGHT / 2 + offsetY);
-                    if ((pixel >> 16 & 0xFF) > backgroundRed + RED_MARGIN) {
+                    int red = pixel >> 16 & 0xFF;
+                    int blue = pixel & 0xFF;
+                    if (red > 120 && red > blue + RED_MARGIN) {
                         warm++;
                     }
                 }
