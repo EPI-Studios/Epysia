@@ -54,6 +54,8 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Set;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -81,6 +83,8 @@ public final class VfxRenderSystem implements RenderSystem {
     private final Map<ParticleEffect, CompiledGraphPipelines> compiledGraphs = new IdentityHashMap<>();
     private final ByteBuffer effectUboScratch = BufferUtils.createByteBuffer(EFFECT_UBO_BYTES);
     private final Vector3f emitterPosition = new Vector3f();
+    private final Set<ParticleEffect> warnedMissingTransform =
+            Collections.newSetFromMap(new IdentityHashMap<>());
 
     private RenderBackend backend;
     private PipelineHandle resetPipeline;
@@ -168,14 +172,25 @@ public final class VfxRenderSystem implements RenderSystem {
         List<ParticleEffect> seen = new ArrayList<>();
         for (GameObject gameObject : scene.gameObjects()) {
             ParticleEffect effect = gameObject.getComponentOrNull(ParticleEffect.class);
+            if (effect == null) {
+                continue;
+            }
             Transform3D transform = gameObject.getComponentOrNull(Transform3D.class);
-            if (effect == null || transform == null) {
+            if (transform == null) {
+                warnMissingTransformOnce(gameObject, effect);
                 continue;
             }
             seen.add(effect);
             simulateAndSubmit(effect, transform, delta, frame);
         }
         purgeStale(seen);
+    }
+
+    private void warnMissingTransformOnce(GameObject gameObject, ParticleEffect effect) {
+        if (warnedMissingTransform.add(effect)) {
+            logger.warn("[VfxRenderSystem] Particle Effect on '" + gameObject.name()
+                    + "' needs a Transform3D and will not simulate without one.");
+        }
     }
 
     private float advanceClock() {
@@ -256,6 +271,8 @@ public final class VfxRenderSystem implements RenderSystem {
             PipelineHandle update = backend.createComputePipeline(
                     new ComputePipelineDescriptor(sources.updateCompute(), computeLayout));
             PipelineHandle draw = createGraphBillboardPipeline(sources.fragmentBody());
+            logger.info("[VfxRenderSystem] VFX graph compiled: " + graphFile.getFileName()
+                    + " (rate " + sources.spawnRatePerSecond() + "/s)");
             return new CompiledGraphPipelines(modifiedMillis, false,
                     sources.spawnRatePerSecond(), spawn, update, draw);
         } catch (RuntimeException | IOException error) {
