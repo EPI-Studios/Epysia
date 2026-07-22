@@ -11,12 +11,16 @@ import fr.epistudio.epysia.render.backend.PixelColor;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.vfx.ParticleEffect;
 
 public final class VfxExamplesPixelCheck {
 
     private static final int WIDTH = 960;
     private static final int HEIGHT = 540;
-    private static final int CHECK_FRAME = 120;
+    private static final float SAMPLE_EFFECT_SECONDS =
+            VfxExampleScene.SPARKS_DURATION * 2.0f + VfxExampleScene.SPARKS_BURST_INTERVAL * 3.5f;
+    private static final long DEADLINE_SECONDS = 60L;
+    private static final long NANOS_PER_SECOND = 1_000_000_000L;
     private static final int SAMPLE_STEP = 3;
     private static final int MINIMUM_MATCHES = 30;
     private static final int BACKGROUND_PROBE_X = 6;
@@ -54,6 +58,9 @@ public final class VfxExamplesPixelCheck {
         boolean matches(float red, float green, float blue);
     }
 
+    private record RegionCounts(int matches, int lit) {
+    }
+
     private static ColorTest testFor(String name) {
         return switch (name) {
             case "Fire" -> VfxExamplesPixelCheck::isFlame;
@@ -84,6 +91,10 @@ public final class VfxExamplesPixelCheck {
                 && blue * 100.0f >= red * 80.0f;
     }
 
+    private static boolean isLit(float red, float green, float blue) {
+        return Math.max(red, Math.max(green, blue)) > LIT_MINIMUM_BRIGHTNESS;
+    }
+
     private static float screenX(float worldX) {
         double tangent = Math.tan(Math.toRadians(VfxExampleScene.FIELD_OF_VIEW_DEGREES * 0.5f));
         double aspect = (double) WIDTH / HEIGHT;
@@ -100,8 +111,8 @@ public final class VfxExamplesPixelCheck {
     private static final class PixelCheckSystem implements RenderSystem {
 
         private final EpysiaEngine engine;
+        private final long deadlineNanos = System.nanoTime() + DEADLINE_SECONDS * NANOS_PER_SECOND;
         private RenderBackend backend;
-        private int frameCount;
         private PixelColor background = new PixelColor(0.0f, 0.0f, 0.0f, 1.0f);
 
         private PixelCheckSystem(EpysiaEngine engine) {
@@ -115,12 +126,33 @@ public final class VfxExamplesPixelCheck {
 
         @Override
         public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
-            frameCount++;
-            if (frameCount != CHECK_FRAME) {
+            float effectSeconds = pacemakerSeconds(scene);
+            if (effectSeconds < SAMPLE_EFFECT_SECONDS) {
+                requireDeadline(effectSeconds);
                 return;
             }
+            System.out.println("[vfx-examples] sampling at effect time "
+                    + String.format("%.3f", effectSeconds) + "s");
             readBackground();
             report(countAll());
+        }
+
+        private void requireDeadline(float effectSeconds) {
+            if (System.nanoTime() < deadlineNanos) {
+                return;
+            }
+            System.out.println("[vfx-examples] FAIL: effect clock stalled at "
+                    + String.format("%.3f", effectSeconds) + "s after " + DEADLINE_SECONDS + "s");
+            System.exit(1);
+        }
+
+        private float pacemakerSeconds(Scene scene) {
+            return scene.gameObjects().stream()
+                    .filter(candidate -> VfxExampleScene.PACEMAKER_NAME.equals(candidate.name()))
+                    .flatMap(candidate -> candidate.getComponent(ParticleEffect.class).stream())
+                    .findFirst()
+                    .map(ParticleEffect::elapsedSeconds)
+                    .orElse(0.0f);
         }
 
         private void readBackground() {
@@ -136,41 +168,38 @@ public final class VfxExamplesPixelCheck {
         private int countAll() {
             int failures = 0;
             for (VfxExampleScene.Placement placement : VfxExampleScene.placements()) {
-                int matches = countMatches(placement);
-                System.out.println("[vfx-examples] " + placement.name() + " matching pixels: " + matches
-                        + " (lit " + countLit(placement) + ")");
-                failures += matches >= MINIMUM_MATCHES ? 0 : 1;
+                RegionCounts counts = scan(placement);
+                System.out.println("[vfx-examples] " + placement.name() + " matching pixels: "
+                        + counts.matches() + " (lit " + counts.lit() + ")");
+                failures += counts.matches() >= MINIMUM_MATCHES ? 0 : 1;
             }
             return failures;
         }
 
-        private int countMatches(VfxExampleScene.Placement placement) {
-            return scan(placement, testFor(placement.name()));
-        }
-
-        private int countLit(VfxExampleScene.Placement placement) {
-            return scan(placement, (red, green, blue) ->
-                    Math.max(red, Math.max(green, blue)) > LIT_MINIMUM_BRIGHTNESS);
-        }
-
-        private int scan(VfxExampleScene.Placement placement, ColorTest test) {
+        private RegionCounts scan(VfxExampleScene.Placement placement) {
+            ColorTest test = testFor(placement.name());
             int centerX = Math.round(screenX(placement.x()));
             int centerY = Math.round(screenY(VfxExampleScene.BASE_Y + placement.sampleHeight()));
             int extent = placement.regionHalfExtent();
-            int matches = 0;
+            RegionCounts counts = new RegionCounts(0, 0);
             for (int offsetY = -extent; offsetY <= extent; offsetY += SAMPLE_STEP) {
-                for (int offsetX = -extent; offsetX <= extent; offsetX += SAMPLE_STEP) {
-                    matches += sample(centerX + offsetX, centerY + offsetY, test) ? 1 : 0;
-                }
+                counts = scanRow(counts, test, centerX, centerY + offsetY, extent);
             }
-            return matches;
+            return counts;
         }
 
-        private boolean sample(int x, int y, ColorTest test) {
-            PixelColor color = rawPixel(x, y);
-            return test.matches(above(color.red(), background.red()),
-                    above(color.green(), background.green()),
-                    above(color.blue(), background.blue()));
+        private RegionCounts scanRow(RegionCounts counts, ColorTest test, int centerX, int y, int extent) {
+            int matches = counts.matches();
+            int lit = counts.lit();
+            for (int offsetX = -extent; offsetX <= extent; offsetX += SAMPLE_STEP) {
+                PixelColor color = rawPixel(centerX + offsetX, y);
+                float red = above(color.red(), background.red());
+                float green = above(color.green(), background.green());
+                float blue = above(color.blue(), background.blue());
+                matches += test.matches(red, green, blue) ? 1 : 0;
+                lit += isLit(red, green, blue) ? 1 : 0;
+            }
+            return new RegionCounts(matches, lit);
         }
 
         private static float above(float channel, float backgroundChannel) {

@@ -19,9 +19,12 @@ public final class VfxExampleScene {
     public static final float CAMERA_HEIGHT = 0.4f;
     public static final float FIELD_OF_VIEW_DEGREES = 60.0f;
 
-    private static final float SPARKS_BURST_INTERVAL = 0.3f;
+    public static final String PACEMAKER_NAME = "Sparks";
+    public static final float SPARKS_BURST_INTERVAL = 0.3f;
+    public static final int SPARKS_BURST_CYCLES = 7;
+    public static final float SPARKS_DURATION = SPARKS_BURST_INTERVAL * SPARKS_BURST_CYCLES;
+
     private static final int SPARKS_BURST_COUNT = 220;
-    private static final int SPARKS_BURST_CYCLES = 64;
 
     private VfxExampleScene() {
     }
@@ -31,7 +34,7 @@ public final class VfxExampleScene {
                 new Placement("Smoke", -5.6f, 1.6f, 50, 512, 8.0f),
                 new Placement("Fire", -1.9f, 1.0f, 45, 1024, 3.0f),
                 new Placement("MagicSwirl", 1.9f, 0.6f, 50, 1024, 4.0f),
-                new Placement("Sparks", 5.6f, 0.5f, 70, 1536, 2.0f));
+                new Placement("Sparks", 5.6f, 0.5f, 70, 1536, SPARKS_DURATION));
     }
 
     public static GameObject buildEffect(Placement placement) {
@@ -50,7 +53,7 @@ public final class VfxExampleScene {
                 .setLooping(true)
                 .setPrewarm(true)
                 .setGraphPath(VfxExampleGraphs.fileOf(placement.name()).toString());
-        if ("Sparks".equals(placement.name())) {
+        if (PACEMAKER_NAME.equals(placement.name())) {
             effect.addBurst(new ParticleBurst(SPARKS_BURST_INTERVAL, SPARKS_BURST_COUNT,
                     SPARKS_BURST_CYCLES, SPARKS_BURST_INTERVAL));
         }
