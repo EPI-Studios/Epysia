@@ -38,6 +38,7 @@ import imgui.extension.imnodes.ImNodes;
 import imgui.extension.imnodes.flag.ImNodesCol;
 import imgui.extension.imnodes.flag.ImNodesMiniMapLocation;
 import imgui.extension.imnodes.flag.ImNodesPinShape;
+import imgui.extension.imnodes.flag.ImNodesStyleVar;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiFocusedFlags;
 import imgui.flag.ImGuiMouseCursor;
@@ -110,6 +111,20 @@ public final class GraphEditorView {
     private static final int COLOR_OBJECT = 0xFFB0B0B0;
     private static final int COLOR_FLASH = 0xFF3AC4FF;
     private static final int COLOR_STATE_TITLE = 0xFF6A4A26;
+    private static final int[] CATEGORY_TITLE_COLORS = {
+            0xFF6A4A26, 0xFF4A542C, 0xFF603A4A, 0xFF284660,
+            0xFF60543A, 0xFF3A3A64, 0xFF305846, 0xFF604038};
+    private static final float TITLE_HOVER_LIGHTEN = 0.18f;
+    private static final float TITLE_SELECTED_LIGHTEN = 0.30f;
+    private static final float LINK_HIGHLIGHT_LIGHTEN = 0.45f;
+    private static final float LINK_THICKNESS_EXEC = 3.6f;
+    private static final float LINK_THICKNESS_WIDE = 3.0f;
+    private static final float LINK_THICKNESS_DEFAULT = 2.4f;
+    private static final float LINK_THICKNESS_HIGHLIGHT = 1.2f;
+    private static final float SEARCH_POPUP_WIDTH = 320.0f;
+    private static final float SEARCH_POPUP_HEIGHT = 360.0f;
+    private static final String VFX_TEXTURE_TYPE_KEY = "vfx.texture";
+    private static final String VFX_TEXTURE_PATH_SETTING = "path";
     private static final int COLOR_STATE_ACTIVE = 0xFF34B42A;
     private static final int COLOR_TRANSITION_TITLE = 0xFF2878C8;
     private static final float SELF_TRANSITION_OFFSET = 120.0f;
@@ -140,7 +155,8 @@ public final class GraphEditorView {
     private final Consumer<Boolean> onNodePreviewsToggled;
     private final GraphJsonCodec codec = new GraphJsonCodec();
     private final Map<Path, OpenGraph> openGraphs = new LinkedHashMap<>();
-    private final ImString nodeSearch = new ImString(128);
+    private final GraphNodePalette dockedPalette = new GraphNodePalette("graph-palette-docked");
+    private final GraphNodePalette searchPalette = new GraphNodePalette("graph-palette-search");
     private GraphNodeRegistry registry;
     private Path focusRequest;
     private boolean windowFocusRequest;
@@ -487,6 +503,18 @@ public final class GraphEditorView {
 
     private void renderVariablesPanel(Path path, OpenGraph graph) {
         ImGui.beginChild("##graph-variables", sidePanelWidth, 0.0f, true);
+        renderPanelActions(path, graph);
+        ImGui.separator();
+        if (graph.asset.kind().isShader()) {
+            renderShaderPanel(path, graph);
+        } else {
+            renderVariablesSection(graph);
+        }
+        renderPalettePanel(graph);
+        ImGui.endChild();
+    }
+
+    private void renderPanelActions(Path path, OpenGraph graph) {
         ImGui.textDisabled(kindLabel(graph.asset.kind()));
         if (ImGui.button("Save", -1.0f, 0.0f)) {
             save(path, graph);
@@ -500,13 +528,9 @@ public final class GraphEditorView {
         if (ImGui.button("Add Node", -1.0f, 0.0f)) {
             nodeSearchRequested = true;
         }
-        ImGui.textDisabled("Right-click the canvas to search nodes");
-        ImGui.separator();
-        if (graph.asset.kind().isShader()) {
-            renderShaderPanel(path, graph);
-            ImGui.endChild();
-            return;
-        }
+    }
+
+    private void renderVariablesSection(OpenGraph graph) {
         ImGui.textDisabled("Variables");
         int removeIndex = -1;
         for (int index = 0; index < graph.asset.variables().size(); index++) {
@@ -518,7 +542,22 @@ public final class GraphEditorView {
         if (ImGui.button("Add Variable", -1.0f, 0.0f)) {
             addVariable(graph);
         }
-        ImGui.endChild();
+    }
+
+    private void renderPalettePanel(OpenGraph graph) {
+        ImGui.separator();
+        ImGui.textDisabled("Nodes");
+        ImGui.textDisabled("Click to add, or drag onto the canvas");
+        dockedPalette.render(0.0f, 0.0f, graph.asset, registry,
+                entry -> spawnPaletteEntry(graph, entry, panelSpawnX(), panelSpawnY()));
+    }
+
+    private float panelSpawnX() {
+        return canvasMinX + (canvasMaxX - canvasMinX) * 0.35f;
+    }
+
+    private float panelSpawnY() {
+        return canvasMinY + (canvasMaxY - canvasMinY) * 0.35f;
     }
 
     private static String kindLabel(GraphKind kind) {
@@ -749,6 +788,8 @@ public final class GraphEditorView {
         renderLinks(graph, debugInstance);
         ImNodes.miniMap(MINIMAP_SIZE_FRACTION, ImNodesMiniMapLocation.BottomRight);
         ImNodes.endNodeEditor();
+        acceptCanvasDrops(graph);
+        captureSelection(graph);
         syncNodePositions(graph);
         handleLinkCreated(graph);
         handleLinkDestroyed(graph);
@@ -791,26 +832,48 @@ public final class GraphEditorView {
                 && debugInstance.map(instance -> instance.activeStateId() == node.id()).orElse(false);
     }
 
-    private static int pushTitleStyle(GraphNode node, boolean flash, boolean activeState) {
+    private int pushTitleStyle(GraphNode node, boolean flash, boolean activeState) {
         if (activeState) {
-            ImNodes.pushColorStyle(ImNodesCol.TitleBar, COLOR_STATE_ACTIVE);
-            ImNodes.pushColorStyle(ImNodesCol.TitleBarHovered, COLOR_STATE_ACTIVE);
-            ImNodes.pushColorStyle(ImNodesCol.TitleBarSelected, COLOR_STATE_ACTIVE);
-            return 3;
+            return pushTitleColors(COLOR_STATE_ACTIVE);
         }
         if (flash) {
             ImNodes.pushColorStyle(ImNodesCol.TitleBar, COLOR_FLASH);
             return 1;
         }
         if (StateNodes.isState(node)) {
-            ImNodes.pushColorStyle(ImNodesCol.TitleBar, COLOR_STATE_TITLE);
-            return 1;
+            return pushTitleColors(COLOR_STATE_TITLE);
         }
         if (StateNodes.isTransition(node)) {
-            ImNodes.pushColorStyle(ImNodesCol.TitleBar, COLOR_TRANSITION_TITLE);
-            return 1;
+            return pushTitleColors(COLOR_TRANSITION_TITLE);
         }
-        return 0;
+        return pushTitleColors(categoryTitleColor(node));
+    }
+
+    private static int pushTitleColors(int color) {
+        ImNodes.pushColorStyle(ImNodesCol.TitleBar, color);
+        ImNodes.pushColorStyle(ImNodesCol.TitleBarHovered, lighten(color, TITLE_HOVER_LIGHTEN));
+        ImNodes.pushColorStyle(ImNodesCol.TitleBarSelected, lighten(color, TITLE_SELECTED_LIGHTEN));
+        return 3;
+    }
+
+    private int categoryTitleColor(GraphNode node) {
+        String category = registry.find(node.typeKey())
+                .map(NodeDefinition::category)
+                .orElse("");
+        int index = Math.floorMod(category.hashCode(), CATEGORY_TITLE_COLORS.length);
+        return CATEGORY_TITLE_COLORS[index];
+    }
+
+    private static int lighten(int color, float amount) {
+        return (color & 0xFF000000)
+                | (lightenChannel(color, 16, amount) << 16)
+                | (lightenChannel(color, 8, amount) << 8)
+                | lightenChannel(color, 0, amount);
+    }
+
+    private static int lightenChannel(int color, int shift, float amount) {
+        int value = (color >> shift) & 0xFF;
+        return Math.min(255, Math.round(value + (255 - value) * amount));
     }
 
     private void renderNodeBody(OpenGraph graph, GraphNode node, Optional<GraphInstance> debugInstance) {
@@ -1325,11 +1388,44 @@ public final class GraphEditorView {
                             GraphEdge edge, int linkId, int fromId, int toId) {
         boolean flash = debugInstance.map(instance -> recentlyFired(instance.edgeFireNanos(edge)))
                 .orElse(false);
-        PinReference source = graph.pinsById.get(fromId);
-        int color = flash ? COLOR_FLASH : colorFor(source.pin().type());
-        ImNodes.pushColorStyle(ImNodesCol.Link, color);
+        PinType type = graph.pinsById.get(fromId).pin().type();
+        boolean highlighted = graph.selectedNodes.contains(edge.fromNode())
+                || graph.selectedNodes.contains(edge.toNode());
+        ImNodes.pushColorStyle(ImNodesCol.Link, linkColor(type, flash, highlighted));
+        ImNodes.pushStyleVar(ImNodesStyleVar.LinkThickness, linkThickness(type, highlighted));
         ImNodes.link(linkId, fromId, toId);
+        ImNodes.popStyleVar();
         ImNodes.popColorStyle();
+    }
+
+    private static int linkColor(PinType type, boolean flash, boolean highlighted) {
+        if (flash) {
+            return COLOR_FLASH;
+        }
+        int color = colorFor(type);
+        return highlighted ? lighten(color, LINK_HIGHLIGHT_LIGHTEN) : color;
+    }
+
+    private static float linkThickness(PinType type, boolean highlighted) {
+        float base = switch (type) {
+            case EXEC -> LINK_THICKNESS_EXEC;
+            case VECTOR3, VECTOR4, GAME_OBJECT, OBJECT -> LINK_THICKNESS_WIDE;
+            default -> LINK_THICKNESS_DEFAULT;
+        };
+        return highlighted ? base + LINK_THICKNESS_HIGHLIGHT : base;
+    }
+
+    private static void captureSelection(OpenGraph graph) {
+        graph.selectedNodes.clear();
+        int count = ImNodes.numSelectedNodes();
+        if (count <= 0) {
+            return;
+        }
+        int[] selected = new int[count];
+        ImNodes.getSelectedNodes(selected);
+        for (int nodeId : selected) {
+            graph.selectedNodes.add(nodeId);
+        }
     }
 
     private int attributeIdFor(OpenGraph graph, int nodeId, String pinName, boolean output) {
@@ -1498,7 +1594,6 @@ public final class GraphEditorView {
                     : ImGui.getWindowPosX() + ImGui.getWindowWidth() * 0.4f;
             popupSpawnY = rightClicked ? ImGui.getMousePosY()
                     : ImGui.getWindowPosY() + ImGui.getWindowHeight() * 0.3f;
-            nodeSearch.set("");
             ImGui.openPopup(NODE_SEARCH_POPUP);
             nodeSearchRequested = false;
         }
@@ -1508,83 +1603,105 @@ public final class GraphEditorView {
         if (!ImGui.beginPopup(NODE_SEARCH_POPUP)) {
             return;
         }
-        ImGui.inputTextWithHint("##graph-node-filter", "Search nodes", nodeSearch);
-        ImGui.separator();
-        ImGui.beginChild("##graph-node-list", 320.0f, 360.0f, false);
-        String query = nodeSearch.get().toLowerCase(Locale.ROOT).replace("\0", "");
-        if (!graph.asset.kind().isShader()) {
-            renderVariableNodeOptions(graph, query);
-        }
-        renderCategorizedNodeOptions(graph, query);
-        ImGui.endChild();
+        searchPalette.render(SEARCH_POPUP_WIDTH, SEARCH_POPUP_HEIGHT, graph.asset, registry,
+                entry -> createFromPopup(graph, entry));
         ImGui.endPopup();
     }
 
-    private void renderVariableNodeOptions(OpenGraph graph, String query) {
-        for (GraphVariable variable : new ArrayList<>(graph.asset.variables())) {
-            renderVariableNodeOption(graph, query, "Get " + variable.name(),
-                    BuiltinNodes.VARIABLE_GET, variable.name());
-            renderVariableNodeOption(graph, query, "Set " + variable.name(),
-                    BuiltinNodes.VARIABLE_SET, variable.name());
-        }
+    private void createFromPopup(OpenGraph graph, GraphNodePalette.Entry entry) {
+        spawnPaletteEntry(graph, entry, popupSpawnX, popupSpawnY);
+        ImGui.closeCurrentPopup();
     }
 
-    private void renderVariableNodeOption(OpenGraph graph, String query, String label,
-                                          String typeKey, String variableName) {
-        String fullLabel = "Variables / " + label;
-        if (!query.isEmpty() && !fullLabel.toLowerCase(Locale.ROOT).contains(query)) {
+    private void acceptCanvasDrops(OpenGraph graph) {
+        if (!ImGui.beginDragDropTarget()) {
             return;
         }
-        if (ImGui.selectable(fullLabel)) {
-            GraphNode created = spawnNode(graph, typeKey);
-            created.values().put(BuiltinNodes.VARIABLE_NAME_SETTING, variableName);
-            ImGui.closeCurrentPopup();
+        try {
+            handleCanvasDrops(graph, ImGui.getMousePosX(), ImGui.getMousePosY());
+        } catch (RuntimeException error) {
+            notifier.show("Drop failed: " + error.getMessage());
+        } finally {
+            ImGui.endDragDropTarget();
         }
     }
 
-    private void renderCategorizedNodeOptions(OpenGraph graph, String query) {
-        for (NodeDefinition definition : registry.all()) {
-            if (definition.typeKey().equals(BuiltinNodes.VARIABLE_GET)
-                    || definition.typeKey().equals(BuiltinNodes.VARIABLE_SET)) {
-                continue;
+    private void handleCanvasDrops(OpenGraph graph, float dropX, float dropY) {
+        String nodePayload = ImGui.acceptDragDropPayload(GraphNodePalette.NODE_PAYLOAD, String.class);
+        if (nodePayload != null) {
+            GraphNodePalette.parsePayload(nodePayload)
+                    .ifPresent(entry -> spawnPaletteEntry(graph, entry, dropX, dropY));
+            return;
+        }
+        String texturePath = ImGui.acceptDragDropPayload(AssetMimeTypes.TEXTURE, String.class);
+        if (texturePath != null) {
+            spawnTextureNode(graph, texturePath, dropX, dropY);
+            return;
+        }
+        reportUnsupportedDrop();
+    }
+
+    private void reportUnsupportedDrop() {
+        for (String mimeType : AssetMimeTypes.ALL) {
+            if (ImGui.acceptDragDropPayload(mimeType, String.class) != null) {
+                notifier.show("Nothing to create from this asset on a graph canvas");
+                return;
             }
-            if (!allowedInKind(graph.asset.kind(), definition)) {
-                continue;
-            }
-            renderNodeOption(graph, query, definition);
         }
     }
 
-    private static boolean allowedInKind(GraphKind kind, NodeDefinition definition) {
-        String typeKey = definition.typeKey();
-        if (kind == GraphKind.SHADER_SURFACE) {
-            return ShaderNodes.isShaderNode(typeKey) && !ShaderNodes.isPostOnly(typeKey);
+    private void spawnTextureNode(OpenGraph graph, String texturePath, float dropX, float dropY) {
+        Optional<String> typeKey = textureNodeTypeFor(graph.asset.kind());
+        if (typeKey.isEmpty()) {
+            notifier.show("This graph has no texture node to create");
+            return;
         }
+        GraphNode node = spawnNodeAt(graph, typeKey.get(), dropX, dropY);
+        node.values().put(texturePathSettingFor(typeKey.get()), texturePath);
+        applyTextureParameterName(node, texturePath);
+        notifier.show("Added " + titleOf(graph, node) + " for " + Path.of(texturePath).getFileName());
+    }
+
+    private Optional<String> textureNodeTypeFor(GraphKind kind) {
         if (kind == GraphKind.SHADER_POST) {
-            return ShaderNodes.isShaderNode(typeKey) && !ShaderNodes.isSurfaceOnly(typeKey);
+            return Optional.of(ShaderNodes.PARAMETER_TEXTURE);
         }
-        if (ShaderNodes.isShaderNode(typeKey)) {
-            return false;
+        if (kind == GraphKind.SHADER_SURFACE) {
+            return Optional.of(ShaderNodes.TEXTURE_SAMPLE);
         }
-        return kind != GraphKind.LOGIC || !definition.category().equals(StateNodes.CATEGORY);
+        if (kind == GraphKind.VFX) {
+            return registry.find(VFX_TEXTURE_TYPE_KEY).map(NodeDefinition::typeKey);
+        }
+        return Optional.empty();
     }
 
-    private void renderNodeOption(OpenGraph graph, String query, NodeDefinition definition) {
-        String label = definition.category() + " / " + definition.displayName();
-        if (!query.isEmpty() && !label.toLowerCase(Locale.ROOT).contains(query)) {
+    private static String texturePathSettingFor(String typeKey) {
+        return ShaderNodes.isShaderNode(typeKey) ? ShaderNodes.PATH_SETTING : VFX_TEXTURE_PATH_SETTING;
+    }
+
+    private static void applyTextureParameterName(GraphNode node, String texturePath) {
+        if (!node.typeKey().equals(ShaderNodes.PARAMETER_TEXTURE)) {
             return;
         }
-        if (ImGui.selectable(label)) {
-            spawnNode(graph, definition.typeKey());
-            ImGui.closeCurrentPopup();
+        String fileName = Path.of(texturePath).getFileName().toString();
+        int dot = fileName.lastIndexOf('.');
+        String baseName = dot > 0 ? fileName.substring(0, dot) : fileName;
+        node.values().put(ShaderNodes.NAME_SETTING, baseName.replaceAll("[^A-Za-z0-9_]", "_"));
+    }
+
+    private void spawnPaletteEntry(OpenGraph graph, GraphNodePalette.Entry entry,
+                                   float screenX, float screenY) {
+        GraphNode node = spawnNodeAt(graph, entry.typeKey(), screenX, screenY);
+        if (!entry.variableName().isEmpty()) {
+            node.values().put(BuiltinNodes.VARIABLE_NAME_SETTING, entry.variableName());
         }
     }
 
-    private GraphNode spawnNode(OpenGraph graph, String typeKey) {
+    private GraphNode spawnNodeAt(OpenGraph graph, String typeKey, float screenX, float screenY) {
         GraphNode node = graph.asset.addNode(typeKey, 0.0f, 0.0f);
         applyDefaultSettings(node);
         applyDefaultPinValues(graph, node);
-        ImNodes.setNodeScreenSpacePos(node.id(), popupSpawnX, popupSpawnY);
+        ImNodes.setNodeScreenSpacePos(node.id(), screenX, screenY);
         graph.placedNodes.add(node.id());
         graph.dirty = true;
         return node;
@@ -1639,6 +1756,7 @@ public final class GraphEditorView {
         final Map<Integer, PinReference> pinsById = new HashMap<>();
         final Set<Integer> placedNodes = new HashSet<>();
         final Set<Integer> collapsedPreviews = new HashSet<>();
+        final Set<Integer> selectedNodes = new HashSet<>();
         final Map<String, ImString> textBuffers = new HashMap<>();
         boolean dirty;
         Path graphPath = Path.of("");
