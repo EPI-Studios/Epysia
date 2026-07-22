@@ -4,20 +4,17 @@ import com.meekdev.psyhou.dialogue.Dialogue;
 import com.meekdev.psyhou.dialogue.DialogueComponent;
 import com.meekdev.psyhou.dialogue.DialogueLoader;
 import com.meekdev.psyhou.dialogue.DialogueSystem;
+import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.EpysiaEngine;
+import fr.epistudio.epysia.StandaloneRunner;
 import fr.epistudio.epysia.audio.AudioBuffer;
 import fr.epistudio.epysia.audio.AudioBufferLoader;
 import fr.epistudio.epysia.audio.AudioBus;
 import fr.epistudio.epysia.audio.AudioSystem;
 import fr.epistudio.epysia.gameobjects.GameObject;
-import fr.epistudio.epysia.logging.ConsoleLogger;
-import fr.epistudio.epysia.logging.Logger;
-import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.SamplerFilter;
-import fr.epistudio.epysia.render.opengl.OpenGlRenderBackend;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.text.Font;
-import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.ui.UiAnchor;
 import fr.epistudio.epysia.ui.UiCanvasComponent;
 import fr.epistudio.epysia.ui.UiColor;
@@ -25,7 +22,6 @@ import fr.epistudio.epysia.ui.UiInputSystem;
 import fr.epistudio.epysia.ui.UiLabel;
 import fr.epistudio.epysia.ui.UiPanel;
 import fr.epistudio.epysia.ui.UiRenderSystem;
-import fr.epistudio.epysia.window.Window;
 
 public final class PsyhouMain {
 
@@ -35,37 +31,29 @@ public final class PsyhouMain {
     private static final String PROLOGUE_RESOURCE = "dialogue/prologue.dlg";
     private static final String CLICK_SOUND_RESOURCE = "sfx/click.wav";
 
+    private PsyhouMain() {
+    }
+
     public static void main(String[] arguments) {
-        Window window = new Window("PSYHOU", 1280, 720);
-        RenderBackend backend = new OpenGlRenderBackend();
-        EpysiaEngine engine = new EpysiaEngine(window, backend);
+        StandaloneRunner.runStandalone("PSYHOU", 1280, 720, PsyhouMain::populate);
+    }
 
-        Logger logger = new ConsoleLogger();
+    private static void populate(EpysiaEngine engine, EngineServices services) {
         ShaderLoader shaderLoader = ShaderLoader.autoDetect();
-
-        Scene mainScene = new Scene("psyhou");
-        engine.addScene(mainScene);
-        engine.addRenderSystem(new UiRenderSystem(shaderLoader, window, engine));
+        engine.addRenderSystem(new UiRenderSystem(shaderLoader, services.window(), engine));
         engine.addSystem(new UiInputSystem());
-        AudioSystem audioSystem = new AudioSystem(logger);
-        engine.addSystem(audioSystem);
-
+        AudioSystem audioSystem = engine.systems().get(AudioSystem.class);
         UiLabel dialogueLabel = new UiLabel()
                 .setColor(UiColor.rgb(0.95f, 0.95f, 0.95f));
         dialogueLabel.setAnchor(UiAnchor.CENTER);
-
-        engine.onStartup(() -> {
-            Font psyhouFont = engine.fonts().load(FONT_NAME, FONT_RESOURCE, FONT_PIXEL_HEIGHT, SamplerFilter.NEAREST);
-            dialogueLabel.setFont(psyhouFont);
-            mainScene.addGameObject(buildStage(dialogueLabel));
-            Dialogue prologue = DialogueLoader.loadFromResource(PROLOGUE_RESOURCE);
-            mainScene.addGameObject(buildDialogueDriver(prologue));
-            AudioBuffer tick = AudioBufferLoader.loadFromResource(CLICK_SOUND_RESOURCE);
-            engine.addSystem(new DialogueSystem(dialogueLabel, psyhouFont, audioSystem, tick));
-            audioSystem.mixer().setBusGain(AudioBus.SFX, 0.5f);
-        });
-
-        engine.run();
+        Font psyhouFont = engine.fonts().load(FONT_NAME, FONT_RESOURCE, FONT_PIXEL_HEIGHT, SamplerFilter.NEAREST);
+        dialogueLabel.setFont(psyhouFont);
+        engine.scene().addGameObject(buildStage(dialogueLabel));
+        Dialogue prologue = DialogueLoader.loadFromResource(PROLOGUE_RESOURCE);
+        engine.scene().addGameObject(buildDialogueDriver(prologue));
+        AudioBuffer tick = AudioBufferLoader.loadFromResource(CLICK_SOUND_RESOURCE);
+        engine.addSystem(new DialogueSystem(dialogueLabel, psyhouFont, audioSystem, tick));
+        audioSystem.mixer().setBusGain(AudioBus.SFX, 0.5f);
     }
 
     private static GameObject buildStage(UiLabel dialogueLabel) {
@@ -87,5 +75,4 @@ public final class PsyhouMain {
         driver.addComponent(new DialogueComponent(dialogue));
         return driver;
     }
-
 }

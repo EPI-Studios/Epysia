@@ -114,14 +114,14 @@ public final class VfxFountainPixelCheck {
 
         private int warmPixelCount() {
             PostProcessSystem postProcess = engine.renderSystem(PostProcessSystem.class);
-            int background = backend.readPixelArgb(postProcess.sceneTarget(), 10, 10);
-            int backgroundRed = background >> 16 & 0xFF;
             int warm = 0;
             for (int offsetY = -SCAN_HALF_EXTENT; offsetY <= SCAN_HALF_EXTENT; offsetY += 4) {
                 for (int offsetX = -SCAN_HALF_EXTENT; offsetX <= SCAN_HALF_EXTENT; offsetX += 4) {
                     int pixel = backend.readPixelArgb(postProcess.sceneTarget(),
                             WIDTH / 2 + offsetX, HEIGHT / 2 + offsetY);
-                    if ((pixel >> 16 & 0xFF) > backgroundRed + RED_MARGIN) {
+                    int red = pixel >> 16 & 0xFF;
+                    int blue = pixel & 0xFF;
+                    if (red > 120 && red > blue + RED_MARGIN) {
                         warm++;
                     }
                 }

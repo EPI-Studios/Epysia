@@ -26,20 +26,20 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public final class VfxGraphPixelCheck {
+public final class EmbersScreenshot {
 
     private static final int WIDTH = 640;
     private static final int HEIGHT = 360;
-    private static final int CHECK_FRAME = 30;
+    private static final int CHECK_FRAME = 90;
     private static final int SCAN_HALF_EXTENT = 60;
     private static final int RED_MARGIN = 40;
 
-    private VfxGraphPixelCheck() {
+    private EmbersScreenshot() {
     }
 
     public static void main(String[] arguments) {
-        StandaloneRunner.runStandalone("VfxGraphPixelCheck", WIDTH, HEIGHT,
-                VfxGraphPixelCheck::populate);
+        StandaloneRunner.runStandalone("EmbersScreenshot", WIDTH, HEIGHT,
+                EmbersScreenshot::populate);
     }
 
     private static void populate(EpysiaEngine engine, EngineServices services) {
@@ -60,6 +60,10 @@ public final class VfxGraphPixelCheck {
     }
 
     private static Path writeGraphFile() {
+        Path repoEmbers = Path.of("examples/resources/vfx/Embers.epygraph");
+        if (Files.isRegularFile(repoEmbers)) {
+            return repoEmbers.toAbsolutePath();
+        }
         GraphAsset asset = new GraphAsset();
         asset.setKind(GraphKind.VFX);
         GraphNode spawnRate = asset.addNode(VfxNodes.OUTPUT_SPAWN_RATE, 0.0f, 0.0f);
@@ -110,7 +114,43 @@ public final class VfxGraphPixelCheck {
             if (frameCount != CHECK_FRAME) {
                 return;
             }
+            saveScreenshot();
+            reportAliveCount(scene);
             report(warmPixelCount());
+        }
+
+        private void reportAliveCount(Scene scene) {
+            fr.epistudio.epysia.vfx.VfxRenderSystem vfx =
+                    engine.renderSystem(fr.epistudio.epysia.vfx.VfxRenderSystem.class);
+            for (GameObject gameObject : scene.gameObjects()) {
+                ParticleEffect effect = gameObject.getComponentOrNull(ParticleEffect.class);
+                if (effect != null) {
+                    System.out.println("[diag] " + vfx.debugSnapshot(effect));
+                }
+            }
+        }
+
+        private void saveScreenshot() {
+            java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(WIDTH, HEIGHT,
+                    java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.nio.ByteBuffer pixels = org.lwjgl.BufferUtils.createByteBuffer(WIDTH * HEIGHT * 4);
+            org.lwjgl.opengl.GL11.glReadPixels(0, 0, WIDTH, HEIGHT,
+                    org.lwjgl.opengl.GL11.GL_RGBA, org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, pixels);
+            for (int y = 0; y < HEIGHT; y++) {
+                for (int x = 0; x < WIDTH; x++) {
+                    int base = (y * WIDTH + x) * 4;
+                    int red = pixels.get(base) & 0xFF;
+                    int green = pixels.get(base + 1) & 0xFF;
+                    int blue = pixels.get(base + 2) & 0xFF;
+                    image.setRGB(x, HEIGHT - 1 - y, red << 16 | green << 8 | blue);
+                }
+            }
+            try {
+                javax.imageio.ImageIO.write(image, "png", new java.io.File("/tmp/claude-1000/-home-meek-Desktop-DEV-Epysia/45ed638e-4fea-4845-812d-ed81bb16dc54/scratchpad/embers.png"));
+                System.out.println("[screenshot] saved");
+            } catch (java.io.IOException error) {
+                System.out.println("[screenshot] failed: " + error.getMessage());
+            }
         }
 
         private int warmPixelCount() {
