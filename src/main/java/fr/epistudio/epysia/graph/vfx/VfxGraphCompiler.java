@@ -86,7 +86,7 @@ public final class VfxGraphCompiler {
                     particles[slot].color = %s;
                     particles[slot].sizeRotation = vec4(%s, 0.0, 0.0, 0.0);
                     particles[slot].seedUser = vec4(particleSeed, 0.0, 0.0, 0.0);
-                    particles[slot].userExtra = vec4(0.0);
+                    particles[slot].userExtra = particles[slot].color;
                 }
                 """.formatted(commonSource, helperFunctions(), position, velocity, lifetime, color, size);
     }
@@ -94,7 +94,8 @@ public final class VfxGraphCompiler {
     private String compileUpdate(GraphAsset asset) {
         Optional<GraphNode> output = findOutput(asset, VfxNodes.OUTPUT_UPDATE);
         String velocity = "particle.velocityLifetime.xyz + vec3(0.0, -4.0, 0.0) * deltaTime";
-        String color = "vec4(particle.color.rgb, 1.0 - ageNormalized)";
+        String color = "vec4(mix(particle.userExtra.rgb * 1.3 + vec3(0.25, 0.12, 0.02), particle.userExtra.rgb * 0.35, "
+                + "smoothstep(0.0, 0.85, ageNormalized)), 1.0 - ageNormalized * ageNormalized)";
         String size = "particle.sizeRotation.x";
         String kill = "0.0";
         if (output.isPresent()) {
@@ -142,17 +143,21 @@ public final class VfxGraphCompiler {
 
     private String compileRender(GraphAsset asset) {
         String softEdge = "1.0";
+        String intensity = "4.0";
         Optional<GraphNode> output = findOutput(asset, VfxNodes.OUTPUT_RENDER);
         if (output.isPresent()) {
             softEdge = expressionFor(asset, output.get(), VfxNodes.SOFT_EDGE_PIN, softEdge, VfxStage.RENDER);
+            intensity = expressionFor(asset, output.get(), VfxNodes.INTENSITY_PIN, intensity, VfxStage.RENDER);
         }
         return """
                     float distanceFromCenter = length(particleCorner);
                     float softEdge = %s;
-                    float falloff = clamp(1.0 - distanceFromCenter, 0.0, 1.0);
-                    falloff = pow(falloff, max(softEdge * 2.0, 0.25));
-                    fragmentColor = vec4(particleColor.rgb * particleColor.a * falloff, 1.0);
-                """.formatted(softEdge);
+                    float intensity = %s;
+                    float falloff = smoothstep(1.0, 1.0 - clamp(softEdge, 0.05, 1.0), distanceFromCenter);
+                    float core = smoothstep(0.45, 0.0, distanceFromCenter) * 0.6;
+                    vec3 hdrColor = particleColor.rgb * intensity * (falloff + core);
+                    fragmentColor = vec4(hdrColor * particleColor.a, 1.0);
+                """.formatted(softEdge, intensity);
     }
 
     private static String helperFunctions() {

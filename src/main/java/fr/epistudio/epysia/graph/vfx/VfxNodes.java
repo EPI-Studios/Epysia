@@ -31,6 +31,7 @@ public final class VfxNodes {
     public static final String SIZE_PIN = "Size";
     public static final String KILL_PIN = "Kill";
     public static final String SOFT_EDGE_PIN = "Soft Edge";
+    public static final String INTENSITY_PIN = "Intensity";
     public static final String RESULT_PIN = "Result";
 
     public static final String MINIMUM_SETTING = "minimum";
@@ -71,7 +72,8 @@ public final class VfxNodes {
                         new PinDefinition(KILL_PIN, PinType.FLOAT)),
                 List.of(), List.of()));
         registry.register(node(OUTPUT_RENDER, "Render Output", CATEGORY_OUTPUT,
-                List.of(new PinDefinition(SOFT_EDGE_PIN, PinType.FLOAT)),
+                List.of(new PinDefinition(SOFT_EDGE_PIN, PinType.FLOAT),
+                        new PinDefinition(INTENSITY_PIN, PinType.FLOAT)),
                 List.of(), List.of()));
     }
 
