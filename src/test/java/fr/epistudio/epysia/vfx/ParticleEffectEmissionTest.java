@@ -57,4 +57,15 @@ class ParticleEffectEmissionTest {
         assertTrue(effect.consumePrewarmSteps() > 0);
         assertEquals(0, effect.consumePrewarmSteps());
     }
+
+    @Test
+    void theStallOfThePrewarmFrameIsNotSimulatedAsRealTime() {
+        ParticleEffect effect = new ParticleEffect().setDuration(1.0f).setPrewarm(true);
+
+        assertEquals(0.25f, effect.settledDeltaSeconds(0.25f));
+        effect.consumePrewarmSteps();
+
+        assertEquals(effect.prewarmStepSeconds(), effect.settledDeltaSeconds(0.25f));
+        assertEquals(0.004f, effect.settledDeltaSeconds(0.004f));
+    }
 }
