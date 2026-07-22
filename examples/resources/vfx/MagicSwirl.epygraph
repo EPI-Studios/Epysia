@@ -1,0 +1,294 @@
+{
+  "formatVersion": 1,
+  "kind": "VFX",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "vfx.output.spawnRate",
+      "x": 1180.0,
+      "y": 40.0,
+      "values": {
+        "Rate": 180.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "vfx.output.particle",
+      "x": 1180.0,
+      "y": 180.0,
+      "values": {
+        "Color": [0.35, 0.7, 1.0, 1.0],
+        "Size": 0.09
+      }
+    },
+    {
+      "id": 3,
+      "type": "vfx.output.update",
+      "x": 1180.0,
+      "y": 560.0,
+      "values": {}
+    },
+    {
+      "id": 4,
+      "type": "vfx.output.render",
+      "x": 1180.0,
+      "y": 860.0,
+      "values": {
+        "Soft Edge": 0.85,
+        "Intensity": 2.0
+      }
+    },
+    {
+      "id": 5,
+      "type": "vfx.shape",
+      "x": 40.0,
+      "y": 60.0,
+      "values": {
+        "shape": "Circle",
+        "radius": 0.85,
+        "radiusThickness": 0.35,
+        "arcDegrees": 360.0,
+        "angleDegrees": 25.0,
+        "halfExtentsX": 0.5,
+        "halfExtentsY": 0.5,
+        "halfExtentsZ": 0.5,
+        "height": 1.0,
+        "edgeLength": 1.0
+      }
+    },
+    {
+      "id": 6,
+      "type": "vfx.emitterPosition",
+      "x": 40.0,
+      "y": 300.0,
+      "values": {}
+    },
+    {
+      "id": 8,
+      "type": "vfx.randomRange",
+      "x": 800.0,
+      "y": 320.0,
+      "values": {
+        "minimum": 2.2,
+        "maximum": 3.4
+      }
+    },
+    {
+      "id": 9,
+      "type": "vfx.value.constant",
+      "x": 40.0,
+      "y": 440.0,
+      "values": {
+        "valueX": 0.0,
+        "valueY": 1.0,
+        "valueZ": 0.0,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 10,
+      "type": "vfx.math.cross",
+      "x": 340.0,
+      "y": 420.0,
+      "values": {}
+    },
+    {
+      "id": 11,
+      "type": "vfx.randomRange",
+      "x": 340.0,
+      "y": 560.0,
+      "values": {
+        "minimum": 1.5,
+        "maximum": 2.2
+      }
+    },
+    {
+      "id": 12,
+      "type": "vfx.math.multiply",
+      "x": 620.0,
+      "y": 460.0,
+      "values": {}
+    },
+    {
+      "id": 13,
+      "type": "vfx.value.constant",
+      "x": 620.0,
+      "y": 620.0,
+      "values": {
+        "valueX": 0.0,
+        "valueY": 0.45,
+        "valueZ": 0.0,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 14,
+      "type": "vfx.math.add",
+      "x": 900.0,
+      "y": 500.0,
+      "values": {}
+    },
+    {
+      "id": 15,
+      "type": "vfx.particleAgeNormalized",
+      "x": 40.0,
+      "y": 720.0,
+      "values": {}
+    },
+    {
+      "id": 16,
+      "type": "vfx.value.gradient",
+      "x": 620.0,
+      "y": 720.0,
+      "values": {
+        "gradient": "gradient1:0.0,0.22,0.62,1.0;0.35,0.12,0.35,1.0;0.7,0.32,0.14,0.98;1.0,0.14,0.03,0.5:0.0,0.35;0.2,1.0;0.75,0.8;1.0,0.0"
+      }
+    },
+    {
+      "id": 17,
+      "type": "vfx.value.curve",
+      "x": 620.0,
+      "y": 900.0,
+      "values": {
+        "curve": "curve1:0.0,1.0:0.0,0.25,1.4,1.4;0.35,1.0,0.0,0.0;1.0,0.45,-0.6,-0.6",
+        "minimum": 0.03,
+        "maximum": 0.14
+      }
+    },
+    {
+      "id": 18,
+      "type": "vfx.particlePosition",
+      "x": 40.0,
+      "y": 1060.0,
+      "values": {}
+    },
+    {
+      "id": 19,
+      "type": "vfx.math.subtract",
+      "x": 300.0,
+      "y": 1060.0,
+      "values": {}
+    },
+    {
+      "id": 20,
+      "type": "vfx.math.splitVector3",
+      "x": 520.0,
+      "y": 1060.0,
+      "values": {}
+    },
+    {
+      "id": 21,
+      "type": "vfx.math.vector3",
+      "x": 700.0,
+      "y": 1060.0,
+      "values": {}
+    },
+    {
+      "id": 22,
+      "type": "vfx.math.normalize",
+      "x": 880.0,
+      "y": 1060.0,
+      "values": {}
+    },
+    {
+      "id": 23,
+      "type": "vfx.math.cross",
+      "x": 1040.0,
+      "y": 1060.0,
+      "values": {}
+    },
+    {
+      "id": 24,
+      "type": "vfx.value.constant",
+      "x": 880.0,
+      "y": 1220.0,
+      "values": {
+        "valueX": 1.9,
+        "valueY": 0.0,
+        "valueZ": 0.0,
+        "valueW": 1.0,
+        "components": 1
+      }
+    },
+    {
+      "id": 25,
+      "type": "vfx.math.multiply",
+      "x": 1200.0,
+      "y": 1120.0,
+      "values": {}
+    },
+    {
+      "id": 26,
+      "type": "vfx.value.constant",
+      "x": 1200.0,
+      "y": 1280.0,
+      "values": {
+        "valueX": 0.0,
+        "valueY": 0.8,
+        "valueZ": 0.0,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 27,
+      "type": "vfx.math.add",
+      "x": 1420.0,
+      "y": 1180.0,
+      "values": {}
+    },
+    {
+      "id": 28,
+      "type": "vfx.noise",
+      "x": 1200.0,
+      "y": 1420.0,
+      "values": {
+        "mode": "Curl",
+        "frequency": 1.4,
+        "octaves": 3,
+        "strength": 0.35
+      }
+    },
+    {
+      "id": 29,
+      "type": "vfx.math.add",
+      "x": 1620.0,
+      "y": 1280.0,
+      "values": {}
+    }
+  ],
+  "edges": [
+    {"fromNode": 5, "fromPin": "Position", "toNode": 2, "toPin": "Position"},
+    {"fromNode": 8, "fromPin": "Result", "toNode": 2, "toPin": "Lifetime"},
+    {"fromNode": 9, "fromPin": "Result", "toNode": 10, "toPin": "A"},
+    {"fromNode": 5, "fromPin": "Direction", "toNode": 10, "toPin": "B"},
+    {"fromNode": 10, "fromPin": "Result", "toNode": 12, "toPin": "A"},
+    {"fromNode": 11, "fromPin": "Result", "toNode": 12, "toPin": "B"},
+    {"fromNode": 12, "fromPin": "Result", "toNode": 14, "toPin": "A"},
+    {"fromNode": 13, "fromPin": "Result", "toNode": 14, "toPin": "B"},
+    {"fromNode": 14, "fromPin": "Result", "toNode": 2, "toPin": "Velocity"},
+    {"fromNode": 15, "fromPin": "Result", "toNode": 16, "toPin": "Time"},
+    {"fromNode": 16, "fromPin": "Result", "toNode": 3, "toPin": "Color"},
+    {"fromNode": 15, "fromPin": "Result", "toNode": 17, "toPin": "Time"},
+    {"fromNode": 17, "fromPin": "Result", "toNode": 3, "toPin": "Size"},
+    {"fromNode": 18, "fromPin": "Result", "toNode": 19, "toPin": "A"},
+    {"fromNode": 6, "fromPin": "Result", "toNode": 19, "toPin": "B"},
+    {"fromNode": 19, "fromPin": "Result", "toNode": 20, "toPin": "Value"},
+    {"fromNode": 20, "fromPin": "X", "toNode": 21, "toPin": "X"},
+    {"fromNode": 20, "fromPin": "Z", "toNode": 21, "toPin": "Z"},
+    {"fromNode": 21, "fromPin": "Result", "toNode": 22, "toPin": "Value"},
+    {"fromNode": 9, "fromPin": "Result", "toNode": 23, "toPin": "A"},
+    {"fromNode": 22, "fromPin": "Result", "toNode": 23, "toPin": "B"},
+    {"fromNode": 23, "fromPin": "Result", "toNode": 25, "toPin": "A"},
+    {"fromNode": 24, "fromPin": "Result", "toNode": 25, "toPin": "B"},
+    {"fromNode": 25, "fromPin": "Result", "toNode": 27, "toPin": "A"},
+    {"fromNode": 26, "fromPin": "Result", "toNode": 27, "toPin": "B"},
+    {"fromNode": 18, "fromPin": "Result", "toNode": 28, "toPin": "Position"},
+    {"fromNode": 27, "fromPin": "Result", "toNode": 29, "toPin": "A"},
+    {"fromNode": 28, "fromPin": "Result", "toNode": 29, "toPin": "B"},
+    {"fromNode": 29, "fromPin": "Result", "toNode": 3, "toPin": "Velocity"}
+  ],
+  "variables": []
+}

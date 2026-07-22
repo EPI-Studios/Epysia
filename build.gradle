@@ -107,6 +107,30 @@ tasks.register('runEmbersCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runVfxExampleGraphsCheck', JavaExec) {
+    group = 'verification'
+    description = 'Parses and compiles the Fire, Smoke, Sparks and MagicSwirl example graphs.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.VfxExampleGraphsCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
+tasks.register('runVfxExamplesCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders the four example VFX graphs and checks each one produces its own colors.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.VfxExamplesPixelCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
+tasks.register('runVfxShowcase', JavaExec) {
+    group = 'application'
+    description = 'Opens a window playing the four example VFX graphs side by side until closed.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.VfxShowcase'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runEmbersDemo', JavaExec) {
     group = 'application'
     description = 'Opens a window playing the Embers VFX graph until closed.'
