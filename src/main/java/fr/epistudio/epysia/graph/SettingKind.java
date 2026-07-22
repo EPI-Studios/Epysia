@@ -10,5 +10,7 @@ public enum SettingKind {
     ASSET_PATH,
     VARIABLE_NAME,
     COMPARISON,
-    LOG_LEVEL
+    LOG_LEVEL,
+    CURVE,
+    GRADIENT
 }
