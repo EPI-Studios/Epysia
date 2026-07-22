@@ -11,6 +11,7 @@ import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.StageConfigurer;
+import fr.epistudio.epysia.render.backend.PixelColor;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.mesh.CubeMesh;
@@ -94,23 +95,30 @@ public final class MaterialInstancePixelCheck {
             PostProcessSystem postProcess = engine.renderSystem(PostProcessSystem.class);
             int leftPixel = backend.readPixelArgb(postProcess.sceneTarget(), LEFT_PIXEL_X, PIXEL_Y);
             int rightPixel = backend.readPixelArgb(postProcess.sceneTarget(), RIGHT_PIXEL_X, PIXEL_Y);
-            report(leftPixel, rightPixel);
+            PixelColor leftColor = backend.readPixelFloat(postProcess.sceneTarget(), LEFT_PIXEL_X, PIXEL_Y);
+            PixelColor rightColor = backend.readPixelFloat(postProcess.sceneTarget(), RIGHT_PIXEL_X, PIXEL_Y);
+            report(leftPixel, rightPixel, leftColor, rightColor);
         }
 
-        private static void report(int leftPixel, int rightPixel) {
-            int leftRed = leftPixel >> 16 & 0xFF;
-            int leftBlue = leftPixel & 0xFF;
-            int rightRed = rightPixel >> 16 & 0xFF;
-            int rightBlue = rightPixel & 0xFF;
-            boolean leftIsBlue = leftBlue > leftRed;
-            boolean rightIsRed = rightRed > rightBlue;
+        private static void report(int leftPixel, int rightPixel, PixelColor leftColor, PixelColor rightColor) {
+            boolean leftIsBlue = (leftPixel & 0xFF) > (leftPixel >> 16 & 0xFF);
+            boolean rightIsRed = (rightPixel >> 16 & 0xFF) > (rightPixel & 0xFF);
+            boolean unclamped = isUnclamped(leftPixel, leftColor) && isUnclamped(rightPixel, rightColor);
             System.out.printf("[pixel-check] left=%08x right=%08x%n", leftPixel, rightPixel);
-            if (leftIsBlue && rightIsRed) {
+            System.out.printf("[pixel-check] left float=%s right float=%s%n", leftColor, rightColor);
+            if (leftIsBlue && rightIsRed && unclamped) {
                 System.out.println("[pixel-check] PASS: instances of one shader rendered with distinct uniforms");
                 System.exit(0);
             }
-            System.out.println("[pixel-check] FAIL: both instances rendered with the same uniform values");
+            System.out.println("[pixel-check] FAIL: " + (unclamped
+                    ? "both instances rendered with the same uniform values"
+                    : "the float readback did not exceed the saturated 8 bit readback"));
             System.exit(1);
+        }
+
+        private static boolean isUnclamped(int pixel, PixelColor color) {
+            int brightest = Math.max(pixel >> 16 & 0xFF, Math.max(pixel >> 8 & 0xFF, pixel & 0xFF));
+            return brightest == 0xFF && color.brightest() > 1.0f;
         }
 
         @Override

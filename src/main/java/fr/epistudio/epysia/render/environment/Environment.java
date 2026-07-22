@@ -49,6 +49,9 @@ public final class Environment {
     }
 
     public void collectSky(Camera3D camera, Vector3f sunDirection, FrameBuilder frame, float alpha) {
+        if (settings.skyIntensity() <= 0.0f) {
+            return;
+        }
         skyPass.collect(camera, sunDirection, settings.skyIntensity(), frame, alpha);
     }
 
