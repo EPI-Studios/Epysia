@@ -139,6 +139,14 @@ tasks.register('runEmbersDemo', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runThunderDemo', JavaExec) {
+    group = 'application'
+    description = 'Opens a window playing the ThunderStrike VFX graph on a loop until closed.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.ThunderStrikeDemo'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runForest', JavaExec) {
     group = 'application'
     description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'

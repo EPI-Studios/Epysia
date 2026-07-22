@@ -13,6 +13,7 @@ public final class VfxExampleGraphsCheck {
             System.exit(1);
             return;
         }
-        System.out.println("[vfx-examples] PASS: the four example graphs parse and compile");
+        System.out.println("[vfx-examples] PASS: " + VfxExampleGraphs.NAMES.size()
+                + " example graphs parse and compile");
     }
 }

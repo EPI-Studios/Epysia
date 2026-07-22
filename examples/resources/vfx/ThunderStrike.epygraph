@@ -1,0 +1,269 @@
+{
+  "formatVersion": 1,
+  "kind": "VFX",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "vfx.output.spawnRate",
+      "x": 1300.0,
+      "y": 40.0,
+      "values": {
+        "Rate": 0.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "vfx.output.particle",
+      "x": 1300.0,
+      "y": 200.0,
+      "values": {
+        "Color": [1.0, 1.0, 1.0, 1.0],
+        "Size": 0.06
+      }
+    },
+    {
+      "id": 3,
+      "type": "vfx.output.update",
+      "x": 1300.0,
+      "y": 560.0,
+      "values": {}
+    },
+    {
+      "id": 4,
+      "type": "vfx.output.render",
+      "x": 1300.0,
+      "y": 900.0,
+      "values": {
+        "Soft Edge": 0.35,
+        "Intensity": 7.0
+      }
+    },
+    {
+      "id": 5,
+      "type": "vfx.randomRangeVector",
+      "x": 40.0,
+      "y": 60.0,
+      "values": {
+        "minimumX": -0.02,
+        "minimumY": -4.0,
+        "minimumZ": -0.02,
+        "maximumX": 0.02,
+        "maximumY": 4.0,
+        "maximumZ": 0.02
+      }
+    },
+    {
+      "id": 6,
+      "type": "vfx.noise",
+      "x": 380.0,
+      "y": 60.0,
+      "values": {
+        "mode": "Curl",
+        "frequency": 0.6,
+        "octaves": 4,
+        "strength": 1.0
+      }
+    },
+    {
+      "id": 7,
+      "type": "vfx.value.constant",
+      "x": 380.0,
+      "y": 220.0,
+      "values": {
+        "valueX": 0.6,
+        "valueY": 0.05,
+        "valueZ": 0.6,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 8,
+      "type": "vfx.math.multiply",
+      "x": 700.0,
+      "y": 120.0,
+      "values": {}
+    },
+    {
+      "id": 9,
+      "type": "vfx.math.add",
+      "x": 1020.0,
+      "y": 60.0,
+      "values": {}
+    },
+    {
+      "id": 10,
+      "type": "vfx.randomRange",
+      "x": 1020.0,
+      "y": 240.0,
+      "values": {
+        "minimum": 0.09,
+        "maximum": 0.28
+      }
+    },
+    {
+      "id": 11,
+      "type": "vfx.value.constant",
+      "x": 1020.0,
+      "y": 380.0,
+      "values": {
+        "valueX": 0.0,
+        "valueY": 0.0,
+        "valueZ": 0.0,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 13,
+      "type": "vfx.particleAgeNormalized",
+      "x": 40.0,
+      "y": 660.0,
+      "values": {}
+    },
+    {
+      "id": 14,
+      "type": "vfx.value.gradient",
+      "x": 700.0,
+      "y": 660.0,
+      "values": {
+        "gradient": "gradient1:0.0,1.0,1.0,1.0;0.12,0.82,0.9,1.0;0.4,0.42,0.58,1.0;1.0,0.18,0.16,0.72:0.0,1.0;0.55,1.0;1.0,0.0"
+      }
+    },
+    {
+      "id": 15,
+      "type": "vfx.value.curve",
+      "x": 700.0,
+      "y": 840.0,
+      "values": {
+        "curve": "curve1:0.0,1.0:0.0,1.0,0.0,0.0;0.55,0.92,-0.2,-0.2;1.0,0.0,-3.4,-3.4",
+        "minimum": 0.0,
+        "maximum": 0.062
+      }
+    },
+    {
+      "id": 16,
+      "type": "vfx.effectTimeNormalized",
+      "x": 40.0,
+      "y": 1020.0,
+      "values": {}
+    },
+    {
+      "id": 17,
+      "type": "vfx.value.curve",
+      "x": 700.0,
+      "y": 1020.0,
+      "values": {
+        "curve": "curve1:0.0,1.0:0.0,0.0,0.0,0.0;0.016129,0.0,0.0,0.0;0.032258,1.0,60.0,-60.0;0.048387,0.0,0.0,0.0;0.080645,0.0,0.0,0.0;0.096774,0.75,45.0,-45.0;0.112903,0.0,0.0,0.0;1.0,0.0,0.0,0.0",
+        "minimum": 0.0,
+        "maximum": 36000.0
+      }
+    },
+    {
+      "id": 18,
+      "type": "vfx.noise",
+      "x": 380.0,
+      "y": 400.0,
+      "values": {
+        "mode": "Curl",
+        "frequency": 3.0,
+        "octaves": 4,
+        "strength": 1.0
+      }
+    },
+    {
+      "id": 19,
+      "type": "vfx.value.constant",
+      "x": 380.0,
+      "y": 560.0,
+      "values": {
+        "valueX": 0.24,
+        "valueY": 0.03,
+        "valueZ": 0.24,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 20,
+      "type": "vfx.math.multiply",
+      "x": 700.0,
+      "y": 440.0,
+      "values": {}
+    },
+    {
+      "id": 21,
+      "type": "vfx.math.add",
+      "x": 880.0,
+      "y": 260.0,
+      "values": {}
+    },
+    {
+      "id": 22,
+      "type": "vfx.noise",
+      "x": 380.0,
+      "y": 780.0,
+      "values": {
+        "mode": "Curl",
+        "frequency": 9.0,
+        "octaves": 4,
+        "strength": 1.0
+      }
+    },
+    {
+      "id": 23,
+      "type": "vfx.value.constant",
+      "x": 380.0,
+      "y": 940.0,
+      "values": {
+        "valueX": 0.06,
+        "valueY": 0.01,
+        "valueZ": 0.06,
+        "valueW": 1.0,
+        "components": 3
+      }
+    },
+    {
+      "id": 24,
+      "type": "vfx.math.multiply",
+      "x": 700.0,
+      "y": 820.0,
+      "values": {}
+    },
+    {
+      "id": 25,
+      "type": "vfx.math.add",
+      "x": 880.0,
+      "y": 440.0,
+      "values": {}
+    }
+  ],
+  "edges": [
+    {"fromNode": 5, "fromPin": "Result", "toNode": 6, "toPin": "Position"},
+    {"fromNode": 6, "fromPin": "Result", "toNode": 8, "toPin": "A"},
+    {"fromNode": 7, "fromPin": "Result", "toNode": 8, "toPin": "B"},
+    {"fromNode": 5, "fromPin": "Result", "toNode": 18, "toPin": "Position"},
+    {"fromNode": 18, "fromPin": "Result", "toNode": 20, "toPin": "A"},
+    {"fromNode": 19, "fromPin": "Result", "toNode": 20, "toPin": "B"},
+    {"fromNode": 5, "fromPin": "Result", "toNode": 22, "toPin": "Position"},
+    {"fromNode": 22, "fromPin": "Result", "toNode": 24, "toPin": "A"},
+    {"fromNode": 23, "fromPin": "Result", "toNode": 24, "toPin": "B"},
+    {"fromNode": 8, "fromPin": "Result", "toNode": 21, "toPin": "A"},
+    {"fromNode": 20, "fromPin": "Result", "toNode": 21, "toPin": "B"},
+    {"fromNode": 21, "fromPin": "Result", "toNode": 25, "toPin": "A"},
+    {"fromNode": 24, "fromPin": "Result", "toNode": 25, "toPin": "B"},
+    {"fromNode": 5, "fromPin": "Result", "toNode": 9, "toPin": "A"},
+    {"fromNode": 25, "fromPin": "Result", "toNode": 9, "toPin": "B"},
+    {"fromNode": 9, "fromPin": "Result", "toNode": 2, "toPin": "Position"},
+    {"fromNode": 10, "fromPin": "Result", "toNode": 2, "toPin": "Lifetime"},
+    {"fromNode": 11, "fromPin": "Result", "toNode": 2, "toPin": "Velocity"},
+    {"fromNode": 11, "fromPin": "Result", "toNode": 3, "toPin": "Velocity"},
+    {"fromNode": 13, "fromPin": "Result", "toNode": 14, "toPin": "Time"},
+    {"fromNode": 14, "fromPin": "Result", "toNode": 3, "toPin": "Color"},
+    {"fromNode": 13, "fromPin": "Result", "toNode": 15, "toPin": "Time"},
+    {"fromNode": 15, "fromPin": "Result", "toNode": 3, "toPin": "Size"},
+    {"fromNode": 16, "fromPin": "Result", "toNode": 17, "toPin": "Time"},
+    {"fromNode": 17, "fromPin": "Result", "toNode": 1, "toPin": "Rate"}
+  ],
+  "variables": []
+}

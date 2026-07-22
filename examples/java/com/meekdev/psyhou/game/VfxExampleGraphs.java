@@ -21,7 +21,8 @@ import java.util.Optional;
 
 public final class VfxExampleGraphs {
 
-    public static final List<String> NAMES = List.of("Fire", "Smoke", "Sparks", "MagicSwirl");
+    public static final List<String> NAMES = List.of("Fire", "Smoke", "Sparks", "MagicSwirl",
+            "ThunderStrike");
 
     private static final String DIRECTORY = "examples/resources/vfx/";
     private static final String EXTENSION = ".epygraph";
