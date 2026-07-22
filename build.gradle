@@ -245,3 +245,9 @@ tasks.register('runEmbersScreenshot', JavaExec) {
     mainClass = 'com.meekdev.psyhou.game.EmbersScreenshot'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
+
+tasks.withType(JavaExec).configureEach {
+    if (name.endsWith('Check') || name.endsWith('Screenshot')) {
+        systemProperty 'epysia.offscreen', 'true'
+    }
+}

@@ -85,6 +85,11 @@ public final class Window implements RenderSurface {
         this.height = Integer.getInteger(HEIGHT_PROPERTY, height);
     }
 
+    public static boolean offscreenRequested() {
+        return Boolean.parseBoolean(System.getProperty("epysia.offscreen", "false"))
+                || "1".equals(System.getenv("EPYSIA_OFFSCREEN"));
+    }
+
     public void open() {
         applyPlatformHint();
         if (!glfwInit()) {
@@ -101,7 +106,9 @@ public final class Window implements RenderSurface {
         }
         glfwMakeContextCurrent(handle);
         glfwSwapInterval(vsyncEnabled ? 1 : 0);
-        glfwShowWindow(handle);
+        if (!offscreenRequested()) {
+            glfwShowWindow(handle);
+        }
         refreshFramebufferSize();
         refreshWindowSize();
         installResizeCallbacks();
