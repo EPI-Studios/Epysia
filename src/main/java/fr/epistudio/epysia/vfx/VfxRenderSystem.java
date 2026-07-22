@@ -59,14 +59,20 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 public final class VfxRenderSystem implements RenderSystem {
 
     private static final int PARTICLE_BYTES = 96;
     private static final int EFFECT_UBO_BYTES = 32;
     private static final int INDIRECT_BYTES = 20;
+    private static final int INDIRECT_INSTANCE_COUNT_OFFSET = 4;
     private static final int WORKGROUP_SIZE = 64;
     private static final float MAXIMUM_DELTA_SECONDS = 0.25f;
+    private static final int POOL_BINDING = 5;
+    private static final int ALIVE_BINDING = 6;
+    private static final int FREE_BINDING = 7;
+    private static final int INDIRECT_BINDING = 8;
 
     private final ShaderLoader shaderLoader;
     private final MeshRenderSystem meshRenderSystem;
@@ -87,6 +93,7 @@ public final class VfxRenderSystem implements RenderSystem {
     private BufferHandle quadVertexBuffer;
     private BufferHandle quadIndexBuffer;
     private long lastFrameNanos;
+    private float timeScale = 1.0f;
 
     public VfxRenderSystem(ShaderLoader shaderLoader, MeshRenderSystem meshRenderSystem, Logger logger) {
         this.shaderLoader = shaderLoader;
@@ -109,10 +116,10 @@ public final class VfxRenderSystem implements RenderSystem {
 
     private static BindingSetLayout buildComputeLayout() {
         return new BindingSetLayout(List.of(
-                new BindingSlot(0, BindingType.STORAGE_BUFFER),
-                new BindingSlot(1, BindingType.STORAGE_BUFFER),
-                new BindingSlot(2, BindingType.STORAGE_BUFFER),
-                new BindingSlot(3, BindingType.STORAGE_BUFFER),
+                new BindingSlot(POOL_BINDING, BindingType.STORAGE_BUFFER),
+                new BindingSlot(ALIVE_BINDING, BindingType.STORAGE_BUFFER),
+                new BindingSlot(FREE_BINDING, BindingType.STORAGE_BUFFER),
+                new BindingSlot(INDIRECT_BINDING, BindingType.STORAGE_BUFFER),
                 new BindingSlot(1, BindingType.UNIFORM_BUFFER)));
     }
 
@@ -120,10 +127,10 @@ public final class VfxRenderSystem implements RenderSystem {
         return new BindingSetLayout(List.of(
                 new BindingSlot(0, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(1, BindingType.UNIFORM_BUFFER),
-                new BindingSlot(0, BindingType.STORAGE_BUFFER),
-                new BindingSlot(1, BindingType.STORAGE_BUFFER),
-                new BindingSlot(2, BindingType.STORAGE_BUFFER),
-                new BindingSlot(3, BindingType.STORAGE_BUFFER)));
+                new BindingSlot(POOL_BINDING, BindingType.STORAGE_BUFFER),
+                new BindingSlot(ALIVE_BINDING, BindingType.STORAGE_BUFFER),
+                new BindingSlot(FREE_BINDING, BindingType.STORAGE_BUFFER),
+                new BindingSlot(INDIRECT_BINDING, BindingType.STORAGE_BUFFER)));
     }
 
     private PipelineHandle createComputePipeline(String resourcePath) {
@@ -175,7 +182,21 @@ public final class VfxRenderSystem implements RenderSystem {
         long now = System.nanoTime();
         float delta = (now - lastFrameNanos) / 1_000_000_000.0f;
         lastFrameNanos = now;
-        return Math.clamp(delta, 0.0f, MAXIMUM_DELTA_SECONDS);
+        return Math.clamp(delta * timeScale, 0.0f, MAXIMUM_DELTA_SECONDS);
+    }
+
+    public void setTimeScale(float scale) {
+        timeScale = Math.max(0.0f, scale);
+    }
+
+    public OptionalInt aliveCountOf(ParticleEffect effect) {
+        EffectResources resources = effectResources.get(effect);
+        if (backend == null || resources == null) {
+            return OptionalInt.empty();
+        }
+        ByteBuffer readback = BufferUtils.createByteBuffer(Integer.BYTES);
+        backend.readBuffer(resources.indirectBuffer(), readback, INDIRECT_INSTANCE_COUNT_OFFSET);
+        return OptionalInt.of(readback.getInt(0));
     }
 
     private void simulateAndSubmit(ParticleEffect effect, Transform3D transform, float delta, FrameBuilder frame) {
@@ -334,10 +355,10 @@ public final class VfxRenderSystem implements RenderSystem {
     private BindingSetHandle createComputeBindings(BufferHandle pool, BufferHandle aliveList,
             BufferHandle freeList, BufferHandle indirect, BufferHandle effectUbo) {
         return backend.createBindingSet(new BindingSetDescriptor(computeLayout, List.of(
-                new Binding(0, StorageBufferBinding.whole(pool, 0L)),
-                new Binding(1, StorageBufferBinding.whole(aliveList, 0L)),
-                new Binding(2, StorageBufferBinding.whole(freeList, 0L)),
-                new Binding(3, StorageBufferBinding.whole(indirect, 0L)),
+                new Binding(POOL_BINDING, StorageBufferBinding.whole(pool, 0L)),
+                new Binding(ALIVE_BINDING, StorageBufferBinding.whole(aliveList, 0L)),
+                new Binding(FREE_BINDING, StorageBufferBinding.whole(freeList, 0L)),
+                new Binding(INDIRECT_BINDING, StorageBufferBinding.whole(indirect, 0L)),
                 new Binding(1, UniformBufferBinding.whole(effectUbo, EFFECT_UBO_BYTES)))));
     }
 
@@ -347,23 +368,25 @@ public final class VfxRenderSystem implements RenderSystem {
                 new Binding(0, UniformBufferBinding.whole(meshRenderSystem.frameUniformBuffer(),
                         MeshShaderBindings.FRAME_UBO_SIZE)),
                 new Binding(1, UniformBufferBinding.whole(effectUbo, EFFECT_UBO_BYTES)),
-                new Binding(0, StorageBufferBinding.whole(pool, 0L)),
-                new Binding(1, StorageBufferBinding.whole(aliveList, 0L)),
-                new Binding(2, StorageBufferBinding.whole(freeList, 0L)),
-                new Binding(3, StorageBufferBinding.whole(indirect, 0L)))));
+                new Binding(POOL_BINDING, StorageBufferBinding.whole(pool, 0L)),
+                new Binding(ALIVE_BINDING, StorageBufferBinding.whole(aliveList, 0L)),
+                new Binding(FREE_BINDING, StorageBufferBinding.whole(freeList, 0L)),
+                new Binding(INDIRECT_BINDING, StorageBufferBinding.whole(indirect, 0L)))));
     }
 
     private void purgeStale(List<ParticleEffect> seen) {
         Iterator<Map.Entry<ParticleEffect, EffectResources>> iterator = effectResources.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<ParticleEffect, EffectResources> entry = iterator.next();
-            if (!seen.contains(entry.getKey())) {
-                destroyResources(entry.getValue());
-                iterator.remove();
-                CompiledGraphPipelines compiled = compiledGraphs.remove(entry.getKey());
-                if (compiled != null) {
-                    destroyCompiled(compiled);
-                }
+            ParticleEffect effect = entry.getKey();
+            if (seen.contains(effect)) {
+                continue;
+            }
+            destroyResources(entry.getValue());
+            iterator.remove();
+            CompiledGraphPipelines compiled = compiledGraphs.remove(effect);
+            if (compiled != null) {
+                destroyCompiled(compiled);
             }
         }
     }
