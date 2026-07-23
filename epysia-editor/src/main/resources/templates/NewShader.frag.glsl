@@ -1,8 +1,6 @@
 #version 430 core
 #include "lib/frame_uniforms.glsl"
 
-// Raw fragment shader: you own the whole lighting model here.
-// For PBR, textures, shadows and IBL, write a surface shader instead.
 
 in vec3 vWorldNormal;
 in vec2 vUv;
