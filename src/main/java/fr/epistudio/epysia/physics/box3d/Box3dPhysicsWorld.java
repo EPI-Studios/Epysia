@@ -152,6 +152,11 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
     }
 
     @Override
+    public void lockToPlane(BodyHandle body, boolean freezeRotation) {
+        body(body).setMotionLocks(false, false, true, true, true, freezeRotation);
+    }
+
+    @Override
     public void sleepBody(BodyHandle body) {
         body(body).setAwake(false);
     }

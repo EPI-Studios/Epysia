@@ -3,6 +3,7 @@ package fr.epistudio.epysia.physics;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.GameSystem;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
@@ -17,19 +18,26 @@ import fr.epistudio.epysia.physics.api.IPhysicsSystem;
 import fr.epistudio.epysia.physics.api.PhysicsWorld;
 import fr.epistudio.epysia.physics.api.QueryFilter;
 import fr.epistudio.epysia.physics.api.RaycastHit;
+import fr.epistudio.epysia.physics.api.RaycastHit2D;
 import fr.epistudio.epysia.physics.api.RigidBodyKind;
 import fr.epistudio.epysia.physics.api.RigidBodyPose;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 import fr.epistudio.epysia.physics.box3d.Box3dPhysicsWorld;
+import fr.epistudio.epysia.physics.components.CharacterController2D;
 import fr.epistudio.epysia.physics.components.CharacterControllerComponent;
 import fr.epistudio.epysia.physics.components.Collider;
+import fr.epistudio.epysia.physics.components.Collider2D;
 import fr.epistudio.epysia.physics.components.MeshCollider;
 import fr.epistudio.epysia.physics.components.PhysicsMaterial;
+import fr.epistudio.epysia.physics.components.RigidBody2D;
 import fr.epistudio.epysia.physics.components.RigidBodyComponent;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.PhysicsEventListener;
 import org.joml.Quaternionf;
+import org.joml.Quaternionfc;
+import org.joml.Vector2f;
+import org.joml.Vector2fc;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
@@ -62,6 +70,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private CollisionLayers collisionLayers = CollisionLayers.allColliding();
     private final Map<BodyPair, ContactEvent> activeContacts = new LinkedHashMap<>();
     private final Set<BodyPair> activeTriggers = new LinkedHashSet<>();
+    private final Set<GameObject> warnedMixedPhysics = Collections.newSetFromMap(new IdentityHashMap<>());
     private EngineServices services;
     private Box3dPhysicsWorld world;
 
@@ -84,6 +93,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         bodyOwners.clear();
         activeContacts.clear();
         activeTriggers.clear();
+        warnedMixedPhysics.clear();
         if (world != null) {
             world.close();
         }
@@ -101,29 +111,58 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (world == null) {
             return;
         }
+        registerSceneBodies(scene);
+        syncKinematicBodiesToPhysics(scene);
+        ensureCharacterControllers(scene);
+        destroyOrphanBodies(scene);
+        world.step(deltaTimeSeconds);
+        pullDynamicTransforms(scene);
+        removeBodiesBelowWorldFloor(scene);
+        stepCharacterControllers(scene, deltaTimeSeconds);
+        dispatchPhysicsEvents();
+    }
+
+    private void registerSceneBodies(Scene scene) {
         for (GameObject gameObject : scene.gameObjects()) {
             ensureRegistered(gameObject);
+            ensureRegistered2D(gameObject);
         }
+    }
+
+    private void syncKinematicBodiesToPhysics(Scene scene) {
         for (GameObject gameObject : scene.gameObjects()) {
             gameObject.getComponent(RigidBodyComponent.class).ifPresent(rigidBody ->
                     syncRigidBodyToPhysics(gameObject, rigidBody));
+            gameObject.getComponent(RigidBody2D.class).ifPresent(rigidBody ->
+                    syncRigidBody2DToPhysics(gameObject, rigidBody));
         }
+    }
+
+    private void ensureCharacterControllers(Scene scene) {
         for (GameObject gameObject : scene.gameObjects()) {
             gameObject.getComponent(CharacterControllerComponent.class).ifPresent(controller ->
                     ensureCharacterController(gameObject, controller));
+            gameObject.getComponent(CharacterController2D.class).ifPresent(controller ->
+                    ensureCharacterController2D(gameObject, controller));
         }
-        destroyOrphanBodies(scene);
-        world.step(deltaTimeSeconds);
+    }
+
+    private void pullDynamicTransforms(Scene scene) {
         for (GameObject gameObject : scene.gameObjects()) {
             gameObject.getComponent(RigidBodyComponent.class).ifPresent(rigidBody ->
                     pullDynamicTransform(gameObject, rigidBody));
+            gameObject.getComponent(RigidBody2D.class).ifPresent(rigidBody ->
+                    pullDynamicTransform2D(gameObject, rigidBody));
         }
-        removeBodiesBelowWorldFloor(scene);
+    }
+
+    private void stepCharacterControllers(Scene scene, float deltaTimeSeconds) {
         for (GameObject gameObject : scene.gameObjects()) {
             gameObject.getComponent(CharacterControllerComponent.class).ifPresent(controller ->
                     stepCharacterController(gameObject, controller, deltaTimeSeconds));
+            gameObject.getComponent(CharacterController2D.class).ifPresent(controller ->
+                    stepCharacterController2D(gameObject, controller, deltaTimeSeconds));
         }
-        dispatchPhysicsEvents();
     }
 
     private void ensureCharacterController(GameObject gameObject, CharacterControllerComponent controller) {
@@ -266,6 +305,178 @@ public final class PhysicsSystem implements IPhysicsSystem {
             throw new EpysiaException("MeshCollider on '" + gameObject.name()
                     + "' is a triangle mesh and cannot back a DYNAMIC body; mark it convex or use a primitive collider.");
         }
+    }
+
+    private void ensureRegistered2D(GameObject gameObject) {
+        Optional<RigidBody2D> rigidBodyOptional = gameObject.getComponent(RigidBody2D.class);
+        List<Collider2D> colliders = colliders2DOf(gameObject);
+        if (rigidBodyOptional.isEmpty() && colliders.isEmpty()) {
+            return;
+        }
+        if (hasVolumetricPhysics(gameObject)) {
+            warnMixedPhysics(gameObject);
+            return;
+        }
+        if (alreadyRegistered2D(rigidBodyOptional, colliders)) {
+            return;
+        }
+        registerPlaneBody(gameObject, rigidBodyOptional, colliders);
+    }
+
+    private boolean hasVolumetricPhysics(GameObject gameObject) {
+        return gameObject.getComponent(RigidBodyComponent.class).isPresent()
+                || !collidersOf(gameObject).isEmpty();
+    }
+
+    private void warnMixedPhysics(GameObject gameObject) {
+        if (warnedMixedPhysics.add(gameObject)) {
+            services.logger().warn("[PhysicsSystem] " + gameObject.name()
+                    + " mixes 2D and 3D physics components; keeping the 3D body and ignoring the 2D components.");
+        }
+    }
+
+    private static boolean alreadyRegistered2D(Optional<RigidBody2D> rigidBodyOptional, List<Collider2D> colliders) {
+        if (rigidBodyOptional.isPresent()) {
+            return rigidBodyOptional.get().isRegistered();
+        }
+        return colliders.stream().allMatch(Collider2D::isRegistered);
+    }
+
+    private void registerPlaneBody(GameObject gameObject, Optional<RigidBody2D> rigidBodyOptional,
+                                   List<Collider2D> colliders) {
+        Transform2D transform = gameObject.getComponent(Transform2D.class)
+                .orElseThrow(() -> new EpysiaException("2D physics body requires Transform2D on " + gameObject.name()));
+        RigidBodyKind kind = rigidBodyOptional.map(RigidBody2D::kind).orElse(RigidBodyKind.STATIC);
+        DynamicProperties properties = rigidBodyOptional.map(RigidBody2D::dynamicProperties)
+                .orElse(DynamicProperties.defaults());
+        BodyHandle handle = world.createBody(kind, planePoseOf(transform), properties, true);
+        attachColliders2D(handle, transform, colliders);
+        if (kind == RigidBodyKind.DYNAMIC) {
+            world.lockToPlane(handle, rigidBodyOptional.map(RigidBody2D::fixedRotation).orElse(false));
+        }
+        colliders.forEach(Collider2D::markRegistered);
+        rigidBodyOptional.ifPresent(rigidBody -> rigidBody.markRegistered(handle));
+        bodyOwners.put(handle.id(), gameObject);
+    }
+
+    private void attachColliders2D(BodyHandle body, Transform2D transform, List<Collider2D> colliders) {
+        for (Collider2D collider : colliders) {
+            ShapeDescriptor shape = scaledShape2D(collider.shape(), transform);
+            Vector2f offset = collider.offset();
+            int group = collisionLayers.groupFor(collider.collisionLayer());
+            int mask = collisionLayers.maskFor(collider.collisionLayer());
+            world.addCollider(body, shape, new Vector3f(offset.x, offset.y, 0.0f),
+                    collider.isTrigger(), PhysicsMaterial.DEFAULT, group, mask);
+        }
+    }
+
+    private static ShapeDescriptor scaledShape2D(ShapeDescriptor shape, Transform2D transform) {
+        float scaleX = Math.abs(transform.scale().x);
+        float scaleY = Math.abs(transform.scale().y);
+        return switch (shape) {
+            case ShapeDescriptor.Box box -> new ShapeDescriptor.Box(new Vector3f(
+                    box.halfExtents().x() * scaleX,
+                    box.halfExtents().y() * scaleY,
+                    box.halfExtents().z()));
+            case ShapeDescriptor.Sphere sphere -> new ShapeDescriptor.Sphere(
+                    sphere.radius() * Math.max(scaleX, scaleY));
+            default -> shape;
+        };
+    }
+
+    private static RigidBodyPose planePoseOf(Transform2D transform) {
+        Vector3f position = new Vector3f(transform.position().x, transform.position().y, 0.0f);
+        Quaternionf rotation = new Quaternionf().rotationZ(transform.rotationRadians());
+        return new RigidBodyPose(position, rotation);
+    }
+
+    private static float planeAngleOf(Quaternionfc rotation) {
+        return (float) (2.0 * Math.atan2(rotation.z(), rotation.w()));
+    }
+
+    private void syncRigidBody2DToPhysics(GameObject gameObject, RigidBody2D rigidBody) {
+        if (!rigidBody.isRegistered() || !rigidBody.handle().isValid()) {
+            return;
+        }
+        if (rigidBody.kind() == RigidBodyKind.KINEMATIC || rigidBody.kind() == RigidBodyKind.STATIC) {
+            Transform2D transform = gameObject.getComponent(Transform2D.class).orElseThrow();
+            world.setBodyPose(rigidBody.handle(), planePoseOf(transform));
+        }
+    }
+
+    private void pullDynamicTransform2D(GameObject gameObject, RigidBody2D rigidBody) {
+        if (rigidBody.kind() != RigidBodyKind.DYNAMIC || !rigidBody.handle().isValid()) {
+            return;
+        }
+        if (!world.isBodyAwake(rigidBody.handle())) {
+            return;
+        }
+        Transform2D transform = gameObject.getComponent(Transform2D.class).orElseThrow();
+        RigidBodyPose pose = world.getBodyPose(rigidBody.handle());
+        transform.setPosition(pose.position().x(), pose.position().y());
+        transform.setRotationRadians(planeAngleOf(pose.rotation()));
+    }
+
+    private void ensureCharacterController2D(GameObject gameObject, CharacterController2D controller) {
+        if (controller.hasNativeController()) {
+            return;
+        }
+        Transform2D transform = gameObject.getComponent(Transform2D.class)
+                .orElseThrow(() -> new EpysiaException("CharacterController2D requires Transform2D on " + gameObject.name()));
+        ShapeDescriptor.Capsule capsule = controller.shape();
+        BodyHandle handle = world.addKinematicBody(capsule, planePoseOf(transform), CollisionMask.DEFAULT);
+        Box3dCharacterController nativeController = new Box3dCharacterController(world, capsule.radius(),
+                capsule.halfHeight(), controller.maxSlopeDegrees());
+        ownedControllers.add(nativeController);
+        controller.attachNative(handle, nativeController);
+        bodyOwners.put(handle.id(), gameObject);
+    }
+
+    private void stepCharacterController2D(GameObject gameObject, CharacterController2D controller, float deltaTimeSeconds) {
+        if (!controller.hasNativeController() || !controller.bodyHandle().isValid()) {
+            return;
+        }
+        Transform2D transform = gameObject.getComponent(Transform2D.class).orElseThrow();
+        float horizontal = controller.consumeDesiredMove();
+        float vertical = verticalVelocityFor2D(controller, deltaTimeSeconds);
+        scratchDisplacement.set(horizontal * deltaTimeSeconds, vertical * deltaTimeSeconds, 0.0f);
+        boolean snap = controller.snapToGround() && vertical <= 0.0f;
+        Box3dCharacterController.MoveResult result = controller.nativeController()
+                .move(controller.bodyHandle(), scratchDisplacement, controller.stepHeight(), snap);
+        applyControllerDisplacement2D(controller, transform, result);
+        controller.setGrounded(result.grounded());
+        controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
+    }
+
+    private void applyControllerDisplacement2D(CharacterController2D controller, Transform2D transform,
+                                               Box3dCharacterController.MoveResult result) {
+        Vector3fc corrected = result.correctedDisplacement();
+        if (corrected.lengthSquared() <= RESTING_DISPLACEMENT_SQUARED) {
+            return;
+        }
+        float newX = transform.position().x + corrected.x();
+        float newY = transform.position().y + corrected.y();
+        transform.setPosition(newX, newY);
+        world.setBodyPose(controller.bodyHandle(),
+                new RigidBodyPose(new Vector3f(newX, newY, 0.0f), new Quaternionf()));
+    }
+
+    private static float verticalVelocityFor2D(CharacterController2D controller, float deltaTimeSeconds) {
+        float jumpSpeed = controller.consumeJumpRequest();
+        if (jumpSpeed > 0.0f && controller.grounded()) {
+            return jumpSpeed;
+        }
+        return controller.verticalVelocity() + controller.gravity() * deltaTimeSeconds;
+    }
+
+    private static List<Collider2D> colliders2DOf(GameObject gameObject) {
+        List<Collider2D> colliders = new ArrayList<>();
+        for (IComponent component : gameObject.components()) {
+            if (component instanceof Collider2D collider) {
+                colliders.add(collider);
+            }
+        }
+        return colliders;
     }
 
     private static List<Collider> collidersOf(GameObject gameObject) {
@@ -478,6 +689,24 @@ public final class PhysicsSystem implements IPhysicsSystem {
     public Optional<RaycastHit> raycast(Vector3fc origin, Vector3fc direction, float maxDistance) {
         requireWorld();
         return world.raycast(origin, direction, maxDistance, QueryFilter.ALL);
+    }
+
+    public Optional<RaycastHit2D> raycast2D(Vector2fc origin, Vector2fc direction, float maxDistance) {
+        return raycast2D(origin, direction, maxDistance, QueryFilter.ALL);
+    }
+
+    public Optional<RaycastHit2D> raycast2D(Vector2fc origin, Vector2fc direction, float maxDistance, QueryFilter filter) {
+        requireWorld();
+        return world.raycast(new Vector3f(origin.x(), origin.y(), 0.0f),
+                        new Vector3f(direction.x(), direction.y(), 0.0f), maxDistance, filter)
+                .map(PhysicsSystem::toPlaneHit);
+    }
+
+    private static RaycastHit2D toPlaneHit(RaycastHit hit) {
+        return new RaycastHit2D(hit.body(),
+                new Vector2f(hit.point().x(), hit.point().y()),
+                new Vector2f(hit.normal().x(), hit.normal().y()),
+                hit.distance());
     }
 
     public PhysicsWorld world() {

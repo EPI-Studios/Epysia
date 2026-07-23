@@ -28,6 +28,8 @@ public interface PhysicsWorld extends AutoCloseable {
 
     void setLinearVelocity(BodyHandle body, Vector3fc velocity);
 
+    void lockToPlane(BodyHandle body, boolean freezeRotation);
+
     Vector3fc getLinearVelocity(BodyHandle body);
 
     void sleepBody(BodyHandle body);
