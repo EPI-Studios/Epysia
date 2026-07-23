@@ -20,4 +20,10 @@ public final class JointPose {
     public Vector3f scale() {
         return scale;
     }
+
+    public void blendFrom(JointPose from, float alpha) {
+        from.translation.lerp(translation, alpha, translation);
+        from.scale.lerp(scale, alpha, scale);
+        from.rotation.nlerp(rotation, alpha, rotation);
+    }
 }

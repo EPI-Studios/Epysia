@@ -48,4 +48,12 @@ public final class MeshAssetLoader implements AssetLoader<UploadedMesh> {
         }
         throw new EpysiaException("Unsupported mesh asset extension: " + path);
     }
+
+    @Override
+    public void dispose(EngineServices services, UploadedMesh value) {
+        if (builtinMeshes.contains(value)) {
+            return;
+        }
+        value.destroy(services.renderBackend());
+    }
 }

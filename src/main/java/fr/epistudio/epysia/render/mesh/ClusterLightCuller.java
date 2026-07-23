@@ -39,6 +39,7 @@ final class ClusterLightCuller {
     private final IntBuffer countView = countScratch.asIntBuffer();
     private final IntBuffer indexView = indexScratch.asIntBuffer();
     private int highestTouchedCluster = -1;
+    private long lastCullSignature;
     private int previousHighestCluster = CLUSTERS - 1;
     private float sliceScale;
     private float sliceBias;
@@ -90,7 +91,12 @@ final class ClusterLightCuller {
         sliceBias = (float) (GZ * Math.log(zNear) / Math.log(zFar / zNear));
         computeClusterBounds(projection.m00(), projection.m11(), zNear, zFar);
         scratchView.set(camera.view(alpha));
-        Arrays.fill(counts, 0, previousHighestCluster + 1, 0);
+        long signature = computeCullSignature(lights);
+        if (signature == lastCullSignature) {
+            return;
+        }
+        lastCullSignature = signature;
+        Arrays.fill(counts, 0, highestTouchedCluster + 1, 0);
         previousHighestCluster = highestTouchedCluster;
         highestTouchedCluster = -1;
         int count = Math.min(lights.size(), LightStorage.MAX_LIGHTS);
@@ -143,6 +149,32 @@ final class ClusterLightCuller {
     private static void accumulate(Vector3f min, Vector3f max, float x, float y, float z) {
         min.set(Math.min(min.x, x), Math.min(min.y, y), Math.min(min.z, z));
         max.set(Math.max(max.x, x), Math.max(max.y, y), Math.max(max.z, z));
+    }
+
+    private long computeCullSignature(List<Light> lights) {
+        long hash = ShadowSignatures.mixMatrix(ShadowSignatures.seed(), scratchView);
+        hash = ShadowSignatures.mix(hash, Float.floatToRawIntBits(boundsProjectionX));
+        hash = ShadowSignatures.mix(hash, Float.floatToRawIntBits(boundsProjectionY));
+        hash = ShadowSignatures.mix(hash, Float.floatToRawIntBits(boundsNearPlane));
+        hash = ShadowSignatures.mix(hash, Float.floatToRawIntBits(boundsFarPlane));
+        int count = Math.min(lights.size(), LightStorage.MAX_LIGHTS);
+        hash = ShadowSignatures.mix(hash, count);
+        for (int i = 0; i < count; i++) {
+            hash = mixLight(hash, lights.get(i));
+        }
+        return hash;
+    }
+
+    private long mixLight(long hash, Light light) {
+        if (light instanceof DirectionalLight) {
+            return ShadowSignatures.mix(hash, -1L);
+        }
+        float radius = lightRadius(light);
+        lightViewPosition(light);
+        hash = ShadowSignatures.mix(hash, Float.floatToRawIntBits(scratchViewCenter.x));
+        hash = ShadowSignatures.mix(hash, Float.floatToRawIntBits(scratchViewCenter.y));
+        hash = ShadowSignatures.mix(hash, Float.floatToRawIntBits(scratchViewCenter.z));
+        return ShadowSignatures.mix(hash, Float.floatToRawIntBits(radius));
     }
 
     private void assignLight(int lightIndex, Light light) {

@@ -37,6 +37,11 @@ public final class ClipAssetLoader implements AssetLoader<Clip> {
         return loadedByPath.computeIfAbsent(path, this::readResolved);
     }
 
+    @Override
+    public void unloadAll() {
+        loadedByPath.clear();
+    }
+
     private Clip readResolved(String path) {
         AssetResolvers.ResolvedLocation location = AssetResolvers.forPath(path, CLASSPATH_ROOT);
         AssetSource source = location.source().orElseThrow(() ->

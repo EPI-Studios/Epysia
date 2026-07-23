@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.render.mesh;
 
+import fr.epistudio.epysia.assets.epyprobes.BakedProbes;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.Light;
@@ -24,6 +25,7 @@ final class FrameUboWriter {
 
     private final ByteBuffer scratch = BufferUtils.createByteBuffer(MeshShaderBindings.FRAME_UBO_SIZE);
     private final Vector3f scratchCameraPosition = new Vector3f();
+    private final Vector3f scratchProbeVector = new Vector3f();
     private final Vector3f whiteAmbient = new Vector3f(1.0f, 1.0f, 1.0f);
     private final Matrix4f scratchIdentity = new Matrix4f();
     private RenderBackend backend;
@@ -32,7 +34,7 @@ final class FrameUboWriter {
     void initialize(RenderBackend backend) {
         this.backend = backend;
         ByteBuffer initial = BufferUtils.createByteBuffer(MeshShaderBindings.FRAME_UBO_SIZE);
-        handle = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, initial));
+        handle = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, initial, true));
     }
 
     public BufferHandle handle() {
@@ -53,7 +55,8 @@ final class FrameUboWriter {
     void write(Camera3D camera, Optional<DirectionalLight> primary, List<Light> lights,
                float timeSeconds, float ambientIntensity, CascadedShadowMaps shadows,
                SpotShadowAtlas spotShadows, PointShadowAtlas pointShadows,
-               ClusterLightCuller clusters, boolean clusteringEnabled, float alpha) {
+               ClusterLightCuller clusters, boolean clusteringEnabled, float alpha,
+               Optional<BakedProbes> probes) {
         scratch.clear();
         camera.viewProjection(alpha).get(0, scratch);
         writeCascades(shadows);
@@ -64,9 +67,29 @@ final class FrameUboWriter {
         writeSpotShadows(spotShadows);
         writePointShadows(pointShadows);
         writeClusterParams(camera, clusters, clusteringEnabled);
+        writeProbeGrid(probes);
         scratch.position(MeshShaderBindings.FRAME_UBO_SIZE);
         scratch.flip();
         backend.writeBuffer(handle, scratch, 0L);
+    }
+
+    private void writeProbeGrid(Optional<BakedProbes> probes) {
+        scratch.position(MeshShaderBindings.PROBE_GRID_OFFSET);
+        if (probes.isEmpty()) {
+            for (int component = 0; component < 12; component++) {
+                scratch.putFloat(0.0f);
+            }
+            return;
+        }
+        BakedProbes baked = probes.get();
+        baked.gridOrigin(scratchProbeVector);
+        scratch.putFloat(scratchProbeVector.x).putFloat(scratchProbeVector.y)
+                .putFloat(scratchProbeVector.z).putFloat(0.0f);
+        baked.gridSpacing(scratchProbeVector);
+        scratch.putFloat(scratchProbeVector.x).putFloat(scratchProbeVector.y)
+                .putFloat(scratchProbeVector.z).putFloat(0.0f);
+        scratch.putInt(baked.resolutionX()).putInt(baked.resolutionY())
+                .putInt(baked.resolutionZ()).putInt(0);
     }
 
     private void writeClusterParams(Camera3D camera, ClusterLightCuller clusters, boolean enabled) {

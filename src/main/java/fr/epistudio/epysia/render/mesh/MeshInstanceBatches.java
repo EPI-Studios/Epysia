@@ -10,9 +10,7 @@ import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 final class MeshInstanceBatches {
 
@@ -21,7 +19,8 @@ final class MeshInstanceBatches {
         BindingSetHandle create(PerSubmesh representative, BufferHandle instanceBuffer, long byteSize, boolean shadow);
     }
 
-    private final Map<InstanceBatchKey, MeshInstanceBatch> batches = new HashMap<>();
+    private final LongLongHashMap batchIndices = new LongLongHashMap(64);
+    private final List<MeshInstanceBatch> batches = new ArrayList<>();
     private final List<MeshInstanceBatch> activeBatches = new ArrayList<>();
 
     private RenderBackend backend;
@@ -42,8 +41,7 @@ final class MeshInstanceBatches {
     boolean add(UploadedSubmesh submesh, PerSubmesh perSubmesh, MaterialStateSnapshot state,
                 Matrix4f model, long depthBits, boolean visible,
                 Vector3f worldMin, Vector3f worldMax) {
-        InstanceBatchKey key = new InstanceBatchKey(submesh.handle().id(), state.digest());
-        MeshInstanceBatch batch = batches.computeIfAbsent(key, ignored -> new MeshInstanceBatch());
+        MeshInstanceBatch batch = batchFor(submesh.handle().id(), state.digest());
         if (batch.pendingCount() == 0) {
             batch.beginFrame();
             batch.adoptState(state);
@@ -56,6 +54,18 @@ final class MeshInstanceBatches {
         return true;
     }
 
+    private MeshInstanceBatch batchFor(long submeshId, long materialDigest) {
+        long key = submeshId * 0x9E3779B97F4A7C15L ^ materialDigest;
+        long index = batchIndices.getOrDefault(key, -1L);
+        if (index >= 0L) {
+            return batches.get((int) index);
+        }
+        MeshInstanceBatch batch = new MeshInstanceBatch();
+        batchIndices.put(key, batches.size());
+        batches.add(batch);
+        return batch;
+    }
+
     List<MeshInstanceBatch> activeBatches() {
         return activeBatches;
     }
@@ -64,8 +74,13 @@ final class MeshInstanceBatches {
         batch.mergeCulledInstances();
         if (batch.needsBufferRebuild()) {
             rebuildResources(batch);
+            batch.invalidateUpload();
+        }
+        if (batch.uploadUnchangedSinceLastFrame()) {
+            return;
         }
         backend.writeBuffer(batch.instanceBuffer(), batch.instancePayload(), 0L);
+        batch.markUploaded();
     }
 
     private void rebuildResources(MeshInstanceBatch batch) {
@@ -91,10 +106,11 @@ final class MeshInstanceBatches {
         if (backend == null) {
             return;
         }
-        for (MeshInstanceBatch batch : batches.values()) {
+        for (MeshInstanceBatch batch : batches) {
             releaseResources(batch);
         }
         batches.clear();
+        batchIndices.clear();
         activeBatches.clear();
     }
 }

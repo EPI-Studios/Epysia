@@ -68,7 +68,7 @@ final class BloomChain {
     void initialize(RenderBackend backend, TextureHandle sceneColor, int width, int height) {
         this.backend = backend;
         bloomUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
-                BufferUtils.createByteBuffer(BLOOM_UBO_SIZE)));
+                BufferUtils.createByteBuffer(BLOOM_UBO_SIZE), true));
         prefilterPipeline = createPipeline("postfx/bloom_prefilter.frag.glsl", prefilterLayout(), FILTER_STATE);
         downsamplePipeline = createPipeline("postfx/bloom_downsample.frag.glsl", samplerOnlyLayout(), FILTER_STATE);
         upsamplePipeline = createPipeline("postfx/bloom_upsample.frag.glsl", samplerOnlyLayout(), ADDITIVE_STATE);

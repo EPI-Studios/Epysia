@@ -163,6 +163,10 @@ public final class PostProcessSystem implements RenderSystem {
         return sceneTarget;
     }
 
+    public void rebindStageTargets() {
+        bindStageTargets();
+    }
+
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         activeCamera = context.primaryCamera().orElse(null);
@@ -226,6 +230,7 @@ public final class PostProcessSystem implements RenderSystem {
     }
 
     private void runPostPasses() {
+        backend.beginProfileSection("POST_CHAIN");
         if (settings.ambientOcclusionEnabled() && activeCamera != null) {
             ssao.render();
         }
@@ -237,6 +242,7 @@ public final class PostProcessSystem implements RenderSystem {
         backend.execute(DrawCommand.of(tonemapPipeline, quad.mesh(), tonemapBindings));
         backend.endPass();
         effectChain.render(PostEffectInsertionPoint.AFTER_TONEMAP);
+        backend.endProfileSection();
     }
 
     private void createTargets(int width, int height) {
@@ -299,7 +305,7 @@ public final class PostProcessSystem implements RenderSystem {
 
     private void createPostUbo() {
         ByteBuffer initial = BufferUtils.createByteBuffer(UBO_SIZE);
-        postUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, initial));
+        postUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, initial, true));
     }
 
     private void bindStageTargets() {

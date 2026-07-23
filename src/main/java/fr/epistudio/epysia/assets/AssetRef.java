@@ -8,6 +8,8 @@ public final class AssetRef<T> {
     private String path;
     private String guid;
     private transient T cached;
+    private transient AssetRegistry acquiredFrom;
+    private transient String acquiredPath;
 
     public AssetRef(Class<T> type) {
         this(type, "");
@@ -42,13 +44,17 @@ public final class AssetRef<T> {
     public void setPath(String path) {
         String next = path == null ? "" : path;
         if (!next.equals(this.path)) {
-            this.cached = null;
+            releaseHeld();
         }
         this.path = next;
     }
 
     public void clearCache() {
-        this.cached = null;
+        releaseHeld();
+    }
+
+    public void release() {
+        releaseHeld();
     }
 
     public Optional<T> resolve(AssetRegistry registry) {
@@ -62,9 +68,24 @@ public final class AssetRef<T> {
         if (path.isEmpty()) {
             return Optional.empty();
         }
-        Optional<T> loaded = registry.resolve(type, path);
-        loaded.ifPresent(value -> cached = value);
+        Optional<T> loaded = registry.acquire(type, path);
+        loaded.ifPresent(value -> holdAcquired(registry, value));
         return loaded;
+    }
+
+    private void holdAcquired(AssetRegistry registry, T value) {
+        cached = value;
+        acquiredFrom = registry;
+        acquiredPath = path;
+    }
+
+    private void releaseHeld() {
+        if (acquiredFrom != null) {
+            acquiredFrom.release(type, acquiredPath);
+            acquiredFrom = null;
+            acquiredPath = null;
+        }
+        cached = null;
     }
 
     private void resolvePathFromGuid(AssetRegistry registry) {
@@ -81,6 +102,7 @@ public final class AssetRef<T> {
     }
 
     public void setDirect(T value) {
+        releaseHeld();
         this.cached = value;
     }
 }

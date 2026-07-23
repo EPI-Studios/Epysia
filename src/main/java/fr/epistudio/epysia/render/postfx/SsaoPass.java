@@ -77,7 +77,7 @@ final class SsaoPass {
     void initialize(RenderBackend backend, TextureHandle sceneDepth, int width, int height) {
         this.backend = backend;
         ssaoUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
-                BufferUtils.createByteBuffer(SSAO_UBO_SIZE)));
+                BufferUtils.createByteBuffer(SSAO_UBO_SIZE), true));
         ssaoPipeline = createPipeline("postfx/ssao.frag.glsl", ssaoLayout());
         horizontalBlurPipeline = createPipeline("postfx/ssao_blur_horizontal.frag.glsl", blurLayout());
         verticalBlurPipeline = createPipeline("postfx/ssao_blur_vertical.frag.glsl", blurLayout());

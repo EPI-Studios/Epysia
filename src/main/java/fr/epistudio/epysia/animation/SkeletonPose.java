@@ -32,6 +32,15 @@ public final class SkeletonPose {
         return jointPoses[index];
     }
 
+    public void blendFrom(SkeletonPose from, float alpha) {
+        if (from.jointPoses.length != jointPoses.length) {
+            throw new EpysiaException("Cannot blend poses with mismatched joint counts.");
+        }
+        for (int index = 0; index < jointPoses.length; index++) {
+            jointPoses[index].blendFrom(from.jointPoses[index], alpha);
+        }
+    }
+
     public void computeSkinningMatrices(Skeleton skeleton, Matrix4f[] out) {
         List<Joint> joints = skeleton.joints();
         if (joints.size() != jointPoses.length || out.length < joints.size()) {

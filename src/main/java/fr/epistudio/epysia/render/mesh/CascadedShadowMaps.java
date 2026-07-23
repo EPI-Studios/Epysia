@@ -47,12 +47,13 @@ final class CascadedShadowMaps {
     private static final String SHADOW_FRAGMENT_PATH = "shadow.frag.glsl";
     private static final String MASKED_VERTEX_PATH = "shadow_masked.vert.glsl";
     private static final String MASKED_FRAGMENT_PATH = "shadow_masked.frag.glsl";
+    private static final RenderState CASTER_STATE = RenderState.OPAQUE_3D.withDepthClamp();
     private static final RenderState MASKED_STATE = new RenderState(
             RenderState.OPAQUE_3D.topology(),
             RenderState.OPAQUE_3D.depthTest(),
             RenderState.OPAQUE_3D.blendMode(),
             CullMode.NONE
-    );
+    ).withDepthClamp();
 
     private final ShaderLoader shaderLoader;
     private final ShaderWatcher shaderWatcher;
@@ -70,7 +71,21 @@ final class CascadedShadowMaps {
     private final ShadowSplitRenderer splitRenderer;
     private final ShadowStatistics statistics;
     private long sceneModificationCount;
-    private final ByteBuffer cascadeScratch = BufferUtils.createByteBuffer(MeshShaderBindings.CASCADE_UBO_SIZE);
+    private static final int[] CASCADE_UPDATE_CADENCE = {1, 2, 4};
+    private static final float CASCADE_REFIT_DRIFT_FRACTION = 0.25f;
+    private final Vector3f[] frozenCenters = createCenters();
+    private final float[] frozenRadii = new float[CASCADE_COUNT];
+    private final Vector3f frozenLightDirection = new Vector3f(Float.NaN, Float.NaN, Float.NaN);
+    private long updateFrameCounter;
+    private boolean farCascadeRefitUsedThisFrame;
+
+    private static Vector3f[] createCenters() {
+        Vector3f[] centers = new Vector3f[CASCADE_COUNT];
+        for (int cascade = 0; cascade < CASCADE_COUNT; cascade++) {
+            centers[cascade] = new Vector3f();
+        }
+        return centers;
+    }
 
     private final Matrix4f scratchInverseViewProjection = new Matrix4f();
     private final Matrix4f scratchLightView = new Matrix4f();
@@ -91,6 +106,8 @@ final class CascadedShadowMaps {
     private BufferHandle cascadeUbo;
     private BindingSetLayout bindingLayout;
     private BindingSetLayout maskedBindingLayout;
+    private BindingSetLayout skinnedBindingLayout;
+    private BindingSetLayout maskedSkinnedBindingLayout;
     private boolean cascadesActive;
 
     CascadedShadowMaps(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger,
@@ -102,7 +119,7 @@ final class CascadedShadowMaps {
         this.splitRenderer = new ShadowSplitRenderer(statistics, SHADOW_MAP_SIZE, CASCADE_COUNT);
         this.splitRenderer.setLayerFilter(this::casterVisibleInCascade);
         this.surfaceVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
-                SHADOW_VERTEX_PATH, SHADOW_FRAGMENT_PATH, RenderState.OPAQUE_3D, pipelineInvalidation);
+                SHADOW_VERTEX_PATH, SHADOW_FRAGMENT_PATH, CASTER_STATE, pipelineInvalidation);
         this.maskedSurfaceVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
                 MASKED_VERTEX_PATH, MASKED_FRAGMENT_PATH, MASKED_STATE, pipelineInvalidation);
     }
@@ -129,12 +146,13 @@ final class CascadedShadowMaps {
         this.backend = backend;
         bindingLayout = buildBindingLayout();
         maskedBindingLayout = buildMaskedBindingLayout();
+        skinnedBindingLayout = SurfaceShadowVariants.withJointPalette(bindingLayout);
+        maskedSkinnedBindingLayout = SurfaceShadowVariants.withJointPalette(maskedBindingLayout);
         texture = backend.createTexture(TextureDescriptor.depthArray(
                 SHADOW_MAP_SIZE, CASCADE_COUNT, TextureUsage.SAMPLED_DEPTH_SHADOW));
         createCascadeTargets();
         splitRenderer.initialize(backend, texture, cascadeTargets);
-        cascadeUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
-                BufferUtils.createByteBuffer(MeshShaderBindings.CASCADE_UBO_SIZE)));
+        cascadeUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, buildLayerIndexSlices()));
         pipeline = backend.createPipeline(buildShadowPipelineDescriptor());
         maskedPipeline = backend.createPipeline(buildMaskedPipelineDescriptor());
         surfaceVariants.initialize(backend, bindingLayout, pipeline);
@@ -182,9 +200,9 @@ final class CascadedShadowMaps {
         return maskedPipeline;
     }
 
-    PipelineHandle pipelineFor(String surfacePath, boolean masked, boolean frozenTime) {
+    PipelineHandle pipelineFor(String surfacePath, boolean masked, boolean frozenTime, boolean skinned) {
         SurfaceShadowVariants variants = masked ? maskedSurfaceVariants : surfaceVariants;
-        return variants.pipelineFor(surfacePath, frozenTime);
+        return variants.pipelineFor(surfacePath, frozenTime, skinned);
     }
 
     BindingSetLayout bindingLayout() {
@@ -193,6 +211,14 @@ final class CascadedShadowMaps {
 
     BindingSetLayout maskedBindingLayout() {
         return maskedBindingLayout;
+    }
+
+    BindingSetLayout skinnedBindingLayout() {
+        return skinnedBindingLayout;
+    }
+
+    BindingSetLayout maskedSkinnedBindingLayout() {
+        return maskedSkinnedBindingLayout;
     }
 
 
@@ -241,11 +267,14 @@ final class CascadedShadowMaps {
         float shadowFar = Math.min(cameraFar, Math.max(maxShadowDistance, nearPlane + 0.01f));
         computeSplits(nearPlane, shadowFar);
         computeFrustumCorners(camera, alpha);
+        updateFrameCounter++;
+        farCascadeRefitUsedThisFrame = false;
         float previousSplit = nearPlane;
         for (int cascade = 0; cascade < CASCADE_COUNT; cascade++) {
             fitCascade(cascade, previousSplit, cascadeSplits[cascade], nearPlane, cameraFar, lightTravelDirection);
             previousSplit = cascadeSplits[cascade];
         }
+        frozenLightDirection.set(lightTravelDirection);
         cascadesActive = true;
     }
 
@@ -280,8 +309,41 @@ final class CascadedShadowMaps {
         }
         scratchCenter.mul(1.0f / 8.0f);
         float radius = sliceBoundingRadius(tNear, tFar);
+        if (!shouldRefitCascade(cascade, radius, lightTravelDirection)) {
+            return;
+        }
         buildCascadeMatrix(cascade, radius, lightTravelDirection);
         cascadeTexelSizes[cascade] = 2.0f * radius / SHADOW_MAP_SIZE;
+        frozenCenters[cascade].set(scratchCenter);
+        frozenRadii[cascade] = radius;
+    }
+
+    private boolean shouldRefitCascade(int cascade, float radius, Vector3f lightTravelDirection) {
+        if (cascade == 0 || frozenRadii[cascade] == 0.0f) {
+            return true;
+        }
+        if (!lightTravelDirection.equals(frozenLightDirection)) {
+            return true;
+        }
+        if (Math.abs(radius - frozenRadii[cascade]) > radius * 0.01f) {
+            return consumeFarCascadeRefit();
+        }
+        int cadence = CASCADE_UPDATE_CADENCE[Math.min(cascade, CASCADE_UPDATE_CADENCE.length - 1)];
+        if ((updateFrameCounter + cascade) % cadence == 0) {
+            return consumeFarCascadeRefit();
+        }
+        if (frozenCenters[cascade].distance(scratchCenter) > radius * CASCADE_REFIT_DRIFT_FRACTION) {
+            return consumeFarCascadeRefit();
+        }
+        return false;
+    }
+
+    private boolean consumeFarCascadeRefit() {
+        if (farCascadeRefitUsedThisFrame) {
+            return false;
+        }
+        farCascadeRefitUsedThisFrame = true;
+        return true;
     }
 
     private Vector3f sliceCorner(int index, float t) {
@@ -343,6 +405,7 @@ final class CascadedShadowMaps {
         for (int cascade = 0; cascade < CASCADE_COUNT; cascade++) {
             splitRenderer.renderTarget(cascade, cascadeViewSignature(cascade), casters, this::writeCascadeIndex);
         }
+        backend.clearUniformSlotOverride();
         backend.endProfileSection();
     }
 
@@ -374,17 +437,26 @@ final class CascadedShadowMaps {
         return ShadowSignatures.mixMatrix(signature, cascadeMatrices[cascade]);
     }
 
+    private static ByteBuffer buildLayerIndexSlices() {
+        ByteBuffer slices = BufferUtils.createByteBuffer(
+                MeshShaderBindings.SHADOW_LAYER_INDEX_COUNT * MeshShaderBindings.SHADOW_LAYER_INDEX_STRIDE);
+        for (int layer = 0; layer < MeshShaderBindings.SHADOW_LAYER_INDEX_COUNT; layer++) {
+            slices.position(layer * MeshShaderBindings.SHADOW_LAYER_INDEX_STRIDE);
+            slices.putInt(layer).putInt(0).putInt(0).putInt(0);
+        }
+        slices.clear();
+        return slices;
+    }
+
     private void writeCascadeIndex(int cascade) {
-        cascadeScratch.clear();
-        cascadeScratch.putInt(cascade).putInt(0).putInt(0).putInt(0);
-        cascadeScratch.flip();
-        backend.writeBuffer(cascadeUbo, cascadeScratch, 0L);
+        backend.setUniformSlotOverride(MeshShaderBindings.CASCADE_UBO_BINDING, cascadeUbo,
+                (long) cascade * MeshShaderBindings.SHADOW_LAYER_INDEX_STRIDE, MeshShaderBindings.CASCADE_UBO_SIZE);
     }
 
     private PipelineDescriptor buildShadowPipelineDescriptor() {
         VertexAttribute position = new VertexAttribute(0, VertexFormat.FLOAT3, 0);
         VertexLayout layout = new VertexLayout(List.of(position), MeshShaderBindings.VERTEX_STRIDE);
-        return new PipelineDescriptor(loadShaderSource(), layout, RenderState.OPAQUE_3D, bindingLayout);
+        return new PipelineDescriptor(loadShaderSource(), layout, CASTER_STATE, bindingLayout);
     }
 
     private PipelineDescriptor buildMaskedPipelineDescriptor() {

@@ -7,7 +7,7 @@ public record ContactEvent(
         BodyHandle second,
         Vector3fc point,
         Vector3fc normal,
-        float impulse,
+        float approachSpeed,
         boolean started
 ) {
 }

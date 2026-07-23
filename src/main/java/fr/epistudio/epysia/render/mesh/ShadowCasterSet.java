@@ -4,20 +4,18 @@ import fr.epistudio.epysia.render.backend.DrawCommand;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.function.LongPredicate;
 
 final class ShadowCasterSet {
 
     private final List<ShadowCaster> submitted = new ArrayList<>(256);
     private final List<ShadowCaster> staticCasters = new ArrayList<>(256);
     private final List<ShadowCaster> dynamicCasters = new ArrayList<>(32);
-    private final Map<Long, Long> bakedSignatures = new HashMap<>();
-    private final Map<Long, Long> previousSignatures = new HashMap<>();
-    private final Set<Long> submittedIdentities = new HashSet<>();
+    private final LongLongHashMap bakedSignatures = new LongLongHashMap(256);
+    private final LongLongHashMap previousSignatures = new LongLongHashMap(256);
+    private final LongHashSet submittedIdentities = new LongHashSet(256);
+    private final LongPredicate submittedContains = submittedIdentities::contains;
 
     private long staticSignature = ShadowSignatures.seed();
     private long combinedSignature = ShadowSignatures.seed();
@@ -100,7 +98,7 @@ final class ShadowCasterSet {
     }
 
     private boolean bakedCasterDisappeared() {
-        return !submittedIdentities.containsAll(bakedSignatures.keySet());
+        return !bakedSignatures.allKeysMatch(submittedContains);
     }
 
     private boolean settledCasterOutsideBakedLayer() {
@@ -117,13 +115,11 @@ final class ShadowCasterSet {
     }
 
     private boolean bakedMatches(ShadowCaster caster) {
-        Long baked = bakedSignatures.get(caster.identity());
-        return baked != null && baked == caster.signature();
+        return bakedSignatures.containsEntry(caster.identity(), caster.signature());
     }
 
     private boolean signatureSettled(ShadowCaster caster) {
-        Long previous = previousSignatures.get(caster.identity());
-        return previous != null && previous == caster.signature();
+        return previousSignatures.containsEntry(caster.identity(), caster.signature());
     }
 
     private void rebakeStaticLayer() {
