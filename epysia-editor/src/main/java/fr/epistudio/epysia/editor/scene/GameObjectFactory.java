@@ -7,6 +7,8 @@ import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.PointLight;
 import fr.epistudio.epysia.components.SpotLight;
+import fr.epistudio.epysia.components.SpriteRenderer;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.builtin.AddGameObjectCommand;
 import fr.epistudio.epysia.gameobjects.GameObject;
@@ -64,6 +66,14 @@ public final class GameObjectFactory {
 
     public GameObject createCamera(Vector3f position) {
         return createWithComponent("Camera", new Camera3D(), position);
+    }
+
+    public GameObject createSprite(Vector3f position) {
+        GameObject gameObject = new GameObject(uniqueName("Sprite"));
+        gameObject.addComponent(new Transform2D().setPosition(position.x, position.y));
+        gameObject.addComponent(new SpriteRenderer());
+        commit(gameObject);
+        return gameObject;
     }
 
     public GameObject createEmpty(Vector3f position) {

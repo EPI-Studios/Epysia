@@ -1175,6 +1175,15 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return requireTexture(handle).textureId();
     }
 
+    public void updateTextureFilter(TextureHandle handle, SamplerFilter filter) {
+        TextureResource resource = requireTexture(handle);
+        int glTarget = textureTargetToGl(resource.kind());
+        glBindTexture(glTarget, resource.textureId());
+        int glFilter = filter == SamplerFilter.NEAREST ? GL_NEAREST : GL_LINEAR;
+        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, glFilter);
+        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, glFilter);
+    }
+
     private TextureResource requireTexture(TextureHandle handle) {
         TextureResource resource = textures.get(handle.id());
         if (resource == null) {

@@ -31,6 +31,7 @@ import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiSelectableFlags;
 import imgui.type.ImString;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.nio.file.Path;
@@ -534,11 +535,18 @@ public final class HierarchyView {
             case INT -> destination.writeInt(((Number) value).intValue());
             case BOOLEAN -> destination.writeBoolean((Boolean) value);
             case STRING, ENUM -> destination.writeObject(value);
+            case VECTOR2 -> copyVector2(value, destination);
             case VECTOR3 -> copyVector(value, destination);
             case QUATERNION -> copyQuaternion(value, destination);
             case ASSET_REF -> copyAssetRef(value, destination);
             default -> {
             }
+        }
+    }
+
+    private static void copyVector2(Object value, ExportedProperty destination) {
+        if (destination.read() instanceof Vector2f target) {
+            target.set((Vector2f) value);
         }
     }
 

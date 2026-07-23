@@ -10,6 +10,7 @@ import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
 import fr.epistudio.epysia.editor.command.builtin.TransformDragCommand;
 import fr.epistudio.epysia.editor.gizmo.ColliderWireframeOverlay;
 import fr.epistudio.epysia.editor.gizmo.GridOverlay;
+import fr.epistudio.epysia.editor.gizmo.GridOverlay2D;
 import fr.epistudio.epysia.editor.gizmo.SelectionOutlineOverlay;
 import fr.epistudio.epysia.editor.gl.GlStateSnapshot;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
@@ -200,7 +201,9 @@ public final class ViewportView {
         }
         drawOverlays(imageX, imageY, width, height);
         boolean gizmoBusy = playSession.isActive() ? false : renderGizmo(imageX, imageY, width, height);
-        renderAxisIndicator(imageX, imageY, width);
+        if (!editorCamera.twoDimensional()) {
+            renderAxisIndicator(imageX, imageY, width);
+        }
         renderBillboards(imageX, imageY, width, height);
         updateCamera(deltaSeconds, imageX, imageY, width, height);
         handleFrameShortcut();
@@ -234,7 +237,9 @@ public final class ViewportView {
     }
 
     private void drawOverlays(float imageX, float imageY, int width, int height) {
-        if (showGrid) {
+        if (showGrid && editorCamera.twoDimensional()) {
+            drawTwoDimensionalGrid(imageX, imageY, width, height);
+        } else if (showGrid) {
             drawGridOverlay(imageX, imageY, width, height);
         }
         if (showColliderWireframes) {
@@ -261,6 +266,12 @@ public final class ViewportView {
             snapshot.restore();
         }
         addOverlayImage(gridOverlay.textureId(), imageX, imageY, width, height);
+    }
+
+    private void drawTwoDimensionalGrid(float imageX, float imageY, int width, int height) {
+        Vector3f cameraPosition = editorCamera.camera().position(new Vector3f());
+        GridOverlay2D.draw(ImGui.getWindowDrawList(), imageX, imageY, width, height,
+                cameraPosition.x, cameraPosition.y, editorCamera.orthographicSize());
     }
 
     private void drawColliderOverlay(float imageX, float imageY, int width, int height) {
@@ -407,7 +418,7 @@ public final class ViewportView {
     }
 
     private void prepareGizmoFrame(float imageX, float imageY, int width, int height) {
-        ImGuizmo.setOrthographic(false);
+        ImGuizmo.setOrthographic(editorCamera.twoDimensional());
         ImGuizmo.setDrawList();
         ImGuizmo.setGizmoSizeClipSpace(GIZMO_SIZE_CLIP_SPACE);
         ImGuizmo.setRect(imageX, imageY, width, height);
@@ -447,7 +458,11 @@ public final class ViewportView {
     }
 
     private boolean snapActive() {
-        return gizmoState.snapEnabled() != ImGui.getIO().getKeyCtrl();
+        boolean inverted = ImGui.getIO().getKeyCtrl();
+        if (editorCamera.twoDimensional() && gizmoState.tool() == GizmoState.Tool.TRANSLATE) {
+            return !inverted;
+        }
+        return gizmoState.snapEnabled() != inverted;
     }
 
     private void fillSnapArray() {
@@ -599,6 +614,10 @@ public final class ViewportView {
 
     private void updateCamera(float deltaSeconds, float imageX, float imageY, int width, int height) {
         editorCamera.updateFraming(deltaSeconds);
+        if (editorCamera.twoDimensional()) {
+            updateTwoDimensionalNavigation(height);
+            return;
+        }
         boolean rightHeld = viewportHoveredThisFrame
                 && GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
         boolean orbitHeld = viewportHoveredThisFrame && !rightHeld && ImGui.getIO().getKeyAlt()
@@ -614,6 +633,21 @@ public final class ViewportView {
                 keyDown(GLFW.GLFW_KEY_A), keyDown(GLFW.GLFW_KEY_D),
                 keyDown(GLFW.GLFW_KEY_SPACE), keyDown(GLFW.GLFW_KEY_LEFT_SHIFT),
                 keyDown(GLFW.GLFW_KEY_LEFT_CONTROL), deltaSeconds);
+    }
+
+    private void updateTwoDimensionalNavigation(int height) {
+        boolean panHeld = viewportHoveredThisFrame
+                && (mouseButtonHeld(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
+                        || mouseButtonHeld(GLFW.GLFW_MOUSE_BUTTON_RIGHT));
+        float unitsPerPixel = 2.0f * editorCamera.orthographicSize() / Math.max(1, height);
+        editorCamera.updatePan(ImGui.getMousePosX(), ImGui.getMousePosY(), panHeld, unitsPerPixel);
+        if (viewportHoveredThisFrame) {
+            editorCamera.applyOrthographicZoom(ImGui.getIO().getMouseWheel());
+        }
+    }
+
+    private boolean mouseButtonHeld(int glfwButton) {
+        return GLFW.glfwGetMouseButton(windowHandle, glfwButton) == GLFW.GLFW_PRESS;
     }
 
     private void applyScrollNavigation(boolean rightHeld) {

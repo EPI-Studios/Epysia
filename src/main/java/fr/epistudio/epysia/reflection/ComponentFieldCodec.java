@@ -3,6 +3,7 @@ package fr.epistudio.epysia.reflection;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.components.IComponent;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -27,6 +28,10 @@ public final class ComponentFieldCodec {
         Object value = property.read();
         return switch (property.kind()) {
             case FLOAT, INT, BOOLEAN, STRING -> value;
+            case VECTOR2 -> {
+                Vector2f vector = (Vector2f) value;
+                yield numbers(vector.x, vector.y);
+            }
             case VECTOR3 -> {
                 Vector3f vector = (Vector3f) value;
                 yield numbers(vector.x, vector.y, vector.z);

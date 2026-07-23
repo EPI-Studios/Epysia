@@ -65,14 +65,17 @@ public final class InspectorView {
     private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
     private final BiConsumer<String, GameObject> onCreateScriptForObject;
     private final Supplier<Optional<Path>> selectedAssetPath;
-    private final AtlasInspectorSection atlasSection = new AtlasInspectorSection();
+    private final AtlasInspectorSection atlasSection;
+    private final TextureInspectorSection textureSection;
 
     public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
                          Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
                          ThumbnailCache thumbnails, Project project,
                          BiConsumer<String, GameObject> onCreateScriptForObject,
                          Consumer<Path> onOpenGraph,
-                         Supplier<Optional<Path>> selectedAssetPath) {
+                         Supplier<Optional<Path>> selectedAssetPath,
+                         AtlasInspectorSection atlasSection,
+                         TextureInspectorSection textureSection) {
         this.activeDocument = activeDocument;
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
@@ -86,6 +89,8 @@ public final class InspectorView {
         this.graphSection = new GraphSection(activeDocument, onOpenGraph);
         this.onCreateScriptForObject = onCreateScriptForObject;
         this.selectedAssetPath = selectedAssetPath;
+        this.atlasSection = atlasSection;
+        this.textureSection = textureSection;
     }
 
     private EditorSelection selection() {
@@ -105,7 +110,7 @@ public final class InspectorView {
         Optional<GameObject> selected = selection().get();
         if (selected.isPresent()) {
             renderBody(selected.get());
-        } else if (!atlasSection.render(selectedAssetPath.get())) {
+        } else if (!renderAssetSections()) {
             renderEmpty();
         }
         propertyRows.pruneStaleKeys();
@@ -113,6 +118,11 @@ public final class InspectorView {
         removeConfirm.render();
         scriptNameDialog.render();
         ImGui.end();
+    }
+
+    private boolean renderAssetSections() {
+        Optional<Path> selectedAsset = selectedAssetPath.get();
+        return textureSection.render(selectedAsset) || atlasSection.render(selectedAsset);
     }
 
     private void renderEmpty() {

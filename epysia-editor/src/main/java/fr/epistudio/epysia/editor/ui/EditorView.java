@@ -1,7 +1,12 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
+import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.render.backend.SamplerFilter;
+import fr.epistudio.epysia.render.backend.TextureHandle;
+import fr.epistudio.epysia.render.texture.Texture2D;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
@@ -37,6 +42,7 @@ import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
+import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiKey;
 import imgui.flag.ImGuiStyleVar;
@@ -140,6 +146,7 @@ public final class EditorView implements FrameView {
     private final ExportGameDialog exportGameDialog;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
     private final ThumbnailCache thumbnailCache;
+    private final ImagePreviewTexture imagePreview;
     private final MeshThumbnailer meshThumbnailer;
     private final ShaderGraphPreviewService shaderGraphPreviews;
     private final VfxPreviewPanel vfxPreviewPanel;
@@ -170,6 +177,7 @@ public final class EditorView implements FrameView {
         this.playController = new PlayController(project, () -> workspace.active().scene(),
                 serializer, sceneHost.engine());
         this.thumbnailCache = new ThumbnailCache(sceneHost.backend());
+        this.imagePreview = new ImagePreviewTexture(sceneHost.backend());
         this.meshThumbnailer = new MeshThumbnailer();
         sceneHost.engine().setLogger(editorConsole.logger());
         Supplier<SceneDocument> active = workspace::active;
@@ -192,7 +200,9 @@ public final class EditorView implements FrameView {
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
                 new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
-                graphEditorView::open, this::selectedBrowserAssetPath);
+                graphEditorView::open, this::selectedBrowserAssetPath,
+                new AtlasInspectorSection(imagePreview, this::onAtlasSaved),
+                new TextureInspectorSection(imagePreview, this::onTextureFilterChanged));
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
         this.meshBakeDialog = new MeshBakeDialog(toasts, this::onMeshBaked);
@@ -237,6 +247,7 @@ public final class EditorView implements FrameView {
     private void applyPreferences() {
         editorCamera.setMoveSpeed(preferences.cameraSpeed());
         editorCamera.setBoostMultiplier(preferences.cameraBoost());
+        editorCamera.setTwoDimensional(preferences.viewport2DMode());
         viewportView.setShowGrid(preferences.gridVisible());
         gizmoState.setSnapEnabled(preferences.snapEnabled());
         viewportView.setOverlayThicknessMultiplier(preferences.overlayThickness());
@@ -450,6 +461,10 @@ public final class EditorView implements FrameView {
         if (ImGui.menuItem("Capsule")) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawnPositionInFront());
         }
+        ImGui.separator();
+        if (ImGui.menuItem("2D Sprite")) {
+            objectFactory.createSprite(spawnPositionInFront());
+        }
     }
 
     private void renderLightAndCameraItems() {
@@ -564,6 +579,29 @@ public final class EditorView implements FrameView {
             gizmoState.toggleSpace();
         }
         tooltip("Toggle gizmo space (X)");
+        ImGui.sameLine();
+        renderTwoDimensionalToggle();
+    }
+
+    private void renderTwoDimensionalToggle() {
+        boolean active = editorCamera.twoDimensional();
+        if (active) {
+            ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
+        }
+        boolean clicked = ImGui.button("2D");
+        if (active) {
+            ImGui.popStyleColor();
+        }
+        tooltip("Toggle 2D view (orthographic front view)");
+        if (clicked) {
+            toggleTwoDimensionalPreference();
+        }
+    }
+
+    private void toggleTwoDimensionalPreference() {
+        editorCamera.setTwoDimensional(!editorCamera.twoDimensional());
+        preferences = preferences.withViewport2DMode(editorCamera.twoDimensional());
+        persistPreferences();
     }
 
     private void renderToolButton(String id, EditorIcon icon, GizmoState.Tool tool, String tooltipText) {
@@ -767,6 +805,9 @@ public final class EditorView implements FrameView {
     private String contextHint() {
         if (playSession.isActive()) {
             return "Ctrl+P Stop  |  Pause and Step in the toolbar  |  Stop play mode to edit";
+        }
+        if (viewportView.isHovered() && editorCamera.twoDimensional()) {
+            return "RMB/MMB Pan  |  Scroll Zoom  |  F Frame  |  Ctrl+D Duplicate";
         }
         if (viewportView.isHovered()) {
             return "RMB Fly  |  Alt+LMB Orbit  |  F Frame  |  Ctrl+D Duplicate";
@@ -1101,6 +1142,21 @@ public final class EditorView implements FrameView {
         viewportView.setGridFadeDistance(gridFadeDistance);
     }
 
+    private void onTextureFilterChanged(Path textureFile) {
+        String absolute = textureFile.toAbsolutePath().toString();
+        SamplerFilter filter = Texture2D.metaFilter(absolute);
+        List<TextureHandle> loaded = sceneHost.engine().assets().loadedMatching(TextureHandle.class,
+                path -> TexturePathPrefixes.stripPrefixes(path).equals(absolute));
+        for (TextureHandle handle : loaded) {
+            sceneHost.backend().updateTextureFilter(handle, filter);
+        }
+    }
+
+    private void onAtlasSaved(Path atlasFile) {
+        sceneHost.engine().assets().unload(atlasFile.toAbsolutePath().toString());
+        toasts.show("Atlas saved: " + atlasFile.getFileName());
+    }
+
     private void onMeshBaked(Path output) {
         toasts.show("Mesh baked: " + output.getFileName());
         assetBrowserView.refreshAssets();
@@ -1114,6 +1170,7 @@ public final class EditorView implements FrameView {
         viewportView.dispose();
         graphEditorView.shutdown();
         thumbnailCache.shutdown();
+        imagePreview.dispose();
         meshThumbnailer.shutdown();
     }
 }

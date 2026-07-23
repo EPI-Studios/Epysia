@@ -42,6 +42,11 @@ public final class SpriteAtlasAssetLoader implements AssetLoader<SpriteAtlas> {
     }
 
     @Override
+    public void dispose(EngineServices services, SpriteAtlas value) {
+        loadedByPath.values().remove(value);
+    }
+
+    @Override
     public void unloadAll() {
         loadedByPath.clear();
     }

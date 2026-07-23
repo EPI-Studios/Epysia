@@ -12,6 +12,7 @@ import fr.epistudio.epysia.reflection.ExportedProperty;
 import imgui.ImGui;
 import imgui.type.ImString;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.util.HashMap;
@@ -59,6 +60,7 @@ public final class PropertyRows {
             case BOOLEAN -> renderBoolean(owner, property);
             case STRING -> renderString(owner, property, key);
             case ENUM -> renderEnum(owner, property);
+            case VECTOR2 -> renderVector2(owner, property);
             case VECTOR3 -> renderVector3(owner, property);
             case QUATERNION -> renderQuaternion(owner, property, key);
             case ASSET_REF -> renderAssetRef(owner, property, key);
@@ -114,6 +116,17 @@ public final class PropertyRows {
             }
         }
         ImGui.endCombo();
+    }
+
+    private void renderVector2(IComponent owner, ExportedProperty property) {
+        Vector2f vector = (Vector2f) property.read();
+        float[] values = {vector.x, vector.y};
+        if (ImGui.dragFloat2(property.label(), values, DRAG_STEP_FALLBACK)
+                && (vector.x != values[0] || vector.y != values[1])) {
+            Vector2f before = new Vector2f(vector);
+            Vector2f after = new Vector2f(values[0], values[1]);
+            history().execute(new SetPropertyCommand(owner, property, before, after));
+        }
     }
 
     private void renderVector3(IComponent owner, ExportedProperty property) {

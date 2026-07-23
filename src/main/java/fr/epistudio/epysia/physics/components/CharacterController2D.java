@@ -9,7 +9,7 @@ import fr.epistudio.epysia.physics.api.BodyHandle;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 
-@EpysiaComponent(name = "Character Controller 2D", category = "Physics 2D")
+@EpysiaComponent(name = "Character Controller 2D", category = "Physics")
 @RequiresComponent(Transform2D.class)
 public final class CharacterController2D extends Component {
 

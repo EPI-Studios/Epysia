@@ -5,6 +5,7 @@ import fr.epistudio.epysia.components.Export;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.lang.reflect.Field;
@@ -49,6 +50,9 @@ public final class Reflection {
         }
         if (type == String.class) {
             return ExportedProperty.Kind.STRING;
+        }
+        if (type == Vector2f.class) {
+            return ExportedProperty.Kind.VECTOR2;
         }
         if (type == Vector3f.class) {
             return ExportedProperty.Kind.VECTOR3;

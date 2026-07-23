@@ -30,21 +30,21 @@ public final class AssetMetaFile {
     }
 
     public static Optional<String> readGuid(Path metaFile) {
-        if (!Files.isRegularFile(metaFile)) {
-            return Optional.empty();
-        }
-        try {
-            Map<String, Object> root = new JsonReader(Files.readString(metaFile)).readRootObject();
-            return root.get(GUID_KEY) instanceof String guid && !guid.isBlank()
-                    ? Optional.of(guid) : Optional.empty();
-        } catch (IOException | RuntimeException unreadable) {
-            return Optional.empty();
-        }
+        return readString(metaFile, GUID_KEY);
+    }
+
+    public static Optional<String> readString(Path metaFile, String key) {
+        return readRoot(metaFile).get(key) instanceof String value && !value.isBlank()
+                ? Optional.of(value) : Optional.empty();
     }
 
     public static void writeGuid(Path metaFile, String guid) {
+        writeString(metaFile, GUID_KEY, guid);
+    }
+
+    public static void writeString(Path metaFile, String key, String value) {
         Map<String, Object> root = new LinkedHashMap<>(readRoot(metaFile));
-        root.put(GUID_KEY, guid);
+        root.put(key, value);
         JsonWriter writer = new JsonWriter();
         writer.beginObject();
         for (Map.Entry<String, Object> entry : root.entrySet()) {

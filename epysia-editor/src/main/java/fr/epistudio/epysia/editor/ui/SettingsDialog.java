@@ -356,7 +356,7 @@ public final class SettingsDialog {
                 autosaveEnabled, autosaveInterval[0],
                 basePreferences.gridVisible(), basePreferences.snapEnabled(),
                 overlayThickness[0], gridFadeDistance[0], gpuPreferences[selectedGpuIndex], detachableWindows,
-                basePreferences.shaderNodePreviewsEnabled()));
+                basePreferences.shaderNodePreviewsEnabled(), basePreferences.viewport2DMode()));
     }
 
     private EditorSettings buildSettings() {

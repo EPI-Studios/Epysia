@@ -1,17 +1,26 @@
 package fr.epistudio.epysia.components.transforms;
 
 import fr.epistudio.epysia.components.Component;
+import fr.epistudio.epysia.components.EpysiaComponent;
+import fr.epistudio.epysia.components.Export;
 import org.joml.Matrix3x2f;
 import org.joml.Vector2f;
 
+@EpysiaComponent(name = "Transform 2D", category = "Core")
 public final class Transform2D extends Component {
 
+    @Export(label = "Position")
     private final Vector2f position = new Vector2f();
+    @Export(label = "Scale")
     private final Vector2f scale = new Vector2f(1.0f, 1.0f);
+    @Export(label = "Pivot")
     private final Vector2f pivot = new Vector2f();
     private final Matrix3x2f cachedLocalMatrix = new Matrix3x2f();
+    @Export(label = "Rotation Radians", step = 0.01f)
     private float rotationRadians;
+    @Export(label = "Render Layer", step = 1.0f)
     private int renderLayer;
+    @Export(label = "Visible")
     private boolean visible = true;
     private boolean matrixDirty = true;
 
@@ -85,6 +94,10 @@ public final class Transform2D extends Component {
     public Transform2D setVisible(boolean visible) {
         this.visible = visible;
         return this;
+    }
+
+    public void markDirty() {
+        matrixDirty = true;
     }
 
     public Matrix3x2f localMatrix() {

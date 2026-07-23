@@ -19,6 +19,11 @@ public final class EditorCamera {
     private static final float FRAME_DURATION_SECONDS = 0.2f;
     private static final float MINIMUM_FOCUS_DISTANCE = 0.75f;
     private static final float DOLLY_STEP_FRACTION = 0.15f;
+    private static final float MINIMUM_ORTHOGRAPHIC_SIZE = 0.1f;
+    private static final float MAXIMUM_ORTHOGRAPHIC_SIZE = 500.0f;
+    private static final float ORTHOGRAPHIC_ZOOM_BASE = 0.9f;
+    private static final float TWO_DIMENSIONAL_DEPTH = 10.0f;
+    private static final float TWO_DIMENSIONAL_FRAME_MARGIN = 1.2f;
 
     private final GameObject host = new GameObject("Editor Camera");
     private final Transform3D transform;
@@ -43,6 +48,13 @@ public final class EditorCamera {
     private boolean orbitActive;
     private float orbitLastMouseX = Float.NaN;
     private float orbitLastMouseY = Float.NaN;
+    private boolean twoDimensional;
+    private final Vector3f storedPerspectivePosition = new Vector3f();
+    private float storedPerspectiveYaw;
+    private float storedPerspectivePitch;
+    private boolean panActive;
+    private float panLastMouseX = Float.NaN;
+    private float panLastMouseY = Float.NaN;
 
     public EditorCamera() {
         this.transform = new Transform3D().setPosition(6.0f, 5.0f, 8.0f);
@@ -68,9 +80,82 @@ public final class EditorCamera {
     }
 
     public Matrix4f projectionMatrix(Matrix4f destination) {
+        if (camera.orthographic()) {
+            float halfHeight = camera.orthographicSize();
+            float halfWidth = halfHeight * camera.aspectRatio();
+            return destination.identity().setOrtho(-halfWidth, halfWidth, -halfHeight, halfHeight,
+                    camera.nearPlane(), camera.farPlane());
+        }
         return destination.identity().perspective(
                 (float) Math.toRadians(camera.fieldOfViewDegrees()),
                 camera.aspectRatio(), camera.nearPlane(), camera.farPlane());
+    }
+
+    public boolean twoDimensional() {
+        return twoDimensional;
+    }
+
+    public void setTwoDimensional(boolean enabled) {
+        if (twoDimensional == enabled) {
+            return;
+        }
+        twoDimensional = enabled;
+        if (enabled) {
+            enterTwoDimensional();
+        } else {
+            exitTwoDimensional();
+        }
+    }
+
+    private void enterTwoDimensional() {
+        storedPerspectivePosition.set(transform.position());
+        storedPerspectiveYaw = yawRadians;
+        storedPerspectivePitch = pitchRadians;
+        yawRadians = 0.0f;
+        pitchRadians = 0.0f;
+        applyOrientation();
+        transform.setPosition(transform.position().x, transform.position().y, TWO_DIMENSIONAL_DEPTH);
+        camera.setOrthographic(true);
+        framing = false;
+    }
+
+    private void exitTwoDimensional() {
+        camera.setOrthographic(false);
+        yawRadians = storedPerspectiveYaw;
+        pitchRadians = storedPerspectivePitch;
+        transform.setPosition(storedPerspectivePosition.x, storedPerspectivePosition.y,
+                storedPerspectivePosition.z);
+        applyOrientation();
+        framing = false;
+    }
+
+    public float orthographicSize() {
+        return camera.orthographicSize();
+    }
+
+    public void applyOrthographicZoom(float scrollDelta) {
+        if (scrollDelta == 0.0f) {
+            return;
+        }
+        float size = camera.orthographicSize() * (float) Math.pow(ORTHOGRAPHIC_ZOOM_BASE, scrollDelta);
+        camera.setOrthographicSize(clamp(size, MINIMUM_ORTHOGRAPHIC_SIZE, MAXIMUM_ORTHOGRAPHIC_SIZE));
+    }
+
+    public void updatePan(float mouseX, float mouseY, boolean panHeld, float unitsPerPixel) {
+        if (!panHeld) {
+            panActive = false;
+            return;
+        }
+        if (!panActive) {
+            panActive = true;
+            panLastMouseX = mouseX;
+            panLastMouseY = mouseY;
+            return;
+        }
+        transform.translate(-(mouseX - panLastMouseX) * unitsPerPixel,
+                (mouseY - panLastMouseY) * unitsPerPixel, 0.0f);
+        panLastMouseX = mouseX;
+        panLastMouseY = mouseY;
     }
 
     public void setAspectRatio(float aspect) {
@@ -146,6 +231,10 @@ public final class EditorCamera {
     }
 
     public void frame(Vector3f center, float radius) {
+        if (twoDimensional) {
+            frameTwoDimensional(center, radius);
+            return;
+        }
         float halfFov = (float) Math.toRadians(camera.fieldOfViewDegrees()) * 0.5f;
         float distance = Math.max(MINIMUM_FOCUS_DISTANCE, (float) (radius / Math.tan(halfFov)) * 1.4f);
         focusPoint.set(center);
@@ -153,6 +242,16 @@ public final class EditorCamera {
         transform.rotation().transform(0.0f, 0.0f, -1.0f, scratchForward);
         frameStartPosition.set(transform.position());
         frameTargetPosition.set(center).sub(scratchForward.mul(distance, new Vector3f()));
+        frameElapsedSeconds = 0.0f;
+        framing = true;
+    }
+
+    private void frameTwoDimensional(Vector3f center, float radius) {
+        focusPoint.set(center.x, center.y, 0.0f);
+        camera.setOrthographicSize(clamp(radius * TWO_DIMENSIONAL_FRAME_MARGIN,
+                MINIMUM_ORTHOGRAPHIC_SIZE, MAXIMUM_ORTHOGRAPHIC_SIZE));
+        frameStartPosition.set(transform.position());
+        frameTargetPosition.set(center.x, center.y, TWO_DIMENSIONAL_DEPTH);
         frameElapsedSeconds = 0.0f;
         framing = true;
     }

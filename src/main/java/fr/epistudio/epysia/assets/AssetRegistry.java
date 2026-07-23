@@ -9,6 +9,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public final class AssetRegistry {
@@ -108,6 +109,19 @@ public final class AssetRegistry {
             cache.put(cacheKey(type, path), new Entry(produced, null));
         }
         return produced;
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> List<T> loadedMatching(Class<T> type, Predicate<String> pathFilter) {
+        String prefix = type.getName() + "::";
+        List<T> matches = new ArrayList<>();
+        for (Map.Entry<String, Entry> entry : cache.entrySet()) {
+            if (entry.getKey().startsWith(prefix)
+                    && pathFilter.test(entry.getKey().substring(prefix.length()))) {
+                matches.add((T) entry.getValue().value);
+            }
+        }
+        return matches;
     }
 
     public void unloadUnused() {

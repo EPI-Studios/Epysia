@@ -7,7 +7,7 @@ import fr.epistudio.epysia.physics.api.BodyHandle;
 import fr.epistudio.epysia.physics.api.DynamicProperties;
 import fr.epistudio.epysia.physics.api.RigidBodyKind;
 
-@EpysiaComponent(name = "Rigid Body 2D", category = "Physics 2D")
+@EpysiaComponent(name = "Rigid Body 2D", category = "Physics")
 public final class RigidBody2D extends Component {
 
     @Export(label = "Kind")

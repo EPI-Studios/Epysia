@@ -6,6 +6,7 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.util.List;
@@ -46,6 +47,7 @@ final class ComponentFieldsCodec {
             case INT -> writer.valueNumber((int) value);
             case BOOLEAN -> writer.valueBoolean((boolean) value);
             case STRING -> writer.valueString((String) value);
+            case VECTOR2 -> writeVector2(writer, (Vector2f) value);
             case VECTOR3 -> writeVector3(writer, (Vector3f) value);
             case QUATERNION -> writeQuaternion(writer, (Quaternionf) value);
             case ENUM -> writer.valueString(value == null ? "" : ((Enum<?>) value).name());
@@ -73,6 +75,13 @@ final class ComponentFieldsCodec {
         } else {
             writer.valueString("");
         }
+    }
+
+    private static void writeVector2(JsonWriter writer, Vector2f vector) {
+        writer.beginArray();
+        writer.valueNumber(vector.x);
+        writer.valueNumber(vector.y);
+        writer.endArray();
     }
 
     private static void writeVector3(JsonWriter writer, Vector3f vector) {
@@ -109,6 +118,7 @@ final class ComponentFieldsCodec {
             case INT -> property.writeInt((int) asFloat(value));
             case BOOLEAN -> property.writeBoolean(value instanceof Boolean booleanValue && booleanValue);
             case STRING -> property.writeObject(value.toString());
+            case VECTOR2 -> applyVector2(property, (List<Object>) value);
             case VECTOR3 -> applyVector3(property, (List<Object>) value);
             case QUATERNION -> applyQuaternion(property, (List<Object>) value);
             case ENUM -> applyEnum(property, value);
@@ -117,6 +127,11 @@ final class ComponentFieldsCodec {
             default -> {
             }
         }
+    }
+
+    private static void applyVector2(ExportedProperty property, List<Object> values) {
+        Vector2f target = (Vector2f) property.read();
+        target.set(asFloat(values.get(0)), asFloat(values.get(1)));
     }
 
     private static void applyVector3(ExportedProperty property, List<Object> values) {

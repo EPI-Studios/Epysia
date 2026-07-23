@@ -15,6 +15,7 @@ public final class ExportedProperty {
         INT,
         BOOLEAN,
         STRING,
+        VECTOR2,
         VECTOR3,
         QUATERNION,
         ENUM,
