@@ -21,6 +21,7 @@ import fr.epistudio.epysia.render.opengl.OpenGlRenderBackend;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
+import fr.epistudio.epysia.render.sprite.SpriteRenderSystem;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.runtime.RuntimeCommand;
@@ -67,6 +68,7 @@ public final class StandaloneRunner {
         MeshRenderSystem meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger()));
+        engine.addRenderSystem(new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger()));
         engine.addRenderSystem(new TextRenderSystem(shaderLoader, window, engine, engine.logger()));
         window.open();
         MutableInputState inputState = new MutableInputState();

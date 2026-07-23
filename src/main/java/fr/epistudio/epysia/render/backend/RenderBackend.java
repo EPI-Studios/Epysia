@@ -37,6 +37,10 @@ public interface RenderBackend {
 
     void writeTexture(TextureHandle handle, ByteBuffer rgbaPixels);
 
+    int textureWidth(TextureHandle handle);
+
+    int textureHeight(TextureHandle handle);
+
     void copyTextureLayer(TextureHandle source, int sourceLayer, TextureHandle destination, int destinationLayer);
 
     void updatePipelineShaders(PipelineHandle handle, ShaderSource shaders);

@@ -642,6 +642,16 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     @Override
+    public int textureWidth(TextureHandle handle) {
+        return requireTexture(handle).width();
+    }
+
+    @Override
+    public int textureHeight(TextureHandle handle) {
+        return requireTexture(handle).height();
+    }
+
+    @Override
     public void copyTextureLayer(TextureHandle source, int sourceLayer,
                                  TextureHandle destination, int destinationLayer) {
         TextureResource from = requireTexture(source);

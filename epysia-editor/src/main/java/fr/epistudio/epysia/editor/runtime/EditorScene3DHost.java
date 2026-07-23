@@ -29,6 +29,7 @@ import fr.epistudio.epysia.render.postfx.PostProcessSettings;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
+import fr.epistudio.epysia.render.sprite.SpriteRenderSystem;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
@@ -61,6 +62,7 @@ public final class EditorScene3DHost {
     private int previewHeight;
     private MeshRenderSystem meshRenderSystem;
     private VfxRenderSystem vfxRenderSystem;
+    private SpriteRenderSystem spriteRenderSystem;
     private PostProcessSystem postProcessSystem;
     private ShaderLoader shaderLoader;
     private ShaderWatcher shaderWatcher;
@@ -116,8 +118,10 @@ public final class EditorScene3DHost {
         postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());
         postProcessSystem.setShaderWatcher(shaderWatcher);
         vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+        spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(vfxRenderSystem);
+        engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(postProcessSystem);
         engine.initialize();
         BuiltinMeshes builtins = BuiltinMeshes.uploadAll(backend);
@@ -155,7 +159,8 @@ public final class EditorScene3DHost {
     private void restoreBaselineRenderSystems() {
         List<RenderSystem> current = engine.renderSystems();
         for (RenderSystem system : current) {
-            if (system != meshRenderSystem && system != vfxRenderSystem && system != postProcessSystem) {
+            if (system != meshRenderSystem && system != vfxRenderSystem && system != spriteRenderSystem
+                    && system != postProcessSystem) {
                 engine.removeRenderSystem(system);
             }
         }
@@ -166,6 +171,10 @@ public final class EditorScene3DHost {
         if (!current.contains(vfxRenderSystem)) {
             vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
             engine.addRenderSystem(vfxRenderSystem);
+        }
+        if (!current.contains(spriteRenderSystem)) {
+            spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+            engine.addRenderSystem(spriteRenderSystem);
         }
         if (!current.contains(postProcessSystem)) {
             postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());

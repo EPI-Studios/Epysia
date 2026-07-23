@@ -59,6 +59,14 @@ tasks.register('runRemovalPixelCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runSpriteRenderCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders two overlapping sorted sprites through WORLD_2D and checks the pixels.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.SpriteRenderCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runProbeBakeCheck', JavaExec) {
     group = 'verification'
     description = 'Bakes SH light probes in an emissive room headlessly and checks the ambient red-shifts.'

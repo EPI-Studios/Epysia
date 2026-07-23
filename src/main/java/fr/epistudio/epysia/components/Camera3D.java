@@ -20,6 +20,10 @@ public final class Camera3D extends Component {
     private float nearPlane = 0.1f;
     @Export(label = "Far", min = 1.0f, max = 5000.0f, step = 1.0f)
     private float farPlane = 100.0f;
+    @Export(label = "Orthographic")
+    private boolean orthographic;
+    @Export(label = "Ortho Size", min = 0.01f, max = 1000.0f, step = 0.1f)
+    private float orthographicSize = 5.0f;
     private float aspectRatio = 16.0f / 9.0f;
     private final PostEffectStack postEffectOverrideStack = new PostEffectStack();
     private boolean postEffectOverrideEnabled;
@@ -27,6 +31,8 @@ public final class Camera3D extends Component {
     private float projectionNearPlane = Float.NaN;
     private float projectionFarPlane = Float.NaN;
     private float projectionAspectRatio = Float.NaN;
+    private boolean projectionOrthographic;
+    private float projectionOrthographicSize = Float.NaN;
     private final Matrix4f viewMatrix = new Matrix4f();
     private final Matrix4f projectionMatrix = new Matrix4f();
     private final Matrix4f viewProjectionMatrix = new Matrix4f();
@@ -72,6 +78,24 @@ public final class Camera3D extends Component {
         return farPlane;
     }
 
+    public boolean orthographic() {
+        return orthographic;
+    }
+
+    public Camera3D setOrthographic(boolean orthographic) {
+        this.orthographic = orthographic;
+        return this;
+    }
+
+    public float orthographicSize() {
+        return orthographicSize;
+    }
+
+    public Camera3D setOrthographicSize(float size) {
+        this.orthographicSize = size;
+        return this;
+    }
+
     public Optional<PostEffectStack> postEffectStack() {
         return postEffectOverrideEnabled ? Optional.of(postEffectOverrideStack) : Optional.empty();
     }
@@ -104,20 +128,32 @@ public final class Camera3D extends Component {
     }
 
     public Matrix4f projection() {
-        if (projectionFieldOfViewDegrees == fieldOfViewDegrees && projectionAspectRatio == aspectRatio
-                && projectionNearPlane == nearPlane && projectionFarPlane == farPlane) {
+        if (projectionMatchesSettings()) {
             return projectionMatrix;
         }
         projectionFieldOfViewDegrees = fieldOfViewDegrees;
         projectionAspectRatio = aspectRatio;
         projectionNearPlane = nearPlane;
         projectionFarPlane = farPlane;
+        projectionOrthographic = orthographic;
+        projectionOrthographicSize = orthographicSize;
+        if (orthographic) {
+            float halfWidth = orthographicSize * aspectRatio;
+            return projectionMatrix.identity().setOrtho(-halfWidth, halfWidth,
+                    -orthographicSize, orthographicSize, nearPlane, farPlane);
+        }
         return projectionMatrix.identity().perspective(
                 (float) Math.toRadians(fieldOfViewDegrees),
                 aspectRatio,
                 nearPlane,
                 farPlane
         );
+    }
+
+    private boolean projectionMatchesSettings() {
+        return projectionFieldOfViewDegrees == fieldOfViewDegrees && projectionAspectRatio == aspectRatio
+                && projectionNearPlane == nearPlane && projectionFarPlane == farPlane
+                && projectionOrthographic == orthographic && projectionOrthographicSize == orthographicSize;
     }
 
     public Matrix4f viewProjection() {
