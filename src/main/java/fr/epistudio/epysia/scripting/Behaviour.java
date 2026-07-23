@@ -23,10 +23,10 @@ public abstract class Behaviour extends Component implements PhysicsEventListene
     public void onDestroy() {
     }
 
-    public void onCollision(GameObject other, Vector3fc point, Vector3fc normal, float impulse) {
+    public void onCollision(GameObject other, Vector3fc point, Vector3fc normal, float approachSpeed) {
     }
 
-    public void onCollisionStay(GameObject other, Vector3fc point, Vector3fc normal, float impulse) {
+    public void onCollisionStay(GameObject other, Vector3fc point, Vector3fc normal, float approachSpeed) {
     }
 
     public void onCollisionExit(GameObject other) {

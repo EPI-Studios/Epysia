@@ -5,6 +5,7 @@ import fr.epistudio.epysia.EngineServices;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -13,7 +14,7 @@ import java.util.function.Supplier;
 public final class AssetRegistry {
 
     private final Map<Class<?>, AssetLoader<?>> loadersByType = new HashMap<>();
-    private final Map<String, Object> cache = new HashMap<>();
+    private final Map<String, Entry> cache = new HashMap<>();
     private final EngineServices services;
     private Optional<AssetDatabase> database = Optional.empty();
 
@@ -50,50 +51,126 @@ public final class AssetRegistry {
         return out;
     }
 
-    @SuppressWarnings("unchecked")
     public <T> Optional<T> resolve(Class<T> type, String path) {
+        return lookup(type, path, false);
+    }
+
+    public <T> Optional<T> acquire(Class<T> type, String path) {
+        return lookup(type, path, true);
+    }
+
+    public void release(Class<?> type, String path) {
+        if (path == null || path.isEmpty()) {
+            return;
+        }
+        Entry entry = cache.get(cacheKey(type, path));
+        if (entry != null && entry.refCount > 0) {
+            entry.refCount--;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> Optional<T> lookup(Class<T> type, String path, boolean owning) {
         if (path == null || path.isEmpty()) {
             return Optional.empty();
         }
-        String cacheKey = type.getName() + "::" + path;
-        Object cached = cache.get(cacheKey);
-        if (cached != null) {
-            return Optional.of((T) cached);
+        Entry entry = cache.computeIfAbsent(cacheKey(type, path), ignored -> loadEntry(type, path));
+        if (entry == null) {
+            return Optional.empty();
         }
+        if (owning) {
+            entry.refCount++;
+            entry.counted = true;
+        }
+        return Optional.of((T) entry.value);
+    }
+
+    private <T> Entry loadEntry(Class<T> type, String path) {
         Optional<AssetLoader<T>> loader = loaderFor(type);
         if (loader.isEmpty()) {
-            return Optional.empty();
+            return null;
         }
         T value = loader.get().load(services, path);
         if (value == null) {
-            return Optional.empty();
+            return null;
         }
-        cache.put(cacheKey, value);
-        return Optional.of(value);
+        return new Entry(value, loader.get());
     }
 
     @SuppressWarnings("unchecked")
     public <T> T resolveOrCompute(Class<T> type, String path, Supplier<T> producer) {
-        String cacheKey = type.getName() + "::" + path;
-        Object cached = cache.get(cacheKey);
-        if (cached != null) {
-            return (T) cached;
+        Entry entry = cache.get(cacheKey(type, path));
+        if (entry != null) {
+            return (T) entry.value;
         }
         T produced = producer.get();
         if (produced != null) {
-            cache.put(cacheKey, produced);
+            cache.put(cacheKey(type, path), new Entry(produced, null));
         }
         return produced;
+    }
+
+    public void unloadUnused() {
+        Iterator<Entry> entries = cache.values().iterator();
+        while (entries.hasNext()) {
+            Entry entry = entries.next();
+            if (entry.counted && entry.refCount <= 0) {
+                dispose(entry);
+                entries.remove();
+            }
+        }
     }
 
     public void unload(String path) {
         if (path == null || path.isEmpty()) {
             return;
         }
-        cache.keySet().removeIf(key -> key.endsWith("::" + path));
+        String suffix = "::" + path.trim();
+        Iterator<Map.Entry<String, Entry>> entries = cache.entrySet().iterator();
+        while (entries.hasNext()) {
+            Map.Entry<String, Entry> mapEntry = entries.next();
+            if (mapEntry.getKey().endsWith(suffix)) {
+                dispose(mapEntry.getValue());
+                entries.remove();
+            }
+        }
     }
 
     public void clear() {
+        for (Entry entry : cache.values()) {
+            dispose(entry);
+        }
         cache.clear();
+        for (AssetLoader<?> loader : loadersByType.values()) {
+            loader.unloadAll();
+        }
+    }
+
+    private void dispose(Entry entry) {
+        if (entry.loader != null) {
+            disposeTyped(entry.loader, entry.value);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> void disposeTyped(AssetLoader<T> loader, Object value) {
+        loader.dispose(services, (T) value);
+    }
+
+    private static String cacheKey(Class<?> type, String path) {
+        return type.getName() + "::" + path.trim();
+    }
+
+    private static final class Entry {
+
+        private final Object value;
+        private final AssetLoader<?> loader;
+        private int refCount;
+        private boolean counted;
+
+        private Entry(Object value, AssetLoader<?> loader) {
+            this.value = value;
+            this.loader = loader;
+        }
     }
 }

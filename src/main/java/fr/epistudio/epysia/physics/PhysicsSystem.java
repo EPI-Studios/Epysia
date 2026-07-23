@@ -36,7 +36,8 @@ import org.joml.Vector3fc;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -48,6 +49,7 @@ import java.util.function.Consumer;
 public final class PhysicsSystem implements IPhysicsSystem {
 
     private static final float DEFAULT_WORLD_FLOOR_Y = -500.0f;
+    private static final float RESTING_DISPLACEMENT_SQUARED = 1.0e-8f;
 
     private final Vector3f defaultGravity = new Vector3f(0.0f, -9.81f, 0.0f);
     private float worldFloorY = DEFAULT_WORLD_FLOOR_Y;
@@ -58,8 +60,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private final List<Box3dCharacterController> ownedControllers = new ArrayList<>();
     private final Map<Long, GameObject> bodyOwners = new HashMap<>();
     private CollisionLayers collisionLayers = CollisionLayers.allColliding();
-    private final Map<BodyPair, ContactEvent> activeContacts = new HashMap<>();
-    private final Set<BodyPair> activeTriggers = new HashSet<>();
+    private final Map<BodyPair, ContactEvent> activeContacts = new LinkedHashMap<>();
+    private final Set<BodyPair> activeTriggers = new LinkedHashSet<>();
     private EngineServices services;
     private Box3dPhysicsWorld world;
 
@@ -146,14 +148,16 @@ public final class PhysicsSystem implements IPhysicsSystem {
         Box3dCharacterController.MoveResult result = controller.nativeController()
                 .move(controller.bodyHandle(), scratchDisplacement, controller.stepHeight(), snap);
         Vector3fc corrected = result.correctedDisplacement();
-        Vector3f position = transform.position();
-        float newX = position.x + corrected.x();
-        float newY = position.y + corrected.y();
-        float newZ = position.z + corrected.z();
-        transform.setPosition(newX, newY, newZ);
-        scratchPosition.set(newX, newY, newZ);
-        scratchRotation.set(transform.rotation());
-        world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(new Vector3f(scratchPosition), new Quaternionf(scratchRotation)));
+        if (corrected.lengthSquared() > RESTING_DISPLACEMENT_SQUARED) {
+            Vector3f position = transform.position();
+            float newX = position.x + corrected.x();
+            float newY = position.y + corrected.y();
+            float newZ = position.z + corrected.z();
+            transform.setPosition(newX, newY, newZ);
+            scratchPosition.set(newX, newY, newZ);
+            scratchRotation.set(transform.rotation());
+            world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(new Vector3f(scratchPosition), new Quaternionf(scratchRotation)));
+        }
         controller.setGrounded(result.grounded());
         controller.setMoveResult(result.groundNormal(), result.clippedDelta(), result.contacts());
         if (controller.applyGravity()) {
@@ -314,6 +318,9 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (rigidBody.kind() != RigidBodyKind.DYNAMIC || !rigidBody.handle().isValid()) {
             return;
         }
+        if (!world.isBodyAwake(rigidBody.handle())) {
+            return;
+        }
         Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
         RigidBodyPose pose = world.getBodyPose(rigidBody.handle());
         transform.setPosition(pose.position().x(), pose.position().y(), pose.position().z());
@@ -380,7 +387,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         dispatchToBehaviours(target, behaviour -> {
             try {
                 if (started) {
-                    behaviour.onCollision(counterpart, event.point(), event.normal(), event.impulse());
+                    behaviour.onCollision(counterpart, event.point(), event.normal(), event.approachSpeed());
                 } else {
                     behaviour.onCollisionExit(counterpart);
                 }
@@ -397,7 +404,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
         dispatchToBehaviours(target, behaviour -> {
             try {
-                behaviour.onCollisionStay(counterpart, event.point(), event.normal(), event.impulse());
+                behaviour.onCollisionStay(counterpart, event.point(), event.normal(), event.approachSpeed());
             } catch (RuntimeException error) {
                 logScriptError("onCollisionStay", error);
             }

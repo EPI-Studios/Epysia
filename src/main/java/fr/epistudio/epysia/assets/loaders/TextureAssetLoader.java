@@ -32,6 +32,11 @@ public final class TextureAssetLoader implements AssetLoader<TextureHandle> {
         }
     }
 
+    @Override
+    public void dispose(EngineServices services, TextureHandle value) {
+        services.renderBackend().destroy(value);
+    }
+
     private static TextureHandle loadTexture(RenderBackend backend, String path) {
         TexturePathPrefixes.ParsedPath parsed = TexturePathPrefixes.parse(path);
         return Texture2D.load(backend, parsed.remainder(), parsed.format(), parsed.wrap());

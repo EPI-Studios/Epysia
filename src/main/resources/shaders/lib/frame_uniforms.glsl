@@ -27,6 +27,9 @@ layout(std140, binding = 0) uniform FrameUbo {
     ivec4 clusterGrid;              // .xyz = grid dims, .w = culling enabled
     vec4 clusterParams;            // .x = zNear, .y = zFar, .z = screenWidth, .w = screenHeight
     vec4 clusterSliceParams;       // .x = sliceScale, .y = sliceBias, .z = maxLightsPerCluster
+    vec4 probeGridOrigin;          // .xyz = world position of probe (0,0,0)
+    vec4 probeGridSpacing;         // .xyz = world distance between neighboring probes
+    ivec4 probeGridResolution;     // .xyz = probe counts per axis
 } frame;
 
 float frameTime() { return frame.cameraPosition.w; }
@@ -36,9 +39,6 @@ struct InstanceTransform {
     mat4 normalMatrix;
 };
 
-// One storage buffer feeds both single-object and instanced draws: a single-object draw
-// binds a one-element buffer and reads element 0. Sharing one code path keeps the compiled
-// program identical either way, so batching an object can never shift its pixels.
 layout(std430, binding = 3) readonly buffer InstanceTransformSsbo {
     InstanceTransform instanceTransforms[];
 };
@@ -46,9 +46,6 @@ layout(std430, binding = 3) readonly buffer InstanceTransformSsbo {
 #define OBJECT_MODEL (instanceTransforms[gl_InstanceID].model)
 #define OBJECT_NORMAL_MATRIX (instanceTransforms[gl_InstanceID].normalMatrix)
 
-// Single-object view of the same transform. Fragment stages have no gl_InstanceID, so the
-// surface-shader object helpers read this instead; materials whose surface shader uses those
-// helpers are kept on the per-object path, where this buffer describes exactly that object.
 layout(std140, binding = 1) uniform ObjectUbo {
     mat4 model;
     mat4 normalMatrix;

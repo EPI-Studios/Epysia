@@ -5,10 +5,10 @@ import org.joml.Vector3fc;
 
 public interface PhysicsEventListener {
 
-    default void onCollision(GameObject other, Vector3fc point, Vector3fc normal, float impulse) {
+    default void onCollision(GameObject other, Vector3fc point, Vector3fc normal, float approachSpeed) {
     }
 
-    default void onCollisionStay(GameObject other, Vector3fc point, Vector3fc normal, float impulse) {
+    default void onCollisionStay(GameObject other, Vector3fc point, Vector3fc normal, float approachSpeed) {
     }
 
     default void onCollisionExit(GameObject other) {

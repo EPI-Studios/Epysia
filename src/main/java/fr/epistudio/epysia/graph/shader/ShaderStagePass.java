@@ -364,6 +364,8 @@ final class ShaderStagePass {
             case ShaderNodes.SINE -> emitUnaryCall(node, "sin");
             case ShaderNodes.COSINE -> emitUnaryCall(node, "cos");
             case ShaderNodes.FRACT -> emitUnaryCall(node, "fract");
+            case ShaderNodes.FLOOR -> emitUnaryCall(node, "floor");
+            case ShaderNodes.MODULO -> emitCall(node, "mod");
             case ShaderNodes.REMAP -> emitRemap(node);
             default -> false;
         };

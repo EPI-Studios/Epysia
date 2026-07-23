@@ -4,6 +4,7 @@ import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.backend.BindingSetLayout;
 import fr.epistudio.epysia.render.backend.BindingSlot;
+import fr.epistudio.epysia.render.backend.BindingType;
 import fr.epistudio.epysia.render.backend.PipelineDescriptor;
 import fr.epistudio.epysia.render.backend.PipelineHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
@@ -31,13 +32,14 @@ final class SurfaceShadowVariants {
     private final String fragmentPath;
     private final RenderState renderState;
     private final Runnable pipelineInvalidation;
-    private record Variant(String surfacePath, boolean frozenTime) {
+    private record Variant(String surfacePath, boolean frozenTime, boolean skinned) {
     }
 
     private final Map<Variant, PipelineHandle> pipelines = new HashMap<>();
 
     private RenderBackend backend;
     private BindingSetLayout bindingLayout;
+    private BindingSetLayout skinnedBindingLayout;
     private PipelineHandle basePipeline;
 
     SurfaceShadowVariants(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger,
@@ -55,14 +57,21 @@ final class SurfaceShadowVariants {
     void initialize(RenderBackend backend, BindingSetLayout bindingLayout, PipelineHandle basePipeline) {
         this.backend = backend;
         this.bindingLayout = bindingLayout;
+        this.skinnedBindingLayout = withJointPalette(bindingLayout);
         this.basePipeline = basePipeline;
     }
 
-    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime) {
-        if (surfacePath.isEmpty()) {
+    static BindingSetLayout withJointPalette(BindingSetLayout layout) {
+        List<BindingSlot> slots = new ArrayList<>(layout.slots());
+        slots.add(new BindingSlot(MeshShaderBindings.JOINT_PALETTE_SSBO_BINDING, BindingType.STORAGE_BUFFER));
+        return new BindingSetLayout(slots);
+    }
+
+    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime, boolean skinned) {
+        if (surfacePath.isEmpty() && !skinned) {
             return basePipeline;
         }
-        return pipelines.computeIfAbsent(new Variant(surfacePath, frozenTime), this::buildPipeline);
+        return pipelines.computeIfAbsent(new Variant(surfacePath, frozenTime, skinned), this::buildPipeline);
     }
 
     private PipelineHandle buildPipeline(Variant variant) {
@@ -77,16 +86,30 @@ final class SurfaceShadowVariants {
     }
 
     private PipelineDescriptor buildDescriptor(Variant variant) {
-        VertexAttribute position = new VertexAttribute(0, VertexFormat.FLOAT3, 0);
-        VertexAttribute normal = new VertexAttribute(1, VertexFormat.FLOAT3, 12);
-        VertexAttribute uv = new VertexAttribute(2, VertexFormat.FLOAT2, 24);
-        VertexLayout layout = new VertexLayout(List.of(position, normal, uv), MeshShaderBindings.VERTEX_STRIDE);
-        return new PipelineDescriptor(loadShaderSource(variant), layout, renderState, layoutFor(variant.surfacePath()));
+        return new PipelineDescriptor(loadShaderSource(variant), vertexLayoutFor(variant.skinned()),
+                renderState, layoutFor(variant));
     }
 
-    private BindingSetLayout layoutFor(String surfacePath) {
-        List<BindingSlot> slots = new ArrayList<>(bindingLayout.slots());
-        SurfaceUniformBinder.appendSlots(slots, SurfaceShaderComposer.parseUniforms(shaderLoader.load(surfacePath)));
+    private static VertexLayout vertexLayoutFor(boolean skinned) {
+        List<VertexAttribute> attributes = new ArrayList<>(List.of(
+                new VertexAttribute(0, VertexFormat.FLOAT3, 0),
+                new VertexAttribute(1, VertexFormat.FLOAT3, 12),
+                new VertexAttribute(2, VertexFormat.FLOAT2, 24)));
+        if (!skinned) {
+            return new VertexLayout(attributes, MeshShaderBindings.VERTEX_STRIDE);
+        }
+        attributes.add(new VertexAttribute(4, VertexFormat.UINT16X4, MeshShaderBindings.VERTEX_STRIDE));
+        attributes.add(new VertexAttribute(5, VertexFormat.FLOAT4, MeshShaderBindings.VERTEX_STRIDE + 8));
+        return new VertexLayout(attributes, MeshShaderBindings.SKINNED_VERTEX_STRIDE);
+    }
+
+    private BindingSetLayout layoutFor(Variant variant) {
+        List<BindingSlot> slots = new ArrayList<>(
+                (variant.skinned() ? skinnedBindingLayout : bindingLayout).slots());
+        if (!variant.surfacePath().isEmpty()) {
+            SurfaceUniformBinder.appendSlots(slots,
+                    SurfaceShaderComposer.parseUniforms(shaderLoader.load(variant.surfacePath())));
+        }
         return new BindingSetLayout(slots);
     }
 
@@ -95,7 +118,14 @@ final class SurfaceShadowVariants {
     }
 
     private LoadedShader composeVertex(Variant variant) {
-        LoadedShader base = shaderLoader.load(vertexPath);
+        LoadedShader vertex = composeSurface(shaderLoader.load(vertexPath), variant);
+        return variant.skinned() ? SurfaceShaderComposer.injectSkinningDefine(vertex) : vertex;
+    }
+
+    private LoadedShader composeSurface(LoadedShader base, Variant variant) {
+        if (variant.surfacePath().isEmpty()) {
+            return base;
+        }
         LoadedShader surface = shaderLoader.load(variant.surfacePath());
         return variant.frozenTime()
                 ? SurfaceShaderComposer.composeFrozenShadowVertex(base, surface)

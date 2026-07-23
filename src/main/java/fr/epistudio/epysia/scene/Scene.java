@@ -27,6 +27,8 @@ public final class Scene implements IScene {
     private final Map<UUID, GameObject> gameObjectsById = new HashMap<>();
     private final Deque<GameObject> pendingAdditions = new ArrayDeque<>();
     private final Deque<GameObject> pendingRemovals = new ArrayDeque<>();
+    private final List<GameObject> recentlyActivated = new ArrayList<>();
+    private final List<GameObject> recentlyDeactivated = new ArrayList<>();
     private final PostEffectStack postEffects = new PostEffectStack();
     private final Vector3f clearColor = defaultClearColor();
     private long modificationCount;
@@ -104,6 +106,7 @@ public final class Scene implements IScene {
         if (gameObjects.remove(removed)) {
             gameObjectsById.remove(removed.id());
             removed.clearStructuralChangeListener();
+            recentlyDeactivated.add(removed);
             modificationCount++;
         }
     }
@@ -114,8 +117,27 @@ public final class Scene implements IScene {
             gameObjects.add(added);
             gameObjectsById.put(added.id(), added);
             added.setStructuralChangeListener(this::recordStructuralChange);
+            recentlyActivated.add(added);
             modificationCount++;
         }
+    }
+
+    public List<GameObject> drainRecentlyActivated() {
+        if (recentlyActivated.isEmpty()) {
+            return List.of();
+        }
+        List<GameObject> drained = List.copyOf(recentlyActivated);
+        recentlyActivated.clear();
+        return drained;
+    }
+
+    public List<GameObject> drainRecentlyDeactivated() {
+        if (recentlyDeactivated.isEmpty()) {
+            return List.of();
+        }
+        List<GameObject> drained = List.copyOf(recentlyDeactivated);
+        recentlyDeactivated.clear();
+        return drained;
     }
 
     private void recordStructuralChange() {

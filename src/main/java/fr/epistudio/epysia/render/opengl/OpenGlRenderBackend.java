@@ -83,10 +83,23 @@ import static org.lwjgl.opengl.GL15.glDeleteQueries;
 import static org.lwjgl.opengl.GL15.glEndQuery;
 import static org.lwjgl.opengl.GL15.glGenQueries;
 import static org.lwjgl.opengl.GL33.GL_TIME_ELAPSED;
+import static org.lwjgl.opengl.GL33.GL_TIMESTAMP;
 import static org.lwjgl.opengl.GL33.glGetQueryObjectui64;
+import static org.lwjgl.opengl.GL33.glQueryCounter;
 import static org.lwjgl.opengl.GL15.glBufferData;
 import static org.lwjgl.opengl.GL15.glBufferSubData;
 import static org.lwjgl.opengl.GL15.glDeleteBuffers;
+import static org.lwjgl.opengl.GL15.glUnmapBuffer;
+import static org.lwjgl.opengl.GL30.glMapBufferRange;
+import static org.lwjgl.opengl.GL32.GL_SYNC_FLUSH_COMMANDS_BIT;
+import static org.lwjgl.opengl.GL32.GL_SYNC_GPU_COMMANDS_COMPLETE;
+import static org.lwjgl.opengl.GL32.glClientWaitSync;
+import static org.lwjgl.opengl.GL32.glDeleteSync;
+import static org.lwjgl.opengl.GL32.glFenceSync;
+import static org.lwjgl.opengl.GL44.GL_MAP_COHERENT_BIT;
+import static org.lwjgl.opengl.GL44.GL_MAP_PERSISTENT_BIT;
+import static org.lwjgl.opengl.GL44.glBufferStorage;
+import static org.lwjgl.opengl.GL30.GL_MAP_WRITE_BIT;
 import static org.lwjgl.opengl.GL15.glGenBuffers;
 import static org.lwjgl.opengl.GL20.GL_COMPILE_STATUS;
 import static org.lwjgl.opengl.GL20.GL_FRAGMENT_SHADER;
@@ -153,6 +166,14 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private final Map<Long, BindingSetResource> bindingSets = new HashMap<>();
 
     private PipelineResource currentPipeline;
+    private RenderState appliedRenderState;
+    private boolean persistentMappingSupported;
+    private int ringFrameSlot;
+    private int uniformOverrideSlot = -1;
+    private BufferResource uniformOverrideBuffer;
+    private long uniformOverrideOffset;
+    private long uniformOverrideSize;
+    private final long[] ringFrameFences = new long[BufferResource.RING_SLOTS];
     private long currentBindingSetId;
     private int currentVertexBufferId;
     private int currentIndexBufferId;
@@ -175,6 +196,8 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private int suppressedSectionDepth;
     private boolean profileSectionActive;
     private boolean profileQueriesAllocated;
+    private final int[] frameStartQueries = new int[PROFILE_FRAME_LAG];
+    private final int[] frameEndQueries = new int[PROFILE_FRAME_LAG];
     private int profileStallCount;
 
     @Override
@@ -182,6 +205,8 @@ public final class OpenGlRenderBackend implements RenderBackend {
         GLCapabilities capabilities = GL.createCapabilities();
         verifyMinimumGlVersion();
         installDebugCallback(capabilities);
+        persistentMappingSupported = (capabilities.OpenGL44 || capabilities.GL_ARB_buffer_storage)
+                && !Boolean.getBoolean("epysia.ring.disabled");
         glEnable(org.lwjgl.opengl.GL32.GL_TEXTURE_CUBE_MAP_SEAMLESS);
         screenWidth = surface.framebufferWidth();
         screenHeight = surface.framebufferHeight();
@@ -199,6 +224,8 @@ public final class OpenGlRenderBackend implements RenderBackend {
             for (int section = 0; section < MAX_PROFILE_SECTIONS; section++) {
                 profileQueries[frame][section] = glGenQueries();
             }
+            frameStartQueries[frame] = glGenQueries();
+            frameEndQueries[frame] = glGenQueries();
         }
         profileQueriesAllocated = true;
     }
@@ -239,7 +266,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         pipelines.values().forEach(this::deletePipelineResource);
         pipelines.clear();
         meshes.clear();
-        buffers.values().forEach(buffer -> glDeleteBuffers(buffer.bufferId()));
+        buffers.values().forEach(this::destroyBufferResource);
         buffers.clear();
         if (debugCallback != null) {
             debugCallback.free();
@@ -259,11 +286,15 @@ public final class OpenGlRenderBackend implements RenderBackend {
     public BufferHandle createBuffer(BufferDescriptor descriptor) {
         int glTarget = glTargetFor(descriptor.usage());
         int glUsage = isDynamicUsage(descriptor.usage()) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW;
+        long id = nextId.getAndIncrement();
+        if (descriptor.perFrame() && persistentMappingSupported) {
+            buffers.put(id, createRingBuffer(glTarget, descriptor.data()));
+            return new BufferHandle(id);
+        }
         int bufferId = glGenBuffers();
         glBindBuffer(glTarget, bufferId);
         glBufferData(glTarget, descriptor.data(), glUsage);
-        long id = nextId.getAndIncrement();
-        buffers.put(id, new BufferResource(bufferId, glTarget));
+        buffers.put(id, BufferResource.single(bufferId, glTarget, descriptor.data().remaining(), glUsage));
         return new BufferHandle(id);
     }
 
@@ -568,7 +599,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return switch (binding.resource()) {
             case UniformBufferBinding ubo -> new ResolvedUbo(
                     binding.slotIndex(),
-                    requireBuffer(ubo.buffer()).bufferId(),
+                    requireBuffer(ubo.buffer()),
                     ubo.byteOffset(),
                     ubo.byteSize()
             );
@@ -578,7 +609,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
                     internalFormatToGl(requireTexture(image.texture()).format()));
             case StorageBufferBinding storage -> new ResolvedStorage(
                     binding.slotIndex(),
-                    requireBuffer(storage.buffer()).bufferId(),
+                    requireBuffer(storage.buffer()),
                     storage.byteOffset(),
                     storage.byteSize()
             );
@@ -592,6 +623,13 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public void writeBuffer(BufferHandle handle, ByteBuffer data, long byteOffset) {
         BufferResource resource = requireBuffer(handle);
+        if (resource.ringBuffered()) {
+            ByteBuffer mapping = resource.mapping(ringFrameSlot);
+            mapping.clear();
+            mapping.position((int) byteOffset);
+            mapping.put(data.duplicate());
+            return;
+        }
         glBindBuffer(resource.glTarget(), resource.bufferId());
         glBufferSubData(resource.glTarget(), byteOffset, data);
     }
@@ -641,10 +679,38 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     @Override
+    public void setUniformSlotOverride(int slot, BufferHandle buffer, long byteOffset, long byteSize) {
+        uniformOverrideSlot = slot;
+        uniformOverrideBuffer = requireBuffer(buffer);
+        uniformOverrideOffset = byteOffset;
+        uniformOverrideSize = byteSize;
+        currentBindingSetId = 0L;
+        glBindBufferRange(GL_UNIFORM_BUFFER, slot,
+                uniformOverrideBuffer.bufferId(ringFrameSlot), byteOffset, byteSize);
+    }
+
+    @Override
+    public void clearUniformSlotOverride() {
+        uniformOverrideSlot = -1;
+        uniformOverrideBuffer = null;
+        currentBindingSetId = 0L;
+    }
+
+    private void destroyBufferResource(BufferResource resource) {
+        for (int bufferId : resource.bufferIds()) {
+            if (resource.ringBuffered()) {
+                glBindBuffer(resource.glTarget(), bufferId);
+                glUnmapBuffer(resource.glTarget());
+            }
+            glDeleteBuffers(bufferId);
+        }
+    }
+
+    @Override
     public void destroy(BufferHandle handle) {
         BufferResource resource = buffers.remove(handle.id());
         if (resource != null) {
-            glDeleteBuffers(resource.bufferId());
+            destroyBufferResource(resource);
         }
     }
 
@@ -690,6 +756,20 @@ public final class OpenGlRenderBackend implements RenderBackend {
         currentProfileSection = 0;
         suppressedSectionDepth = 0;
         drawStatistics.reset();
+        waitForRingSlot();
+        if (profileQueriesAllocated) {
+            glQueryCounter(frameStartQueries[profileFrameSlot], GL_TIMESTAMP);
+        }
+    }
+
+    private void waitForRingSlot() {
+        long fence = ringFrameFences[ringFrameSlot];
+        if (fence == 0L) {
+            return;
+        }
+        glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1_000_000_000L);
+        glDeleteSync(fence);
+        ringFrameFences[ringFrameSlot] = 0L;
     }
 
     @Override
@@ -719,6 +799,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
             long nanos = glGetQueryObjectui64(profileQueries[readSlot][i], GL_QUERY_RESULT);
             String name = profileSectionNames[readSlot][i];
             latestTimings.merge(name, nanos, Long::sum);
+        }
+        if (glGetQueryObjecti(frameEndQueries[readSlot], GL_QUERY_RESULT_AVAILABLE) != GL_FALSE) {
+            long start = glGetQueryObjectui64(frameStartQueries[readSlot], GL_QUERY_RESULT);
+            long end = glGetQueryObjectui64(frameEndQueries[readSlot], GL_QUERY_RESULT);
+            latestTimings.put("frameTotal", end - start);
         }
     }
 
@@ -777,6 +862,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
         currentIndexBufferId = 0;
         drawStatistics.recordPass();
         org.lwjgl.opengl.GL11.glDepthMask(true);
+        if (appliedRenderState != null && !appliedRenderState.depthWrite()) {
+            appliedRenderState = new RenderState(appliedRenderState.topology(), appliedRenderState.depthTest(),
+                    appliedRenderState.blendMode(), appliedRenderState.cullMode(), true, appliedRenderState.depthClamp());
+        }
         applyClear(clear);
     }
 
@@ -865,8 +954,13 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public void endFrame() {
+        if (profileQueriesAllocated) {
+            glQueryCounter(frameEndQueries[profileFrameSlot], GL_TIMESTAMP);
+        }
         profileSectionCounts[profileFrameSlot] = currentProfileSection;
         profileFrameSlot = (profileFrameSlot + 1) % PROFILE_FRAME_LAG;
+        ringFrameFences[ringFrameSlot] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        ringFrameSlot = (ringFrameSlot + 1) % BufferResource.RING_SLOTS;
     }
 
     @Override
@@ -898,10 +992,27 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private void applyPipeline(PipelineResource pipeline) {
         glUseProgram(pipeline.programId());
         glBindVertexArray(pipeline.vaoId());
-        applyDepthTest(pipeline.state().depthTest());
-        applyBlendMode(pipeline.state().blendMode());
-        applyCullMode(pipeline.state().cullMode());
-        org.lwjgl.opengl.GL11.glDepthMask(pipeline.state().depthWrite());
+        RenderState state = pipeline.state();
+        if (appliedRenderState == null || appliedRenderState.depthTest() != state.depthTest()) {
+            applyDepthTest(state.depthTest());
+        }
+        if (appliedRenderState == null || appliedRenderState.blendMode() != state.blendMode()) {
+            applyBlendMode(state.blendMode());
+        }
+        if (appliedRenderState == null || appliedRenderState.cullMode() != state.cullMode()) {
+            applyCullMode(state.cullMode());
+        }
+        if (appliedRenderState == null || appliedRenderState.depthWrite() != state.depthWrite()) {
+            org.lwjgl.opengl.GL11.glDepthMask(state.depthWrite());
+        }
+        if (appliedRenderState == null || appliedRenderState.depthClamp() != state.depthClamp()) {
+            if (state.depthClamp()) {
+                glEnable(org.lwjgl.opengl.GL32.GL_DEPTH_CLAMP);
+            } else {
+                glDisable(org.lwjgl.opengl.GL32.GL_DEPTH_CLAMP);
+            }
+        }
+        appliedRenderState = state;
     }
 
     private void applyBindings(BindingSetHandle handle) {
@@ -916,11 +1027,19 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     private void applyResolvedBinding(ResolvedBinding binding) {
         switch (binding) {
-            case ResolvedUbo ubo -> glBindBufferRange(GL_UNIFORM_BUFFER, ubo.slot(), ubo.bufferId(), ubo.offset(), ubo.size());
+            case ResolvedUbo ubo -> {
+                if (ubo.slot() == uniformOverrideSlot) {
+                    glBindBufferRange(GL_UNIFORM_BUFFER, ubo.slot(),
+                            uniformOverrideBuffer.bufferId(ringFrameSlot), uniformOverrideOffset, uniformOverrideSize);
+                } else {
+                    glBindBufferRange(GL_UNIFORM_BUFFER, ubo.slot(),
+                            ubo.buffer().bufferId(ringFrameSlot), ubo.offset(), ubo.size());
+                }
+            }
             case ResolvedStorageImage image -> org.lwjgl.opengl.GL42.glBindImageTexture(
                     image.slot(), image.textureId(), image.mipLevel(), true, 0, image.access(), image.format());
-            case ResolvedStorage storage ->
-                    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, storage.slot(), storage.bufferId(), storage.offset(), storage.size());
+            case ResolvedStorage storage -> glBindBufferRange(GL_SHADER_STORAGE_BUFFER, storage.slot(),
+                    storage.buffer().bufferId(ringFrameSlot), storage.offset(), storage.size());
             case ResolvedTexture texture -> {
                 glActiveTexture(GL_TEXTURE0 + texture.slot());
                 glBindTexture(texture.glTarget(), texture.textureId());
@@ -979,6 +1098,20 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case STORAGE -> GL_SHADER_STORAGE_BUFFER;
             case INDIRECT -> org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER;
         };
+    }
+
+    private BufferResource createRingBuffer(int glTarget, ByteBuffer initialData) {
+        int byteSize = initialData.remaining();
+        int storageFlags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+        int[] bufferIds = new int[BufferResource.RING_SLOTS];
+        ByteBuffer[] mappings = new ByteBuffer[BufferResource.RING_SLOTS];
+        for (int slot = 0; slot < BufferResource.RING_SLOTS; slot++) {
+            bufferIds[slot] = glGenBuffers();
+            glBindBuffer(glTarget, bufferIds[slot]);
+            glBufferStorage(glTarget, initialData.duplicate(), storageFlags);
+            mappings[slot] = glMapBufferRange(glTarget, 0L, byteSize, storageFlags);
+        }
+        return BufferResource.ring(bufferIds, mappings, glTarget, byteSize);
     }
 
     private static boolean isDynamicUsage(BufferUsage usage) {
@@ -1063,7 +1196,63 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private record MeshResource(int vertexBufferId, int indexBufferId, int firstIndex, int indexCount, IndexFormat indexFormat) {
     }
 
-    private record BufferResource(int bufferId, int glTarget) {
+    private static final class BufferResource {
+
+        private static final int RING_SLOTS = 3;
+
+        private final int[] bufferIds;
+        private final ByteBuffer[] mappings;
+        private final int glTarget;
+        private final int byteSize;
+        private final int glUsage;
+
+        private BufferResource(int[] bufferIds, ByteBuffer[] mappings, int glTarget, int byteSize, int glUsage) {
+            this.bufferIds = bufferIds;
+            this.mappings = mappings;
+            this.glTarget = glTarget;
+            this.byteSize = byteSize;
+            this.glUsage = glUsage;
+        }
+
+        static BufferResource single(int bufferId, int glTarget, int byteSize, int glUsage) {
+            return new BufferResource(new int[]{bufferId}, new ByteBuffer[0], glTarget, byteSize, glUsage);
+        }
+
+        static BufferResource ring(int[] bufferIds, ByteBuffer[] mappings, int glTarget, int byteSize) {
+            return new BufferResource(bufferIds, mappings, glTarget, byteSize, GL_DYNAMIC_DRAW);
+        }
+
+        boolean ringBuffered() {
+            return mappings.length > 0;
+        }
+
+        int bufferId() {
+            return bufferIds[0];
+        }
+
+        int bufferId(int frameSlot) {
+            return bufferIds[frameSlot % bufferIds.length];
+        }
+
+        ByteBuffer mapping(int frameSlot) {
+            return mappings[frameSlot % mappings.length];
+        }
+
+        int[] bufferIds() {
+            return bufferIds;
+        }
+
+        int glTarget() {
+            return glTarget;
+        }
+
+        int byteSize() {
+            return byteSize;
+        }
+
+        int glUsage() {
+            return glUsage;
+        }
     }
 
     private record TextureResource(int textureId, int width, int height, TextureFormat format, TextureKind kind) {
@@ -1078,14 +1267,14 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private sealed interface ResolvedBinding permits ResolvedUbo, ResolvedStorage, ResolvedTexture, ResolvedStorageImage {
     }
 
-    private record ResolvedUbo(int slot, int bufferId, long offset, long size) implements ResolvedBinding {
+    private record ResolvedUbo(int slot, BufferResource buffer, long offset, long size) implements ResolvedBinding {
     }
 
     private record ResolvedStorageImage(int slot, int textureId, int mipLevel, int access, int format)
             implements ResolvedBinding {
     }
 
-    private record ResolvedStorage(int slot, int bufferId, long offset, long size) implements ResolvedBinding {
+    private record ResolvedStorage(int slot, BufferResource buffer, long offset, long size) implements ResolvedBinding {
     }
 
     private record ResolvedTexture(int slot, int textureId, int glTarget) implements ResolvedBinding {

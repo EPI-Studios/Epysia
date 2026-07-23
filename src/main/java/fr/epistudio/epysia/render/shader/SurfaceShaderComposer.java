@@ -78,6 +78,10 @@ public final class SurfaceShaderComposer {
         return new LoadedShader(insertAfterVersion(shader.source(), VERTEX_COLORED_DEFINE), shader.dependencyPaths());
     }
 
+    public static LoadedShader injectDefineBlock(LoadedShader shader, String defineBlock) {
+        return new LoadedShader(insertAfterVersion(shader.source(), defineBlock), shader.dependencyPaths());
+    }
+
     private static String insertAfterVersion(String source, String directive) {
         List<String> lines = new ArrayList<>();
         boolean inserted = false;

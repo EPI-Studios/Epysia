@@ -202,7 +202,7 @@ public final class Transform3D extends Component {
     }
 
     public Matrix4f worldMatrix(float alpha) {
-        if (alpha >= 1.0f || !previousStateCaptured) {
+        if (alpha >= 1.0f || !previousStateCaptured || hierarchyInterpolationIdle()) {
             return worldMatrix();
         }
         if (!blendDirty && blendedAlpha == alpha) {
@@ -215,6 +215,17 @@ public final class Transform3D extends Component {
         blendedAlpha = alpha;
         blendDirty = false;
         return blendedWorldMatrix;
+    }
+
+    private boolean hierarchyInterpolationIdle() {
+        return localInterpolationIdle() && (parent == null || parent.hierarchyInterpolationIdle());
+    }
+
+    private boolean localInterpolationIdle() {
+        return !previousStateCaptured
+                || (previousPosition.equals(position)
+                        && previousRotation.equals(rotation)
+                        && previousScale.equals(scale));
     }
 
     private void blendLocalInto(Matrix4f destination, float alpha) {

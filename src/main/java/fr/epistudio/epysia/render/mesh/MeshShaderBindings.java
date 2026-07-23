@@ -9,10 +9,13 @@ public final class MeshShaderBindings {
     public static final int OBJECT_UBO_BINDING = 1;
     public static final int INSTANCE_SSBO_BINDING = 3;
     public static final int JOINT_PALETTE_SSBO_BINDING = 4;
+    public static final int PROBE_SSBO_BINDING = 5;
     public static final int MATERIAL_UBO_BINDING = 2;
     public static final int SHADOW_MAP_BINDING = 3;
     public static final int PICKING_UBO_BINDING = 2;
     public static final int CASCADE_UBO_BINDING = 2;
+    public static final int SHADOW_LAYER_INDEX_STRIDE = 256;
+    public static final int SHADOW_LAYER_INDEX_COUNT = 32;
     public static final int SHADOW_MASK_MATERIAL_UBO_BINDING = 3;
     public static final int SHADOW_MASK_ALBEDO_BINDING = 0;
     public static final int IRRADIANCE_MAP_BINDING = 9;
@@ -42,7 +45,8 @@ public final class MeshShaderBindings {
     public static final int CLUSTER_GRID_OFFSET = POINT_SHADOW_MATRICES_OFFSET + MAX_SHADOW_POINTS * POINT_SHADOW_FACES * 64;
     public static final int CLUSTER_PARAMS_OFFSET = CLUSTER_GRID_OFFSET + 16;
     public static final int CLUSTER_SLICE_OFFSET = CLUSTER_PARAMS_OFFSET + 16;
-    public static final int FRAME_UBO_SIZE = CLUSTER_SLICE_OFFSET + 16;
+    public static final int PROBE_GRID_OFFSET = CLUSTER_SLICE_OFFSET + 16;
+    public static final int FRAME_UBO_SIZE = PROBE_GRID_OFFSET + 48;
     public static final int PICKING_UBO_SIZE = 16;
     public static final int CASCADE_UBO_SIZE = 16;
 
