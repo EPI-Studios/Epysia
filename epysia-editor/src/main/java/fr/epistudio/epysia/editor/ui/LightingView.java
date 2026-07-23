@@ -1,0 +1,153 @@
+package fr.epistudio.epysia.editor.ui;
+
+import fr.epistudio.epysia.components.LightProbeVolume;
+import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
+import fr.epistudio.epysia.editor.scene.SceneDocument;
+import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.render.baking.BakeProgress;
+import fr.epistudio.epysia.render.baking.BakeRequest;
+import fr.epistudio.epysia.render.baking.LightBakeHashes;
+import fr.epistudio.epysia.render.baking.LightBakeOutput;
+import fr.epistudio.epysia.render.baking.LightBaker;
+import fr.epistudio.epysia.render.baking.LightBakerRegistry;
+import fr.epistudio.epysia.render.baking.ProbeBaker;
+import fr.epistudio.epysia.render.postfx.PostProcessSystem;
+import fr.epistudio.epysia.scene.Scene;
+import imgui.ImGui;
+import imgui.flag.ImGuiCond;
+
+import java.nio.file.Path;
+import java.util.Optional;
+import java.util.function.Supplier;
+
+public final class LightingView {
+
+    public static final String WINDOW_TITLE = "Lighting";
+
+    private static final String PROBES_DIRECTORY_NAME = "probes";
+    private static final int PROBES_PER_FRAME = 2;
+    private static final float DEFAULT_WINDOW_WIDTH = 320.0f;
+    private static final float DEFAULT_WINDOW_HEIGHT = 180.0f;
+
+    private final EditorScene3DHost sceneHost;
+    private final Supplier<SceneDocument> activeDocument;
+    private final Path outputDirectory;
+    private final LightBakerRegistry bakers = new LightBakerRegistry();
+    private Optional<LightBaker> runningBaker = Optional.empty();
+    private BakeProgress lastProgress = BakeProgress.idle();
+    private long checkedModificationCount = -1L;
+    private long currentSceneHash;
+    private boolean visible;
+
+    public LightingView(EditorScene3DHost sceneHost, Supplier<SceneDocument> activeDocument, Path projectRoot) {
+        this.sceneHost = sceneHost;
+        this.activeDocument = activeDocument;
+        this.outputDirectory = projectRoot.resolve(PROBES_DIRECTORY_NAME);
+        bakers.register(new ProbeBaker());
+    }
+
+    public boolean isVisible() {
+        return visible;
+    }
+
+    public void setVisible(boolean value) {
+        visible = value;
+    }
+
+    public void render() {
+        if (!visible) {
+            return;
+        }
+        ImGui.setNextWindowSize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, ImGuiCond.FirstUseEver);
+        if (!ImGui.begin(WINDOW_TITLE)) {
+            ImGui.end();
+            return;
+        }
+        renderContents(activeDocument.get().scene());
+        ImGui.end();
+    }
+
+    private void renderContents(Scene scene) {
+        Optional<LightProbeVolume> volume = findVolume(scene);
+        if (volume.isEmpty()) {
+            ImGui.textDisabled("No Light Probe Volume in the scene.");
+            stepRunningBake();
+            return;
+        }
+        renderVolumeStatus(scene, volume.get());
+        renderBakeControls();
+        stepRunningBake();
+    }
+
+    private void renderVolumeStatus(Scene scene, LightProbeVolume volume) {
+        int probeCount = volume.resolutionX() * volume.resolutionY() * volume.resolutionZ();
+        ImGui.text("Probes: " + probeCount);
+        refreshSceneHash(scene);
+        if (volume.bakedProbes().isEmpty()) {
+            ImGui.textDisabled("Not baked yet.");
+        } else if (volume.bakedProbes().get().bakeHash() != currentSceneHash) {
+            ImGui.textColored(1.0f, 0.72f, 0.25f, 1.0f, "Lighting out of date");
+        } else {
+            ImGui.textDisabled("Lighting up to date.");
+        }
+    }
+
+    private void refreshSceneHash(Scene scene) {
+        if (scene.modificationCount() == checkedModificationCount) {
+            return;
+        }
+        checkedModificationCount = scene.modificationCount();
+        currentSceneHash = LightBakeHashes.hashScene(scene);
+    }
+
+    private void renderBakeControls() {
+        if (runningBaker.isPresent()) {
+            ImGui.text("Baking " + lastProgress.completedSteps() + " / " + lastProgress.totalSteps());
+            if (ImGui.button("Cancel")) {
+                runningBaker.get().cancel();
+                runningBaker = Optional.empty();
+            }
+            return;
+        }
+        if (ImGui.button("Bake")) {
+            startBake();
+        }
+    }
+
+    private void startBake() {
+        Optional<LightBaker> baker = bakers.firstProducing(LightBakeOutput.PROBES);
+        if (baker.isEmpty()) {
+            return;
+        }
+        PostProcessSystem postProcess = sceneHost.engine().renderSystem(PostProcessSystem.class);
+        baker.get().start(new BakeRequest(sceneHost.engine(), outputDirectory,
+                postProcess::rebindStageTargets));
+        runningBaker = baker;
+        lastProgress = BakeProgress.running(0, 0);
+    }
+
+    private void stepRunningBake() {
+        if (runningBaker.isEmpty()) {
+            return;
+        }
+        LightBaker baker = runningBaker.get();
+        for (int slice = 0; slice < PROBES_PER_FRAME; slice++) {
+            lastProgress = baker.step();
+            if (lastProgress.finished()) {
+                runningBaker = Optional.empty();
+                checkedModificationCount = -1L;
+                return;
+            }
+        }
+    }
+
+    private static Optional<LightProbeVolume> findVolume(Scene scene) {
+        for (GameObject gameObject : scene.gameObjects()) {
+            LightProbeVolume volume = gameObject.getComponentOrNull(LightProbeVolume.class);
+            if (volume != null) {
+                return Optional.of(volume);
+            }
+        }
+        return Optional.empty();
+    }
+}

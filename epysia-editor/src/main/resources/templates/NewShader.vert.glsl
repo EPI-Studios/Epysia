@@ -1,9 +1,6 @@
 #version 430 core
 #include "lib/frame_uniforms.glsl"
 
-// Raw vertex shader: replaces the lit pipeline entirely, no PBR, no shadows.
-// Use OBJECT_MODEL and OBJECT_NORMAL_MATRIX rather than object.model, so the
-// material keeps working when the renderer batches it with GPU instancing.
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;

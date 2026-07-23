@@ -132,6 +132,7 @@ public final class EditorView implements FrameView {
     private final AssetBrowserView assetBrowserView;
     private final ScriptEditorView scriptEditorView;
     private final ProfilerView profilerView;
+    private final LightingView lightingView;
     private final GraphEditorView graphEditorView;
     private final SettingsDialog settingsDialog;
     private final PostEffectsSection settingsPostEffectsSection;
@@ -203,6 +204,7 @@ public final class EditorView implements FrameView {
                 this::onViewportTuningChanged);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
         this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView);
+        this.lightingView = new LightingView(sceneHost, active, project.rootDirectory());
         this.exportGameDialog = new ExportGameDialog(project, toasts);
         shell.setFileDropHandler(assetBrowserView::importExternalFiles);
         finishSetup();
@@ -317,6 +319,7 @@ public final class EditorView implements FrameView {
         scriptEditorView.render();
         graphEditorView.render();
         profilerView.render();
+        lightingView.render();
     }
 
     private void renderDialogs() {
@@ -483,6 +486,9 @@ public final class EditorView implements FrameView {
         }
         if (ImGui.menuItem("Profiler", "", profilerView.isVisible())) {
             profilerView.setVisible(!profilerView.isVisible());
+        }
+        if (ImGui.menuItem("Lighting", "", lightingView.isVisible())) {
+            lightingView.setVisible(!lightingView.isVisible());
         }
         ImGui.endMenu();
     }
@@ -798,9 +804,12 @@ public final class EditorView implements FrameView {
         if (ImGui.getIO().getWantTextInput()) {
             return;
         }
+        if (rightMouseHeld()) {
+            return;
+        }
         if (ImGui.getIO().getKeyCtrl()) {
             handleControlShortcuts();
-        } else if (!rightMouseHeld()) {
+        } else {
             handleToolHotkeys();
         }
     }
