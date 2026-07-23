@@ -34,6 +34,8 @@ public interface PhysicsWorld extends AutoCloseable {
 
     void wakeBody(BodyHandle body);
 
+    boolean isBodyAwake(BodyHandle body);
+
     JointHandle addFixedJoint(BodyHandle first, BodyHandle second, RigidBodyPose localPoseFirst, RigidBodyPose localPoseSecond, boolean contactsEnabled);
 
     JointHandle addSphericalJoint(BodyHandle first, BodyHandle second, Vector3fc localAnchorFirst, Vector3fc localAnchorSecond, boolean contactsEnabled);

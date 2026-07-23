@@ -41,6 +41,11 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
         return loadedByPath.computeIfAbsent(path, this::readResolved);
     }
 
+    @Override
+    public void unloadAll() {
+        loadedByPath.clear();
+    }
+
     Material loadFromFile(Path file) {
         String key = file.toAbsolutePath().normalize().toString();
         return loadedByPath.computeIfAbsent(key, ignored -> decode(readFileText(file), key));

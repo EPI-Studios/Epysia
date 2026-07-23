@@ -28,6 +28,8 @@ final class MeshInstanceBatch {
     private int culledCount;
     private long minDepthBits;
     private long transformHash;
+    private long uploadHash;
+    private long lastUploadedHash;
 
     private UploadedSubmesh submesh;
     private PerSubmesh representative;
@@ -48,6 +50,7 @@ final class MeshInstanceBatch {
         culledCount = 0;
         minDepthBits = Long.MAX_VALUE;
         transformHash = ShadowSignatures.seed();
+        uploadHash = ShadowSignatures.seed();
     }
 
     void accumulateBounds(Vector3f worldMin, Vector3f worldMax) {
@@ -81,6 +84,19 @@ final class MeshInstanceBatch {
             culledCount++;
         }
         transformHash = ShadowSignatures.mixMatrix(transformHash, model);
+        uploadHash = ShadowSignatures.mix(ShadowSignatures.mixMatrix(uploadHash, model), visible ? 1L : 0L);
+    }
+
+    boolean uploadUnchangedSinceLastFrame() {
+        return uploadHash == lastUploadedHash;
+    }
+
+    void markUploaded() {
+        lastUploadedHash = uploadHash;
+    }
+
+    void invalidateUpload() {
+        lastUploadedHash = 0L;
     }
 
     void mergeCulledInstances() {

@@ -42,4 +42,8 @@ public final class BuiltinMeshes {
     public boolean has(String preset) {
         return preset != null && meshes.containsKey(preset);
     }
+
+    public boolean contains(UploadedMesh mesh) {
+        return meshes.containsValue(mesh);
+    }
 }

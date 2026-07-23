@@ -89,9 +89,6 @@ public final class MutableInputState implements InputState {
         System.arraycopy(mouseButtonStates, 0, previousMouseButtonStates, 0, mouseButtonStates.length);
         previousCursorX = cursorX;
         previousCursorY = cursorY;
-    }
-
-    public void consumeFrameDeltas() {
         scrollDeltaY = 0.0f;
     }
 }

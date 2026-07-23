@@ -54,7 +54,7 @@ public final class GraphComponent extends Component implements PhysicsEventListe
     }
 
     @Override
-    public void onCollision(GameObject other, Vector3fc point, Vector3fc normal, float impulse) {
+    public void onCollision(GameObject other, Vector3fc point, Vector3fc normal, float approachSpeed) {
         fire(BuiltinNodes.EVENT_ON_COLLISION, other);
     }
 

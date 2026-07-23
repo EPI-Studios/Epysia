@@ -141,8 +141,8 @@ final class SpotShadowAtlas {
         return pipeline;
     }
 
-    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime) {
-        return surfaceVariants.pipelineFor(surfacePath, frozenTime);
+    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime, boolean skinned) {
+        return surfaceVariants.pipelineFor(surfacePath, frozenTime, skinned);
     }
 
     TextureHandle texture() {
@@ -163,6 +163,7 @@ final class SpotShadowAtlas {
         for (int layer = 0; layer < activeCount; layer++) {
             splitRenderer.renderTarget(layer, layerViewSignature(layer), casters, this::writeIndex);
         }
+        backend.clearUniformSlotOverride();
         backend.endProfileSection();
     }
 
@@ -172,10 +173,8 @@ final class SpotShadowAtlas {
     }
 
     private void writeIndex(int layer) {
-        indexScratch.clear();
-        indexScratch.putInt(layer).putInt(0).putInt(0).putInt(0);
-        indexScratch.flip();
-        backend.writeBuffer(indexUbo, indexScratch, 0L);
+        backend.setUniformSlotOverride(MeshShaderBindings.CASCADE_UBO_BINDING, indexUbo,
+                (long) layer * MeshShaderBindings.SHADOW_LAYER_INDEX_STRIDE, MeshShaderBindings.CASCADE_UBO_SIZE);
     }
 
     private static BindingSetLayout buildBindingLayout() {

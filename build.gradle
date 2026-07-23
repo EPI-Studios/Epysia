@@ -59,6 +59,14 @@ tasks.register('runRemovalPixelCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runProbeBakeCheck', JavaExec) {
+    group = 'verification'
+    description = 'Bakes SH light probes in an emissive room headlessly and checks the ambient red-shifts.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.ProbeBakeCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runSkinnedBindPoseCheck', JavaExec) {
     group = 'verification'
     description = 'Renders a skinned quad in bind pose through the skinned pipeline and checks the pixels.'

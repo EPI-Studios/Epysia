@@ -29,6 +29,10 @@ public interface RenderBackend {
 
     void writeBuffer(BufferHandle handle, ByteBuffer data, long byteOffset);
 
+    void setUniformSlotOverride(int slot, BufferHandle buffer, long byteOffset, long byteSize);
+
+    void clearUniformSlotOverride();
+
     void readBuffer(BufferHandle handle, ByteBuffer destination, long byteOffset);
 
     void writeTexture(TextureHandle handle, ByteBuffer rgbaPixels);

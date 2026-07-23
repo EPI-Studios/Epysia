@@ -70,7 +70,7 @@ public final class Window implements RenderSurface {
     private long handle;
     private int framebufferWidth;
     private int framebufferHeight;
-    private boolean vsyncEnabled = false;
+    private boolean vsyncEnabled = Boolean.parseBoolean(System.getProperty("epysia.vsync", "true"));
     private boolean framebufferResized;
     private GLFWKeyCallback keyCallback;
     private GLFWMouseButtonCallback mouseButtonCallback;
@@ -105,7 +105,7 @@ public final class Window implements RenderSurface {
             throw new EpysiaException("GLFW failed to create a window.");
         }
         glfwMakeContextCurrent(handle);
-        glfwSwapInterval(vsyncEnabled ? 1 : 0);
+        glfwSwapInterval(vsyncEnabled && !offscreenRequested() ? 1 : 0);
         if (!offscreenRequested()) {
             glfwShowWindow(handle);
         }

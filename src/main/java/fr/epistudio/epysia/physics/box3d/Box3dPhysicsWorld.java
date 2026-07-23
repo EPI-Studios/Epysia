@@ -41,7 +41,6 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
     private static final int SUBSTEP_COUNT = 4;
     private static final float DEFAULT_FRICTION = 0.5f;
     private static final float QUERY_SKIP_EPSILON = 1.0e-4f;
-    private static final int QUERY_SKIP_ATTEMPTS = 4;
 
     private final B3World world = B3World.create(new Vec3(0.0, -9.81, 0.0));
     private final Map<Long, Box3dBodyState> bodies = new HashMap<>();
@@ -163,6 +162,11 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
     }
 
     @Override
+    public boolean isBodyAwake(BodyHandle body) {
+        return body(body).isAwake();
+    }
+
+    @Override
     public JointHandle addFixedJoint(BodyHandle first, BodyHandle second,
                                      RigidBodyPose localPoseFirst, RigidBodyPose localPoseSecond,
                                      boolean contactsEnabled) {
@@ -195,7 +199,8 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
         Vector3f normalized = new Vector3f(direction).normalize();
         Vec3 start = new Vec3(origin.x(), origin.y(), origin.z());
         float traveled = 0.0f;
-        for (int attempt = 0; attempt < QUERY_SKIP_ATTEMPTS && traveled < maxDistance; attempt++) {
+        int maxAttempts = bodies.size() + 1;
+        for (int attempt = 0; attempt < maxAttempts && traveled < maxDistance; attempt++) {
             float remaining = maxDistance - traveled;
             B3World.RayHit hit = world.castRayClosest(start, scaled(normalized, remaining), queryFilterOf(filter));
             if (!hit.hit() || hit.body() == null) {
@@ -350,9 +355,9 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
         B3Events.ContactHit hit = hitsByPair.get(BodyPair.of(first.key(), second.key()));
         Vector3f point = hit != null ? toVector(hit.point()) : new Vector3f();
         Vector3f normal = hit != null ? toVector(hit.normal()) : new Vector3f();
-        float impulse = hit != null ? hit.approachSpeed() : 0.0f;
+        float approachSpeed = hit != null ? hit.approachSpeed() : 0.0f;
         pendingContactEvents.add(new ContactEvent(new BodyHandle(first.key()), new BodyHandle(second.key()),
-                point, normal, impulse, started));
+                point, normal, approachSpeed, started));
     }
 
     private void collectSensorEvents() {

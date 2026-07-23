@@ -2,6 +2,7 @@ package fr.epistudio.epysia;
 
 import fr.epistudio.epysia.assets.AssetRegistry;
 import fr.epistudio.epysia.components.Camera3D;
+import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.input.InputState;
@@ -40,6 +41,7 @@ import java.util.Optional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public final class EpysiaEngine implements StageConfigurer, EngineServices {
 
@@ -52,6 +54,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     private final List<GameSystem> gameSystems = new ArrayList<>();
     private final SystemRegistryImpl systemRegistry = new SystemRegistryImpl();
     private final List<RenderSystem> renderSystems = new ArrayList<>();
+    private final List<String> renderSystemSectionNames = new ArrayList<>();
     private final Frame frame = new Frame();
     private final Map<RenderPass, StageBinding> stageBindings = defaultStageBindings();
     private final Map<RenderPass, List<Runnable>> stagePreparations = new HashMap<>();
@@ -69,6 +72,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     private PickingPass pickingPass;
     private volatile boolean shutdownRequested;
     private boolean initialized;
+    private boolean playing;
 
     public EpysiaEngine(Window window, RenderBackend renderBackend) {
         this.window = window;
@@ -112,13 +116,17 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
             renderSystem.initialize(renderBackend, this);
         }
         renderSystems.add(renderSystem);
+        renderSystemSectionNames.add(FrameProfiler.COLLECT_PREFIX + renderSystem.getClass().getSimpleName());
     }
 
     @Override
     public void removeRenderSystem(RenderSystem renderSystem) {
-        if (!renderSystems.remove(renderSystem)) {
+        int index = renderSystems.indexOf(renderSystem);
+        if (index < 0) {
             return;
         }
+        renderSystems.remove(index);
+        renderSystemSectionNames.remove(index);
         if (initialized) {
             renderSystem.shutdown(renderBackend);
         }
@@ -193,10 +201,63 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         scheduler.tick(deltaTimeSeconds);
         if (activeScene != null) {
             activeScene.advanceTick();
+            dispatchDeactivations(activeScene);
+            dispatchActivations(activeScene);
             captureTransformInterpolationSnapshots(activeScene);
             updateGameSystems(input, deltaTimeSeconds);
         }
         profiler.record(FrameProfiler.TICK_SECTION, System.nanoTime() - tickStart);
+    }
+
+    public void beginPlay() {
+        playing = true;
+        if (activeScene == null) {
+            return;
+        }
+        for (GameObject gameObject : activeScene.gameObjects()) {
+            invokeLifecycle(gameObject, component -> component.onPlayStart(this), "onPlayStart");
+        }
+    }
+
+    public void endPlay() {
+        if (activeScene != null) {
+            for (GameObject gameObject : activeScene.gameObjects()) {
+                invokeLifecycle(gameObject, component -> component.onPlayStop(this), "onPlayStop");
+            }
+        }
+        playing = false;
+    }
+
+    private void dispatchActivations(Scene scene) {
+        List<GameObject> activated = scene.drainRecentlyActivated();
+        if (!playing) {
+            return;
+        }
+        for (GameObject gameObject : activated) {
+            invokeLifecycle(gameObject, component -> component.onLoad(this), "onLoad");
+            invokeLifecycle(gameObject, component -> component.onPlayStart(this), "onPlayStart");
+        }
+    }
+
+    private void dispatchDeactivations(Scene scene) {
+        List<GameObject> deactivated = scene.drainRecentlyDeactivated();
+        if (!playing) {
+            return;
+        }
+        for (GameObject gameObject : deactivated) {
+            invokeLifecycle(gameObject, component -> component.onPlayStop(this), "onPlayStop");
+        }
+    }
+
+    private void invokeLifecycle(GameObject gameObject, Consumer<IComponent> hook, String hookName) {
+        for (IComponent component : new ArrayList<>(gameObject.components())) {
+            try {
+                hook.accept(component);
+            } catch (RuntimeException error) {
+                logger.error("[EpysiaEngine] " + hookName + " failed for "
+                        + component.getClass().getName(), error);
+            }
+        }
     }
 
     private void updateGameSystems(InputState input, float deltaTimeSeconds) {
@@ -251,11 +312,10 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
             return;
         }
         long collectStart = System.nanoTime();
-        for (RenderSystem system : renderSystems) {
+        for (int index = 0; index < renderSystems.size(); index++) {
             long systemStart = System.nanoTime();
-            system.collect(activeScene, frame, context);
-            profiler.record(FrameProfiler.COLLECT_PREFIX + system.getClass().getSimpleName(),
-                    System.nanoTime() - systemStart);
+            renderSystems.get(index).collect(activeScene, frame, context);
+            profiler.record(renderSystemSectionNames.get(index), System.nanoTime() - systemStart);
         }
         profiler.record(FrameProfiler.COLLECT_SECTION, System.nanoTime() - collectStart);
     }
@@ -281,6 +341,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         if (fontRegistry != null) {
             fontRegistry.destroyAll();
         }
+        assetRegistry.clear();
         runtimeChannel.close();
         initialized = false;
     }

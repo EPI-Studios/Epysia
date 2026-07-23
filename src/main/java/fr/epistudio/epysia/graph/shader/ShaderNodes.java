@@ -58,6 +58,8 @@ public final class ShaderNodes {
     public static final String SINE = "shader.math.sine";
     public static final String COSINE = "shader.math.cosine";
     public static final String FRACT = "shader.math.fract";
+    public static final String FLOOR = "shader.math.floor";
+    public static final String MODULO = "shader.math.modulo";
     public static final String STEP = "shader.math.step";
     public static final String SMOOTHSTEP = "shader.math.smoothstep";
     public static final String REMAP = "shader.math.remap";
@@ -136,6 +138,7 @@ public final class ShaderNodes {
             Map.entry(DISSOLVE + "|Edge Width", 0.1f),
             Map.entry(DISSOLVE + "|Edge Color", new Vector3f(1.0f, 0.5f, 0.0f)),
             Map.entry(SMOOTHSTEP + "|Edge End", 1.0f),
+            Map.entry(MODULO + "|Divisor", 2.0f),
             Map.entry(REMAP + "|Input End", 1.0f),
             Map.entry(REMAP + "|Output End", 1.0f),
             Map.entry(CONSTANT_COLOR + "|" + VALUE_PIN, new Vector4f(1.0f, 1.0f, 1.0f, 1.0f)));
@@ -259,6 +262,8 @@ public final class ShaderNodes {
         registry.register(numeric(SINE, "Sine", CATEGORY_MATH, List.of(VALUE_PIN), PinType.NUMERIC));
         registry.register(numeric(COSINE, "Cosine", CATEGORY_MATH, List.of(VALUE_PIN), PinType.NUMERIC));
         registry.register(numeric(FRACT, "Fract", CATEGORY_MATH, List.of(VALUE_PIN), PinType.NUMERIC));
+        registry.register(numeric(FLOOR, "Floor", CATEGORY_MATH, List.of(VALUE_PIN), PinType.NUMERIC));
+        registry.register(numeric(MODULO, "Modulo", CATEGORY_MATH, List.of(VALUE_PIN, "Divisor"), PinType.NUMERIC));
         registry.register(numeric(STEP, "Step", CATEGORY_MATH, List.of("Edge", VALUE_PIN), PinType.NUMERIC));
         registry.register(numeric(SMOOTHSTEP, "Smoothstep", CATEGORY_MATH,
                 List.of("Edge Start", "Edge End", VALUE_PIN), PinType.NUMERIC));

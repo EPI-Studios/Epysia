@@ -85,7 +85,7 @@ public final class InstancedMeshPass {
 
     void collect(Scene scene, FrameBuilder frame) {
         for (GameObject gameObject : scene.gameObjects()) {
-            MultiMeshRenderer renderer = gameObject.getComponent(MultiMeshRenderer.class).orElse(null);
+            MultiMeshRenderer renderer = gameObject.getComponentOrNull(MultiMeshRenderer.class);
             if (renderer == null) {
                 continue;
             }

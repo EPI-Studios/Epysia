@@ -4,12 +4,16 @@ import fr.epistudio.epysia.assets.loaders.ClipAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
+import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.MutableInputState;
+import fr.epistudio.epysia.logging.CompositeLogger;
 import fr.epistudio.epysia.logging.ConsoleLogger;
+import fr.epistudio.epysia.logging.LogFile;
+import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
 import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
@@ -23,13 +27,14 @@ import fr.epistudio.epysia.runtime.RuntimeCommand;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.window.Window;
 
+import java.io.PrintStream;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
-import java.util.function.Consumer;
 
 public final class StandaloneRunner {
 
@@ -51,7 +56,9 @@ public final class StandaloneRunner {
         Window window = new Window(windowTitle, width, height);
         OpenGlRenderBackend backend = new OpenGlRenderBackend();
         EpysiaEngine engine = new EpysiaEngine(window, backend);
-        engine.setLogger(new ConsoleLogger());
+        Logger logger = createLogger();
+        installCrashHandler(logger);
+        engine.setLogger(logger);
         Scene scene = new Scene("standalone");
         engine.addScene(scene);
         loadModulesInto(engine);
@@ -72,14 +79,25 @@ public final class StandaloneRunner {
         engine.assets().register(new PhysicsMaterialLoader());
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
+        engine.assets().register(new ProbesAssetLoader());
         runPopulator(engine, populator);
         ensurePostProcessing(engine, shaderLoader, shaderWatcher, window);
-        dispatchPlayStart(engine);
+        engine.beginPlay();
         loop(engine, window, inputState);
-        dispatchPlayStop(engine);
+        engine.endPlay();
         engine.shutdown();
         backend.shutdown();
         window.close();
+    }
+
+    private static Logger createLogger() {
+        PrintStream fileSink = LogFile.open(Path.of("logs", "epysia.log"));
+        return new CompositeLogger(List.of(new ConsoleLogger(), new ConsoleLogger(fileSink)));
+    }
+
+    private static void installCrashHandler(Logger logger) {
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) ->
+                logger.error("[uncaught] thread " + thread.getName(), error));
     }
 
     private static void ensurePostProcessing(EpysiaEngine engine, ShaderLoader shaderLoader,
@@ -111,15 +129,8 @@ public final class StandaloneRunner {
         try {
             populator.populate(engine, engine);
             engine.scene().advanceTick();
-            for (GameObject gameObject : engine.scene().gameObjects()) {
-                for (IComponent component : new ArrayList<>(gameObject.components())) {
-                    try {
-                        component.onLoad(engine);
-                    } catch (RuntimeException error) {
-                        engine.logger().error("[StandaloneRunner] onLoad failed for "
-                                + component.getClass().getName(), error);
-                    }
-                }
+            for (GameObject gameObject : engine.scene().drainRecentlyActivated()) {
+                invokeOnLoad(engine, gameObject);
             }
         } catch (Exception error) {
             engine.logger().error("[StandaloneRunner] Scene populate failed", error);
@@ -127,24 +138,13 @@ public final class StandaloneRunner {
         }
     }
 
-    private static void dispatchPlayStart(EpysiaEngine engine) {
-        forEachSceneComponent(engine, "onPlayStart", component -> component.onPlayStart(engine));
-    }
-
-    private static void dispatchPlayStop(EpysiaEngine engine) {
-        forEachSceneComponent(engine, "onPlayStop", component -> component.onPlayStop(engine));
-    }
-
-    private static void forEachSceneComponent(EpysiaEngine engine, String hookName,
-                                              Consumer<IComponent> hook) {
-        for (GameObject gameObject : engine.scene().gameObjects()) {
-            for (IComponent component : new ArrayList<>(gameObject.components())) {
-                try {
-                    hook.accept(component);
-                } catch (RuntimeException error) {
-                    engine.logger().error("[StandaloneRunner] " + hookName + " failed for "
-                            + component.getClass().getName(), error);
-                }
+    private static void invokeOnLoad(EpysiaEngine engine, GameObject gameObject) {
+        for (IComponent component : new ArrayList<>(gameObject.components())) {
+            try {
+                component.onLoad(engine);
+            } catch (RuntimeException error) {
+                engine.logger().error("[StandaloneRunner] onLoad failed for "
+                        + component.getClass().getName(), error);
             }
         }
     }
@@ -179,7 +179,6 @@ public final class StandaloneRunner {
             long swapStart = System.nanoTime();
             window.swapBuffers();
             long swapEnd = System.nanoTime();
-            inputState.consumeFrameDeltas();
             engine.setCpuTimingNanos(CpuTimings.POLL, pollEnd - pollStart);
             engine.setCpuTimingNanos(CpuTimings.UPDATE, updateEnd - updateStart);
             engine.setCpuTimingNanos(CpuTimings.RENDER, renderEnd - renderStart);

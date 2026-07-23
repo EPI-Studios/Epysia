@@ -9,4 +9,10 @@ public interface AssetLoader<T> {
     String[] supportedExtensions();
 
     T load(EngineServices services, String path);
+
+    default void dispose(EngineServices services, T value) {
+    }
+
+    default void unloadAll() {
+    }
 }

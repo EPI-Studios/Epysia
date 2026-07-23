@@ -37,10 +37,6 @@ float sceneCameraDistance(vec2 uv) {
     return length(sceneWorldPosition(uv) - cameraPosition);
 }
 
-// POST_EFFECT_UNIFORMS
-
-// POST_EFFECT_FUNCTIONS
-
 void main() {
     outColor = postEffect(texture(postEffectInputColor, vertexUv), vertexUv);
 }
