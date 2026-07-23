@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.inspector;
 
+import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.mesh.UploadedMesh;
 
@@ -14,9 +15,10 @@ public final class AssetMimeTypes {
     public static final String GRAPH = "asset/graph";
     public static final String MATERIAL = "asset/material";
     public static final String CLIP = "asset/clip";
+    public static final String ATLAS = "asset/atlas";
     public static final String NONE = "";
 
-    public static final String[] ALL = {MESH, TEXTURE, AUDIO, PREFAB, SHADER, SCENE, GRAPH, MATERIAL, CLIP};
+    public static final String[] ALL = {MESH, TEXTURE, AUDIO, PREFAB, SHADER, SCENE, GRAPH, MATERIAL, CLIP, ATLAS};
 
     private AssetMimeTypes() {
     }
@@ -27,6 +29,9 @@ public final class AssetMimeTypes {
         }
         if (type == TextureHandle.class) {
             return TEXTURE;
+        }
+        if (type == SpriteAtlas.class) {
+            return ATLAS;
         }
         return NONE;
     }

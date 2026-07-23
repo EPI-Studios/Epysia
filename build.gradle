@@ -51,6 +51,14 @@ tasks.register('runMaterialPixelCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runPhysics2DCheck', JavaExec) {
+    group = 'verification'
+    description = 'Drops a plane-locked 2D body onto a 2D ground box and walks a 2D character controller.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.Physics2DCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runRemovalPixelCheck', JavaExec) {
     group = 'verification'
     description = 'Removes a parented mesh subtree at runtime and checks the deleted mesh stops rendering.'
@@ -64,6 +72,14 @@ tasks.register('runSpriteRenderCheck', JavaExec) {
     description = 'Renders two overlapping sorted sprites through WORLD_2D and checks the pixels.'
     classpath = sourceSets.example.runtimeClasspath
     mainClass = 'com.meekdev.psyhou.game.SpriteRenderCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
+tasks.register('runSpriteFlipbookCheck', JavaExec) {
+    group = 'verification'
+    description = 'Animates a two frame grid atlas flipbook and checks the sampled frame changes over time.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.SpriteFlipbookCheck'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 

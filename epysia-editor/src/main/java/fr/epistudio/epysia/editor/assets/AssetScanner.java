@@ -130,6 +130,9 @@ public final class AssetScanner {
         if (lower.endsWith(".epyclip")) {
             return AssetType.CLIP;
         }
+        if (lower.endsWith(".epyatlas")) {
+            return AssetType.ATLAS;
+        }
         return classifyBinary(lower);
     }
 

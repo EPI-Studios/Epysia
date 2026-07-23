@@ -506,8 +506,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private void configureTextureSamplerState(int glTarget, TextureDescriptor descriptor) {
-        int magFilter = descriptor.samplerFilter() == SamplerFilter.NEAREST ? GL_NEAREST : GL_LINEAR;
-        int minFilter = descriptor.mipLevels() > 1 ? org.lwjgl.opengl.GL11.GL_LINEAR_MIPMAP_LINEAR : magFilter;
+        boolean nearest = descriptor.samplerFilter() == SamplerFilter.NEAREST;
+        int magFilter = nearest ? GL_NEAREST : GL_LINEAR;
+        int mipmapMinFilter = nearest ? org.lwjgl.opengl.GL11.GL_NEAREST_MIPMAP_LINEAR
+                : org.lwjgl.opengl.GL11.GL_LINEAR_MIPMAP_LINEAR;
+        int minFilter = descriptor.mipLevels() > 1 ? mipmapMinFilter : magFilter;
         int wrapMode = wrapToGl(descriptor.wrap());
         glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, minFilter);
         glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, magFilter);

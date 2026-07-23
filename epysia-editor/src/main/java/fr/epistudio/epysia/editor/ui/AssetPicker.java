@@ -23,6 +23,7 @@ public final class AssetPicker {
     private static final float LIST_HEIGHT = 280.0f;
     private static final Set<String> MESH_EXTENSIONS = Set.of(".obj", ".epymesh");
     private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
+    private static final Set<String> ATLAS_EXTENSIONS = Set.of(".epyatlas");
     private static final List<String> MESH_PRESETS = List.of("preset:cube", "preset:plane", "preset:capsule");
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
@@ -61,6 +62,9 @@ public final class AssetPicker {
         }
         if (AssetMimeTypes.TEXTURE.equals(mimeType)) {
             return TEXTURE_EXTENSIONS;
+        }
+        if (AssetMimeTypes.ATLAS.equals(mimeType)) {
+            return ATLAS_EXTENSIONS;
         }
         return Set.of();
     }

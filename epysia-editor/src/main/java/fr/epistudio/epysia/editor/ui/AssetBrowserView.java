@@ -8,6 +8,7 @@ import fr.epistudio.epysia.editor.assets.AssetScanner;
 import fr.epistudio.epysia.editor.assets.AssetType;
 import fr.epistudio.epysia.editor.assets.BuiltinAssets;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
+import fr.epistudio.epysia.editor.assets.SpriteAtlasFactory;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -146,6 +147,10 @@ public final class AssetBrowserView {
 
     public void refreshAssets() {
         refresh();
+    }
+
+    public Optional<Path> selectedEntryPath() {
+        return grid.primarySelection().map(Path::of);
     }
 
     public void sweepProjectForImports() {
@@ -663,6 +668,12 @@ public final class AssetBrowserView {
         if (isBakeable(entry) && ImGui.menuItem("Bake Mesh")) {
             onBakeMesh.accept(path);
         }
+        if (entry.type() == AssetType.TEXTURE && ImGui.menuItem("Create Sprite Atlas")) {
+            createSpriteAtlas(path);
+        }
+        if (entry.type() == AssetType.ATLAS && ImGui.menuItem("Open as Text")) {
+            onOpenScript.accept(path);
+        }
         if (isImportSource(path) && ImGui.menuItem("Reimport")) {
             reimport(path);
         }
@@ -686,6 +697,16 @@ public final class AssetBrowserView {
         ImGui.separator();
         if (ImGui.menuItem("Show Path")) {
             notifier.show(entry.assetPath());
+        }
+    }
+
+    private void createSpriteAtlas(Path texturePath) {
+        try {
+            Path atlasFile = SpriteAtlasFactory.createGridAtlasFor(texturePath);
+            refresh();
+            notifier.show("Sprite atlas created: " + atlasFile.getFileName());
+        } catch (IOException error) {
+            notifier.show("Sprite atlas creation failed: " + error.getMessage());
         }
     }
 
@@ -727,7 +748,7 @@ public final class AssetBrowserView {
     private void activateEntry(AssetEntry entry) {
         Path path = Path.of(entry.assetPath());
         switch (entry.type()) {
-            case SCRIPT, SHADER -> onOpenScript.accept(path);
+            case SCRIPT, SHADER, ATLAS -> onOpenScript.accept(path);
             case PREFAB -> onInstantiatePrefab.accept(path);
             case SCENE -> onOpenScene.accept(path);
             case GRAPH -> onOpenGraph.accept(path);
@@ -1005,6 +1026,7 @@ public final class AssetBrowserView {
             case GRAPH -> AssetMimeTypes.GRAPH;
             case MATERIAL -> AssetMimeTypes.MATERIAL;
             case CLIP -> AssetMimeTypes.CLIP;
+            case ATLAS -> AssetMimeTypes.ATLAS;
             case SCENE, SCRIPT, OTHER -> AssetMimeTypes.NONE;
         };
     }
@@ -1014,7 +1036,7 @@ public final class AssetBrowserView {
             case MESH, PRESET -> EditorIcon.MESH;
             case SCRIPT, SHADER -> EditorIcon.SCRIPT;
             case PREFAB -> EditorIcon.NODE_3D;
-            case GRAPH -> EditorIcon.GRID;
+            case GRAPH, ATLAS -> EditorIcon.GRID;
             case MATERIAL -> EditorIcon.MESH;
             case SCENE -> EditorIcon.LOAD;
             case AUDIO, CLIP -> EditorIcon.ANIMATION_PLAYER;

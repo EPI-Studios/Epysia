@@ -192,7 +192,7 @@ public final class EditorView implements FrameView {
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
                 new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
-                graphEditorView::open);
+                graphEditorView::open, this::selectedBrowserAssetPath);
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
         this.meshBakeDialog = new MeshBakeDialog(toasts, this::onMeshBaked);
@@ -208,6 +208,10 @@ public final class EditorView implements FrameView {
         this.exportGameDialog = new ExportGameDialog(project, toasts);
         shell.setFileDropHandler(assetBrowserView::importExternalFiles);
         finishSetup();
+    }
+
+    private Optional<Path> selectedBrowserAssetPath() {
+        return assetBrowserView == null ? Optional.empty() : assetBrowserView.selectedEntryPath();
     }
 
     private static AssetImporterRegistry buildImporterRegistry(ComponentRegistry componentRegistry) {

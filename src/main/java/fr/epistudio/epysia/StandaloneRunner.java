@@ -5,6 +5,7 @@ import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
+import fr.epistudio.epysia.assets.loaders.SpriteAtlasAssetLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
@@ -82,6 +83,7 @@ public final class StandaloneRunner {
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
+        engine.assets().register(new SpriteAtlasAssetLoader());
         runPopulator(engine, populator);
         ensurePostProcessing(engine, shaderLoader, shaderWatcher, window);
         engine.beginPlay();

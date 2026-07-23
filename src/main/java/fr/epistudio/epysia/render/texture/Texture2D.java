@@ -1,13 +1,18 @@
 package fr.epistudio.epysia.render.texture;
 
+import fr.epistudio.epysia.assets.AssetMetaFile;
+import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.assets.source.AssetResolvers;
 import fr.epistudio.epysia.assets.source.AssetSource;
 import fr.epistudio.epysia.assets.source.FilesystemAssetSource;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.backend.RenderBackend;
+import fr.epistudio.epysia.render.backend.SamplerFilter;
+import fr.epistudio.epysia.scene.serialization.JsonReader;
 import fr.epistudio.epysia.render.backend.TextureDescriptor;
 import fr.epistudio.epysia.render.backend.TextureFormat;
 import fr.epistudio.epysia.render.backend.TextureHandle;
+import fr.epistudio.epysia.render.backend.TextureKind;
 import fr.epistudio.epysia.render.backend.TextureUsage;
 import fr.epistudio.epysia.render.backend.TextureWrap;
 import org.lwjgl.BufferUtils;
@@ -20,7 +25,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Locale;
+import java.util.Optional;
 
 public final class Texture2D {
 
@@ -32,7 +40,12 @@ public final class Texture2D {
     }
 
     public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format, TextureWrap wrap) {
-        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, wrap);
+        return loadFrom(backend, source, format, wrap, SamplerFilter.LINEAR);
+    }
+
+    public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format,
+            TextureWrap wrap, SamplerFilter filter) {
+        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, wrap, filter);
     }
 
     public static TextureHandle load(RenderBackend backend, String path) {
@@ -46,7 +59,35 @@ public final class Texture2D {
     public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap) {
         AssetSource source = AssetResolvers.forPath(path, "").source()
                 .orElseThrow(() -> new EpysiaException("Texture resource not found: " + path));
-        return loadFrom(backend, source, format, wrap);
+        return loadFrom(backend, source, format, wrap, metaFilter(path));
+    }
+
+    public static SamplerFilter metaFilter(String path) {
+        String metaPath = TexturePathPrefixes.stripPrefixes(path) + AssetMetaFile.SUFFIX;
+        return AssetResolvers.forPath(metaPath, "").source()
+                .flatMap(Texture2D::readFilterName)
+                .filter(Texture2D::isPointFilterName)
+                .map(name -> SamplerFilter.NEAREST)
+                .orElse(SamplerFilter.LINEAR);
+    }
+
+    private static Optional<String> readFilterName(AssetSource source) {
+        Optional<InputStream> opened = source.open();
+        if (opened.isEmpty()) {
+            return Optional.empty();
+        }
+        try (InputStream stream = opened.get()) {
+            String text = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            Object filter = new JsonReader(text).readRootObject().get(AssetMetaFile.FILTER_KEY);
+            return filter instanceof String name ? Optional.of(name) : Optional.empty();
+        } catch (IOException | RuntimeException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean isPointFilterName(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.equals("point") || lower.equals("nearest");
     }
 
     public static TextureHandle loadFromFile(RenderBackend backend, Path imagePath) {
@@ -105,7 +146,7 @@ public final class Texture2D {
     }
 
     private static TextureHandle decodeAndUpload(RenderBackend backend, ByteBuffer encodedBytes, TextureFormat format,
-            TextureWrap wrap) {
+            TextureWrap wrap, SamplerFilter filter) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer widthBuffer = stack.mallocInt(1);
             IntBuffer heightBuffer = stack.mallocInt(1);
@@ -116,7 +157,7 @@ public final class Texture2D {
                 throw new EpysiaException("Image decode failed: " + STBImage.stbi_failure_reason());
             }
             try {
-                return upload(backend, widthBuffer.get(0), heightBuffer.get(0), pixels, format, wrap);
+                return upload(backend, widthBuffer.get(0), heightBuffer.get(0), pixels, format, wrap, filter);
             } finally {
                 STBImage.stbi_image_free(pixels);
             }
@@ -143,7 +184,13 @@ public final class Texture2D {
 
     private static TextureHandle upload(RenderBackend backend, int width, int height, ByteBuffer pixels,
             TextureFormat format, TextureWrap wrap) {
-        TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height, format, TextureUsage.SAMPLED, wrap));
+        return upload(backend, width, height, pixels, format, wrap, SamplerFilter.LINEAR);
+    }
+
+    private static TextureHandle upload(RenderBackend backend, int width, int height, ByteBuffer pixels,
+            TextureFormat format, TextureWrap wrap, SamplerFilter filter) {
+        TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height, format,
+                TextureUsage.SAMPLED, filter, TextureKind.TEXTURE_2D, 1, 1, wrap));
         backend.writeTexture(handle, pixels);
         return handle;
     }

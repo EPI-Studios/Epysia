@@ -9,6 +9,7 @@ import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
+import fr.epistudio.epysia.assets.loaders.SpriteAtlasAssetLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.editor.gl.GlStateSnapshot;
@@ -131,6 +132,7 @@ public final class EditorScene3DHost {
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
+        engine.assets().register(new SpriteAtlasAssetLoader());
         currentWidth = renderSurface.framebufferWidth();
         currentHeight = renderSurface.framebufferHeight();
         createRenderTarget(currentWidth, currentHeight);

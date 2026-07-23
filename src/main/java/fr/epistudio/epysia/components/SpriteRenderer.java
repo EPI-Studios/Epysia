@@ -2,6 +2,7 @@ package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
+import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import org.joml.Vector3f;
@@ -36,6 +37,14 @@ public final class SpriteRenderer extends Component {
     private float regionMaxU = 1.0f;
     @Export(label = "Region Max V", min = 0.0f, max = 1.0f, step = 0.01f)
     private float regionMaxV = 1.0f;
+    @Export(label = "Atlas")
+    private final AssetRef<SpriteAtlas> atlas = new AssetRef<>(SpriteAtlas.class);
+    @Export(label = "Region Name")
+    private String regionName = "";
+
+    private final transient AssetRef<TextureHandle> atlasTexture = new AssetRef<>(TextureHandle.class);
+    private transient String appliedAtlasPath = "";
+    private transient String appliedRegionName = "";
 
     public AssetRef<TextureHandle> textureRef() {
         return texture;
@@ -142,10 +151,51 @@ public final class SpriteRenderer extends Component {
         return this;
     }
 
+    public AssetRef<SpriteAtlas> atlasRef() {
+        return atlas;
+    }
+
+    public SpriteRenderer setAtlasPath(String path) {
+        atlas.setPath(path);
+        return this;
+    }
+
+    public String regionName() {
+        return regionName;
+    }
+
+    public SpriteRenderer setRegionName(String value) {
+        regionName = value;
+        return this;
+    }
+
     @Override
     public void onLoad(EngineServices services) {
         if (texture.direct().isEmpty() && !texture.isEmpty()) {
             texture.resolve(services.assets());
+        }
+        refreshAtlas(services);
+    }
+
+    public void refreshAtlas(EngineServices services) {
+        if (regionName.isEmpty()) {
+            return;
+        }
+        if (atlas.path().equals(appliedAtlasPath) && regionName.equals(appliedRegionName)) {
+            return;
+        }
+        atlas.resolve(services.assets()).ifPresent(loaded -> applyAtlas(services, loaded));
+    }
+
+    private void applyAtlas(EngineServices services, SpriteAtlas loaded) {
+        loaded.region(regionName).ifPresent(region -> {
+            setRegion(region.minU(), region.minV(), region.maxU(), region.maxV());
+            appliedAtlasPath = atlas.path();
+            appliedRegionName = regionName;
+        });
+        if (!loaded.texturePath().isEmpty()) {
+            atlasTexture.setPath(loaded.texturePath());
+            atlasTexture.resolve(services.assets()).ifPresent(texture::setDirect);
         }
     }
 }

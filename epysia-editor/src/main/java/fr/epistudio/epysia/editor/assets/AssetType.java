@@ -12,6 +12,7 @@ public enum AssetType {
     GRAPH("Graphs"),
     MATERIAL("Materials"),
     CLIP("Clips"),
+    ATLAS("Atlases"),
     OTHER("Other");
 
     private final String pluralLabel;

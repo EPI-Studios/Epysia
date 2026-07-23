@@ -64,12 +64,15 @@ public final class InspectorView {
     private final GraphSection graphSection;
     private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
     private final BiConsumer<String, GameObject> onCreateScriptForObject;
+    private final Supplier<Optional<Path>> selectedAssetPath;
+    private final AtlasInspectorSection atlasSection = new AtlasInspectorSection();
 
     public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
                          Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
                          ThumbnailCache thumbnails, Project project,
                          BiConsumer<String, GameObject> onCreateScriptForObject,
-                         Consumer<Path> onOpenGraph) {
+                         Consumer<Path> onOpenGraph,
+                         Supplier<Optional<Path>> selectedAssetPath) {
         this.activeDocument = activeDocument;
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
@@ -82,6 +85,7 @@ public final class InspectorView {
         this.postEffectsSection = new PostEffectsSection(project, thumbnails);
         this.graphSection = new GraphSection(activeDocument, onOpenGraph);
         this.onCreateScriptForObject = onCreateScriptForObject;
+        this.selectedAssetPath = selectedAssetPath;
     }
 
     private EditorSelection selection() {
@@ -99,10 +103,10 @@ public final class InspectorView {
         }
         propertyRows.beginFrame();
         Optional<GameObject> selected = selection().get();
-        if (selected.isEmpty()) {
-            renderEmpty();
-        } else {
+        if (selected.isPresent()) {
             renderBody(selected.get());
+        } else if (!atlasSection.render(selectedAssetPath.get())) {
+            renderEmpty();
         }
         propertyRows.pruneStaleKeys();
         assetPicker.render();
