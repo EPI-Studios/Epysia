@@ -469,7 +469,8 @@ public final class ViewportView {
                 .map(parent -> new Matrix4f(parent.worldMatrix()).invert().mul(world))
                 .orElse(world);
         Vector3f position = local.getTranslation(new Vector3f());
-        Quaternionf rotation = local.getUnnormalizedRotation(new Quaternionf()).normalize();
+        Quaternionf rotation = local.normalize3x3(new Matrix4f())
+                .getUnnormalizedRotation(new Quaternionf()).normalize();
         Vector3f scale = local.getScale(new Vector3f());
         transform.setPosition(position.x, position.y, position.z);
         transform.setRotation(rotation);

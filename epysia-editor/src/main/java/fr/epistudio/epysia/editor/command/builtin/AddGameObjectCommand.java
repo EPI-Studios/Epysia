@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor.command.builtin;
 
 import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorCommand;
+import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.gameobjects.GameObject;
 
 public final class AddGameObjectCommand implements EditorCommand {
@@ -17,6 +18,9 @@ public final class AddGameObjectCommand implements EditorCommand {
     @Override
     public void apply(CommandContext context) {
         context.scene().addGameObject(gameObject);
+        for (IComponent component : gameObject.components()) {
+            component.onLoad(context.services());
+        }
         context.scene().advanceTick();
         if (selectAfter) {
             context.selection().select(gameObject);
