@@ -106,6 +106,7 @@ public final class AssetBrowserView {
     private final Consumer<Path> onOpenScene;
     private final Consumer<Path> onAttachScript;
     private final Consumer<Path> onOpenGraph;
+    private final Consumer<Path> onOpenAtlas;
     private final AssetImportPipeline importPipeline;
     private final NameDialog nameDialog = new NameDialog("##asset-name-dialog");
     private final NewAssetDialog newAssetDialog;
@@ -127,7 +128,7 @@ public final class AssetBrowserView {
                             Consumer<Path> onOpenScript, Consumer<Path> onBakeMesh,
                             Consumer<Path> onInstantiatePrefab, Consumer<Path> onOpenScene,
                             Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph,
-                            AssetImportPipeline importPipeline) {
+                            Consumer<Path> onOpenAtlas, AssetImportPipeline importPipeline) {
         this.project = project;
         this.notifier = notifier;
         this.icons = icons;
@@ -139,6 +140,7 @@ public final class AssetBrowserView {
         this.onOpenScene = onOpenScene;
         this.onAttachScript = onAttachScript;
         this.onOpenGraph = onOpenGraph;
+        this.onOpenAtlas = onOpenAtlas;
         this.importPipeline = importPipeline;
         this.currentDirectory = project.rootDirectory();
         this.newAssetDialog = new NewAssetDialog("##new-asset-dialog", icons);
@@ -748,7 +750,8 @@ public final class AssetBrowserView {
     private void activateEntry(AssetEntry entry) {
         Path path = Path.of(entry.assetPath());
         switch (entry.type()) {
-            case SCRIPT, SHADER, ATLAS -> onOpenScript.accept(path);
+            case SCRIPT, SHADER -> onOpenScript.accept(path);
+            case ATLAS -> onOpenAtlas.accept(path);
             case PREFAB -> onInstantiatePrefab.accept(path);
             case SCENE -> onOpenScene.accept(path);
             case GRAPH -> onOpenGraph.accept(path);

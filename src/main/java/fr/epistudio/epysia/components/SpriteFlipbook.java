@@ -2,13 +2,17 @@ package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
+import fr.epistudio.epysia.assets.epyatlas.SpriteAnimation;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasRegion;
+import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @EpysiaComponent(name = "Sprite Flipbook", category = "Rendering")
 @RequiresComponent(SpriteRenderer.class)
@@ -16,6 +20,8 @@ public final class SpriteFlipbook extends Component {
 
     @Export(label = "Atlas")
     private final AssetRef<SpriteAtlas> atlas = new AssetRef<>(SpriteAtlas.class);
+    @Export(label = "Animation")
+    private String animationName = "";
     @Export(label = "Frames")
     private String frames = "";
     @Export(label = "First Frame", min = 0.0f, step = 1.0f)
@@ -31,6 +37,9 @@ public final class SpriteFlipbook extends Component {
 
     private final transient List<String> frameNames = new ArrayList<>();
     private final transient AssetRef<TextureHandle> atlasTexture = new AssetRef<>(TextureHandle.class);
+    private final transient Set<String> warnedAnimationNames = new HashSet<>();
+    private transient Optional<SpriteAnimation> activeAnimation = Optional.empty();
+    private transient Optional<Logger> logger = Optional.empty();
     private transient float localTimeSeconds;
 
     public AssetRef<SpriteAtlas> atlasRef() {
@@ -87,8 +96,36 @@ public final class SpriteFlipbook extends Component {
         return localTimeSeconds;
     }
 
+    public SpriteFlipbook play(String name) {
+        return play(name, true);
+    }
+
+    public SpriteFlipbook play(String name, boolean restartIfSame) {
+        if (!restartIfSame && playing && name.equals(animationName)) {
+            return this;
+        }
+        animationName = name;
+        rebuildFrameNames(atlas.direct());
+        localTimeSeconds = 0.0f;
+        playing = true;
+        applyCurrentFrame();
+        return this;
+    }
+
+    public SpriteFlipbook stop() {
+        playing = false;
+        localTimeSeconds = 0.0f;
+        applyCurrentFrame();
+        return this;
+    }
+
+    public Optional<String> currentAnimation() {
+        return activeAnimation.map(SpriteAnimation::name);
+    }
+
     @Override
     public void onLoad(EngineServices services) {
+        logger = Optional.of(services.logger());
         Optional<SpriteAtlas> resolved = atlas.resolve(services.assets());
         rebuildFrameNames(resolved);
         resolved.ifPresent(loaded -> applyAtlasTexture(services, loaded));
@@ -97,6 +134,31 @@ public final class SpriteFlipbook extends Component {
 
     private void rebuildFrameNames(Optional<SpriteAtlas> resolved) {
         frameNames.clear();
+        activeAnimation = resolved.flatMap(loaded -> loaded.animation(animationName));
+        if (activeAnimation.isPresent()) {
+            addAnimationFrames(resolved.get(), activeAnimation.get());
+            return;
+        }
+        rebuildManualFrames(resolved);
+    }
+
+    private void addAnimationFrames(SpriteAtlas loaded, SpriteAnimation animation) {
+        int missing = 0;
+        for (String name : animation.frames()) {
+            if (loaded.region(name).isPresent()) {
+                frameNames.add(name);
+            } else {
+                missing++;
+            }
+        }
+        if (missing > 0 && warnedAnimationNames.add(animation.name())) {
+            int skipped = missing;
+            logger.ifPresent(log -> log.warn("[SpriteFlipbook] animation \"" + animation.name()
+                    + "\" skipped " + skipped + " frame(s) referencing missing regions"));
+        }
+    }
+
+    private void rebuildManualFrames(Optional<SpriteAtlas> resolved) {
         if (!frames.isBlank()) {
             for (String name : frames.split(",")) {
                 frameNames.add(name.strip());
@@ -144,8 +206,11 @@ public final class SpriteFlipbook extends Component {
     }
 
     private int currentFrameIndex() {
-        int frame = (int) Math.floor(localTimeSeconds * framesPerSecond);
-        if (loop) {
+        float effectiveFramesPerSecond = activeAnimation.map(SpriteAnimation::framesPerSecond)
+                .orElse(framesPerSecond);
+        boolean effectiveLoop = activeAnimation.map(SpriteAnimation::loop).orElse(loop);
+        int frame = (int) Math.floor(localTimeSeconds * effectiveFramesPerSecond);
+        if (effectiveLoop) {
             return Math.floorMod(frame, frameNames.size());
         }
         return Math.min(frame, frameNames.size() - 1);

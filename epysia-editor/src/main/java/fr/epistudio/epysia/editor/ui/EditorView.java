@@ -139,6 +139,7 @@ public final class EditorView implements FrameView {
     private final ScriptEditorView scriptEditorView;
     private final ProfilerView profilerView;
     private final LightingView lightingView;
+    private final SpriteEditorWindow spriteEditorWindow;
     private final GraphEditorView graphEditorView;
     private final SettingsDialog settingsDialog;
     private final PostEffectsSection settingsPostEffectsSection;
@@ -198,10 +199,12 @@ public final class EditorView implements FrameView {
                 shell.windowHandle(), playSession, icons, objectFactory, importPipeline);
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
+        this.spriteEditorWindow = new SpriteEditorWindow(
+                new ImagePreviewTexture(sceneHost.backend()), this::onAtlasSaved);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
                 new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
                 graphEditorView::open, this::selectedBrowserAssetPath,
-                new AtlasInspectorSection(imagePreview, this::onAtlasSaved),
+                new AtlasInspectorSection(spriteEditorWindow::open),
                 new TextureInspectorSection(imagePreview, this::onTextureFilterChanged));
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
@@ -209,7 +212,7 @@ public final class EditorView implements FrameView {
         this.assetBrowserView = new AssetBrowserView(project, toasts, icons, thumbnailCache, meshThumbnailer,
                 scriptEditorView::open, meshBakeDialog::openFor,
                 this::instantiatePrefabAtOrigin, this::openScenePath, this::attachScriptToSelected,
-                graphEditorView::open, importPipeline);
+                graphEditorView::open, spriteEditorWindow::open, importPipeline);
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onViewportTuningChanged);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
@@ -335,6 +338,7 @@ public final class EditorView implements FrameView {
         graphEditorView.render();
         profilerView.render();
         lightingView.render();
+        spriteEditorWindow.render();
     }
 
     private void renderDialogs() {
@@ -508,6 +512,9 @@ public final class EditorView implements FrameView {
         }
         if (ImGui.menuItem("Lighting", "", lightingView.isVisible())) {
             lightingView.setVisible(!lightingView.isVisible());
+        }
+        if (ImGui.menuItem(SpriteEditorWindow.WINDOW_TITLE, "", spriteEditorWindow.isVisible())) {
+            spriteEditorWindow.setVisible(!spriteEditorWindow.isVisible());
         }
         ImGui.endMenu();
     }
@@ -1171,6 +1178,7 @@ public final class EditorView implements FrameView {
         graphEditorView.shutdown();
         thumbnailCache.shutdown();
         imagePreview.dispose();
+        spriteEditorWindow.dispose();
         meshThumbnailer.shutdown();
     }
 }
