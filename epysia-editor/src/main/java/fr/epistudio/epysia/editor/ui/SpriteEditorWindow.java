@@ -620,7 +620,7 @@ public final class SpriteEditorWindow {
                 canvas.originX() + canvas.width(), canvas.originY() + canvas.height());
         drawGridOverlay(canvas);
         drawUsedCellBadges(canvas);
-        drawRubberBand();
+        drawRubberBand(canvas);
         handleSheetInput(canvas);
     }
 
@@ -691,15 +691,30 @@ public final class SpriteEditorWindow {
     }
 
     private void appendCoveredCells(AtlasCanvas canvas, float endX, float endY, int columns, int rows) {
-        int firstColumn = canvas.columnAt(Math.min(rubberBandStartX, endX), columns);
-        int lastColumn = canvas.columnAt(Math.max(rubberBandStartX, endX), columns);
-        int firstRow = canvas.rowAt(Math.min(rubberBandStartY, endY), rows);
-        int lastRow = canvas.rowAt(Math.max(rubberBandStartY, endY), rows);
-        for (int row = firstRow; row <= lastRow; row++) {
-            for (int column = firstColumn; column <= lastColumn; column++) {
-                appendFrame(row * columns + column);
+        List<Integer> covered = coveredCells(canvas, endX, endY, columns, rows);
+        if (covered.isEmpty()) {
+            appendFrame(canvas.cellIndexAt(endX, endY, columns, rows));
+            return;
+        }
+        covered.forEach(this::appendFrame);
+    }
+
+    private List<Integer> coveredCells(AtlasCanvas canvas, float endX, float endY, int columns, int rows) {
+        float minX = Math.min(rubberBandStartX, endX);
+        float maxX = Math.max(rubberBandStartX, endX);
+        float minY = Math.min(rubberBandStartY, endY);
+        float maxY = Math.max(rubberBandStartY, endY);
+        List<Integer> covered = new ArrayList<>();
+        for (int row = 0; row < rows; row++) {
+            for (int column = 0; column < columns; column++) {
+                float centerX = canvas.originX() + canvas.width() * (column + 0.5f) / columns;
+                float centerY = canvas.originY() + canvas.height() * (row + 0.5f) / rows;
+                if (centerX >= minX && centerX <= maxX && centerY >= minY && centerY <= maxY) {
+                    covered.add(row * columns + column);
+                }
             }
         }
+        return covered;
     }
 
     private void appendFrame(int cellIndex) {
@@ -710,16 +725,31 @@ public final class SpriteEditorWindow {
         });
     }
 
-    private void drawRubberBand() {
+    private void drawRubberBand(AtlasCanvas canvas) {
         if (!rubberBandActive || !ImGui.isMouseDown(ImGuiMouseButton.Left)) {
             return;
+        }
+        int columns = Math.max(1, editColumns.get());
+        int rows = Math.max(1, editRows.get());
+        for (int cell : coveredCells(canvas, ImGui.getMousePosX(), ImGui.getMousePosY(), columns, rows)) {
+            drawCoveredCellHighlight(canvas, cell, columns, rows);
         }
         float minX = Math.min(rubberBandStartX, ImGui.getMousePosX());
         float minY = Math.min(rubberBandStartY, ImGui.getMousePosY());
         float maxX = Math.max(rubberBandStartX, ImGui.getMousePosX());
         float maxY = Math.max(rubberBandStartY, ImGui.getMousePosY());
-        ImGui.getWindowDrawList().addRectFilled(minX, minY, maxX, maxY, COLOR_RUBBER_BAND_FILL);
         ImGui.getWindowDrawList().addRect(minX, minY, maxX, maxY, COLOR_RUBBER_BAND_BORDER);
+    }
+
+    private void drawCoveredCellHighlight(AtlasCanvas canvas, int cell, int columns, int rows) {
+        int column = cell % columns;
+        int row = cell / columns;
+        float cellWidth = canvas.width() / columns;
+        float cellHeight = canvas.height() / rows;
+        float minX = canvas.originX() + column * cellWidth;
+        float minY = canvas.originY() + row * cellHeight;
+        ImGui.getWindowDrawList().addRectFilled(minX, minY, minX + cellWidth, minY + cellHeight, COLOR_RUBBER_BAND_FILL);
+        ImGui.getWindowDrawList().addRect(minX, minY, minX + cellWidth, minY + cellHeight, COLOR_RUBBER_BAND_BORDER);
     }
 
     private void drawUsedCellBadges(AtlasCanvas canvas) {
@@ -788,10 +818,10 @@ public final class SpriteEditorWindow {
         if (frameThumbnailButton(image, region)) {
             selectedFrame = index;
         }
+        handleThumbnailInteractions(draft, index);
         markThumbnail(index == selectedFrame, region.isEmpty());
         ImGui.textDisabled(Integer.toString(index + 1));
         ImGui.endGroup();
-        handleThumbnailInteractions(draft, index);
         ImGui.popID();
     }
 
