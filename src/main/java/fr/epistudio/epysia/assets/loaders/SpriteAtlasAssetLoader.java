@@ -11,7 +11,6 @@ import fr.epistudio.epysia.exceptions.EpysiaException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -59,19 +58,24 @@ public final class SpriteAtlasAssetLoader implements AssetLoader<SpriteAtlas> {
     }
 
     private static SpriteAtlas rebaseTexturePath(SpriteAtlas atlas, String origin) {
-        Path originPath = Path.of(origin);
-        if (atlas.texturePath().isEmpty() || !Files.isRegularFile(originPath)) {
+        if (atlas.texturePath().isEmpty()) {
             return atlas;
         }
         String storedPath = atlas.texturePath();
         String unprefixedPath = TexturePathPrefixes.stripPrefixes(storedPath);
         String prefix = storedPath.substring(0, storedPath.length() - unprefixedPath.length());
-        Path texturePath = Path.of(unprefixedPath);
-        if (texturePath.isAbsolute()) {
+        if (Path.of(unprefixedPath).isAbsolute()) {
             return atlas;
         }
-        Path baseDirectory = originPath.toAbsolutePath().getParent();
-        return atlas.withTexturePath(prefix + baseDirectory.resolve(texturePath).normalize());
+        String parentDirectory = parentDirectoryOf(origin);
+        String rebased = parentDirectory.isEmpty() ? unprefixedPath : parentDirectory + "/" + unprefixedPath;
+        return atlas.withTexturePath(prefix + rebased);
+    }
+
+    private static String parentDirectoryOf(String origin) {
+        String normalized = origin.replace('\\', '/');
+        int lastSlash = normalized.lastIndexOf('/');
+        return lastSlash < 0 ? "" : normalized.substring(0, lastSlash);
     }
 
     private static String readText(AssetSource source) {

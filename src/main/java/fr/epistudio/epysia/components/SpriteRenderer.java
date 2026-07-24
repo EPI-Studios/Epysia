@@ -3,6 +3,7 @@ package fr.epistudio.epysia.components;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
+import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import org.joml.Vector3f;
@@ -13,8 +14,15 @@ import java.util.Optional;
 @RequiresComponent(Transform2D.class)
 public final class SpriteRenderer extends Component {
 
+    public enum Filter {
+        POINT,
+        LINEAR
+    }
+
     @Export(label = "Texture")
     private final AssetRef<TextureHandle> texture = new AssetRef<>(TextureHandle.class);
+    @Export(label = "Filter")
+    private Filter filter = Filter.POINT;
     @Export(label = "Tint")
     private final Vector3f tint = new Vector3f(1.0f, 1.0f, 1.0f);
     @Export(label = "Opacity", min = 0.0f, max = 1.0f, step = 0.01f)
@@ -24,7 +32,7 @@ public final class SpriteRenderer extends Component {
     @Export(label = "Flip Y")
     private boolean flipY;
     @Export(label = "Pixels Per Unit", min = 0.01f, max = 10000.0f, step = 1.0f)
-    private float pixelsPerUnit = 100.0f;
+    private float pixelsPerUnit = 32.0f;
     @Export(label = "Sorting Layer", step = 1.0f)
     private int sortingLayer;
     @Export(label = "Order In Layer", step = 1.0f)
@@ -62,6 +70,22 @@ public final class SpriteRenderer extends Component {
 
     public Optional<TextureHandle> texture() {
         return texture.direct();
+    }
+
+    public Filter filter() {
+        return filter;
+    }
+
+    public SpriteRenderer setFilter(Filter value) {
+        filter = value;
+        return this;
+    }
+
+    private String withFilterPrefix(String path) {
+        if (filter != Filter.POINT || path.isEmpty() || path.startsWith(TexturePathPrefixes.POINT_PREFIX)) {
+            return path;
+        }
+        return TexturePathPrefixes.POINT_PREFIX + path;
     }
 
     public Vector3f tint() {
@@ -171,6 +195,9 @@ public final class SpriteRenderer extends Component {
 
     @Override
     public void onLoad(EngineServices services) {
+        if (!texture.path().isEmpty()) {
+            texture.setPath(withFilterPrefix(texture.path()));
+        }
         if (texture.direct().isEmpty() && !texture.isEmpty()) {
             texture.resolve(services.assets());
         }
@@ -194,7 +221,7 @@ public final class SpriteRenderer extends Component {
             appliedRegionName = regionName;
         });
         if (!loaded.texturePath().isEmpty()) {
-            atlasTexture.setPath(loaded.texturePath());
+            atlasTexture.setPath(withFilterPrefix(loaded.texturePath()));
             atlasTexture.resolve(services.assets()).ifPresent(texture::setDirect);
         }
     }

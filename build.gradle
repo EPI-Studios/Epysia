@@ -69,7 +69,7 @@ tasks.register('runRemovalPixelCheck', JavaExec) {
 
 tasks.register('runSpriteRenderCheck', JavaExec) {
     group = 'verification'
-    description = 'Renders two overlapping sorted sprites through WORLD_2D and checks the pixels.'
+    description = 'Renders two overlapping sorted sprites onto SCREEN after tonemap and checks the pixels.'
     classpath = sourceSets.example.runtimeClasspath
     mainClass = 'com.meekdev.psyhou.game.SpriteRenderCheck'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
@@ -85,7 +85,7 @@ tasks.register('runSpriteFlipbookCheck', JavaExec) {
 
 tasks.register('runTilemapRenderCheck', JavaExec) {
     group = 'verification'
-    description = 'Renders a 2x2 tilemap from a generated atlas through WORLD_2D and checks tile and empty-cell pixels.'
+    description = 'Renders a 2x2 tilemap from a generated atlas onto SCREEN after tonemap and checks tile and empty-cell pixels.'
     classpath = sourceSets.example.runtimeClasspath
     mainClass = 'com.meekdev.psyhou.game.TilemapRenderCheck'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']

@@ -60,6 +60,7 @@ public final class TilemapRenderSystem implements RenderSystem {
     private final Logger logger;
     private final Map<TilemapRenderer, RendererGeometry> geometryByRenderer = new IdentityHashMap<>();
     private final Set<TilemapRenderer> seenRenderers = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<TilemapRenderer> warnedEmptyRenderers = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Vector2f scratchCorner = new Vector2f();
 
     private RenderBackend backend;
@@ -95,10 +96,31 @@ public final class TilemapRenderSystem implements RenderSystem {
         Optional<SpriteAtlas> atlas = renderer.atlasValue();
         Optional<TextureHandle> texture = renderer.texture();
         if (tilemap.isEmpty() || atlas.isEmpty() || texture.isEmpty()) {
+            warnEmptyOnce(gameObject, renderer, tilemap, atlas, texture);
             return;
         }
         seenRenderers.add(renderer);
         submitRenderer(frame, transform, renderer, tilemap.get(), atlas.get(), texture.get());
+    }
+
+    private void warnEmptyOnce(GameObject gameObject, TilemapRenderer renderer, Optional<SpriteTilemap> tilemap,
+                               Optional<SpriteAtlas> atlas, Optional<TextureHandle> texture) {
+        if (!warnedEmptyRenderers.add(renderer)) {
+            return;
+        }
+        logger.warn("[TilemapRenderSystem] skipped '" + gameObject.name() + "': "
+                + firstEmptyReason(tilemap, atlas, texture) + " unresolved");
+    }
+
+    private static String firstEmptyReason(Optional<SpriteTilemap> tilemap, Optional<SpriteAtlas> atlas,
+                                           Optional<TextureHandle> texture) {
+        if (tilemap.isEmpty()) {
+            return "tilemap";
+        }
+        if (atlas.isEmpty()) {
+            return "atlas";
+        }
+        return "texture";
     }
 
     private void submitRenderer(FrameBuilder frame, Transform2D transform, TilemapRenderer renderer,
@@ -109,8 +131,9 @@ public final class TilemapRenderSystem implements RenderSystem {
             rebuildGeometry(geometry, transform, renderer, tilemap, atlas, texture);
         }
         for (ChunkMesh chunk : geometry.chunks) {
-            long sortKey = SpriteSortKeys.compose(renderer.sortingLayer(), renderer.orderInLayer(), submitSequence++);
-            frame.submit(RenderPasses.WORLD_2D, new DrawCommand(spriteRenderSystem.sharedPipeline(),
+            long sortKey = SpriteSortKeys.compose(renderer.sortingLayer(), renderer.orderInLayer(),
+                    SpriteSortKeys.KIND_TILEMAP, submitSequence++);
+            frame.submit(RenderPasses.OVERLAY_2D, new DrawCommand(spriteRenderSystem.sharedPipeline(),
                     chunk.mesh(), spriteRenderSystem.bindingsFor(texture), sortKey, 1));
         }
     }

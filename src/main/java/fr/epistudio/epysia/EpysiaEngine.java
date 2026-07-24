@@ -511,6 +511,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         bindings.put(RenderPasses.OPAQUE_3D, screenWithClear);
         bindings.put(RenderPasses.TRANSPARENT_3D, screenNoClear);
         bindings.put(RenderPasses.WORLD_2D, screenNoClear);
+        bindings.put(RenderPasses.OVERLAY_2D, screenNoClear);
         bindings.put(RenderPasses.UI, screenNoClear);
         bindings.put(RenderPasses.POST, screenNoClear);
         return bindings;

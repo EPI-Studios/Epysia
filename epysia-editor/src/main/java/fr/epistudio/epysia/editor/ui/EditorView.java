@@ -33,8 +33,13 @@ import fr.epistudio.epysia.editor.scripts.ScriptService;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
+import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.SpriteRenderer;
+import fr.epistudio.epysia.components.TilemapRenderer;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphSystem;
+import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.prefab.PrefabWriter;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
@@ -50,6 +55,7 @@ import imgui.flag.ImGuiTabBarFlags;
 import imgui.flag.ImGuiTabItemFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
 
@@ -74,6 +80,7 @@ public final class EditorView implements FrameView {
     private static final float TOOLBAR_HEIGHT = 64.0f;
     private static final float STATUS_BAR_HEIGHT = 26.0f;
     private static final float SPAWN_DISTANCE = 4.0f;
+    private static final float TWO_DIMENSIONAL_FRAME_MINIMUM_RADIUS = 3.0f;
     private static final String PREFABS_DIRECTORY_NAME = "prefabs";
     private static final String PREFAB_EXTENSION = ".epyprefab";
     private static final String ABOUT_POPUP = "About Epysia";
@@ -245,6 +252,7 @@ public final class EditorView implements FrameView {
         } else {
             workspace.create(Project.DEFAULT_SCENE_NAME, StarterSceneContent::populate);
         }
+        applyViewportModeForScene();
         if (!Files.isRegularFile(Path.of(ImGui.getIO().getIniFilename()))) {
             dockLayout.requestDefaultLayout();
         }
@@ -960,6 +968,71 @@ public final class EditorView implements FrameView {
             return;
         }
         workspace.open(path);
+        applyViewportModeForScene();
+    }
+
+    private void applyViewportModeForScene() {
+        Scene scene = workspace.active().scene();
+        if (!isPredominantlyTwoDimensional(scene)) {
+            editorCamera.setTwoDimensional(false);
+            return;
+        }
+        editorCamera.setTwoDimensional(true);
+        frameTwoDimensionalContent(scene);
+    }
+
+    private static boolean isPredominantlyTwoDimensional(Scene scene) {
+        int twoDimensionalCount = 0;
+        int meshCount = 0;
+        for (GameObject gameObject : scene.gameObjects()) {
+            if (hasTwoDimensionalRenderer(gameObject)) {
+                twoDimensionalCount++;
+            }
+            if (gameObject.getComponent(MeshRenderer.class).isPresent()) {
+                meshCount++;
+            }
+        }
+        return twoDimensionalCount > 0 && meshCount < twoDimensionalCount;
+    }
+
+    private static boolean hasTwoDimensionalRenderer(GameObject gameObject) {
+        return gameObject.getComponent(SpriteRenderer.class).isPresent()
+                || gameObject.getComponent(TilemapRenderer.class).isPresent();
+    }
+
+    private void frameTwoDimensionalContent(Scene scene) {
+        Vector2f minimum = new Vector2f(Float.MAX_VALUE, Float.MAX_VALUE);
+        Vector2f maximum = new Vector2f(-Float.MAX_VALUE, -Float.MAX_VALUE);
+        if (!accumulateTwoDimensionalBounds(scene, minimum, maximum)) {
+            return;
+        }
+        Vector3f center = new Vector3f((minimum.x + maximum.x) * 0.5f, (minimum.y + maximum.y) * 0.5f, 0.0f);
+        float radius = Math.max(TWO_DIMENSIONAL_FRAME_MINIMUM_RADIUS,
+                0.5f * Math.max(maximum.x - minimum.x, maximum.y - minimum.y));
+        editorCamera.frame(center, radius);
+    }
+
+    private static boolean accumulateTwoDimensionalBounds(Scene scene, Vector2f minimum, Vector2f maximum) {
+        boolean found = false;
+        for (GameObject gameObject : scene.gameObjects()) {
+            if (!hasTwoDimensionalRenderer(gameObject)) {
+                continue;
+            }
+            Optional<Transform2D> transform = gameObject.getComponent(Transform2D.class);
+            if (transform.isPresent()) {
+                expandBounds(minimum, maximum, transform.get());
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    private static void expandBounds(Vector2f minimum, Vector2f maximum, Transform2D transform) {
+        float halfWidth = Math.abs(transform.scale().x) * 0.5f;
+        float halfHeight = Math.abs(transform.scale().y) * 0.5f;
+        Vector2f position = transform.position();
+        minimum.set(Math.min(minimum.x, position.x - halfWidth), Math.min(minimum.y, position.y - halfHeight));
+        maximum.set(Math.max(maximum.x, position.x + halfWidth), Math.max(maximum.y, position.y + halfHeight));
     }
 
     private void saveScene() {

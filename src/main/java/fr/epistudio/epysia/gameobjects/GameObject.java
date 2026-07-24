@@ -2,6 +2,8 @@ package fr.epistudio.epysia.gameobjects;
 
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.RequiresComponent;
+import fr.epistudio.epysia.components.transforms.Transform2D;
+import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.ComponentPresentException;
 
 import java.util.ArrayList;
@@ -93,12 +95,24 @@ public final class GameObject implements IGameObject {
         if (componentsByType.containsKey(component.getClass())) {
             throw new ComponentPresentException(component, this);
         }
+        rejectConflictingTransform(component);
         ensureRequiredComponents(component.getClass());
         component.attachTo(this);
         registerUnderHierarchy(component);
         attachedComponents.add(component);
         structuralChangeListener.run();
         return component;
+    }
+
+    private void rejectConflictingTransform(IComponent component) {
+        if (component instanceof Transform2D && componentsByType.containsKey(Transform3D.class)) {
+            throw new ComponentPresentException(component, this,
+                    "A GameObject cannot hold both Transform2D and Transform3D.");
+        }
+        if (component instanceof Transform3D && componentsByType.containsKey(Transform2D.class)) {
+            throw new ComponentPresentException(component, this,
+                    "A GameObject cannot hold both Transform2D and Transform3D.");
+        }
     }
 
     private void ensureRequiredComponents(Class<?> componentClass) {

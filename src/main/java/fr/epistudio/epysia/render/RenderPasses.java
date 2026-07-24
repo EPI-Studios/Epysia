@@ -15,6 +15,7 @@ public final class RenderPasses {
     public static final int TRANSPARENT_3D_ORDER = 300;
     public static final int WORLD_2D_ORDER = 400;
     public static final int POST_ORDER = 500;
+    public static final int OVERLAY_2D_ORDER = 550;
     public static final int UI_ORDER = 600;
 
     private static final List<RenderPass> registered = new ArrayList<>();
@@ -26,6 +27,7 @@ public final class RenderPasses {
     public static final RenderPass TRANSPARENT_3D = register("TRANSPARENT_3D", TRANSPARENT_3D_ORDER);
     public static final RenderPass WORLD_2D = register("WORLD_2D", WORLD_2D_ORDER);
     public static final RenderPass POST = register("POST", POST_ORDER);
+    public static final RenderPass OVERLAY_2D = register("OVERLAY_2D", OVERLAY_2D_ORDER);
     public static final RenderPass UI = register("UI", UI_ORDER);
 
     private RenderPasses() {

@@ -978,12 +978,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public int readPixelArgb(RenderTargetHandle target, int x, int y) {
-        RenderTargetResource resource = requireRenderTarget(target);
-        int previousReadFbo = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING);
-        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, resource.fboId());
+        int previousReadFbo = beginPixelRead(target);
         java.nio.ByteBuffer pixel = org.lwjgl.BufferUtils.createByteBuffer(4);
         org.lwjgl.opengl.GL11.glReadPixels(x, y, 1, 1, GL_RGBA, org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, pixel);
-        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
+        endPixelRead(target, previousReadFbo);
         int r = pixel.get(0) & 0xFF;
         int g = pixel.get(1) & 0xFF;
         int b = pixel.get(2) & 0xFF;
@@ -993,13 +991,29 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public PixelColor readPixelFloat(RenderTargetHandle target, int x, int y) {
-        RenderTargetResource resource = requireRenderTarget(target);
-        int previousReadFbo = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING);
-        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, resource.fboId());
+        int previousReadFbo = beginPixelRead(target);
         java.nio.FloatBuffer pixel = org.lwjgl.BufferUtils.createFloatBuffer(4);
         org.lwjgl.opengl.GL11.glReadPixels(x, y, 1, 1, GL_RGBA, org.lwjgl.opengl.GL11.GL_FLOAT, pixel);
-        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
+        endPixelRead(target, previousReadFbo);
         return new PixelColor(pixel.get(0), pixel.get(1), pixel.get(2), pixel.get(3));
+    }
+
+    private int beginPixelRead(RenderTargetHandle target) {
+        int previousReadFbo = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING);
+        if (target.id() == RenderTargetHandle.SCREEN.id()) {
+            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, 0);
+            org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_FRONT);
+        } else {
+            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, requireRenderTarget(target).fboId());
+        }
+        return previousReadFbo;
+    }
+
+    private void endPixelRead(RenderTargetHandle target, int previousReadFbo) {
+        if (target.id() == RenderTargetHandle.SCREEN.id()) {
+            org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_BACK);
+        }
+        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
     }
 
     private void applyPipeline(PipelineResource pipeline) {

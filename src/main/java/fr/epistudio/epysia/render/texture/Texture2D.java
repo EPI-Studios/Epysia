@@ -62,6 +62,13 @@ public final class Texture2D {
         return loadFrom(backend, source, format, wrap, metaFilter(path));
     }
 
+    public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap,
+            SamplerFilter filter) {
+        AssetSource source = AssetResolvers.forPath(path, "").source()
+                .orElseThrow(() -> new EpysiaException("Texture resource not found: " + path));
+        return loadFrom(backend, source, format, wrap, filter);
+    }
+
     public static SamplerFilter metaFilter(String path) {
         String metaPath = TexturePathPrefixes.stripPrefixes(path) + AssetMetaFile.SUFFIX;
         return AssetResolvers.forPath(metaPath, "").source()

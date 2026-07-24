@@ -8,6 +8,7 @@ import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialFields;
 import fr.epistudio.epysia.components.transforms.Transform3D;
+import fr.epistudio.epysia.exceptions.ComponentException;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphComponent;
@@ -35,6 +36,7 @@ public final class GameObjectJsonCodec {
     private final ComponentFieldsCodec fieldsCodec = new ComponentFieldsCodec();
     private final MaterialJsonCodec materialCodec = new MaterialJsonCodec();
     private final PostEffectStackJsonCodec postEffectCodec = new PostEffectStackJsonCodec();
+    private List<String> lastIncompatibleComponents = List.of();
 
     public GameObjectJsonCodec(ComponentRegistry componentRegistry) {
         this.componentRegistry = componentRegistry;
@@ -125,7 +127,10 @@ public final class GameObjectJsonCodec {
     }
 
     public List<GameObject> readGameObjectArray(List<Object> gameObjectsJson, IdentityPolicy identityPolicy) {
-        return new GraphReader(identityPolicy).read(gameObjectsJson);
+        GraphReader reader = new GraphReader(identityPolicy);
+        List<GameObject> result = reader.read(gameObjectsJson);
+        lastIncompatibleComponents = reader.incompatibleComponents;
+        return result;
     }
 
     public void applyFieldsWithoutReferences(IComponent component, Map<String, Object> fields) {
@@ -133,6 +138,9 @@ public final class GameObjectJsonCodec {
     }
 
     public void invokeOnLoad(List<GameObject> loaded, EngineServices services) {
+        for (String skipped : lastIncompatibleComponents) {
+            services.logger().warn("[GameObjectJsonCodec] Skipped incompatible component: " + skipped);
+        }
         for (GameObject gameObject : loaded) {
             for (IComponent component : new ArrayList<>(gameObject.components())) {
                 try {
@@ -193,6 +201,7 @@ public final class GameObjectJsonCodec {
         private final Map<String, GameObject> gameObjectsByFileId = new HashMap<>();
         private final List<PendingIndexReference> pendingIndexReferences = new ArrayList<>();
         private final List<PendingIdReference> pendingIdReferences = new ArrayList<>();
+        private final List<String> incompatibleComponents = new ArrayList<>();
 
         private GraphReader(IdentityPolicy identityPolicy) {
             this.identityPolicy = identityPolicy;
@@ -280,8 +289,17 @@ public final class GameObjectJsonCodec {
                 applyMaterialsIfPresent(component, componentJson);
                 applyPostEffectsIfPresent(component, componentJson);
                 applyGraphOverridesIfPresent(component, componentJson);
-                gameObject.addComponent(component);
+                attachTolerant(gameObject, component);
             });
+        }
+
+        private void attachTolerant(GameObject gameObject, IComponent component) {
+            try {
+                gameObject.addComponent(component);
+            } catch (ComponentException incompatible) {
+                incompatibleComponents.add(component.getClass().getSimpleName()
+                        + " on '" + gameObject.name() + "': " + incompatible.getMessage());
+            }
         }
 
         private void applyMaterialsIfPresent(IComponent component, Map<String, Object> componentJson) {

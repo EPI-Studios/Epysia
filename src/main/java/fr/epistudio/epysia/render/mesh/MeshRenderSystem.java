@@ -67,6 +67,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     private FrameProfiler profiler = new FrameProfiler();
 
+    private static final int FRAME_VIEW_PROJECTION_BYTES = 64;
     private static final String SHADOW_MASK_ALBEDO_FIELD = "albedo";
     private static final long SINGLE_CASTER_DOMAIN = 0x51A71C0000000001L;
     private static final long INSTANCED_CASTER_DOMAIN = 0x1B5AC70000000002L;
@@ -122,6 +123,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private final List<Light> scratchDirectionalLights = new ArrayList<>(8);
     private final List<Light> scratchOtherLights = new ArrayList<>(64);
     private final ByteBuffer scratchObjectUbo = BufferUtils.createByteBuffer(MeshShaderBindings.OBJECT_UBO_SIZE);
+    private final ByteBuffer scratchFrameViewProjection = BufferUtils.createByteBuffer(FRAME_VIEW_PROJECTION_BYTES);
+    private final Matrix4f lastCameraViewProjection = new Matrix4f();
     private final Matrix4f scratchNormalMatrix = new Matrix4f();
     private final Vector3f scratchSunDirection = new Vector3f();
     private final Vector3f scratchLightDirection = new Vector3f();
@@ -215,6 +218,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         shaderWatcher.poll();
         Camera3D camera = context.primaryCamera().orElse(null);
         if (camera == null) {
+            writeFallbackFrameViewProjection();
             return;
         }
         Optional<DirectionalLight> primaryDirectional = gatherLights(scene);
@@ -241,6 +245,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         frameUboWriter.write(camera, primaryDirectional, activeLights, timeSeconds,
                 environment.settings().ambientIntensity(), shadowCascades, spotShadows, pointShadows,
                 clusterCuller, clusteringEnabled, alpha, activeProbes);
+        lastCameraViewProjection.set(camera.viewProjection(alpha));
         lightStorage.update(activeLights, spotShadows, pointShadows);
         mark = markSection("mesh/uniforms", mark);
         materialCache.beginFrame();
@@ -756,6 +761,17 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         }
         objectUboTransformHashes.put(ubo, transformHash);
         writeObjectUbo(ubo, model);
+    }
+
+    private void writeFallbackFrameViewProjection() {
+        if (backend == null) {
+            return;
+        }
+        scratchFrameViewProjection.clear();
+        lastCameraViewProjection.get(0, scratchFrameViewProjection);
+        scratchFrameViewProjection.position(0);
+        scratchFrameViewProjection.limit(FRAME_VIEW_PROJECTION_BYTES);
+        backend.writeBuffer(frameUboWriter.handle(), scratchFrameViewProjection, 0L);
     }
 
     private void writeObjectUbo(BufferHandle ubo, Matrix4f model) {

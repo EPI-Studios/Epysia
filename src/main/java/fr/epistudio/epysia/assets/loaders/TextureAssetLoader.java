@@ -39,6 +39,8 @@ public final class TextureAssetLoader implements AssetLoader<TextureHandle> {
 
     private static TextureHandle loadTexture(RenderBackend backend, String path) {
         TexturePathPrefixes.ParsedPath parsed = TexturePathPrefixes.parse(path);
-        return Texture2D.load(backend, parsed.remainder(), parsed.format(), parsed.wrap());
+        return parsed.filter()
+                .map(filter -> Texture2D.load(backend, parsed.remainder(), parsed.format(), parsed.wrap(), filter))
+                .orElseGet(() -> Texture2D.load(backend, parsed.remainder(), parsed.format(), parsed.wrap()));
     }
 }

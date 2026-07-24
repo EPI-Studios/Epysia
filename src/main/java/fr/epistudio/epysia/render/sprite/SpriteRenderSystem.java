@@ -203,7 +203,7 @@ public final class SpriteRenderSystem implements RenderSystem {
             if (i < entries.size() && entries.get(i).texture().id() == entries.get(batchStart).texture().id()) {
                 continue;
             }
-            frame.submit(RenderPasses.WORLD_2D, batchCommand(batchStart, i - batchStart, sequence));
+            frame.submit(RenderPasses.OVERLAY_2D, batchCommand(batchStart, i - batchStart, sequence));
             sequence++;
             batchStart = i;
         }
@@ -212,7 +212,8 @@ public final class SpriteRenderSystem implements RenderSystem {
     private DrawCommand batchCommand(int firstQuad, int quadCount, long sequence) {
         MeshHandle mesh = meshForFirstIndex(firstQuad * INDICES_PER_QUAD);
         SpriteRenderer sprite = entries.get(firstQuad).sprite();
-        long sortKey = SpriteSortKeys.compose(sprite.sortingLayer(), sprite.orderInLayer(), sequence);
+        long sortKey = SpriteSortKeys.compose(sprite.sortingLayer(), sprite.orderInLayer(),
+                SpriteSortKeys.KIND_SPRITE, sequence);
         BindingSetHandle bindings = bindingsFor(entries.get(firstQuad).texture());
         return new DrawCommand(pipeline, mesh, bindings, sortKey, 1, quadCount * INDICES_PER_QUAD);
     }

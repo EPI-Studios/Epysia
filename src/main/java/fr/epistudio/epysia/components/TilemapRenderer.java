@@ -4,6 +4,7 @@ import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
+import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import org.joml.Vector3f;
@@ -14,8 +15,15 @@ import java.util.Optional;
 @RequiresComponent(Transform2D.class)
 public final class TilemapRenderer extends Component {
 
+    public enum Filter {
+        POINT,
+        LINEAR
+    }
+
     @Export(label = "Tilemap")
     private final AssetRef<SpriteTilemap> tilemap = new AssetRef<>(SpriteTilemap.class);
+    @Export(label = "Filter")
+    private Filter filter = Filter.POINT;
     @Export(label = "Tint")
     private final Vector3f tint = new Vector3f(1.0f, 1.0f, 1.0f);
     @Export(label = "Opacity", min = 0.0f, max = 1.0f, step = 0.01f)
@@ -101,6 +109,22 @@ public final class TilemapRenderer extends Component {
         return this;
     }
 
+    public Filter filter() {
+        return filter;
+    }
+
+    public TilemapRenderer setFilter(Filter value) {
+        filter = value;
+        return this;
+    }
+
+    private String withFilterPrefix(String path) {
+        if (filter != Filter.POINT || path.isEmpty() || path.startsWith(TexturePathPrefixes.POINT_PREFIX)) {
+            return path;
+        }
+        return TexturePathPrefixes.POINT_PREFIX + path;
+    }
+
     @Override
     public void onLoad(EngineServices services) {
         refresh(services);
@@ -123,7 +147,7 @@ public final class TilemapRenderer extends Component {
         if (loadedAtlas.texturePath().isEmpty()) {
             return;
         }
-        texture.setPath(loadedAtlas.texturePath());
+        texture.setPath(withFilterPrefix(loadedAtlas.texturePath()));
         texture.resolve(services.assets());
     }
 }
