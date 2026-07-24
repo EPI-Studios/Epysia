@@ -97,6 +97,8 @@ public final class TilemapDockView {
             renderMissingSetup(tilemap, atlas);
             return;
         }
+        palette.renderSaveBar(renderer);
+        ImGui.separator();
         if (!ImGui.beginTabBar("tilemapTabs")) {
             return;
         }

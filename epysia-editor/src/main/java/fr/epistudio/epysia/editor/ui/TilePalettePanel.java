@@ -64,7 +64,89 @@ public final class TilePalettePanel {
             return;
         }
         renderPalette(tilemap.get(), atlas.get());
-        renderSaveRow(tilemap.get(), renderer);
+    }
+
+    public int saveDirtyTilemaps(fr.epistudio.epysia.scene.Scene scene) {
+        int written = 0;
+        for (fr.epistudio.epysia.gameobjects.GameObject gameObject : scene.gameObjects()) {
+            TilemapRenderer renderer = gameObject.getComponentOrNull(TilemapRenderer.class);
+            if (renderer != null && saveIfDirty(renderer)) {
+                written++;
+            }
+        }
+        return written;
+    }
+
+    private boolean saveIfDirty(TilemapRenderer renderer) {
+        Optional<SpriteTilemap> tilemap = renderer.tilemapValue();
+        Optional<Path> file = tilemapFile(renderer);
+        if (tilemap.isEmpty() || file.isEmpty() || !dirty(renderer)) {
+            return false;
+        }
+        save(tilemap.get(), file.get());
+        return saveError.isEmpty();
+    }
+
+    public boolean dirty(TilemapRenderer renderer) {
+        Optional<SpriteTilemap> tilemap = renderer.tilemapValue();
+        Optional<Path> file = tilemapFile(renderer);
+        if (tilemap.isEmpty() || file.isEmpty()) {
+            return false;
+        }
+        return !TilemapDiskFile.matchesDisk(tilemap.get(), file.get());
+    }
+
+    public void renderSaveBar(TilemapRenderer renderer) {
+        Optional<SpriteTilemap> tilemap = renderer.tilemapValue();
+        Optional<Path> file = tilemapFile(renderer);
+        if (tilemap.isEmpty()) {
+            return;
+        }
+        boolean dirty = dirty(renderer);
+        renderSaveButton(tilemap.get(), file, dirty);
+        ImGui.sameLine();
+        renderSaveState(file, dirty);
+    }
+
+    private void renderSaveButton(SpriteTilemap tilemap, Optional<Path> file, boolean dirty) {
+        if (dirty) {
+            ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
+        }
+        ImGui.beginDisabled(file.isEmpty());
+        boolean clicked = ImGui.button(dirty ? "Save Tilemap *" : "Save Tilemap");
+        ImGui.endDisabled();
+        if (dirty) {
+            ImGui.popStyleColor();
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Tiles, collision and terrains only reach the game once this file is written."
+                    + "\nCtrl+S while this panel is focused does the same.");
+        }
+        if (clicked || saveShortcutPressed()) {
+            file.ifPresent(path -> save(tilemap, path));
+        }
+    }
+
+    private static boolean saveShortcutPressed() {
+        return ImGui.isWindowFocused(imgui.flag.ImGuiFocusedFlags.RootAndChildWindows)
+                && ImGui.getIO().getKeyCtrl() && ImGui.isKeyPressed(imgui.flag.ImGuiKey.S);
+    }
+
+    private void renderSaveState(Optional<Path> file, boolean dirty) {
+        if (file.isEmpty()) {
+            ImGui.textColored(EditorStyle.COLOR_DANGER, "This tilemap has no file on disk yet.");
+            return;
+        }
+        if (!saveError.isEmpty()) {
+            ImGui.textColored(EditorStyle.COLOR_DANGER, "Save failed: " + saveError);
+            return;
+        }
+        if (dirty) {
+            ImGui.textColored(EditorStyle.COLOR_DANGER,
+                    "Unsaved changes. The running game still loads the old file.");
+            return;
+        }
+        ImGui.textDisabled("Saved  " + file.get().getFileName());
     }
 
     private void renderSaveRow(SpriteTilemap tilemap, TilemapRenderer renderer) {

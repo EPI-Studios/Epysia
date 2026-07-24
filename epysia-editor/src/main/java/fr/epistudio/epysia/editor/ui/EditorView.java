@@ -1060,8 +1060,12 @@ public final class EditorView implements FrameView {
             toasts.show("Stop play mode to save");
             return;
         }
+        int tilemaps = tilePalettePanel.saveDirtyTilemaps(workspace.active().scene());
         workspace.save(workspace.active());
         secondsSinceAutosave = 0.0f;
+        if (tilemaps > 0) {
+            toasts.show("Saved scene and " + tilemaps + " tilemap(s)");
+        }
     }
 
     private void saveSceneAs() {
