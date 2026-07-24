@@ -273,6 +273,9 @@ public final class GameObjectJsonCodec {
             }
             findEntry(typeName).ifPresent(entry -> {
                 IComponent component = entry.factory().get();
+                if (gameObject.getComponentOrNull(component.getClass()) != null) {
+                    return;
+                }
                 fieldsCodec.applyFields(component, fields, this);
                 applyMaterialsIfPresent(component, componentJson);
                 applyPostEffectsIfPresent(component, componentJson);
