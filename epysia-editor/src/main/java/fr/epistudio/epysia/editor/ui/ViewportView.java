@@ -109,7 +109,13 @@ public final class ViewportView {
     private final float[] manipulatedViewArray = new float[16];
     private final float[] projectionArray = new float[16];
     private final float[] modelArray = new float[16];
+    private static final float SMART_SNAP_TOLERANCE_FRACTION = 0.02f;
+    private static final float SMART_SNAP_GUIDE_OVERSHOOT = 2.0f;
+    private static final float SMART_SNAP_GUIDE_THICKNESS = 1.0f;
+    private static final int COLOR_SMART_SNAP_GUIDE = 0xFF33CCFF;
+
     private final float[] snapArray = new float[3];
+    private List<SmartSnap.Guide> smartSnapGuides = List.of();
     private final Vector3f dragStartPosition = new Vector3f();
     private final Quaternionf dragStartRotation = new Quaternionf();
     private final Vector3f dragStartScale = new Vector3f();
@@ -242,6 +248,7 @@ public final class ViewportView {
             renderAxisIndicator(imageX, imageY, width);
         }
         renderBillboards(imageX, imageY, width, height);
+        drawSmartSnapGuides(imageX, imageY, width, height);
         paintTarget.ifPresentOrElse(
                 renderer -> handleTilemapPaint(renderer, imageX, imageY, width, height),
                 paintController::cancel);
@@ -532,6 +539,22 @@ public final class ViewportView {
         applyPlanarManipulation(transform, wasUsing);
     }
 
+    private void applySmartSnap(Transform2D transform) {
+        if (gizmoState.tool() != GizmoState.Tool.TRANSLATE || !ImGui.getIO().getKeyShift()) {
+            smartSnapGuides = List.of();
+            return;
+        }
+        Optional<GameObject> dragged = activeDocument.get().selection().get();
+        if (dragged.isEmpty()) {
+            return;
+        }
+        SmartSnap.Result result = SmartSnap.align(activeDocument.get().scene(), dragged.get(), transform,
+                SMART_SNAP_TOLERANCE_FRACTION * editorCamera.orthographicSize());
+        smartSnapGuides = result.guides();
+        transform.setPosition(transform.position().x + result.correction().x,
+                transform.position().y + result.correction().y);
+    }
+
     private static Matrix4f planarWorldMatrix(Transform2D transform) {
         return new Matrix4f()
                 .translation(transform.position().x, transform.position().y, 0.0f)
@@ -556,6 +579,7 @@ public final class ViewportView {
         }
         if (usingNow) {
             writePlanarMatrix(transform, new Matrix4f().set(modelArray));
+            applySmartSnap(transform);
         }
         if (!usingNow && wasUsing) {
             commitPlanarDrag(transform);
@@ -1002,6 +1026,34 @@ public final class ViewportView {
         }
         drawList.addQuad(cornerA.x, cornerA.y, cornerB.x, cornerB.y,
                 cornerC.x, cornerC.y, cornerD.x, cornerD.y, borderColor);
+    }
+
+    private void drawSmartSnapGuides(float imageX, float imageY, int width, int height) {
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        for (SmartSnap.Guide guide : smartSnapGuides) {
+            Vector2f start = worldToScreen(guideStart(guide), imageX, imageY, width, height);
+            Vector2f end = worldToScreen(guideEnd(guide), imageX, imageY, width, height);
+            drawList.addLine(start.x, start.y, end.x, end.y, COLOR_SMART_SNAP_GUIDE, SMART_SNAP_GUIDE_THICKNESS);
+        }
+    }
+
+    private static Vector2f guideStart(SmartSnap.Guide guide) {
+        return guide.vertical()
+                ? new Vector2f(guide.worldCoordinate(), guide.spanStart() - SMART_SNAP_GUIDE_OVERSHOOT)
+                : new Vector2f(guide.spanStart() - SMART_SNAP_GUIDE_OVERSHOOT, guide.worldCoordinate());
+    }
+
+    private static Vector2f guideEnd(SmartSnap.Guide guide) {
+        return guide.vertical()
+                ? new Vector2f(guide.worldCoordinate(), guide.spanEnd() + SMART_SNAP_GUIDE_OVERSHOOT)
+                : new Vector2f(guide.spanEnd() + SMART_SNAP_GUIDE_OVERSHOOT, guide.worldCoordinate());
+    }
+
+    private Vector2f worldToScreen(Vector2f world, float imageX, float imageY, int width, int height) {
+        Vector4f clip = editorCamera.camera().viewProjection()
+                .transform(new Vector4f(world.x, world.y, 0.0f, 1.0f));
+        return new Vector2f(imageX + (clip.x / clip.w * 0.5f + 0.5f) * width,
+                imageY + (0.5f - clip.y / clip.w * 0.5f) * height);
     }
 
     private Vector2f localToScreen(Transform2D transform, float localX, float localY,

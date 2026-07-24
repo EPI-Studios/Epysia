@@ -20,6 +20,7 @@ public final class SpriteTilemapJsonCodec {
     private static final String LAYERS_KEY = "layers";
     private static final String SOLID_TILES_KEY = "solidTiles";
     private static final String TILES_KEY = "tiles";
+    private static final String SCENES_KEY = "scenes";
     private static final String TERRAINS_KEY = "terrains";
     private static final String TERRAIN_MODE_KEY = "terrainMode";
     private static final String NAME_KEY = "name";
@@ -51,6 +52,7 @@ public final class SpriteTilemapJsonCodec {
         readSolidTiles(tilemap, root.get(SOLID_TILES_KEY));
         readTerrains(tilemap, root);
         readTileData(tilemap, root.get(TILES_KEY));
+        readScenes(tilemap, root.get(SCENES_KEY));
         return tilemap;
     }
 
@@ -212,6 +214,17 @@ public final class SpriteTilemapJsonCodec {
         }
     }
 
+    private static void readScenes(SpriteTilemap tilemap, Object value) {
+        if (!(value instanceof Map<?, ?> entries)) {
+            return;
+        }
+        for (Map.Entry<?, ?> entry : entries.entrySet()) {
+            if (entry.getKey() instanceof String key && entry.getValue() instanceof String path) {
+                tilemap.setSceneForTile(Integer.parseInt(key), path);
+            }
+        }
+    }
+
     public String write(SpriteTilemap tilemap) {
         JsonWriter writer = new JsonWriter();
         writer.beginObject();
@@ -224,6 +237,7 @@ public final class SpriteTilemapJsonCodec {
         writeSolidTiles(writer, tilemap);
         writeTerrains(writer, tilemap);
         writeTileData(writer, tilemap);
+        writeScenes(writer, tilemap);
         writer.endObject();
         return writer.toString();
     }
@@ -367,6 +381,17 @@ public final class SpriteTilemapJsonCodec {
         writer.key(CUSTOM_KEY).beginObject();
         for (Map.Entry<String, String> entry : data.customData().entrySet()) {
             writer.key(entry.getKey()).valueString(entry.getValue());
+        }
+        writer.endObject();
+    }
+
+    private static void writeScenes(JsonWriter writer, SpriteTilemap tilemap) {
+        if (tilemap.scenesByTile().isEmpty()) {
+            return;
+        }
+        writer.key(SCENES_KEY).beginObject();
+        for (Map.Entry<Integer, String> entry : tilemap.scenesByTile().entrySet()) {
+            writer.key(Integer.toString(entry.getKey())).valueString(entry.getValue());
         }
         writer.endObject();
     }

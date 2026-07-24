@@ -13,11 +13,13 @@ public final class TileDataSection {
 
     private static final float BIT_BUTTON_SIZE = 22.0f;
     private static final int KEY_CAPACITY = 48;
+    private static final int PATH_CAPACITY = 260;
     private static final float PLATFORM_HEIGHT = 0.35f;
 
     private final TileBrush brush;
     private final ImString customKey = new ImString(KEY_CAPACITY);
     private final ImString customValue = new ImString(KEY_CAPACITY);
+    private final ImString scenePath = new ImString(PATH_CAPACITY);
     private final ImFloat probability = new ImFloat(1.0f);
 
     public TileDataSection(TileBrush brush) {
@@ -34,6 +36,7 @@ public final class TileDataSection {
         changed |= renderOrientation(tilemap, data);
         changed |= renderProbability(tilemap, data);
         changed |= renderTerrainBits(tilemap, data);
+        changed |= renderScenePath(tilemap);
         changed |= renderCustomData(tilemap, data);
         return changed;
     }
@@ -170,6 +173,17 @@ public final class TileDataSection {
             case 7 -> TileNeighbor.BOTTOM;
             default -> TileNeighbor.BOTTOM_RIGHT;
         };
+    }
+
+    private boolean renderScenePath(SpriteTilemap tilemap) {
+        scenePath.set(tilemap.sceneForTile(brush.tileIndex()).orElse(""));
+        ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+        if (!ImGui.inputTextWithHint("##tileScene", "Prefab spawned on this tile", scenePath,
+                imgui.flag.ImGuiInputTextFlags.EnterReturnsTrue)) {
+            return false;
+        }
+        tilemap.setSceneForTile(brush.tileIndex(), scenePath.get());
+        return true;
     }
 
     private boolean renderCustomData(SpriteTilemap tilemap, TileData data) {

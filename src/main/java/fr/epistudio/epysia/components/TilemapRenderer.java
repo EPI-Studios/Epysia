@@ -4,6 +4,7 @@ import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
+import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.render.backend.TextureHandle;
@@ -58,6 +59,27 @@ public final class TilemapRenderer extends Component {
     public TilemapRenderer setAtlas(SpriteAtlas value) {
         atlas.setDirect(value);
         return this;
+    }
+
+    public int cellXAt(float localX) {
+        return tilemapValue().map(map -> (int) Math.floor(localX / map.cellWidth())).orElse(0);
+    }
+
+    public int cellYAt(float localY) {
+        return tilemapValue().map(map -> (int) Math.floor(localY / map.cellHeight())).orElse(0);
+    }
+
+    public Optional<TileData> tileDataAt(float localX, float localY) {
+        return tilemapValue().flatMap(map ->
+                map.existingTileData(map.tileIndex(cellXAt(localX), cellYAt(localY))));
+    }
+
+    public Optional<String> tileValueAt(float localX, float localY, String key) {
+        return tileDataAt(localX, localY).flatMap(data -> data.customValue(key));
+    }
+
+    public boolean solidAt(float localX, float localY) {
+        return tilemapValue().map(map -> map.isCellSolid(cellXAt(localX), cellYAt(localY))).orElse(false);
     }
 
     public Optional<SpriteAtlas> atlasValue() {

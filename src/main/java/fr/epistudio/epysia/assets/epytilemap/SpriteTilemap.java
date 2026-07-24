@@ -18,6 +18,7 @@ public final class SpriteTilemap {
     private final List<TilemapLayer> layers = new ArrayList<>();
     private final SortedSet<Integer> solidTiles = new TreeSet<>();
     private final Map<Integer, TileData> tileData = new LinkedHashMap<>();
+    private final Map<Integer, String> scenePaths = new LinkedHashMap<>();
     private final List<TerrainDefinition> terrains = new ArrayList<>();
     private TerrainMatchMode terrainMatchMode = TerrainMatchMode.CORNERS_AND_SIDES;
     private float cellWidth;
@@ -205,6 +206,24 @@ public final class SpriteTilemap {
         if (tileData.remove(tileIndex) != null) {
             version++;
         }
+        return this;
+    }
+
+    public Map<Integer, String> scenesByTile() {
+        return Collections.unmodifiableMap(scenePaths);
+    }
+
+    public Optional<String> sceneForTile(int tileIndex) {
+        return Optional.ofNullable(scenePaths.get(tileIndex));
+    }
+
+    public SpriteTilemap setSceneForTile(int tileIndex, String path) {
+        if (path.isEmpty()) {
+            scenePaths.remove(tileIndex);
+        } else {
+            scenePaths.put(tileIndex, path);
+        }
+        version++;
         return this;
     }
 
