@@ -1,13 +1,16 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.PointLight;
 import fr.epistudio.epysia.components.SpotLight;
+import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
+import fr.epistudio.epysia.editor.command.builtin.TilemapPaintCommand;
 import fr.epistudio.epysia.editor.command.builtin.Transform2DDragCommand;
 import fr.epistudio.epysia.editor.command.builtin.TransformDragCommand;
 import fr.epistudio.epysia.editor.gizmo.ColliderWireframeOverlay;
@@ -28,11 +31,13 @@ import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.PhysicsSystem;
+import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.extension.imguizmo.ImGuizmo;
 import imgui.extension.imguizmo.flag.Operation;
 import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiWindowFlags;
+import org.joml.Matrix3x2f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
@@ -41,6 +46,9 @@ import org.joml.Vector4f;
 import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 import imgui.flag.ImGuiCol;
@@ -79,6 +87,11 @@ public final class ViewportView {
     private static final float FRAME_MINIMUM_RADIUS = 1.0f;
     private static final String CONTEXT_POPUP = "##viewport-context";
     private static final float CONTEXT_MENU_DRAG_TOLERANCE = 4.0f;
+    private static final int COLOR_PAINT_CURSOR = 0xFFCC7A00;
+    private static final int COLOR_PAINT_RECTANGLE_FILL = 0x330077CC;
+    private static final int COLOR_PAINT_RECTANGLE_BORDER = 0xFF3399DD;
+
+    private enum StrokeKind { PAINT, ERASE, FILL }
 
     private final EditorScene3DHost sceneHost;
     private final EditorCamera editorCamera;
@@ -89,6 +102,8 @@ public final class ViewportView {
     private final IconWidgets icons;
     private final GameObjectFactory objectFactory;
     private final AssetImportPipeline importPipeline;
+    private final TilePalettePanel tilePalette;
+    private final Map<Long, int[]> strokeCells = new LinkedHashMap<>();
     private final Matrix4f viewMatrix = new Matrix4f();
     private final Matrix4f projectionMatrix = new Matrix4f();
     private final float[] viewArray = new float[16];
@@ -114,12 +129,19 @@ public final class ViewportView {
     private int supersampleFactor = DEFAULT_SUPERSAMPLE_FACTOR;
     private boolean viewportHoveredThisFrame;
     private boolean billboardClickConsumed;
+    private boolean paintingActiveThisFrame;
+    private boolean paintEnabled;
+    private boolean strokeActive;
+    private StrokeKind strokeKind = StrokeKind.PAINT;
+    private SpriteTilemap strokeTilemap;
+    private int fillStartCellX;
+    private int fillStartCellY;
     private ViewMode viewMode = ViewMode.SCENE;
 
     public ViewportView(EditorScene3DHost sceneHost, EditorCamera editorCamera,
                         Supplier<SceneDocument> activeDocument, GizmoState gizmoState, long windowHandle,
                         EmbeddedPlaySession playSession, IconWidgets icons, GameObjectFactory objectFactory,
-                        AssetImportPipeline importPipeline) {
+                        AssetImportPipeline importPipeline, TilePalettePanel tilePalette) {
         this.sceneHost = sceneHost;
         this.editorCamera = editorCamera;
         this.activeDocument = activeDocument;
@@ -129,6 +151,15 @@ public final class ViewportView {
         this.icons = icons;
         this.objectFactory = objectFactory;
         this.importPipeline = importPipeline;
+        this.tilePalette = tilePalette;
+    }
+
+    public boolean paintEnabled() {
+        return paintEnabled;
+    }
+
+    public void setPaintEnabled(boolean enabled) {
+        paintEnabled = enabled;
     }
 
     public boolean showGrid() {
@@ -208,14 +239,27 @@ public final class ViewportView {
             return;
         }
         drawOverlays(imageX, imageY, width, height);
-        boolean gizmoBusy = playSession.isActive() ? false : renderGizmo(imageX, imageY, width, height);
+        Optional<TilemapRenderer> paintTarget = activePaintTarget();
+        paintingActiveThisFrame = paintTarget.isPresent();
+        boolean gizmoBusy = renderGizmoUnlessPainting(paintTarget, imageX, imageY, width, height);
         if (!editorCamera.twoDimensional()) {
             renderAxisIndicator(imageX, imageY, width);
         }
         renderBillboards(imageX, imageY, width, height);
+        paintTarget.ifPresentOrElse(
+                renderer -> handleTilemapPaint(renderer, imageX, imageY, width, height),
+                this::cancelStrokeIfActive);
         updateCamera(deltaSeconds, imageX, imageY, width, height);
         handleFrameShortcut();
-        handlePicking(gizmoBusy, imageX, imageY, width, height);
+        handlePicking(gizmoBusy || paintTarget.isPresent(), imageX, imageY, width, height);
+    }
+
+    private boolean renderGizmoUnlessPainting(Optional<TilemapRenderer> paintTarget,
+                                              float imageX, float imageY, int width, int height) {
+        if (paintTarget.isPresent()) {
+            return false;
+        }
+        return playSession.isActive() ? false : renderGizmo(imageX, imageY, width, height);
     }
 
     private void drawSceneImage(int width, int height, boolean gameView) {
@@ -761,7 +805,7 @@ public final class ViewportView {
     private void updateTwoDimensionalNavigation(int height) {
         boolean panHeld = viewportHoveredThisFrame
                 && (mouseButtonHeld(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
-                        || mouseButtonHeld(GLFW.GLFW_MOUSE_BUTTON_RIGHT));
+                        || (!paintingActiveThisFrame && mouseButtonHeld(GLFW.GLFW_MOUSE_BUTTON_RIGHT)));
         float unitsPerPixel = 2.0f * editorCamera.orthographicSize() / Math.max(1, height);
         editorCamera.updatePan(ImGui.getMousePosX(), ImGui.getMousePosY(), panHeld, unitsPerPixel);
         if (viewportHoveredThisFrame) {
@@ -867,6 +911,232 @@ public final class ViewportView {
         int localY = (int) (ImGui.getMousePosY() - imageY);
         Optional<GameObject> hit = sceneHost.pickAt(editorCamera, localX, localY, width, height);
         hit.ifPresentOrElse(activeDocument.get().selection()::select, activeDocument.get().selection()::clear);
+    }
+
+    private Optional<TilemapRenderer> activePaintTarget() {
+        if (!paintEnabled || !editorCamera.twoDimensional() || playSession.isActive()) {
+            return Optional.empty();
+        }
+        Optional<TilemapRenderer> renderer = activeDocument.get().selection().get()
+                .flatMap(gameObject -> gameObject.getComponent(TilemapRenderer.class));
+        renderer.ifPresent(found -> found.refresh(sceneHost.engine()));
+        return renderer.filter(found -> found.tilemapValue().isPresent());
+    }
+
+    private void handleTilemapPaint(TilemapRenderer renderer, float imageX, float imageY, int width, int height) {
+        Optional<Transform2D> transform = selectedPlanarTransform();
+        Optional<SpriteTilemap> tilemap = renderer.tilemapValue();
+        if (transform.isEmpty() || tilemap.isEmpty()) {
+            cancelStrokeIfActive();
+            return;
+        }
+        int[] cell = cellAtMouse(transform.get(), tilemap.get(), imageX, imageY, width, height);
+        drawPaintCursor(transform.get(), tilemap.get(), cell, imageX, imageY, width, height);
+        updateStroke(tilemap.get(), cell);
+    }
+
+    private int[] cellAtMouse(Transform2D transform, SpriteTilemap tilemap,
+                              float imageX, float imageY, int width, int height) {
+        Vector3f world = viewportWorldOnPlane(imageX, imageY, width, height);
+        Vector2f local = new Matrix3x2f(transform.localMatrix()).invert()
+                .transformPosition(new Vector2f(world.x, world.y));
+        int cellX = (int) Math.floor(local.x / tilemap.cellWidth());
+        int cellY = (int) Math.floor(local.y / tilemap.cellHeight());
+        return new int[]{cellX, cellY};
+    }
+
+    private Vector3f viewportWorldOnPlane(float imageX, float imageY, int width, int height) {
+        float ndcX = ((ImGui.getMousePosX() - imageX) / width) * 2.0f - 1.0f;
+        float ndcY = 1.0f - ((ImGui.getMousePosY() - imageY) / height) * 2.0f;
+        Matrix4f inverse = new Matrix4f(editorCamera.camera().viewProjection()).invert();
+        Vector4f near = inverse.transform(new Vector4f(ndcX, ndcY, -1.0f, 1.0f));
+        Vector4f far = inverse.transform(new Vector4f(ndcX, ndcY, 1.0f, 1.0f));
+        Vector3f nearPoint = new Vector3f(near.x / near.w, near.y / near.w, near.z / near.w);
+        Vector3f farPoint = new Vector3f(far.x / far.w, far.y / far.w, far.z / far.w);
+        Vector3f direction = farPoint.sub(nearPoint, new Vector3f());
+        float t = Math.abs(direction.z) < 1.0e-6f ? 0.0f : -nearPoint.z / direction.z;
+        return nearPoint.add(direction.mul(t));
+    }
+
+    private void updateStroke(SpriteTilemap tilemap, int[] cell) {
+        if (strokeActive) {
+            advanceStroke(cell);
+        } else {
+            beginStrokeIfRequested(tilemap, cell);
+        }
+    }
+
+    private void beginStrokeIfRequested(SpriteTilemap tilemap, int[] cell) {
+        if (!viewportHoveredThisFrame) {
+            return;
+        }
+        if (ImGui.isMouseClicked(ImGuiMouseButton.Right)) {
+            startStroke(tilemap, StrokeKind.ERASE, cell);
+        } else if (ImGui.isMouseClicked(ImGuiMouseButton.Left)) {
+            startStroke(tilemap, ImGui.getIO().getKeyShift() ? StrokeKind.FILL : StrokeKind.PAINT, cell);
+        }
+    }
+
+    private void startStroke(SpriteTilemap tilemap, StrokeKind kind, int[] cell) {
+        strokeActive = true;
+        strokeKind = kind;
+        strokeTilemap = tilemap;
+        strokeCells.clear();
+        fillStartCellX = cell[0];
+        fillStartCellY = cell[1];
+        if (kind != StrokeKind.FILL) {
+            recordEdit(cell[0], cell[1], strokeValue(kind));
+        }
+    }
+
+    private void advanceStroke(int[] cell) {
+        if (strokeKind == StrokeKind.FILL) {
+            advanceFillStroke(cell);
+            return;
+        }
+        int button = strokeKind == StrokeKind.ERASE ? ImGuiMouseButton.Right : ImGuiMouseButton.Left;
+        if (ImGui.isMouseDown(button)) {
+            recordEdit(cell[0], cell[1], strokeValue(strokeKind));
+        } else {
+            commitStroke();
+        }
+    }
+
+    private void advanceFillStroke(int[] cell) {
+        if (ImGui.isMouseDown(ImGuiMouseButton.Left)) {
+            return;
+        }
+        applyFillRectangle(cell);
+        commitStroke();
+    }
+
+    private void applyFillRectangle(int[] cell) {
+        int minX = Math.min(fillStartCellX, cell[0]);
+        int maxX = Math.max(fillStartCellX, cell[0]);
+        int minY = Math.min(fillStartCellY, cell[1]);
+        int maxY = Math.max(fillStartCellY, cell[1]);
+        int value = strokeValue(StrokeKind.FILL);
+        for (int cellY = minY; cellY <= maxY; cellY++) {
+            for (int cellX = minX; cellX <= maxX; cellX++) {
+                recordEdit(cellX, cellY, value);
+            }
+        }
+    }
+
+    private int strokeValue(StrokeKind kind) {
+        if (kind == StrokeKind.ERASE || tilePalette.eraser()) {
+            return SpriteTilemap.EMPTY_TILE_INDEX;
+        }
+        return tilePalette.brushTileIndex();
+    }
+
+    private void recordEdit(int cellX, int cellY, int after) {
+        if (strokeTilemap == null || !strokeTilemap.contains(cellX, cellY)) {
+            return;
+        }
+        long key = (((long) cellY) << 32) | (cellX & 0xFFFFFFFFL);
+        int[] existing = strokeCells.get(key);
+        if (existing == null) {
+            strokeCells.put(key, new int[]{cellX, cellY, strokeTilemap.tileIndex(cellX, cellY), after});
+        } else {
+            existing[3] = after;
+        }
+        strokeTilemap.setTile(cellX, cellY, after);
+    }
+
+    private void commitStroke() {
+        List<TilemapPaintCommand.TileEdit> edits = collectStrokeEdits();
+        SpriteTilemap tilemap = strokeTilemap;
+        String label = strokeLabel();
+        resetStroke();
+        if (!edits.isEmpty() && tilemap != null) {
+            activeDocument.get().history().execute(new TilemapPaintCommand(tilemap, edits, label));
+        }
+    }
+
+    private List<TilemapPaintCommand.TileEdit> collectStrokeEdits() {
+        List<TilemapPaintCommand.TileEdit> edits = new ArrayList<>();
+        for (int[] cell : strokeCells.values()) {
+            if (cell[2] != cell[3]) {
+                edits.add(new TilemapPaintCommand.TileEdit(cell[0], cell[1], cell[2], cell[3]));
+            }
+        }
+        return edits;
+    }
+
+    private String strokeLabel() {
+        return switch (strokeKind) {
+            case ERASE -> "Erase Tiles";
+            case FILL -> "Fill Tiles";
+            case PAINT -> "Paint Tiles";
+        };
+    }
+
+    private void cancelStrokeIfActive() {
+        if (strokeActive) {
+            resetStroke();
+        }
+    }
+
+    private void resetStroke() {
+        strokeActive = false;
+        strokeCells.clear();
+        strokeTilemap = null;
+    }
+
+    private void drawPaintCursor(Transform2D transform, SpriteTilemap tilemap, int[] cell,
+                                 float imageX, float imageY, int width, int height) {
+        if (!viewportHoveredThisFrame && !strokeActive) {
+            return;
+        }
+        if (strokeActive && strokeKind == StrokeKind.FILL) {
+            drawCellQuad(transform, tilemap, fillStartCellX, fillStartCellY, cell[0], cell[1],
+                    imageX, imageY, width, height, COLOR_PAINT_RECTANGLE_FILL, COLOR_PAINT_RECTANGLE_BORDER);
+            return;
+        }
+        drawCellQuad(transform, tilemap, cell[0], cell[1], cell[0], cell[1],
+                imageX, imageY, width, height, 0, COLOR_PAINT_CURSOR);
+    }
+
+    private void drawCellQuad(Transform2D transform, SpriteTilemap tilemap, int cellX0, int cellY0,
+                              int cellX1, int cellY1, float imageX, float imageY, int width, int height,
+                              int fillColor, int borderColor) {
+        int minX = Math.max(0, Math.min(cellX0, cellX1));
+        int maxX = Math.min(tilemap.width() - 1, Math.max(cellX0, cellX1));
+        int minY = Math.max(0, Math.min(cellY0, cellY1));
+        int maxY = Math.min(tilemap.height() - 1, Math.max(cellY0, cellY1));
+        if (minX > maxX || minY > maxY) {
+            return;
+        }
+        projectAndDrawQuad(transform, minX * tilemap.cellWidth(), (maxX + 1) * tilemap.cellWidth(),
+                minY * tilemap.cellHeight(), (maxY + 1) * tilemap.cellHeight(),
+                imageX, imageY, width, height, fillColor, borderColor);
+    }
+
+    private void projectAndDrawQuad(Transform2D transform, float left, float right, float bottom, float top,
+                                    float imageX, float imageY, int width, int height,
+                                    int fillColor, int borderColor) {
+        Vector2f cornerA = localToScreen(transform, left, bottom, imageX, imageY, width, height);
+        Vector2f cornerB = localToScreen(transform, right, bottom, imageX, imageY, width, height);
+        Vector2f cornerC = localToScreen(transform, right, top, imageX, imageY, width, height);
+        Vector2f cornerD = localToScreen(transform, left, top, imageX, imageY, width, height);
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        if (fillColor != 0) {
+            drawList.addQuadFilled(cornerA.x, cornerA.y, cornerB.x, cornerB.y,
+                    cornerC.x, cornerC.y, cornerD.x, cornerD.y, fillColor);
+        }
+        drawList.addQuad(cornerA.x, cornerA.y, cornerB.x, cornerB.y,
+                cornerC.x, cornerC.y, cornerD.x, cornerD.y, borderColor);
+    }
+
+    private Vector2f localToScreen(Transform2D transform, float localX, float localY,
+                                   float imageX, float imageY, int width, int height) {
+        Vector2f world = transform.localMatrix().transformPosition(new Vector2f(localX, localY));
+        Vector4f clip = editorCamera.camera().viewProjection()
+                .transform(new Vector4f(world.x, world.y, 0.0f, 1.0f));
+        float screenX = imageX + (clip.x / clip.w * 0.5f + 0.5f) * width;
+        float screenY = imageY + (0.5f - clip.y / clip.w * 0.5f) * height;
+        return new Vector2f(screenX, screenY);
     }
 
     private void renderPlayDecorations(float imageX, float imageY, int width, int height) {

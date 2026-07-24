@@ -9,6 +9,7 @@ import fr.epistudio.epysia.editor.assets.AssetType;
 import fr.epistudio.epysia.editor.assets.BuiltinAssets;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.SpriteAtlasFactory;
+import fr.epistudio.epysia.editor.assets.SpriteTilemapFactory;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -673,6 +674,9 @@ public final class AssetBrowserView {
         if (entry.type() == AssetType.TEXTURE && ImGui.menuItem("Create Sprite Atlas")) {
             createSpriteAtlas(path);
         }
+        if (entry.type() == AssetType.ATLAS && ImGui.menuItem("Create Tilemap")) {
+            createTilemap(path);
+        }
         if (entry.type() == AssetType.ATLAS && ImGui.menuItem("Open as Text")) {
             onOpenScript.accept(path);
         }
@@ -709,6 +713,16 @@ public final class AssetBrowserView {
             notifier.show("Sprite atlas created: " + atlasFile.getFileName());
         } catch (IOException error) {
             notifier.show("Sprite atlas creation failed: " + error.getMessage());
+        }
+    }
+
+    private void createTilemap(Path atlasPath) {
+        try {
+            Path tilemapFile = SpriteTilemapFactory.createFor(atlasPath);
+            refresh();
+            notifier.show("Tilemap created: " + tilemapFile.getFileName());
+        } catch (IOException error) {
+            notifier.show("Tilemap creation failed: " + error.getMessage());
         }
     }
 

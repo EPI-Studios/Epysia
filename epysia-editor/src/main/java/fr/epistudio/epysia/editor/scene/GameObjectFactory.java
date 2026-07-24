@@ -8,12 +8,14 @@ import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.PointLight;
 import fr.epistudio.epysia.components.SpotLight;
 import fr.epistudio.epysia.components.SpriteRenderer;
+import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.builtin.AddGameObjectCommand;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.components.BoxCollider;
 import fr.epistudio.epysia.physics.components.CapsuleCollider;
+import fr.epistudio.epysia.physics.components.TilemapCollider2D;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Vector3f;
 
@@ -72,6 +74,15 @@ public final class GameObjectFactory {
         GameObject gameObject = new GameObject(uniqueName("Sprite"));
         gameObject.addComponent(new Transform2D().setPosition(position.x, position.y));
         gameObject.addComponent(new SpriteRenderer());
+        commit(gameObject);
+        return gameObject;
+    }
+
+    public GameObject createTilemap(Vector3f position) {
+        GameObject gameObject = new GameObject(uniqueName("Tilemap"));
+        gameObject.addComponent(new Transform2D().setPosition(position.x, position.y));
+        gameObject.addComponent(new TilemapRenderer());
+        gameObject.addComponent(new TilemapCollider2D());
         commit(gameObject);
         return gameObject;
     }

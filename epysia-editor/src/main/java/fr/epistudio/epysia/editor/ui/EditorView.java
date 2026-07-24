@@ -140,6 +140,7 @@ public final class EditorView implements FrameView {
     private final ProfilerView profilerView;
     private final LightingView lightingView;
     private final SpriteEditorWindow spriteEditorWindow;
+    private final TilePalettePanel tilePalettePanel;
     private final GraphEditorView graphEditorView;
     private final SettingsDialog settingsDialog;
     private final PostEffectsSection settingsPostEffectsSection;
@@ -195,8 +196,9 @@ public final class EditorView implements FrameView {
                 this::onShaderNodePreviewsToggled);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
+        this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active);
         this.viewportView = new ViewportView(sceneHost, editorCamera, active, gizmoState,
-                shell.windowHandle(), playSession, icons, objectFactory, importPipeline);
+                shell.windowHandle(), playSession, icons, objectFactory, importPipeline, tilePalettePanel);
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
         this.spriteEditorWindow = new SpriteEditorWindow(
@@ -205,7 +207,8 @@ public final class EditorView implements FrameView {
                 new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
                 graphEditorView::open, this::selectedBrowserAssetPath,
                 new AtlasInspectorSection(spriteEditorWindow::open),
-                new TextureInspectorSection(imagePreview, this::onTextureFilterChanged));
+                new TextureInspectorSection(imagePreview, this::onTextureFilterChanged),
+                tilePalettePanel);
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
         this.meshBakeDialog = new MeshBakeDialog(toasts, this::onMeshBaked);
@@ -469,6 +472,9 @@ public final class EditorView implements FrameView {
         if (ImGui.menuItem("2D Sprite")) {
             objectFactory.createSprite(spawnPositionInFront());
         }
+        if (ImGui.menuItem("Tilemap")) {
+            objectFactory.createTilemap(spawnPositionInFront());
+        }
     }
 
     private void renderLightAndCameraItems() {
@@ -588,6 +594,23 @@ public final class EditorView implements FrameView {
         tooltip("Toggle gizmo space (X)");
         ImGui.sameLine();
         renderTwoDimensionalToggle();
+        ImGui.sameLine();
+        renderPaintToggle();
+    }
+
+    private void renderPaintToggle() {
+        boolean active = viewportView.paintEnabled();
+        if (active) {
+            ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
+        }
+        boolean clicked = ImGui.button("Paint");
+        if (active) {
+            ImGui.popStyleColor();
+        }
+        tooltip("Paint tiles onto the selected tilemap (2D view)");
+        if (clicked) {
+            viewportView.setPaintEnabled(!active);
+        }
     }
 
     private void renderTwoDimensionalToggle() {
@@ -1179,6 +1202,7 @@ public final class EditorView implements FrameView {
         thumbnailCache.shutdown();
         imagePreview.dispose();
         spriteEditorWindow.dispose();
+        tilePalettePanel.dispose();
         meshThumbnailer.shutdown();
     }
 }

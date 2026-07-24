@@ -4,6 +4,7 @@ import fr.epistudio.epysia.components.Animator;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.EditorSelection;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
@@ -67,6 +68,7 @@ public final class InspectorView {
     private final Supplier<Optional<Path>> selectedAssetPath;
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
+    private final TilePalettePanel tilePalette;
 
     public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
                          Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
@@ -75,7 +77,8 @@ public final class InspectorView {
                          Consumer<Path> onOpenGraph,
                          Supplier<Optional<Path>> selectedAssetPath,
                          AtlasInspectorSection atlasSection,
-                         TextureInspectorSection textureSection) {
+                         TextureInspectorSection textureSection,
+                         TilePalettePanel tilePalette) {
         this.activeDocument = activeDocument;
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
@@ -91,6 +94,7 @@ public final class InspectorView {
         this.selectedAssetPath = selectedAssetPath;
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
+        this.tilePalette = tilePalette;
     }
 
     private EditorSelection selection() {
@@ -221,6 +225,9 @@ public final class InspectorView {
         }
         if (component instanceof GraphComponent graph) {
             graphSection.render(graph);
+        }
+        if (component instanceof TilemapRenderer tilemapRenderer) {
+            tilePalette.render(tilemapRenderer);
         }
     }
 
