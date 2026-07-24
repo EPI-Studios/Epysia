@@ -43,7 +43,11 @@ public final class TileDataSection {
 
     private boolean renderSolidToggle(SpriteTilemap tilemap) {
         boolean solid = tilemap.isSolidTile(brush.tileIndex());
-        if (!ImGui.checkbox("Solid (full cell)", solid)) {
+        boolean clicked = ImGui.checkbox("Solid (full cell)", solid);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Blocks as a whole square. Cheapest collision, merged into big boxes.");
+        }
+        if (!clicked) {
             return false;
         }
         tilemap.setSolid(brush.tileIndex(), !solid);
@@ -77,28 +81,38 @@ public final class TileDataSection {
     }
 
     private boolean renderOrientation(SpriteTilemap tilemap, TileData data) {
-        boolean changed = false;
-        if (ImGui.checkbox("Flip H", data.flipHorizontal())) {
-            data.setFlipHorizontal(!data.flipHorizontal());
-            changed = true;
-        }
+        boolean changed = orientationToggle("Flip H", data.flipHorizontal(),
+                "Mirror this tile left to right everywhere it is painted.", data::setFlipHorizontal);
         ImGui.sameLine();
-        if (ImGui.checkbox("Flip V", data.flipVertical())) {
-            data.setFlipVertical(!data.flipVertical());
-            changed = true;
-        }
+        changed |= orientationToggle("Flip V", data.flipVertical(),
+                "Mirror this tile top to bottom.", data::setFlipVertical);
         ImGui.sameLine();
-        if (ImGui.checkbox("Transpose", data.transpose())) {
-            data.setTranspose(!data.transpose());
-            changed = true;
-        }
+        changed |= orientationToggle("Transpose", data.transpose(),
+                "Mirror across the diagonal, which rotates a corner tile.", data::setTranspose);
         return touchIfChanged(tilemap, changed);
+    }
+
+    private static boolean orientationToggle(String label, boolean current, String tooltip,
+                                             java.util.function.Consumer<Boolean> assign) {
+        boolean clicked = ImGui.checkbox(label, current);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(tooltip);
+        }
+        if (clicked) {
+            assign.accept(!current);
+        }
+        return clicked;
     }
 
     private boolean renderProbability(SpriteTilemap tilemap, TileData data) {
         probability.set(data.probability());
         ImGui.setNextItemWidth(120.0f);
-        if (!ImGui.inputFloat("Probability", probability)) {
+        boolean edited = ImGui.inputFloat("Probability", probability);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Relative weight when a terrain brush has several matching tiles.\n"
+                    + "Lower it to make a variant rare.");
+        }
+        if (!edited) {
             return false;
         }
         data.setProbability(probability.get());
@@ -111,7 +125,12 @@ public final class TileDataSection {
             ImGui.textDisabled("Add a terrain to enable autotiling for this tile.");
             return false;
         }
-        ImGui.textDisabled("Terrain bits: click sets the selected terrain, right click clears");
+        ImGui.textDisabled("Terrain bits");
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("The middle square says which terrain this tile belongs to.\n"
+                    + "The eight around say which terrain it connects to on that side.\n"
+                    + "Left click assigns the selected terrain, right click clears.");
+        }
         boolean changed = false;
         for (int row = 0; row < 3; row++) {
             changed |= renderBitRow(tilemap, data, row);
@@ -152,7 +171,13 @@ public final class TileDataSection {
         boolean clicked = ImGui.button(currentTerrain == TileData.NO_TERRAIN ? " " : Integer.toString(currentTerrain),
                 BIT_BUTTON_SIZE, BIT_BUTTON_SIZE);
         ImGui.popStyleColor();
-        boolean cleared = ImGui.isItemHovered() && ImGui.isMouseClicked(imgui.flag.ImGuiMouseButton.Right);
+        boolean hovered = ImGui.isItemHovered();
+        if (hovered) {
+            ImGui.setTooltip(currentTerrain == TileData.NO_TERRAIN
+                    ? "No terrain here. Left click to assign the selected one."
+                    : "Terrain " + currentTerrain + ". Right click to clear.");
+        }
+        boolean cleared = hovered && ImGui.isMouseClicked(imgui.flag.ImGuiMouseButton.Right);
         ImGui.popID();
         if (clicked) {
             assign.accept(brush.terrainIndex());
@@ -178,8 +203,13 @@ public final class TileDataSection {
     private boolean renderScenePath(SpriteTilemap tilemap) {
         scenePath.set(tilemap.sceneForTile(brush.tileIndex()).orElse(""));
         ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
-        if (!ImGui.inputTextWithHint("##tileScene", "Prefab spawned on this tile", scenePath,
-                imgui.flag.ImGuiInputTextFlags.EnterReturnsTrue)) {
+        boolean committed = ImGui.inputTextWithHint("##tileScene", "Prefab spawned on this tile", scenePath,
+                imgui.flag.ImGuiInputTextFlags.EnterReturnsTrue);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Path to an .epyprefab. Add a Tilemap Scene Spawner to the object\n"
+                    + "and every cell painted with this tile becomes that prefab at load.");
+        }
+        if (!committed) {
             return false;
         }
         tilemap.setSceneForTile(brush.tileIndex(), scenePath.get());
@@ -190,6 +220,9 @@ public final class TileDataSection {
         data.customData().forEach((key, value) -> ImGui.textDisabled(key + " = " + value));
         ImGui.setNextItemWidth(90.0f);
         ImGui.inputText("##customKey", customKey);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Free form data your scripts can read with renderer.tileValueAt(x, y, key).");
+        }
         ImGui.sameLine();
         ImGui.setNextItemWidth(90.0f);
         ImGui.inputText("##customValue", customValue);

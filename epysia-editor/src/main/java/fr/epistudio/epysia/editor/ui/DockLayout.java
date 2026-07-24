@@ -51,5 +51,6 @@ public final class DockLayout {
         imgui.internal.ImGui.dockBuilderDockWindow(GraphEditorView.WINDOW_TITLE, centerId.get());
         imgui.internal.ImGui.dockBuilderDockWindow(ConsoleView.WINDOW_TITLE, bottomId.get());
         imgui.internal.ImGui.dockBuilderDockWindow(AssetBrowserView.WINDOW_TITLE, bottomId.get());
+        imgui.internal.ImGui.dockBuilderDockWindow(TilemapDockView.WINDOW_TITLE, bottomId.get());
     }
 }

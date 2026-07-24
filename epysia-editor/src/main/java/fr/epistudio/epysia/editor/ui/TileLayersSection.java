@@ -35,7 +35,11 @@ public final class TileLayersSection {
     }
 
     private boolean renderAddButton(SpriteTilemap tilemap) {
-        if (!icons.iconButton("addLayer", EditorIcon.ADD, BUTTON_SIZE)) {
+        boolean clicked = icons.iconButton("addLayer", EditorIcon.ADD, BUTTON_SIZE);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Add a layer. Lower sorting order draws first, so put the background there.");
+        }
+        if (!clicked) {
             return false;
         }
         tilemap.addLayer("Layer " + (tilemap.layerCount() + 1));
@@ -59,7 +63,11 @@ public final class TileLayersSection {
 
     private boolean renderVisibilityToggle(SpriteTilemap tilemap, TilemapLayer layer) {
         EditorIcon icon = layer.visible() ? EditorIcon.VISIBILITY_VISIBLE : EditorIcon.VISIBILITY_HIDDEN;
-        if (!icons.iconButton("visible", icon, BUTTON_SIZE)) {
+        boolean clicked = icons.iconButton("visible", icon, BUTTON_SIZE);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(layer.visible() ? "Hide this layer" : "Show this layer");
+        }
+        if (!clicked) {
             return false;
         }
         layer.setVisible(!layer.visible());
@@ -68,7 +76,14 @@ public final class TileLayersSection {
     }
 
     private boolean renderCollisionToggle(SpriteTilemap tilemap, TilemapLayer layer) {
-        if (!icons.toggleButton("collision", EditorIcon.COLLISION_SHAPE_3D, BUTTON_SIZE, layer.collisionEnabled())) {
+        boolean clicked = icons.toggleButton("collision", EditorIcon.COLLISION_SHAPE_3D, BUTTON_SIZE,
+                layer.collisionEnabled());
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(layer.collisionEnabled()
+                    ? "This layer builds physics. Turn it off for pure decoration."
+                    : "This layer is decoration only.");
+        }
+        if (!clicked) {
             return false;
         }
         layer.setCollisionEnabled(!layer.collisionEnabled());
@@ -82,6 +97,9 @@ public final class TileLayersSection {
         }
         if (ImGui.selectable(layer.name(), layerIndex == brush.layerIndex(), 0, 120.0f, 0.0f)) {
             brush.setLayerIndex(layerIndex);
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Click to paint on it, double click to rename.");
         }
         if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(0)) {
             renamingLayer = layerIndex;

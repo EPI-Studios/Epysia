@@ -4,15 +4,17 @@ import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasGrid;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
+import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
+import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
-import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
 import fr.epistudio.epysia.editor.assets.TilemapDiskFile;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.render.opengl.OpenGlRenderBackend;
+import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiMouseButton;
@@ -20,43 +22,37 @@ import imgui.flag.ImGuiMouseButton;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
 public final class TilePalettePanel {
 
     private static final float MAXIMUM_IMAGE_HEIGHT = 260.0f;
-    private static final float SOLID_MARKER_INSET = 3.0f;
-    private static final float SOLID_MARKER_SIZE = 8.0f;
     private static final int COLOR_GRID_LINE = 0x66FFFFFF;
     private static final int COLOR_SELECTED_FILL = 0x40CC7A00;
     private static final int COLOR_SELECTED_BORDER = 0xFFCC7A00;
-    private static final int COLOR_SOLID_MARKER = 0xE03355FF;
-    private static final int COLOR_SHAPE_MARKER = 0xE000CCFF;
 
     private final ImagePreviewTexture preview;
     private final EngineServices services;
     private final Supplier<SceneDocument> activeDocument;
-    private final TileBrush brush = new TileBrush();
-    private final TileToolBar toolBar;
-    private final TileLayersSection layersSection;
-    private final TileTerrainsSection terrainsSection;
-    private final TileDataSection dataSection;
+    private final TileBrush brush;
     private String saveError = "";
 
     public TilePalettePanel(OpenGlRenderBackend backend, EngineServices services,
-                            Supplier<SceneDocument> activeDocument, IconWidgets icons) {
+                            Supplier<SceneDocument> activeDocument, TileBrush brush) {
         this.preview = new ImagePreviewTexture(backend);
         this.services = services;
         this.activeDocument = activeDocument;
-        this.toolBar = new TileToolBar(icons, brush);
-        this.layersSection = new TileLayersSection(icons, brush);
-        this.terrainsSection = new TileTerrainsSection(icons, brush);
-        this.dataSection = new TileDataSection(brush);
+        this.brush = brush;
     }
 
     public TileBrush brush() {
         return brush;
+    }
+
+    public Optional<ImagePreviewTexture.PreviewImage> atlasImage(SpriteTilemap tilemap, SpriteAtlas atlas) {
+        return texturePreview(tilemap, atlas);
     }
 
     public void render(TilemapRenderer renderer) {
@@ -67,22 +63,8 @@ public final class TilePalettePanel {
             ImGui.textDisabled("Assign a tilemap backed by a grid atlas to paint tiles.");
             return;
         }
-        ImGui.spacing();
-        ImGui.textDisabled("Tile Palette");
-        ImGui.separator();
-        renderControls(tilemap.get(), renderer);
         renderPalette(tilemap.get(), atlas.get());
-    }
-
-    private void renderControls(SpriteTilemap tilemap, TilemapRenderer renderer) {
-        toolBar.render(tilemap);
-        boolean changed = layersSection.render(tilemap);
-        changed |= terrainsSection.render(tilemap);
-        changed |= dataSection.render(tilemap);
-        if (changed) {
-            activeDocument.get().markDirty();
-        }
-        renderSaveRow(tilemap, renderer);
+        renderSaveRow(tilemap.get(), renderer);
     }
 
     private void renderSaveRow(SpriteTilemap tilemap, TilemapRenderer renderer) {
@@ -127,9 +109,9 @@ public final class TilePalettePanel {
         SpriteAtlasGrid grid = atlas.grid().get();
         AtlasCanvas canvas = drawImage(image.get());
         drawGrid(canvas, grid);
-        drawSolidMarkers(canvas, tilemap, grid);
-        drawShapeMarkers(canvas, tilemap, grid);
+        drawTileMarkers(canvas, tilemap, grid);
         drawBrushHighlight(canvas, grid);
+        describeHoveredTile(canvas, tilemap, grid);
         handlePick(canvas, grid);
     }
 
@@ -178,35 +160,39 @@ public final class TilePalettePanel {
         }
     }
 
-    private static void drawSolidMarkers(AtlasCanvas canvas, SpriteTilemap tilemap, SpriteAtlasGrid grid) {
+    private static void drawTileMarkers(AtlasCanvas canvas, SpriteTilemap tilemap, SpriteAtlasGrid grid) {
         int columns = Math.max(1, grid.columns());
         int rows = Math.max(1, grid.rows());
-        for (int tileIndex : tilemap.solidTiles()) {
-            if (tileIndex < 0 || tileIndex >= columns * rows) {
-                continue;
-            }
-            float cellWidth = canvas.width() / columns;
-            float cellHeight = canvas.height() / rows;
-            float x = canvas.originX() + (tileIndex % columns) * cellWidth + SOLID_MARKER_INSET;
-            float y = canvas.originY() + (tileIndex / columns) * cellHeight + SOLID_MARKER_INSET;
-            ImGui.getWindowDrawList().addRectFilled(x, y, x + SOLID_MARKER_SIZE,
-                    y + SOLID_MARKER_SIZE, COLOR_SOLID_MARKER);
+        for (int tileIndex = 0; tileIndex < columns * rows; tileIndex++) {
+            drawMarkersForTile(canvas, tilemap, tileIndex, columns, rows);
         }
     }
 
-    private static void drawShapeMarkers(AtlasCanvas canvas, SpriteTilemap tilemap, SpriteAtlasGrid grid) {
-        int columns = Math.max(1, grid.columns());
-        int rows = Math.max(1, grid.rows());
-        for (Integer tileIndex : tilemap.tileDataByIndex().keySet()) {
-            if (tileIndex < 0 || tileIndex >= columns * rows || tilemap.collisionShapesOf(tileIndex).isEmpty()) {
-                continue;
-            }
-            float cellWidth = canvas.width() / columns;
-            float cellHeight = canvas.height() / rows;
-            float x = canvas.originX() + (tileIndex % columns) * cellWidth + SOLID_MARKER_INSET;
-            float y = canvas.originY() + (tileIndex / columns + 1) * cellHeight - SOLID_MARKER_INSET;
-            ImGui.getWindowDrawList().addTriangleFilled(x, y, x + SOLID_MARKER_SIZE, y,
-                    x + SOLID_MARKER_SIZE, y - SOLID_MARKER_SIZE, COLOR_SHAPE_MARKER);
+    private static void drawMarkersForTile(AtlasCanvas canvas, SpriteTilemap tilemap, int tileIndex,
+                                           int columns, int rows) {
+        float cellWidth = canvas.width() / columns;
+        float cellHeight = canvas.height() / rows;
+        float minX = canvas.originX() + (tileIndex % columns) * cellWidth;
+        float minY = canvas.originY() + (tileIndex / columns) * cellHeight;
+        float maxX = minX + cellWidth;
+        float maxY = minY + cellHeight;
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        List<TileCollisionShape> shapes = tilemap.collisionShapesOf(tileIndex);
+        if (!shapes.isEmpty()) {
+            TileMarkerPainter.drawCollisionShapes(drawList, shapes, minX, minY, maxX, maxY);
+        } else if (tilemap.isSolidTile(tileIndex)) {
+            TileMarkerPainter.drawSolidMarker(drawList, minX, minY, maxX, maxY);
+        }
+        drawStatusMarkers(drawList, tilemap, tileIndex, minX, minY, maxX, maxY);
+    }
+
+    private static void drawStatusMarkers(ImDrawList drawList, SpriteTilemap tilemap, int tileIndex,
+                                          float minX, float minY, float maxX, float maxY) {
+        if (tilemap.existingTileData(tileIndex).map(TileData::participatesInTerrain).orElse(false)) {
+            TileMarkerPainter.drawTerrainDot(drawList, minX, minY, maxX, maxY);
+        }
+        if (tilemap.sceneForTile(tileIndex).isPresent()) {
+            TileMarkerPainter.drawSceneMarker(drawList, minX, minY, maxX, maxY);
         }
     }
 
@@ -222,6 +208,30 @@ public final class TilePalettePanel {
         float y = canvas.originY() + (brush.tileIndex() / columns) * cellHeight;
         ImGui.getWindowDrawList().addRectFilled(x, y, x + cellWidth, y + cellHeight, COLOR_SELECTED_FILL);
         ImGui.getWindowDrawList().addRect(x, y, x + cellWidth, y + cellHeight, COLOR_SELECTED_BORDER);
+    }
+
+    private static void describeHoveredTile(AtlasCanvas canvas, SpriteTilemap tilemap, SpriteAtlasGrid grid) {
+        if (!ImGui.isItemHovered()) {
+            return;
+        }
+        int tileIndex = canvas.cellIndexAt(ImGui.getMousePosX(), ImGui.getMousePosY(),
+                Math.max(1, grid.columns()), Math.max(1, grid.rows()));
+        ImGui.setTooltip("Tile " + tileIndex + "\n" + describeTile(tilemap, tileIndex));
+    }
+
+    private static String describeTile(SpriteTilemap tilemap, int tileIndex) {
+        StringBuilder description = new StringBuilder();
+        if (!tilemap.collisionShapesOf(tileIndex).isEmpty()) {
+            description.append("cyan outline: custom collision shape\n");
+        } else if (tilemap.isSolidTile(tileIndex)) {
+            description.append("red outline: whole cell is solid\n");
+        }
+        if (tilemap.existingTileData(tileIndex).map(TileData::participatesInTerrain).orElse(false)) {
+            description.append("green dot: belongs to a terrain\n");
+        }
+        tilemap.sceneForTile(tileIndex).ifPresent(path ->
+                description.append("magenta diamond: spawns ").append(path).append('\n'));
+        return description.isEmpty() ? "no collision, no terrain" : description.toString().strip();
     }
 
     private void handlePick(AtlasCanvas canvas, SpriteAtlasGrid grid) {

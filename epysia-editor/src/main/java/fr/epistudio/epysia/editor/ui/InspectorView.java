@@ -68,7 +68,7 @@ public final class InspectorView {
     private final Supplier<Optional<Path>> selectedAssetPath;
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
-    private final TilePalettePanel tilePalette;
+    private final Runnable openTilemapDock;
 
     public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
                          Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
@@ -78,7 +78,7 @@ public final class InspectorView {
                          Supplier<Optional<Path>> selectedAssetPath,
                          AtlasInspectorSection atlasSection,
                          TextureInspectorSection textureSection,
-                         TilePalettePanel tilePalette) {
+                         Runnable openTilemapDock) {
         this.activeDocument = activeDocument;
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
@@ -94,7 +94,7 @@ public final class InspectorView {
         this.selectedAssetPath = selectedAssetPath;
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
-        this.tilePalette = tilePalette;
+        this.openTilemapDock = openTilemapDock;
     }
 
     private EditorSelection selection() {
@@ -227,8 +227,27 @@ public final class InspectorView {
             graphSection.render(graph);
         }
         if (component instanceof TilemapRenderer tilemapRenderer) {
-            tilePalette.render(tilemapRenderer);
+            renderTilemapSummary(tilemapRenderer);
         }
+    }
+
+    private void renderTilemapSummary(TilemapRenderer renderer) {
+        ImGui.spacing();
+        ImGui.separator();
+        renderer.tilemapValue().ifPresentOrElse(InspectorView::renderTilemapFacts,
+                () -> ImGui.textDisabled("No tilemap asset assigned yet."));
+        if (ImGui.button("Open the TileMap panel")) {
+            openTilemapDock.run();
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Tools, palette, layers, terrains and per tile settings live in the bottom dock.");
+        }
+    }
+
+    private static void renderTilemapFacts(fr.epistudio.epysia.assets.epytilemap.SpriteTilemap tilemap) {
+        ImGui.textDisabled(tilemap.width() + " x " + tilemap.height() + " cells");
+        ImGui.textDisabled(tilemap.layerCount() + " layer(s), " + tilemap.terrains().size() + " terrain(s)");
+        ImGui.textDisabled(tilemap.solidTiles().size() + " solid tile(s)");
     }
 
     private void renderCameraPostEffects(Camera3D camera) {

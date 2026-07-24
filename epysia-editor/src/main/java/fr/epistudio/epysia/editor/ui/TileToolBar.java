@@ -10,7 +10,8 @@ import imgui.ImGui;
 
 public final class TileToolBar {
 
-    private static final float BUTTON_SIZE = 18.0f;
+    private static final float BUTTON_SIZE = 24.0f;
+    private static final int TOOLS_PER_ROW = 2;
 
     private final IconWidgets icons;
     private final TileBrush brush;
@@ -20,37 +21,49 @@ public final class TileToolBar {
         this.brush = brush;
     }
 
-    public void render(SpriteTilemap tilemap) {
-        for (TileTool tool : TileTool.values()) {
-            renderToolButton(tool);
+    public boolean renderTools() {
+        boolean picked = false;
+        TileTool[] tools = TileTool.values();
+        for (int index = 0; index < tools.length; index++) {
+            picked |= renderToolButton(tools[index]);
+            if (index % TOOLS_PER_ROW != TOOLS_PER_ROW - 1) {
+                ImGui.sameLine();
+            }
         }
         ImGui.newLine();
-        renderClipboardState();
-        renderLayerSelector(tilemap);
+        return picked;
     }
 
-    private void renderToolButton(TileTool tool) {
-        if (icons.toggleButton("tool" + tool.name(), tool.icon(), BUTTON_SIZE, brush.tool() == tool)) {
+    private boolean renderToolButton(TileTool tool) {
+        boolean clicked = icons.toggleButton("tool" + tool.name(), tool.icon(), BUTTON_SIZE, brush.tool() == tool);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(tool.label() + "  (" + tool.shortcut() + ")\n" + tool.hint());
+        }
+        if (clicked) {
             brush.setTool(tool);
         }
+        return clicked;
+    }
+
+    public void renderClipboardState() {
+        ImGui.textDisabled(brush.tool().label());
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(tool.label());
+            ImGui.setTooltip(brush.tool().hint());
         }
-        ImGui.sameLine();
+        ImGui.textDisabled(brush.clipboardFilled() ? brush.clipboard().size() + " copied" : "clipboard empty");
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Select cells with the Select tool, then C to copy, V to paste, Delete to clear.");
+        }
     }
 
-    private void renderClipboardState() {
-        icons.draw(EditorIcon.ACTION_COPY, BUTTON_SIZE);
-        ImGui.sameLine();
-        ImGui.textDisabled(brush.clipboardFilled()
-                ? brush.clipboard().size() + " cells copied"
-                : "Select cells then press C to copy");
-    }
-
-    private void renderLayerSelector(SpriteTilemap tilemap) {
+    public void renderLayerSelector(SpriteTilemap tilemap) {
         ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
         TilemapLayer active = tilemap.layer(brush.layerIndex());
-        if (!ImGui.beginCombo("##paintLayer", "Painting on " + active.name())) {
+        boolean open = ImGui.beginCombo("##paintLayer", "Painting on " + active.name());
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Every stroke lands on this layer.");
+        }
+        if (!open) {
             return;
         }
         for (int layerIndex = 0; layerIndex < tilemap.layerCount(); layerIndex++) {
@@ -59,5 +72,12 @@ public final class TileToolBar {
             }
         }
         ImGui.endCombo();
+    }
+
+    public void renderMatchModeLegend() {
+        icons.draw(EditorIcon.TERRAIN_CONNECT, BUTTON_SIZE);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Terrain brush picks the tile that matches its neighbours.");
+        }
     }
 }

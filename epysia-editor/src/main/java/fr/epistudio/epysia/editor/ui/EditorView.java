@@ -12,6 +12,7 @@ import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.tilemap.TileBrush;
 import fr.epistudio.epysia.editor.importer.AssetImportPipeline;
 import fr.epistudio.epysia.editor.importer.AssetImporterRegistry;
 import fr.epistudio.epysia.editor.importer.GltfAssetImporter;
@@ -147,7 +148,9 @@ public final class EditorView implements FrameView {
     private final ProfilerView profilerView;
     private final LightingView lightingView;
     private final SpriteEditorWindow spriteEditorWindow;
+    private final TileBrush tileBrush = new TileBrush();
     private final TilePalettePanel tilePalettePanel;
+    private final TilemapDockView tilemapDockView;
     private final GraphEditorView graphEditorView;
     private final SettingsDialog settingsDialog;
     private final PostEffectsSection settingsPostEffectsSection;
@@ -203,19 +206,21 @@ public final class EditorView implements FrameView {
                 this::onShaderNodePreviewsToggled);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
-        this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, icons);
+        this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, tileBrush);
         this.viewportView = new ViewportView(sceneHost, editorCamera, active, gizmoState,
                 shell.windowHandle(), playSession, icons, objectFactory, importPipeline, tilePalettePanel);
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
         this.spriteEditorWindow = new SpriteEditorWindow(
                 new ImagePreviewTexture(sceneHost.backend()), this::onAtlasSaved);
+        this.tilemapDockView = new TilemapDockView(active, sceneHost.engine(), icons, tilePalettePanel,
+                viewportView::enablePainting, editorCamera::twoDimensional);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
                 new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
                 graphEditorView::open, this::selectedBrowserAssetPath,
                 new AtlasInspectorSection(spriteEditorWindow::open),
                 new TextureInspectorSection(imagePreview, this::onTextureFilterChanged),
-                tilePalettePanel);
+                tilemapDockView::focus);
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
         this.meshBakeDialog = new MeshBakeDialog(toasts, this::onMeshBaked);
@@ -350,6 +355,7 @@ public final class EditorView implements FrameView {
         profilerView.render();
         lightingView.render();
         spriteEditorWindow.render();
+        tilemapDockView.render();
     }
 
     private void renderDialogs() {
@@ -527,6 +533,9 @@ public final class EditorView implements FrameView {
         if (ImGui.menuItem("Lighting", "", lightingView.isVisible())) {
             lightingView.setVisible(!lightingView.isVisible());
         }
+        if (ImGui.menuItem(TilemapDockView.WINDOW_TITLE, "", tilemapDockView.isVisible())) {
+            tilemapDockView.setVisible(!tilemapDockView.isVisible());
+        }
         if (ImGui.menuItem(SpriteEditorWindow.WINDOW_TITLE, "", spriteEditorWindow.isVisible())) {
             spriteEditorWindow.setVisible(!spriteEditorWindow.isVisible());
         }
@@ -604,6 +613,17 @@ public final class EditorView implements FrameView {
         renderTwoDimensionalToggle();
         ImGui.sameLine();
         renderPaintToggle();
+        ImGui.sameLine();
+        renderTileCollisionToggle();
+    }
+
+    private void renderTileCollisionToggle() {
+        boolean active = viewportView.showTileCollision();
+        if (icons.toggleButton("tool-tile-collision", EditorIcon.COLLISION_SHAPE_3D,
+                EditorStyle.ICON_SIZE_TOOLBAR, active)) {
+            viewportView.setShowTileCollision(!active);
+        }
+        tooltip("Show tile collision shapes over the map (2D view)");
     }
 
     private void renderPaintToggle() {

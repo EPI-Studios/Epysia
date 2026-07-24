@@ -48,6 +48,7 @@ public final class TilePaintController {
         if (!hovered) {
             return;
         }
+        handleToolShortcuts();
         handleClipboardKeys(tilemap, cellX, cellY);
         begin(tilemap, cellX, cellY);
     }
@@ -194,6 +195,31 @@ public final class TilePaintController {
         }
         solver.fillConnect(new ArrayList<>(terrainCells), brush.terrainIndex())
                 .forEach((cell, tileIndex) -> recordEdit(cell.cellX(), cell.cellY(), tileIndex));
+    }
+
+    private void handleToolShortcuts() {
+        if (ImGui.getIO().getWantTextInput() || ImGui.getIO().getKeyCtrl()) {
+            return;
+        }
+        for (TileTool tool : TileTool.values()) {
+            if (ImGui.isKeyPressed(shortcutKeyOf(tool))) {
+                brush.setTool(tool);
+                return;
+            }
+        }
+    }
+
+    private static int shortcutKeyOf(TileTool tool) {
+        return switch (tool) {
+            case PAINT -> ImGuiKey.B;
+            case ERASE -> ImGuiKey.E;
+            case LINE -> ImGuiKey.L;
+            case RECTANGLE -> ImGuiKey.R;
+            case BUCKET -> ImGuiKey.G;
+            case PICK -> ImGuiKey.I;
+            case SELECT -> ImGuiKey.S;
+            case TERRAIN -> ImGuiKey.T;
+        };
     }
 
     private void handleClipboardKeys(SpriteTilemap tilemap, int cellX, int cellY) {

@@ -129,6 +129,7 @@ public final class ViewportView {
     private Transform2D dragPlanarTransform;
     private boolean showGrid = true;
     private boolean showColliderWireframes;
+    private boolean showTileCollision;
     private float overlayThicknessMultiplier = 1.0f;
     private float gridFadeDistance = GridOverlay.DEFAULT_MINOR_FADE_DISTANCE;
     private int supersampleFactor = DEFAULT_SUPERSAMPLE_FACTOR;
@@ -162,6 +163,18 @@ public final class ViewportView {
 
     public void setPaintEnabled(boolean enabled) {
         paintEnabled = enabled;
+    }
+
+    public void enablePainting() {
+        paintEnabled = true;
+    }
+
+    public boolean showTileCollision() {
+        return showTileCollision;
+    }
+
+    public void setShowTileCollision(boolean show) {
+        showTileCollision = show;
     }
 
     public boolean showGrid() {
@@ -301,6 +314,26 @@ public final class ViewportView {
             drawColliderOverlay(imageX, imageY, width, height);
         }
         drawSelectionOutline(imageX, imageY, width, height);
+        drawTileCollisionOverlay(imageX, imageY, width, height);
+    }
+
+    private void drawTileCollisionOverlay(float imageX, float imageY, int width, int height) {
+        if (!showTileCollision || !editorCamera.twoDimensional()) {
+            return;
+        }
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {
+            tilemapOf(gameObject).ifPresent(tilemap -> gameObject.getComponent(Transform2D.class)
+                    .ifPresent(transform -> TilemapCollisionOverlay.draw(transform, tilemap, drawList,
+                            (target, localX, localY) ->
+                                    localToScreen(target, localX, localY, imageX, imageY, width, height))));
+        }
+    }
+
+    private Optional<SpriteTilemap> tilemapOf(GameObject gameObject) {
+        Optional<TilemapRenderer> renderer = gameObject.getComponent(TilemapRenderer.class);
+        renderer.ifPresent(found -> found.refresh(sceneHost.engine()));
+        return renderer.flatMap(TilemapRenderer::tilemapValue);
     }
 
     private float overlayThicknessScale() {

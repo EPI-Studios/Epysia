@@ -44,15 +44,31 @@ public final class TileTerrainsSection {
 
     private boolean renderMatchModeButton(SpriteTilemap tilemap, TerrainMatchMode mode, EditorIcon icon) {
         boolean active = tilemap.terrainMatchMode() == mode;
-        if (!icons.toggleButton("mode" + mode.name(), icon, BUTTON_SIZE, active)) {
+        boolean clicked = icons.toggleButton("mode" + mode.name(), icon, BUTTON_SIZE, active);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(tooltipFor(mode));
+        }
+        if (!clicked) {
             return false;
         }
         tilemap.setTerrainMatchMode(mode);
         return true;
     }
 
+    private static String tooltipFor(TerrainMatchMode mode) {
+        return switch (mode) {
+            case CORNERS_AND_SIDES -> "Tiles match on all eight neighbours. Richest, needs the most tiles.";
+            case CORNERS -> "Tiles match on their four corners only.";
+            case SIDES -> "Tiles match on their four sides only. Simplest, works with a sixteen tile blob.";
+        };
+    }
+
     private boolean renderAddButton(SpriteTilemap tilemap) {
-        if (!icons.iconButton("addTerrain", EditorIcon.ADD, BUTTON_SIZE)) {
+        boolean clicked = icons.iconButton("addTerrain", EditorIcon.ADD, BUTTON_SIZE);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Add a terrain, then mark which sides of each tile belong to it in Setup.");
+        }
+        if (!clicked) {
             return false;
         }
         tilemap.addTerrain(TerrainDefinition.named("Terrain " + tilemap.terrains().size()));
