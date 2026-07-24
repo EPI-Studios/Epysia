@@ -168,7 +168,7 @@ public final class EditorScene3DHost {
         List<RenderSystem> current = engine.renderSystems();
         for (RenderSystem system : current) {
             if (system != meshRenderSystem && system != vfxRenderSystem && system != spriteRenderSystem
-                    && system != postProcessSystem) {
+                    && system != tilemapRenderSystem && system != postProcessSystem) {
                 engine.removeRenderSystem(system);
             }
         }
