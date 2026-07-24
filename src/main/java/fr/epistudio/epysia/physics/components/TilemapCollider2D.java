@@ -3,6 +3,7 @@ package fr.epistudio.epysia.physics.components;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
+import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TilemapSolidRectangles;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
@@ -71,7 +72,42 @@ public final class TilemapCollider2D extends Collider2D {
         for (TilemapSolidRectangles.TileRectangle rectangle : TilemapSolidRectangles.merge(map)) {
             placements.add(placementOf(map, rectangle));
         }
+        appendPolygonPlacements(map, placements);
         return placements;
+    }
+
+    private void appendPolygonPlacements(SpriteTilemap map, List<ShapePlacement> placements) {
+        for (int cellY = 0; cellY < map.height(); cellY++) {
+            for (int cellX = 0; cellX < map.width(); cellX++) {
+                for (TileCollisionShape shape : map.cellCollisionShapes(cellX, cellY)) {
+                    placements.add(polygonPlacement(map, shape, cellX, cellY));
+                }
+            }
+        }
+    }
+
+    private ShapePlacement polygonPlacement(SpriteTilemap map, TileCollisionShape shape, int cellX, int cellY) {
+        Vector2f origin = offset().add(cellX * map.cellWidth(), cellY * map.cellHeight(), new Vector2f());
+        return new ShapePlacement(new ShapeDescriptor.ConvexHull(extrude(shape, map)), origin);
+    }
+
+    private static float[] extrude(TileCollisionShape shape, SpriteTilemap map) {
+        List<Vector2f> points = shape.points();
+        float[] vertices = new float[points.size() * 6];
+        for (int index = 0; index < points.size(); index++) {
+            Vector2f point = points.get(index);
+            float x = point.x * map.cellWidth();
+            float y = point.y * map.cellHeight();
+            writeVertex(vertices, index * 6, x, y, -PLANE_HALF_DEPTH);
+            writeVertex(vertices, index * 6 + 3, x, y, PLANE_HALF_DEPTH);
+        }
+        return vertices;
+    }
+
+    private static void writeVertex(float[] vertices, int position, float x, float y, float z) {
+        vertices[position] = x;
+        vertices[position + 1] = y;
+        vertices[position + 2] = z;
     }
 
     private ShapePlacement placementOf(SpriteTilemap map, TilemapSolidRectangles.TileRectangle rectangle) {

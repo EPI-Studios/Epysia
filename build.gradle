@@ -91,6 +91,14 @@ tasks.register('runTilemapRenderCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runTerrainAutotileCheck', JavaExec) {
+    group = 'verification'
+    description = 'Paints a terrain block and proves the solver picks matching edge and corner tiles.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.TerrainAutotileCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runTilemapPhysicsCheck', JavaExec) {
     group = 'verification'
     description = 'Drops a plane-locked 2D body onto a solid tilemap row merged into one static box.'

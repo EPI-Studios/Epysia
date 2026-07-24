@@ -3,6 +3,7 @@ package fr.epistudio.epysia.render.sprite;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasRegion;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
+import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.gameobjects.GameObject;
@@ -25,11 +26,13 @@ import fr.epistudio.epysia.scene.Scene;
 import org.joml.Matrix3x2f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -40,6 +43,9 @@ import java.util.Set;
 public final class TilemapRenderSystem implements RenderSystem {
 
     static final int CHUNK_SIZE = 16;
+
+    private static final float[] CORNERS_X = {0.0f, 1.0f, 1.0f, 0.0f};
+    private static final float[] CORNERS_Y = {0.0f, 0.0f, 1.0f, 1.0f};
 
     private record ChunkMesh(MeshHandle mesh) {
     }
@@ -61,6 +67,7 @@ public final class TilemapRenderSystem implements RenderSystem {
     private final Map<TilemapRenderer, RendererGeometry> geometryByRenderer = new IdentityHashMap<>();
     private final Set<TilemapRenderer> seenRenderers = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<TilemapRenderer> warnedEmptyRenderers = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Vector4f scratchModulate = new Vector4f();
     private final Vector2f scratchCorner = new Vector2f();
 
     private RenderBackend backend;
@@ -193,23 +200,39 @@ public final class TilemapRenderSystem implements RenderSystem {
                 * SpriteRenderSystem.VERTICES_PER_QUAD * SpriteRenderSystem.VERTEX_BYTES);
         int chunkColumns = (tilemap.width() + CHUNK_SIZE - 1) / CHUNK_SIZE;
         int chunkRows = (tilemap.height() + CHUNK_SIZE - 1) / CHUNK_SIZE;
-        for (int chunkY = 0; chunkY < chunkRows; chunkY++) {
-            for (int chunkX = 0; chunkX < chunkColumns; chunkX++) {
-                int quadCount = appendChunk(vertices, transform, renderer, tilemap, atlas, chunkX, chunkY);
-                if (quadCount > 0) {
-                    chunkQuadCounts.add(quadCount);
+        for (int layerIndex : drawOrder(tilemap)) {
+            for (int chunkY = 0; chunkY < chunkRows; chunkY++) {
+                for (int chunkX = 0; chunkX < chunkColumns; chunkX++) {
+                    int quadCount = appendChunk(vertices, transform, renderer, tilemap, atlas,
+                            layerIndex, chunkX, chunkY);
+                    if (quadCount > 0) {
+                        chunkQuadCounts.add(quadCount);
+                    }
                 }
             }
         }
         return vertices.flip();
     }
 
+    private static List<Integer> drawOrder(SpriteTilemap tilemap) {
+        List<Integer> order = new ArrayList<>();
+        for (int layerIndex = 0; layerIndex < tilemap.layerCount(); layerIndex++) {
+            if (tilemap.layer(layerIndex).visible()) {
+                order.add(layerIndex);
+            }
+        }
+        order.sort(Comparator.comparingInt(index -> tilemap.layer(index).sortingOrder()));
+        return order;
+    }
+
     private static int countFilledCells(SpriteTilemap tilemap) {
         int filled = 0;
-        for (int cellY = 0; cellY < tilemap.height(); cellY++) {
-            for (int cellX = 0; cellX < tilemap.width(); cellX++) {
-                if (tilemap.tileIndex(cellX, cellY) != SpriteTilemap.EMPTY_TILE_INDEX) {
-                    filled++;
+        for (int layerIndex = 0; layerIndex < tilemap.layerCount(); layerIndex++) {
+            for (int cellY = 0; cellY < tilemap.height(); cellY++) {
+                for (int cellX = 0; cellX < tilemap.width(); cellX++) {
+                    if (tilemap.tileIndex(layerIndex, cellX, cellY) != SpriteTilemap.EMPTY_TILE_INDEX) {
+                        filled++;
+                    }
                 }
             }
         }
@@ -217,13 +240,13 @@ public final class TilemapRenderSystem implements RenderSystem {
     }
 
     private int appendChunk(ByteBuffer vertices, Transform2D transform, TilemapRenderer renderer,
-                            SpriteTilemap tilemap, SpriteAtlas atlas, int chunkX, int chunkY) {
+                            SpriteTilemap tilemap, SpriteAtlas atlas, int layerIndex, int chunkX, int chunkY) {
         int quadCount = 0;
         int endX = Math.min((chunkX + 1) * CHUNK_SIZE, tilemap.width());
         int endY = Math.min((chunkY + 1) * CHUNK_SIZE, tilemap.height());
         for (int cellY = chunkY * CHUNK_SIZE; cellY < endY; cellY++) {
             for (int cellX = chunkX * CHUNK_SIZE; cellX < endX; cellX++) {
-                if (appendCell(vertices, transform, renderer, tilemap, atlas, cellX, cellY)) {
+                if (appendCell(vertices, transform, renderer, tilemap, atlas, layerIndex, cellX, cellY)) {
                     quadCount++;
                 }
             }
@@ -232,8 +255,8 @@ public final class TilemapRenderSystem implements RenderSystem {
     }
 
     private boolean appendCell(ByteBuffer vertices, Transform2D transform, TilemapRenderer renderer,
-                               SpriteTilemap tilemap, SpriteAtlas atlas, int cellX, int cellY) {
-        int tileIndex = tilemap.tileIndex(cellX, cellY);
+                               SpriteTilemap tilemap, SpriteAtlas atlas, int layerIndex, int cellX, int cellY) {
+        int tileIndex = tilemap.tileIndex(layerIndex, cellX, cellY);
         if (tileIndex == SpriteTilemap.EMPTY_TILE_INDEX) {
             return false;
         }
@@ -241,21 +264,35 @@ public final class TilemapRenderSystem implements RenderSystem {
         if (region.isEmpty()) {
             return false;
         }
-        appendCellQuad(vertices, transform, renderer, tilemap, region.get(), cellX, cellY);
+        TileData data = tilemap.existingTileData(tileIndex).orElseGet(TileData::new);
+        appendCellQuad(vertices, transform, renderer, tilemap, region.get(), data,
+                tilemap.layer(layerIndex).modulate(), cellX, cellY);
         return true;
     }
 
     private void appendCellQuad(ByteBuffer vertices, Transform2D transform, TilemapRenderer renderer,
-                                SpriteTilemap tilemap, SpriteAtlasRegion region, int cellX, int cellY) {
+                                SpriteTilemap tilemap, SpriteAtlasRegion region, TileData data,
+                                Vector4f layerModulate, int cellX, int cellY) {
         float left = cellX * tilemap.cellWidth();
-        float right = left + tilemap.cellWidth();
         float bottom = cellY * tilemap.cellHeight();
-        float top = bottom + tilemap.cellHeight();
         Matrix3x2f matrix = transform.localMatrix();
-        appendVertex(vertices, matrix, left, bottom, region.minU(), region.minV(), renderer);
-        appendVertex(vertices, matrix, right, bottom, region.maxU(), region.minV(), renderer);
-        appendVertex(vertices, matrix, right, top, region.maxU(), region.maxV(), renderer);
-        appendVertex(vertices, matrix, left, top, region.minU(), region.maxV(), renderer);
+        scratchModulate.set(layerModulate).mul(data.modulate());
+        for (int corner = 0; corner < CORNERS_X.length; corner++) {
+            float cornerX = left + CORNERS_X[corner] * tilemap.cellWidth();
+            float cornerY = bottom + CORNERS_Y[corner] * tilemap.cellHeight();
+            appendVertex(vertices, matrix, cornerX, cornerY,
+                    sampleU(region, data, corner), sampleV(region, data, corner), renderer);
+        }
+    }
+
+    private static float sampleU(SpriteAtlasRegion region, TileData data, int corner) {
+        float unit = data.transpose() ? CORNERS_Y[corner] : CORNERS_X[corner];
+        return region.minU() + (data.flipHorizontal() ? 1.0f - unit : unit) * (region.maxU() - region.minU());
+    }
+
+    private static float sampleV(SpriteAtlasRegion region, TileData data, int corner) {
+        float unit = data.transpose() ? CORNERS_X[corner] : CORNERS_Y[corner];
+        return region.minV() + (data.flipVertical() ? 1.0f - unit : unit) * (region.maxV() - region.minV());
     }
 
     private void appendVertex(ByteBuffer vertices, Matrix3x2f matrix, float cornerX, float cornerY,
@@ -265,7 +302,10 @@ public final class TilemapRenderSystem implements RenderSystem {
         Vector3f tint = renderer.tint();
         vertices.putFloat(scratchCorner.x).putFloat(scratchCorner.y);
         vertices.putFloat(u).putFloat(v);
-        vertices.putFloat(tint.x).putFloat(tint.y).putFloat(tint.z).putFloat(renderer.opacity());
+        vertices.putFloat(tint.x * scratchModulate.x)
+                .putFloat(tint.y * scratchModulate.y)
+                .putFloat(tint.z * scratchModulate.z)
+                .putFloat(renderer.opacity() * scratchModulate.w);
     }
 
     private void releaseUnseenGeometry() {

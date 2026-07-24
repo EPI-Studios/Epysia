@@ -1,7 +1,11 @@
 package fr.epistudio.epysia.assets.epytilemap;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -11,8 +15,11 @@ public final class SpriteTilemap {
 
     private final int width;
     private final int height;
-    private final int[] tileIndices;
+    private final List<TilemapLayer> layers = new ArrayList<>();
     private final SortedSet<Integer> solidTiles = new TreeSet<>();
+    private final Map<Integer, TileData> tileData = new LinkedHashMap<>();
+    private final List<TerrainDefinition> terrains = new ArrayList<>();
+    private TerrainMatchMode terrainMatchMode = TerrainMatchMode.CORNERS_AND_SIDES;
     private float cellWidth;
     private float cellHeight;
     private String atlasPath;
@@ -28,8 +35,7 @@ public final class SpriteTilemap {
         this.cellWidth = cellWidth;
         this.cellHeight = cellHeight;
         this.atlasPath = atlasPath;
-        this.tileIndices = new int[this.width * this.height];
-        Arrays.fill(tileIndices, EMPTY_TILE_INDEX);
+        layers.add(new TilemapLayer("Layer 1", this.width, this.height));
     }
 
     public int width() {
@@ -69,27 +75,71 @@ public final class SpriteTilemap {
         return this;
     }
 
+    public List<TilemapLayer> layers() {
+        return Collections.unmodifiableList(layers);
+    }
+
+    public int layerCount() {
+        return layers.size();
+    }
+
+    public TilemapLayer layer(int layerIndex) {
+        return layers.get(Math.clamp(layerIndex, 0, layers.size() - 1));
+    }
+
+    public SpriteTilemap addLayer(String name) {
+        layers.add(new TilemapLayer(name, width, height));
+        version++;
+        return this;
+    }
+
+    public SpriteTilemap removeLayer(int layerIndex) {
+        if (layers.size() > 1 && layerIndex >= 0 && layerIndex < layers.size()) {
+            layers.remove(layerIndex);
+            version++;
+        }
+        return this;
+    }
+
+    public SpriteTilemap moveLayer(int layerIndex, int destinationIndex) {
+        if (layerIndex < 0 || layerIndex >= layers.size()
+                || destinationIndex < 0 || destinationIndex >= layers.size()) {
+            return this;
+        }
+        layers.add(destinationIndex, layers.remove(layerIndex));
+        version++;
+        return this;
+    }
+
     public boolean contains(int cellX, int cellY) {
         return cellX >= 0 && cellX < width && cellY >= 0 && cellY < height;
     }
 
     public int tileIndex(int cellX, int cellY) {
-        if (!contains(cellX, cellY)) {
-            return EMPTY_TILE_INDEX;
-        }
-        return tileIndices[cellY * width + cellX];
+        return tileIndex(0, cellX, cellY);
+    }
+
+    public int tileIndex(int layerIndex, int cellX, int cellY) {
+        return layer(layerIndex).tileIndex(cellX, cellY);
     }
 
     public SpriteTilemap setTile(int cellX, int cellY, int tileIndex) {
-        if (contains(cellX, cellY) && tileIndices[cellY * width + cellX] != tileIndex) {
-            tileIndices[cellY * width + cellX] = tileIndex;
+        return setTile(0, cellX, cellY, tileIndex);
+    }
+
+    public SpriteTilemap setTile(int layerIndex, int cellX, int cellY, int tileIndex) {
+        if (layer(layerIndex).setTile(cellX, cellY, tileIndex)) {
             version++;
         }
         return this;
     }
 
     public SpriteTilemap clearTile(int cellX, int cellY) {
-        return setTile(cellX, cellY, EMPTY_TILE_INDEX);
+        return setTile(0, cellX, cellY, EMPTY_TILE_INDEX);
+    }
+
+    public SpriteTilemap clearTile(int layerIndex, int cellX, int cellY) {
+        return setTile(layerIndex, cellX, cellY, EMPTY_TILE_INDEX);
     }
 
     public SortedSet<Integer> solidTiles() {
@@ -109,11 +159,99 @@ public final class SpriteTilemap {
     }
 
     public boolean isCellSolid(int cellX, int cellY) {
-        int tileIndex = tileIndex(cellX, cellY);
-        return tileIndex != EMPTY_TILE_INDEX && solidTiles.contains(tileIndex);
+        for (TilemapLayer layer : layers) {
+            int tileIndex = layer.tileIndex(cellX, cellY);
+            if (layer.collisionEnabled() && solidTiles.contains(tileIndex) && collisionShapesOf(tileIndex).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public List<TileCollisionShape> collisionShapesOf(int tileIndex) {
+        TileData data = tileData.get(tileIndex);
+        return data == null ? List.of() : data.collisionShapes();
+    }
+
+    public List<TileCollisionShape> cellCollisionShapes(int cellX, int cellY) {
+        List<TileCollisionShape> shapes = new ArrayList<>();
+        for (TilemapLayer layer : layers) {
+            if (layer.collisionEnabled()) {
+                shapes.addAll(collisionShapesOf(layer.tileIndex(cellX, cellY)));
+            }
+        }
+        return shapes;
+    }
+
+    public Map<Integer, TileData> tileDataByIndex() {
+        return Collections.unmodifiableMap(tileData);
+    }
+
+    public Optional<TileData> existingTileData(int tileIndex) {
+        return Optional.ofNullable(tileData.get(tileIndex));
+    }
+
+    public TileData tileData(int tileIndex) {
+        return tileData.computeIfAbsent(tileIndex, ignored -> new TileData());
+    }
+
+    public SpriteTilemap putTileData(int tileIndex, TileData data) {
+        tileData.put(tileIndex, data);
+        version++;
+        return this;
+    }
+
+    public SpriteTilemap removeTileData(int tileIndex) {
+        if (tileData.remove(tileIndex) != null) {
+            version++;
+        }
+        return this;
+    }
+
+    public List<TerrainDefinition> terrains() {
+        return Collections.unmodifiableList(terrains);
+    }
+
+    public SpriteTilemap addTerrain(TerrainDefinition terrain) {
+        terrains.add(terrain);
+        version++;
+        return this;
+    }
+
+    public SpriteTilemap removeTerrain(int terrainIndex) {
+        if (terrainIndex >= 0 && terrainIndex < terrains.size()) {
+            terrains.remove(terrainIndex);
+            version++;
+        }
+        return this;
+    }
+
+    public SpriteTilemap renameTerrain(int terrainIndex, String name) {
+        if (terrainIndex >= 0 && terrainIndex < terrains.size()) {
+            terrains.set(terrainIndex, new TerrainDefinition(name, terrains.get(terrainIndex).color()));
+            version++;
+        }
+        return this;
+    }
+
+    public TerrainMatchMode terrainMatchMode() {
+        return terrainMatchMode;
+    }
+
+    public SpriteTilemap setTerrainMatchMode(TerrainMatchMode value) {
+        if (terrainMatchMode != value) {
+            terrainMatchMode = value;
+            version++;
+        }
+        return this;
     }
 
     public long version() {
         return version;
+    }
+
+    public SpriteTilemap touch() {
+        version++;
+        return this;
     }
 }
