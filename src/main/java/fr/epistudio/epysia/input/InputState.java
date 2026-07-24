@@ -2,6 +2,10 @@ package fr.epistudio.epysia.input;
 
 public interface InputState {
 
+    static InputState inactive() {
+        return InactiveInputState.INSTANCE;
+    }
+
     boolean isKeyDown(KeyCode key);
 
     boolean isMouseButtonDown(MouseButton button);

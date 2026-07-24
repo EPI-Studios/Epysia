@@ -2,6 +2,7 @@ package fr.epistudio.epysia.graph;
 
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.prefab.PrefabInstantiator;
 import org.joml.Vector3f;
 
@@ -33,14 +34,20 @@ public final class BuiltinNodes {
     public static final String EVENT_ON_KEY_PRESSED = "event.onKeyPressed";
     public static final String EVENT_ON_KEY_RELEASED = "event.onKeyReleased";
     public static final String EVENT_ON_MOUSE_BUTTON_PRESSED = "event.onMouseButtonPressed";
+    public static final String INPUT_KEY_DOWN = "input.keyDown";
+    public static final String INPUT_AXIS = "input.axis";
 
     public static final String VARIABLE_NAME_SETTING = "variableName";
     public static final String OUTPUT_COUNT_SETTING = "outputCount";
     public static final String KEY_SETTING = "key";
+    public static final String NEGATIVE_KEY_SETTING = "negativeKey";
+    public static final String POSITIVE_KEY_SETTING = "positiveKey";
     public static final String BUTTON_SETTING = "button";
     public static final String PATH_SETTING = "path";
     public static final String OPERATOR_SETTING = "operator";
     public static final String LEVEL_SETTING = "level";
+
+    public static final String CATEGORY_INPUT = "Input";
 
     private static final String CATEGORY_EVENTS = "Events";
     private static final String CATEGORY_FLOW = "Flow";
@@ -59,6 +66,7 @@ public final class BuiltinNodes {
 
     public static void registerInto(GraphNodeRegistry registry) {
         registerEvents(registry);
+        registerInputValues(registry);
         registerFlow(registry);
         registerVariables(registry);
         registerFloatMath(registry);
@@ -98,6 +106,36 @@ public final class BuiltinNodes {
         return new NodeDefinition(typeKey, displayName, CATEGORY_EVENTS, false, true,
                 List.of(), List.copyOf(outputs), settings,
                 context -> context.triggerExec(OUT_PIN));
+    }
+
+    private static void registerInputValues(GraphNodeRegistry registry) {
+        registry.register(dataNode(INPUT_KEY_DOWN, "Key Down", CATEGORY_INPUT, true,
+                List.of(),
+                List.of(new PinDefinition(VALUE_PIN, PinType.BOOLEAN)),
+                List.of(new NodeSetting(KEY_SETTING, SettingKind.KEY, "SPACE")),
+                context -> context.setOutput(VALUE_PIN, keyHeld(context, KEY_SETTING, "SPACE"))));
+        registry.register(dataNode(INPUT_AXIS, "Input Axis", CATEGORY_INPUT, true,
+                List.of(),
+                List.of(new PinDefinition(VALUE_PIN, PinType.FLOAT)),
+                List.of(new NodeSetting(NEGATIVE_KEY_SETTING, SettingKind.KEY, "A"),
+                        new NodeSetting(POSITIVE_KEY_SETTING, SettingKind.KEY, "D")),
+                BuiltinNodes::runInputAxis));
+    }
+
+    private static void runInputAxis(NodeContext context) {
+        boolean negativeHeld = keyHeld(context, NEGATIVE_KEY_SETTING, "A");
+        boolean positiveHeld = keyHeld(context, POSITIVE_KEY_SETTING, "D");
+        float axis = (positiveHeld ? 1.0f : 0.0f) - (negativeHeld ? 1.0f : 0.0f);
+        context.setOutput(VALUE_PIN, axis);
+    }
+
+    private static boolean keyHeld(NodeContext context, String settingKey, String fallbackKeyName) {
+        String keyName = context.settingString(settingKey, fallbackKeyName);
+        try {
+            return context.inputState().isKeyDown(KeyCode.valueOf(keyName));
+        } catch (IllegalArgumentException unknown) {
+            return false;
+        }
     }
 
     private static void registerFlow(GraphNodeRegistry registry) {

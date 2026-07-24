@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.graph;
 
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.input.InputState;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,6 +24,7 @@ public final class GraphInstance {
     private final Map<GraphEdge, Long> edgeFireNanos = new HashMap<>();
     private static final int NO_ACTIVE_STATE = -1;
 
+    private InputState inputState = InputState.inactive();
     private int budgetRemaining;
     private boolean budgetWarningIssued;
     private boolean startFired;
@@ -103,6 +105,14 @@ public final class GraphInstance {
 
     public boolean warnOnceFor(String typeKey) {
         return warnedTypeKeys.add(typeKey);
+    }
+
+    public InputState inputState() {
+        return inputState;
+    }
+
+    public void setInputState(InputState inputState) {
+        this.inputState = inputState;
     }
 
     public void resetTickBudget(int budget) {

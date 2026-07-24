@@ -2,6 +2,7 @@ package fr.epistudio.epysia.graph;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Vector3f;
 
@@ -36,6 +37,10 @@ public final class NodeContext {
 
     public GraphNode node() {
         return node;
+    }
+
+    public InputState inputState() {
+        return instance.inputState();
     }
 
     public GameObject self() {

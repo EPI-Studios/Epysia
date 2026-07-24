@@ -95,6 +95,7 @@ public final class GraphSystem implements GameSystem {
         }
         GraphInstance instance = loaded.get();
         instance.resetTickBudget(GraphInterpreter.EXECUTION_BUDGET_PER_TICK);
+        instance.setInputState(input);
         fireStartIfNeeded(instance);
         fireInputEvents(instance, input);
         interpreter.fireEventNodes(instance, BuiltinNodes.EVENT_ON_UPDATE,

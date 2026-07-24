@@ -148,6 +148,9 @@ final class GraphNodePalette {
         if (ShaderNodes.isShaderNode(typeKey)) {
             return false;
         }
+        if (kind == GraphKind.VFX && definition.category().equals(BuiltinNodes.CATEGORY_INPUT)) {
+            return false;
+        }
         return kind != GraphKind.LOGIC || !definition.category().equals(StateNodes.CATEGORY);
     }
 
