@@ -317,10 +317,26 @@ public final class PhysicsSystem implements IPhysicsSystem {
             warnMixedPhysics(gameObject);
             return;
         }
+        if (colliders.stream().anyMatch(Collider2D::requiresRebuild)) {
+            releasePlaneBody(gameObject, rigidBodyOptional, colliders);
+        }
         if (alreadyRegistered2D(rigidBodyOptional, colliders)) {
             return;
         }
         registerPlaneBody(gameObject, rigidBodyOptional, colliders);
+    }
+
+    private void releasePlaneBody(GameObject gameObject, Optional<RigidBody2D> rigidBodyOptional,
+                                  List<Collider2D> colliders) {
+        bodyOwners.entrySet().removeIf(entry -> {
+            if (entry.getValue() != gameObject) {
+                return false;
+            }
+            world.removeBody(new BodyHandle(entry.getKey()));
+            return true;
+        });
+        colliders.forEach(Collider2D::clearRegistered);
+        rigidBodyOptional.ifPresent(RigidBody2D::clearRegistered);
     }
 
     private boolean hasVolumetricPhysics(GameObject gameObject) {
@@ -361,12 +377,14 @@ public final class PhysicsSystem implements IPhysicsSystem {
 
     private void attachColliders2D(BodyHandle body, Transform2D transform, List<Collider2D> colliders) {
         for (Collider2D collider : colliders) {
-            ShapeDescriptor shape = scaledShape2D(collider.shape(), transform);
-            Vector2f offset = collider.offset();
             int group = collisionLayers.groupFor(collider.collisionLayer());
             int mask = collisionLayers.maskFor(collider.collisionLayer());
-            world.addCollider(body, shape, new Vector3f(offset.x, offset.y, 0.0f),
-                    collider.isTrigger(), PhysicsMaterial.DEFAULT, group, mask);
+            for (Collider2D.ShapePlacement placement : collider.shapePlacements()) {
+                ShapeDescriptor shape = scaledShape2D(placement.shape(), transform);
+                Vector2f offset = placement.offset();
+                world.addCollider(body, shape, new Vector3f(offset.x, offset.y, 0.0f),
+                        collider.isTrigger(), PhysicsMaterial.DEFAULT, group, mask);
+            }
         }
     }
 

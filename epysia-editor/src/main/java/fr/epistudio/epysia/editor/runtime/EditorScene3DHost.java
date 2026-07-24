@@ -10,6 +10,7 @@ import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteAtlasAssetLoader;
+import fr.epistudio.epysia.assets.loaders.SpriteTilemapAssetLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.editor.gl.GlStateSnapshot;
@@ -31,6 +32,7 @@ import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.render.sprite.SpriteRenderSystem;
+import fr.epistudio.epysia.render.sprite.TilemapRenderSystem;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
@@ -64,6 +66,7 @@ public final class EditorScene3DHost {
     private MeshRenderSystem meshRenderSystem;
     private VfxRenderSystem vfxRenderSystem;
     private SpriteRenderSystem spriteRenderSystem;
+    private TilemapRenderSystem tilemapRenderSystem;
     private PostProcessSystem postProcessSystem;
     private ShaderLoader shaderLoader;
     private ShaderWatcher shaderWatcher;
@@ -120,9 +123,11 @@ public final class EditorScene3DHost {
         postProcessSystem.setShaderWatcher(shaderWatcher);
         vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
         spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+        tilemapRenderSystem = new TilemapRenderSystem(spriteRenderSystem, engine.logger());
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(vfxRenderSystem);
         engine.addRenderSystem(spriteRenderSystem);
+        engine.addRenderSystem(tilemapRenderSystem);
         engine.addRenderSystem(postProcessSystem);
         engine.initialize();
         BuiltinMeshes builtins = BuiltinMeshes.uploadAll(backend);
@@ -133,6 +138,7 @@ public final class EditorScene3DHost {
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
         engine.assets().register(new SpriteAtlasAssetLoader());
+        engine.assets().register(new SpriteTilemapAssetLoader());
         currentWidth = renderSurface.framebufferWidth();
         currentHeight = renderSurface.framebufferHeight();
         createRenderTarget(currentWidth, currentHeight);
@@ -177,6 +183,10 @@ public final class EditorScene3DHost {
         if (!current.contains(spriteRenderSystem)) {
             spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
             engine.addRenderSystem(spriteRenderSystem);
+        }
+        if (!current.contains(tilemapRenderSystem)) {
+            tilemapRenderSystem = new TilemapRenderSystem(spriteRenderSystem, engine.logger());
+            engine.addRenderSystem(tilemapRenderSystem);
         }
         if (!current.contains(postProcessSystem)) {
             postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());

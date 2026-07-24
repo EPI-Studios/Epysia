@@ -5,9 +5,14 @@ import fr.epistudio.epysia.components.Export;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import org.joml.Vector2f;
 
+import java.util.List;
+
 public abstract class Collider2D extends Component {
 
     public static final float PLANE_HALF_DEPTH = 0.5f;
+
+    public record ShapePlacement(ShapeDescriptor shape, Vector2f offset) {
+    }
 
     @Export(label = "Offset X", step = 0.05f)
     private float offsetX = 0.0f;
@@ -24,6 +29,14 @@ public abstract class Collider2D extends Component {
     private boolean registered;
 
     public abstract ShapeDescriptor shape();
+
+    public List<ShapePlacement> shapePlacements() {
+        return List.of(new ShapePlacement(shape(), offset()));
+    }
+
+    public boolean requiresRebuild() {
+        return false;
+    }
 
     public Vector2f offset() {
         return new Vector2f(offsetX, offsetY);
@@ -59,5 +72,9 @@ public abstract class Collider2D extends Component {
 
     public void markRegistered() {
         this.registered = true;
+    }
+
+    public void clearRegistered() {
+        this.registered = false;
     }
 }

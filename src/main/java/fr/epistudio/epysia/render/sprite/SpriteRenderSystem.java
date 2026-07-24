@@ -54,9 +54,9 @@ public final class SpriteRenderSystem implements RenderSystem {
 
     private static final String VERTEX_PATH = "sprite.vert.glsl";
     private static final String FRAGMENT_PATH = "sprite.frag.glsl";
-    private static final int VERTICES_PER_QUAD = 4;
-    private static final int INDICES_PER_QUAD = 6;
-    private static final int VERTEX_BYTES = 32;
+    static final int VERTICES_PER_QUAD = 4;
+    static final int INDICES_PER_QUAD = 6;
+    static final int VERTEX_BYTES = 32;
     private static final int INITIAL_QUAD_CAPACITY = 1024;
 
     private record SpriteEntry(Transform2D transform, SpriteRenderer sprite, TextureHandle texture) {
@@ -119,7 +119,7 @@ public final class SpriteRenderSystem implements RenderSystem {
         indexBuffer = backend.createBuffer(new BufferDescriptor(BufferUsage.INDEX, buildIndexPattern(quadCount)));
     }
 
-    private static ByteBuffer buildIndexPattern(int quadCount) {
+    static ByteBuffer buildIndexPattern(int quadCount) {
         ByteBuffer indices = BufferUtils.createByteBuffer(quadCount * INDICES_PER_QUAD * Integer.BYTES);
         for (int quad = 0; quad < quadCount; quad++) {
             int base = quad * VERTICES_PER_QUAD;
@@ -198,19 +198,21 @@ public final class SpriteRenderSystem implements RenderSystem {
 
     private void submitBatches(FrameBuilder frame) {
         int batchStart = 0;
-        long batchKey = 0L;
+        long sequence = 0L;
         for (int i = 1; i <= entries.size(); i++) {
             if (i < entries.size() && entries.get(i).texture().id() == entries.get(batchStart).texture().id()) {
                 continue;
             }
-            frame.submit(RenderPasses.WORLD_2D, batchCommand(batchStart, i - batchStart, batchKey));
-            batchKey++;
+            frame.submit(RenderPasses.WORLD_2D, batchCommand(batchStart, i - batchStart, sequence));
+            sequence++;
             batchStart = i;
         }
     }
 
-    private DrawCommand batchCommand(int firstQuad, int quadCount, long sortKey) {
+    private DrawCommand batchCommand(int firstQuad, int quadCount, long sequence) {
         MeshHandle mesh = meshForFirstIndex(firstQuad * INDICES_PER_QUAD);
+        SpriteRenderer sprite = entries.get(firstQuad).sprite();
+        long sortKey = SpriteSortKeys.compose(sprite.sortingLayer(), sprite.orderInLayer(), sequence);
         BindingSetHandle bindings = bindingsFor(entries.get(firstQuad).texture());
         return new DrawCommand(pipeline, mesh, bindings, sortKey, 1, quadCount * INDICES_PER_QUAD);
     }
@@ -220,7 +222,11 @@ public final class SpriteRenderSystem implements RenderSystem {
                 vertexBuffer, indexBuffer, index, quadCapacity * INDICES_PER_QUAD - index, IndexFormat.UINT32)));
     }
 
-    private BindingSetHandle bindingsFor(TextureHandle texture) {
+    PipelineHandle sharedPipeline() {
+        return pipeline;
+    }
+
+    BindingSetHandle bindingsFor(TextureHandle texture) {
         return bindingsByTexture.computeIfAbsent(texture.id(), id ->
                 backend.createBindingSet(new BindingSetDescriptor(bindingLayout, List.of(
                         new Binding(0, UniformBufferBinding.whole(meshRenderSystem.frameUniformBuffer(),
