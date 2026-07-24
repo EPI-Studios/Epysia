@@ -38,7 +38,16 @@ public final class SpriteTilemapAssetLoader implements AssetLoader<SpriteTilemap
 
     @Override
     public SpriteTilemap load(EngineServices services, String path) {
-        return loadedByPath.computeIfAbsent(path, this::readResolved);
+        return loadedByPath.computeIfAbsent(path, key -> readOrPlaceholder(services, key));
+    }
+
+    private SpriteTilemap readOrPlaceholder(EngineServices services, String path) {
+        try {
+            return readResolved(path);
+        } catch (EpysiaException failure) {
+            services.logger().warn("Tilemap unavailable, using an empty placeholder: " + failure.getMessage());
+            return new SpriteTilemap(0, 0);
+        }
     }
 
     @Override
