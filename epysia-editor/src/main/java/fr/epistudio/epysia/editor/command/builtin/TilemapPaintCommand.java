@@ -8,10 +8,10 @@ import java.util.List;
 
 public final class TilemapPaintCommand implements EditorCommand {
 
-    public record TileEdit(int cellX, int cellY, int beforeTileIndex, int afterTileIndex) {
+    public record TileEdit(int layerIndex, int cellX, int cellY, int beforeTileIndex, int afterTileIndex) {
 
         public TileEdit inverted() {
-            return new TileEdit(cellX, cellY, afterTileIndex, beforeTileIndex);
+            return new TileEdit(layerIndex, cellX, cellY, afterTileIndex, beforeTileIndex);
         }
     }
 
@@ -28,7 +28,7 @@ public final class TilemapPaintCommand implements EditorCommand {
     @Override
     public void apply(CommandContext context) {
         for (TileEdit edit : edits) {
-            tilemap.setTile(edit.cellX(), edit.cellY(), edit.afterTileIndex());
+            tilemap.setTile(edit.layerIndex(), edit.cellX(), edit.cellY(), edit.afterTileIndex());
         }
     }
 

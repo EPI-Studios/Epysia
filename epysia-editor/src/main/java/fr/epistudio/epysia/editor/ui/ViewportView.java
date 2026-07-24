@@ -10,7 +10,7 @@ import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
-import fr.epistudio.epysia.editor.command.builtin.TilemapPaintCommand;
+import fr.epistudio.epysia.editor.tilemap.TilePaintController;
 import fr.epistudio.epysia.editor.command.builtin.Transform2DDragCommand;
 import fr.epistudio.epysia.editor.command.builtin.TransformDragCommand;
 import fr.epistudio.epysia.editor.gizmo.ColliderWireframeOverlay;
@@ -91,7 +91,6 @@ public final class ViewportView {
     private static final int COLOR_PAINT_RECTANGLE_FILL = 0x330077CC;
     private static final int COLOR_PAINT_RECTANGLE_BORDER = 0xFF3399DD;
 
-    private enum StrokeKind { PAINT, ERASE, FILL }
 
     private final EditorScene3DHost sceneHost;
     private final EditorCamera editorCamera;
@@ -103,7 +102,7 @@ public final class ViewportView {
     private final GameObjectFactory objectFactory;
     private final AssetImportPipeline importPipeline;
     private final TilePalettePanel tilePalette;
-    private final Map<Long, int[]> strokeCells = new LinkedHashMap<>();
+    private final TilePaintController paintController;
     private final Matrix4f viewMatrix = new Matrix4f();
     private final Matrix4f projectionMatrix = new Matrix4f();
     private final float[] viewArray = new float[16];
@@ -131,11 +130,6 @@ public final class ViewportView {
     private boolean billboardClickConsumed;
     private boolean paintingActiveThisFrame;
     private boolean paintEnabled;
-    private boolean strokeActive;
-    private StrokeKind strokeKind = StrokeKind.PAINT;
-    private SpriteTilemap strokeTilemap;
-    private int fillStartCellX;
-    private int fillStartCellY;
     private ViewMode viewMode = ViewMode.SCENE;
 
     public ViewportView(EditorScene3DHost sceneHost, EditorCamera editorCamera,
@@ -152,6 +146,8 @@ public final class ViewportView {
         this.objectFactory = objectFactory;
         this.importPipeline = importPipeline;
         this.tilePalette = tilePalette;
+        this.paintController = new TilePaintController(tilePalette.brush(),
+                command -> activeDocument.get().history().execute(command));
     }
 
     public boolean paintEnabled() {
@@ -248,7 +244,7 @@ public final class ViewportView {
         renderBillboards(imageX, imageY, width, height);
         paintTarget.ifPresentOrElse(
                 renderer -> handleTilemapPaint(renderer, imageX, imageY, width, height),
-                this::cancelStrokeIfActive);
+                paintController::cancel);
         updateCamera(deltaSeconds, imageX, imageY, width, height);
         handleFrameShortcut();
         handlePicking(gizmoBusy || paintTarget.isPresent(), imageX, imageY, width, height);
@@ -927,12 +923,12 @@ public final class ViewportView {
         Optional<Transform2D> transform = selectedPlanarTransform();
         Optional<SpriteTilemap> tilemap = renderer.tilemapValue();
         if (transform.isEmpty() || tilemap.isEmpty()) {
-            cancelStrokeIfActive();
+            paintController.cancel();
             return;
         }
         int[] cell = cellAtMouse(transform.get(), tilemap.get(), imageX, imageY, width, height);
         drawPaintCursor(transform.get(), tilemap.get(), cell, imageX, imageY, width, height);
-        updateStroke(tilemap.get(), cell);
+        paintController.update(tilemap.get(), cell[0], cell[1], viewportHoveredThisFrame);
     }
 
     private int[] cellAtMouse(Transform2D transform, SpriteTilemap tilemap,
@@ -958,139 +954,18 @@ public final class ViewportView {
         return nearPoint.add(direction.mul(t));
     }
 
-    private void updateStroke(SpriteTilemap tilemap, int[] cell) {
-        if (strokeActive) {
-            advanceStroke(cell);
-        } else {
-            beginStrokeIfRequested(tilemap, cell);
-        }
-    }
-
-    private void beginStrokeIfRequested(SpriteTilemap tilemap, int[] cell) {
-        if (!viewportHoveredThisFrame) {
-            return;
-        }
-        if (ImGui.isMouseClicked(ImGuiMouseButton.Right)) {
-            startStroke(tilemap, StrokeKind.ERASE, cell);
-        } else if (ImGui.isMouseClicked(ImGuiMouseButton.Left)) {
-            startStroke(tilemap, ImGui.getIO().getKeyShift() ? StrokeKind.FILL : StrokeKind.PAINT, cell);
-        }
-    }
-
-    private void startStroke(SpriteTilemap tilemap, StrokeKind kind, int[] cell) {
-        strokeActive = true;
-        strokeKind = kind;
-        strokeTilemap = tilemap;
-        strokeCells.clear();
-        fillStartCellX = cell[0];
-        fillStartCellY = cell[1];
-        if (kind != StrokeKind.FILL) {
-            recordEdit(cell[0], cell[1], strokeValue(kind));
-        }
-    }
-
-    private void advanceStroke(int[] cell) {
-        if (strokeKind == StrokeKind.FILL) {
-            advanceFillStroke(cell);
-            return;
-        }
-        int button = strokeKind == StrokeKind.ERASE ? ImGuiMouseButton.Right : ImGuiMouseButton.Left;
-        if (ImGui.isMouseDown(button)) {
-            recordEdit(cell[0], cell[1], strokeValue(strokeKind));
-        } else {
-            commitStroke();
-        }
-    }
-
-    private void advanceFillStroke(int[] cell) {
-        if (ImGui.isMouseDown(ImGuiMouseButton.Left)) {
-            return;
-        }
-        applyFillRectangle(cell);
-        commitStroke();
-    }
-
-    private void applyFillRectangle(int[] cell) {
-        int minX = Math.min(fillStartCellX, cell[0]);
-        int maxX = Math.max(fillStartCellX, cell[0]);
-        int minY = Math.min(fillStartCellY, cell[1]);
-        int maxY = Math.max(fillStartCellY, cell[1]);
-        int value = strokeValue(StrokeKind.FILL);
-        for (int cellY = minY; cellY <= maxY; cellY++) {
-            for (int cellX = minX; cellX <= maxX; cellX++) {
-                recordEdit(cellX, cellY, value);
-            }
-        }
-    }
-
-    private int strokeValue(StrokeKind kind) {
-        if (kind == StrokeKind.ERASE || tilePalette.eraser()) {
-            return SpriteTilemap.EMPTY_TILE_INDEX;
-        }
-        return tilePalette.brushTileIndex();
-    }
-
-    private void recordEdit(int cellX, int cellY, int after) {
-        if (strokeTilemap == null || !strokeTilemap.contains(cellX, cellY)) {
-            return;
-        }
-        long key = (((long) cellY) << 32) | (cellX & 0xFFFFFFFFL);
-        int[] existing = strokeCells.get(key);
-        if (existing == null) {
-            strokeCells.put(key, new int[]{cellX, cellY, strokeTilemap.tileIndex(cellX, cellY), after});
-        } else {
-            existing[3] = after;
-        }
-        strokeTilemap.setTile(cellX, cellY, after);
-    }
-
-    private void commitStroke() {
-        List<TilemapPaintCommand.TileEdit> edits = collectStrokeEdits();
-        SpriteTilemap tilemap = strokeTilemap;
-        String label = strokeLabel();
-        resetStroke();
-        if (!edits.isEmpty() && tilemap != null) {
-            activeDocument.get().history().execute(new TilemapPaintCommand(tilemap, edits, label));
-        }
-    }
-
-    private List<TilemapPaintCommand.TileEdit> collectStrokeEdits() {
-        List<TilemapPaintCommand.TileEdit> edits = new ArrayList<>();
-        for (int[] cell : strokeCells.values()) {
-            if (cell[2] != cell[3]) {
-                edits.add(new TilemapPaintCommand.TileEdit(cell[0], cell[1], cell[2], cell[3]));
-            }
-        }
-        return edits;
-    }
-
-    private String strokeLabel() {
-        return switch (strokeKind) {
-            case ERASE -> "Erase Tiles";
-            case FILL -> "Fill Tiles";
-            case PAINT -> "Paint Tiles";
-        };
-    }
-
-    private void cancelStrokeIfActive() {
-        if (strokeActive) {
-            resetStroke();
-        }
-    }
-
-    private void resetStroke() {
-        strokeActive = false;
-        strokeCells.clear();
-        strokeTilemap = null;
-    }
-
     private void drawPaintCursor(Transform2D transform, SpriteTilemap tilemap, int[] cell,
                                  float imageX, float imageY, int width, int height) {
-        if (!viewportHoveredThisFrame && !strokeActive) {
+        if (!viewportHoveredThisFrame && !paintController.active()) {
             return;
         }
-        if (strokeActive && strokeKind == StrokeKind.FILL) {
-            drawCellQuad(transform, tilemap, fillStartCellX, fillStartCellY, cell[0], cell[1],
+        paintController.selectionRange().ifPresent(range -> drawCellQuad(transform, tilemap,
+                range.minX(), range.minY(), range.maxX(), range.maxY(),
+                imageX, imageY, width, height, COLOR_PAINT_RECTANGLE_FILL, COLOR_PAINT_RECTANGLE_BORDER));
+        Optional<TilePaintController.CellRange> pending = paintController.pendingRange(cell[0], cell[1]);
+        if (pending.isPresent()) {
+            drawCellQuad(transform, tilemap, pending.get().minX(), pending.get().minY(),
+                    pending.get().maxX(), pending.get().maxY(),
                     imageX, imageY, width, height, COLOR_PAINT_RECTANGLE_FILL, COLOR_PAINT_RECTANGLE_BORDER);
             return;
         }

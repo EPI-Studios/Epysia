@@ -203,7 +203,7 @@ public final class EditorView implements FrameView {
                 this::onShaderNodePreviewsToggled);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
-        this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active);
+        this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, icons);
         this.viewportView = new ViewportView(sceneHost, editorCamera, active, gizmoState,
                 shell.windowHandle(), playSession, icons, objectFactory, importPipeline, tilePalettePanel);
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,

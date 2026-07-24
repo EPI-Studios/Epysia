@@ -7,6 +7,8 @@ import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
+import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.tilemap.TileBrush;
 import fr.epistudio.epysia.editor.assets.TilemapDiskFile;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
@@ -30,27 +32,31 @@ public final class TilePalettePanel {
     private static final int COLOR_SELECTED_FILL = 0x40CC7A00;
     private static final int COLOR_SELECTED_BORDER = 0xFFCC7A00;
     private static final int COLOR_SOLID_MARKER = 0xE03355FF;
+    private static final int COLOR_SHAPE_MARKER = 0xE000CCFF;
 
     private final ImagePreviewTexture preview;
     private final EngineServices services;
     private final Supplier<SceneDocument> activeDocument;
-    private int brushTileIndex;
-    private boolean eraser;
+    private final TileBrush brush = new TileBrush();
+    private final TileToolBar toolBar;
+    private final TileLayersSection layersSection;
+    private final TileTerrainsSection terrainsSection;
+    private final TileDataSection dataSection;
     private String saveError = "";
 
     public TilePalettePanel(OpenGlRenderBackend backend, EngineServices services,
-                            Supplier<SceneDocument> activeDocument) {
+                            Supplier<SceneDocument> activeDocument, IconWidgets icons) {
         this.preview = new ImagePreviewTexture(backend);
         this.services = services;
         this.activeDocument = activeDocument;
+        this.toolBar = new TileToolBar(icons, brush);
+        this.layersSection = new TileLayersSection(icons, brush);
+        this.terrainsSection = new TileTerrainsSection(icons, brush);
+        this.dataSection = new TileDataSection(brush);
     }
 
-    public int brushTileIndex() {
-        return brushTileIndex;
-    }
-
-    public boolean eraser() {
-        return eraser;
+    public TileBrush brush() {
+        return brush;
     }
 
     public void render(TilemapRenderer renderer) {
@@ -69,27 +75,14 @@ public final class TilePalettePanel {
     }
 
     private void renderControls(SpriteTilemap tilemap, TilemapRenderer renderer) {
-        renderEraserToggle();
-        ImGui.sameLine();
-        boolean solid = tilemap.isSolidTile(brushTileIndex);
-        if (ImGui.checkbox("Solid tile " + brushTileIndex, solid)) {
-            tilemap.setSolid(brushTileIndex, !solid);
+        toolBar.render(tilemap);
+        boolean changed = layersSection.render(tilemap);
+        changed |= terrainsSection.render(tilemap);
+        changed |= dataSection.render(tilemap);
+        if (changed) {
             activeDocument.get().markDirty();
         }
         renderSaveRow(tilemap, renderer);
-    }
-
-    private void renderEraserToggle() {
-        if (eraser) {
-            ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
-        }
-        boolean clicked = ImGui.button("Eraser");
-        if (eraser) {
-            ImGui.popStyleColor();
-        }
-        if (clicked) {
-            eraser = !eraser;
-        }
     }
 
     private void renderSaveRow(SpriteTilemap tilemap, TilemapRenderer renderer) {
@@ -135,6 +128,7 @@ public final class TilePalettePanel {
         AtlasCanvas canvas = drawImage(image.get());
         drawGrid(canvas, grid);
         drawSolidMarkers(canvas, tilemap, grid);
+        drawShapeMarkers(canvas, tilemap, grid);
         drawBrushHighlight(canvas, grid);
         handlePick(canvas, grid);
     }
@@ -200,16 +194,32 @@ public final class TilePalettePanel {
         }
     }
 
+    private static void drawShapeMarkers(AtlasCanvas canvas, SpriteTilemap tilemap, SpriteAtlasGrid grid) {
+        int columns = Math.max(1, grid.columns());
+        int rows = Math.max(1, grid.rows());
+        for (Integer tileIndex : tilemap.tileDataByIndex().keySet()) {
+            if (tileIndex < 0 || tileIndex >= columns * rows || tilemap.collisionShapesOf(tileIndex).isEmpty()) {
+                continue;
+            }
+            float cellWidth = canvas.width() / columns;
+            float cellHeight = canvas.height() / rows;
+            float x = canvas.originX() + (tileIndex % columns) * cellWidth + SOLID_MARKER_INSET;
+            float y = canvas.originY() + (tileIndex / columns + 1) * cellHeight - SOLID_MARKER_INSET;
+            ImGui.getWindowDrawList().addTriangleFilled(x, y, x + SOLID_MARKER_SIZE, y,
+                    x + SOLID_MARKER_SIZE, y - SOLID_MARKER_SIZE, COLOR_SHAPE_MARKER);
+        }
+    }
+
     private void drawBrushHighlight(AtlasCanvas canvas, SpriteAtlasGrid grid) {
         int columns = Math.max(1, grid.columns());
         int rows = Math.max(1, grid.rows());
-        if (brushTileIndex < 0 || brushTileIndex >= columns * rows) {
+        if (brush.tileIndex() < 0 || brush.tileIndex() >= columns * rows) {
             return;
         }
         float cellWidth = canvas.width() / columns;
         float cellHeight = canvas.height() / rows;
-        float x = canvas.originX() + (brushTileIndex % columns) * cellWidth;
-        float y = canvas.originY() + (brushTileIndex / columns) * cellHeight;
+        float x = canvas.originX() + (brush.tileIndex() % columns) * cellWidth;
+        float y = canvas.originY() + (brush.tileIndex() / columns) * cellHeight;
         ImGui.getWindowDrawList().addRectFilled(x, y, x + cellWidth, y + cellHeight, COLOR_SELECTED_FILL);
         ImGui.getWindowDrawList().addRect(x, y, x + cellWidth, y + cellHeight, COLOR_SELECTED_BORDER);
     }
@@ -218,9 +228,8 @@ public final class TilePalettePanel {
         if (!ImGui.isItemHovered() || !ImGui.isMouseClicked(ImGuiMouseButton.Left)) {
             return;
         }
-        brushTileIndex = canvas.cellIndexAt(ImGui.getMousePosX(), ImGui.getMousePosY(),
-                Math.max(1, grid.columns()), Math.max(1, grid.rows()));
-        eraser = false;
+        brush.setTileIndex(canvas.cellIndexAt(ImGui.getMousePosX(), ImGui.getMousePosY(),
+                Math.max(1, grid.columns()), Math.max(1, grid.rows())));
     }
 
     public void dispose() {
