@@ -5,8 +5,10 @@ import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.PointLight;
 import fr.epistudio.epysia.components.SpotLight;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
+import fr.epistudio.epysia.editor.command.builtin.Transform2DDragCommand;
 import fr.epistudio.epysia.editor.command.builtin.TransformDragCommand;
 import fr.epistudio.epysia.editor.gizmo.ColliderWireframeOverlay;
 import fr.epistudio.epysia.editor.gizmo.GridOverlay;
@@ -28,10 +30,12 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import imgui.ImGui;
 import imgui.extension.imguizmo.ImGuizmo;
+import imgui.extension.imguizmo.flag.Operation;
 import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiWindowFlags;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.glfw.GLFW;
@@ -95,10 +99,14 @@ public final class ViewportView {
     private final Vector3f dragStartPosition = new Vector3f();
     private final Quaternionf dragStartRotation = new Quaternionf();
     private final Vector3f dragStartScale = new Vector3f();
+    private final Vector2f dragStartPlanarPosition = new Vector2f();
+    private final Vector2f dragStartPlanarScale = new Vector2f();
+    private float dragStartPlanarRotation;
     private GridOverlay gridOverlay;
     private ColliderWireframeOverlay colliderOverlay;
     private SelectionOutlineOverlay selectionOverlay;
     private Transform3D dragTransform;
+    private Transform2D dragPlanarTransform;
     private boolean showGrid = true;
     private boolean showColliderWireframes;
     private float overlayThicknessMultiplier = 1.0f;
@@ -402,19 +410,38 @@ public final class ViewportView {
 
     private boolean renderGizmo(float imageX, float imageY, int width, int height) {
         Optional<Integer> operation = gizmoState.operation();
-        Optional<Transform3D> transform = selectedTransform();
-        if (operation.isEmpty() || transform.isEmpty()) {
+        if (operation.isEmpty()) {
+            finishDragIfReleased();
+            return false;
+        }
+        Optional<Transform3D> spatial = selectedTransform();
+        if (spatial.isPresent()) {
+            prepareGizmoFrame(imageX, imageY, width, height);
+            manipulate(spatial.get(), operation.get());
+            return ImGuizmo.isUsing() || ImGuizmo.isOver();
+        }
+        return renderPlanarGizmo(imageX, imageY, width, height, operation.get());
+    }
+
+    private boolean renderPlanarGizmo(float imageX, float imageY, int width, int height, int operation) {
+        Optional<Transform2D> planar = selectedPlanarTransform();
+        if (planar.isEmpty()) {
             finishDragIfReleased();
             return false;
         }
         prepareGizmoFrame(imageX, imageY, width, height);
-        manipulate(transform.get(), operation.get());
+        manipulatePlanar(planar.get(), operation);
         return ImGuizmo.isUsing() || ImGuizmo.isOver();
     }
 
     private Optional<Transform3D> selectedTransform() {
         return activeDocument.get().selection().get()
                 .flatMap(gameObject -> gameObject.getComponent(Transform3D.class));
+    }
+
+    private Optional<Transform2D> selectedPlanarTransform() {
+        return activeDocument.get().selection().get()
+                .flatMap(gameObject -> gameObject.getComponent(Transform2D.class));
     }
 
     private void prepareGizmoFrame(float imageX, float imageY, int width, int height) {
@@ -451,9 +478,105 @@ public final class ViewportView {
         }
     }
 
+    private void manipulatePlanar(Transform2D transform, int operation) {
+        planarWorldMatrix(transform).get(modelArray);
+        boolean wasUsing = dragPlanarTransform != null;
+        int lockedOperation = planarOperation(operation);
+        if (snapActive()) {
+            fillSnapArray();
+            ImGuizmo.manipulate(viewArray, projectionArray, lockedOperation, gizmoState.mode(),
+                    modelArray, null, snapArray);
+        } else {
+            ImGuizmo.manipulate(viewArray, projectionArray, lockedOperation, gizmoState.mode(), modelArray, null);
+        }
+        applyPlanarManipulation(transform, wasUsing);
+    }
+
+    private static Matrix4f planarWorldMatrix(Transform2D transform) {
+        return new Matrix4f()
+                .translation(transform.position().x, transform.position().y, 0.0f)
+                .rotateZ(transform.rotationRadians())
+                .scale(transform.scale().x, transform.scale().y, 1.0f);
+    }
+
+    private static int planarOperation(int operation) {
+        if (operation == Operation.TRANSLATE) {
+            return Operation.TRANSLATE_X | Operation.TRANSLATE_Y;
+        }
+        if (operation == Operation.ROTATE) {
+            return Operation.ROTATE_Z;
+        }
+        return Operation.SCALE_X | Operation.SCALE_Y;
+    }
+
+    private void applyPlanarManipulation(Transform2D transform, boolean wasUsing) {
+        boolean usingNow = ImGuizmo.isUsing();
+        if (usingNow && !wasUsing) {
+            capturePlanarDragStart(transform);
+        }
+        if (usingNow) {
+            writePlanarMatrix(transform, new Matrix4f().set(modelArray));
+        }
+        if (!usingNow && wasUsing) {
+            commitPlanarDrag(transform);
+        }
+    }
+
+    private void capturePlanarDragStart(Transform2D transform) {
+        dragPlanarTransform = transform;
+        dragStartPlanarPosition.set(transform.position());
+        dragStartPlanarRotation = transform.rotationRadians();
+        dragStartPlanarScale.set(transform.scale());
+    }
+
+    private static void writePlanarMatrix(Transform2D transform, Matrix4f world) {
+        Vector3f position = world.getTranslation(new Vector3f());
+        Matrix4f orthonormal = world.normalize3x3(new Matrix4f());
+        float rotation = (float) Math.atan2(orthonormal.m01(), orthonormal.m00());
+        Vector3f scale = world.getScale(new Vector3f());
+        transform.setPosition(position.x, position.y);
+        transform.setRotationRadians(rotation);
+        transform.setScale(scale.x, scale.y);
+        transform.markDirty();
+    }
+
+    private void commitPlanarDrag(Transform2D transform) {
+        if (dragPlanarTransform != transform) {
+            dragPlanarTransform = null;
+            return;
+        }
+        Vector2f afterPosition = new Vector2f(transform.position());
+        float afterRotation = transform.rotationRadians();
+        Vector2f afterScale = new Vector2f(transform.scale());
+        dragPlanarTransform = null;
+        if (afterPosition.equals(dragStartPlanarPosition) && afterRotation == dragStartPlanarRotation
+                && afterScale.equals(dragStartPlanarScale)) {
+            return;
+        }
+        rewindAndExecutePlanar(transform, afterPosition, afterRotation, afterScale);
+    }
+
+    private void rewindAndExecutePlanar(Transform2D transform, Vector2f afterPosition,
+                                        float afterRotation, Vector2f afterScale) {
+        Transform2DDragCommand command = new Transform2DDragCommand(transform,
+                dragStartPlanarPosition, dragStartPlanarRotation, dragStartPlanarScale,
+                afterPosition, afterRotation, afterScale);
+        transform.setPosition(dragStartPlanarPosition.x, dragStartPlanarPosition.y);
+        transform.setRotationRadians(dragStartPlanarRotation);
+        transform.setScale(dragStartPlanarScale.x, dragStartPlanarScale.y);
+        transform.markDirty();
+        activeDocument.get().history().execute(command);
+    }
+
     private void finishDragIfReleased() {
-        if (dragTransform != null && !ImGuizmo.isUsing()) {
+        if (ImGuizmo.isUsing()) {
+            return;
+        }
+        if (dragTransform != null) {
             commitDrag(dragTransform);
+        }
+        if (dragPlanarTransform != null) {
+            commitPlanarDrag(dragPlanarTransform);
         }
     }
 
@@ -681,9 +804,9 @@ public final class ViewportView {
         Vector3f center = new Vector3f();
         int counted = 0;
         for (GameObject gameObject : selected) {
-            Optional<Transform3D> transform = gameObject.getComponent(Transform3D.class);
-            if (transform.isPresent()) {
-                center.add(transform.get().worldMatrix().getTranslation(new Vector3f()));
+            Optional<Vector3f> position = worldCenter(gameObject);
+            if (position.isPresent()) {
+                center.add(position.get());
                 counted++;
             }
         }
@@ -695,27 +818,41 @@ public final class ViewportView {
     }
 
     public void frameObject(GameObject gameObject) {
-        Optional<Transform3D> transform = gameObject.getComponent(Transform3D.class);
-        if (transform.isEmpty()) {
-            return;
+        worldCenter(gameObject).ifPresent(center ->
+                editorCamera.frame(center, boundsRadius(List.of(gameObject), center)));
+    }
+
+    private static Optional<Vector3f> worldCenter(GameObject gameObject) {
+        Optional<Transform3D> spatial = gameObject.getComponent(Transform3D.class);
+        if (spatial.isPresent()) {
+            return Optional.of(spatial.get().worldMatrix().getTranslation(new Vector3f()));
         }
-        Vector3f center = transform.get().worldMatrix().getTranslation(new Vector3f());
-        editorCamera.frame(center, boundsRadius(List.of(gameObject), center));
+        return gameObject.getComponent(Transform2D.class)
+                .map(planar -> new Vector3f(planar.position().x, planar.position().y, 0.0f));
     }
 
     private static float boundsRadius(List<GameObject> gameObjects, Vector3f center) {
         float radius = FRAME_MINIMUM_RADIUS;
         for (GameObject gameObject : gameObjects) {
-            Optional<Transform3D> transform = gameObject.getComponent(Transform3D.class);
-            if (transform.isEmpty()) {
+            Optional<Vector3f> position = worldCenter(gameObject);
+            if (position.isEmpty()) {
                 continue;
             }
-            Vector3f position = transform.get().worldMatrix().getTranslation(new Vector3f());
-            Vector3f scale = transform.get().worldMatrix().getScale(new Vector3f());
-            float objectRadius = Math.max(scale.x, Math.max(scale.y, scale.z)) * 0.87f;
-            radius = Math.max(radius, center.distance(position) + objectRadius);
+            float objectRadius = largestScaleAxis(gameObject) * 0.87f;
+            radius = Math.max(radius, center.distance(position.get()) + objectRadius);
         }
         return radius;
+    }
+
+    private static float largestScaleAxis(GameObject gameObject) {
+        Optional<Transform3D> spatial = gameObject.getComponent(Transform3D.class);
+        if (spatial.isPresent()) {
+            Vector3f scale = spatial.get().worldMatrix().getScale(new Vector3f());
+            return Math.max(scale.x, Math.max(scale.y, scale.z));
+        }
+        return gameObject.getComponent(Transform2D.class)
+                .map(planar -> Math.max(planar.scale().x, planar.scale().y))
+                .orElse(1.0f);
     }
 
     private void handlePicking(boolean gizmoBusy, float imageX, float imageY, int width, int height) {
