@@ -36,6 +36,6 @@ public final class PointLight extends Light {
                 .orElseThrow(() -> new EpysiaException("PointLight is not attached to a GameObject."))
                 .getComponent(Transform3D.class)
                 .orElseThrow(() -> new EpysiaException("PointLight requires a Transform3D on the same GameObject."));
-        return destination.set(transform.position());
+        return transform.worldPosition(destination);
     }
 }

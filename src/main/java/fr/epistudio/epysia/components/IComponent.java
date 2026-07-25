@@ -14,6 +14,9 @@ public interface IComponent {
     default void onLoad(EngineServices services) {
     }
 
+    default void copyStateFrom(IComponent source) {
+    }
+
     default void onPlayStart(EngineServices services) {
     }
 

@@ -37,6 +37,7 @@ public final class GameObjectJsonCodec {
     private final MaterialJsonCodec materialCodec = new MaterialJsonCodec();
     private final PostEffectStackJsonCodec postEffectCodec = new PostEffectStackJsonCodec();
     private List<String> lastIncompatibleComponents = List.of();
+    private List<String> lastUnloadableComponents = List.of();
 
     public GameObjectJsonCodec(ComponentRegistry componentRegistry) {
         this.componentRegistry = componentRegistry;
@@ -66,6 +67,9 @@ public final class GameObjectJsonCodec {
         for (ComponentRegistry.Entry entry : componentRegistry.entries()) {
             gameObject.getComponent(entry.componentClass()).ifPresent(component ->
                     writeComponent(writer, entry, component, indexByGameObject));
+        }
+        for (Object payload : gameObject.unloadableComponentPayloads()) {
+            JsonValueWriter.write(writer, payload);
         }
         writer.endArray();
         writer.endObject();
@@ -130,6 +134,7 @@ public final class GameObjectJsonCodec {
         GraphReader reader = new GraphReader(identityPolicy);
         List<GameObject> result = reader.read(gameObjectsJson);
         lastIncompatibleComponents = reader.incompatibleComponents;
+        lastUnloadableComponents = reader.unloadableComponents;
         return result;
     }
 
@@ -140,6 +145,10 @@ public final class GameObjectJsonCodec {
     public void invokeOnLoad(List<GameObject> loaded, EngineServices services) {
         for (String skipped : lastIncompatibleComponents) {
             services.logger().warn("[GameObjectJsonCodec] Skipped incompatible component: " + skipped);
+        }
+        for (String unloadable : lastUnloadableComponents) {
+            services.logger().warn("[GameObjectJsonCodec] Component class unavailable, "
+                    + "data preserved for the next save: " + unloadable);
         }
         for (GameObject gameObject : loaded) {
             for (IComponent component : new ArrayList<>(gameObject.components())) {
@@ -202,6 +211,7 @@ public final class GameObjectJsonCodec {
         private final List<PendingIndexReference> pendingIndexReferences = new ArrayList<>();
         private final List<PendingIdReference> pendingIdReferences = new ArrayList<>();
         private final List<String> incompatibleComponents = new ArrayList<>();
+        private final List<String> unloadableComponents = new ArrayList<>();
 
         private GraphReader(IdentityPolicy identityPolicy) {
             this.identityPolicy = identityPolicy;
@@ -280,7 +290,13 @@ public final class GameObjectJsonCodec {
                         (component, migratedFields) -> fieldsCodec.applyFields(component, migratedFields, this));
                 return;
             }
-            findEntry(typeName).ifPresent(entry -> {
+            Optional<ComponentRegistry.Entry> entryLookup = findEntry(typeName);
+            if (entryLookup.isEmpty()) {
+                gameObject.unloadableComponentPayloads().add(componentJson);
+                unloadableComponents.add(typeName + " on '" + gameObject.name() + "'");
+                return;
+            }
+            entryLookup.ifPresent(entry -> {
                 IComponent component = entry.factory().get();
                 if (gameObject.getComponentOrNull(component.getClass()) != null) {
                     return;

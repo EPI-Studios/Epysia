@@ -3,6 +3,7 @@ package fr.epistudio.epysia.components;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 @EpysiaComponent(name = "Directional Light", category = "Lighting")
@@ -10,7 +11,7 @@ public final class DirectionalLight extends Light {
 
     private static final Vector3f LOCAL_FORWARD = new Vector3f(0.0f, 0.0f, -1.0f);
 
-    @Export(label = "Ambient")
+    @Export(label = "Ambient", color = true)
     private final Vector3f ambient = new Vector3f(0.18f, 0.20f, 0.26f);
     @Export(label = "Shadow Extent", min = 1.0f, max = 200.0f, step = 0.5f)
     private float shadowHalfExtent = 6.0f;
@@ -24,6 +25,7 @@ public final class DirectionalLight extends Light {
     private final Vector3f scratchDirection = new Vector3f();
     private final Vector3f scratchLightPosition = new Vector3f();
     private final Vector3f scratchUp = new Vector3f();
+    private final Quaternionf scratchWorldRotation = new Quaternionf();
 
     @Override
     public DirectionalLight setColor(float red, float green, float blue) {
@@ -65,7 +67,7 @@ public final class DirectionalLight extends Light {
 
     public Vector3f direction(Vector3f destination) {
         Transform3D transform = requireOwnerTransform();
-        return transform.rotation().transform(LOCAL_FORWARD, destination);
+        return transform.worldRotation(scratchWorldRotation).transform(LOCAL_FORWARD, destination);
     }
 
     public Matrix4f viewProjection() {

@@ -198,6 +198,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
 
     public void tick(InputState input, float deltaTimeSeconds) {
         long tickStart = System.nanoTime();
+        hud.clear();
         scheduler.tick(deltaTimeSeconds);
         if (activeScene != null) {
             activeScene.advanceTick();
@@ -296,15 +297,14 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     public void render(List<Camera3D> activeCameras, RenderTargetHandle screenTarget, float interpolationAlpha) {
         long renderStart = System.nanoTime();
         frame.reset();
-        collectRenderSystems(RenderContext.of(activeCameras, screenTarget, interpolationAlpha));
         renderBackend.beginFrame();
+        collectRenderSystems(RenderContext.of(activeCameras, screenTarget, interpolationAlpha));
         long drainStart = System.nanoTime();
         drainStages(screenTarget);
         renderBackend.endFrame();
         profiler.record(FrameProfiler.DRAIN_SECTION, System.nanoTime() - drainStart);
         profiler.record(FrameProfiler.RENDER_SECTION, System.nanoTime() - renderStart);
         profiler.publishFrame();
-        hud.clear();
     }
 
     private void collectRenderSystems(RenderContext context) {

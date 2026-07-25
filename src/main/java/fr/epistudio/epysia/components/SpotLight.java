@@ -2,6 +2,7 @@ package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 @EpysiaComponent(name = "Spot Light", category = "Lighting")
@@ -9,6 +10,7 @@ public final class SpotLight extends Light {
 
     private static final Vector3f LOCAL_FORWARD = new Vector3f(0.0f, 0.0f, -1.0f);
 
+    private final Quaternionf scratchWorldRotation = new Quaternionf();
     private float range = 10.0f;
     private float innerConeRadians = (float) Math.toRadians(15.0);
     private float outerConeRadians = (float) Math.toRadians(25.0);
@@ -49,11 +51,11 @@ public final class SpotLight extends Light {
     }
 
     public Vector3f position(Vector3f destination) {
-        return destination.set(requireOwnerTransform().position());
+        return requireOwnerTransform().worldPosition(destination);
     }
 
     public Vector3f direction(Vector3f destination) {
-        return requireOwnerTransform().rotation().transform(LOCAL_FORWARD, destination);
+        return requireOwnerTransform().worldRotation(scratchWorldRotation).transform(LOCAL_FORWARD, destination);
     }
 
     private Transform3D requireOwnerTransform() {

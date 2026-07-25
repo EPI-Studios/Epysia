@@ -2,6 +2,7 @@ package fr.epistudio.epysia.physics.components;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
+import fr.epistudio.epysia.assets.epytilemap.CellBounds;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TilemapSolidRectangles;
@@ -57,7 +58,9 @@ public final class TilemapCollider2D extends Collider2D {
     }
 
     private static Vector2f mapHalfExtents(SpriteTilemap map) {
-        return new Vector2f(map.width() * map.cellWidth() * 0.5f, map.height() * map.cellHeight() * 0.5f);
+        CellBounds bounds = map.usedBounds();
+        return new Vector2f(Math.max(1, bounds.widthCells()) * map.cellWidth() * 0.5f,
+                Math.max(1, bounds.heightCells()) * map.cellHeight() * 0.5f);
     }
 
     @Override
@@ -77,8 +80,9 @@ public final class TilemapCollider2D extends Collider2D {
     }
 
     private void appendPolygonPlacements(SpriteTilemap map, List<ShapePlacement> placements) {
-        for (int cellY = 0; cellY < map.height(); cellY++) {
-            for (int cellX = 0; cellX < map.width(); cellX++) {
+        CellBounds bounds = map.collisionBounds();
+        for (int cellY = bounds.minY(); cellY <= bounds.maxY(); cellY++) {
+            for (int cellX = bounds.minX(); cellX <= bounds.maxX(); cellX++) {
                 for (TileCollisionShape shape : map.cellCollisionShapes(cellX, cellY)) {
                     placements.add(polygonPlacement(map, shape, cellX, cellY));
                 }

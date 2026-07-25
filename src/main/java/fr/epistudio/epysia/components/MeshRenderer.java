@@ -71,6 +71,13 @@ public final class MeshRenderer extends Component {
     }
 
     @Override
+    public void copyStateFrom(IComponent source) {
+        if (source instanceof MeshRenderer other) {
+            setMaterials(other.materials());
+        }
+    }
+
+    @Override
     public void onLoad(EngineServices services) {
         if (mesh.direct().isEmpty() && !mesh.isEmpty()) {
             resolveMeshAndMaterials(services);

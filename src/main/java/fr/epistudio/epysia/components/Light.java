@@ -4,15 +4,26 @@ import org.joml.Vector3f;
 
 public abstract class Light extends Component {
 
-    @Export(label = "Color")
+    @Export(label = "Color", color = true)
     private final Vector3f color = new Vector3f(1.0f, 1.0f, 1.0f);
     @Export(label = "Intensity", min = 0.0f, max = 100.0f, step = 0.1f)
     private float intensity = 1.0f;
+    @Export(label = "Source Radius", min = 0.0f, max = 10.0f, step = 0.01f)
+    private float sourceRadius = 0.1f;
     @Export(label = "Cast Shadows")
     private boolean castShadows = true;
 
     public Vector3f color() {
         return color;
+    }
+
+    public float sourceRadius() {
+        return sourceRadius;
+    }
+
+    public Light setSourceRadius(float sourceRadius) {
+        this.sourceRadius = Math.max(0.0f, sourceRadius);
+        return this;
     }
 
     public float intensity() {

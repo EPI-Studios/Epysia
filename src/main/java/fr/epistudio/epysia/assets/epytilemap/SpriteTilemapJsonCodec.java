@@ -21,6 +21,7 @@ public final class SpriteTilemapJsonCodec {
     private static final String SOLID_TILES_KEY = "solidTiles";
     private static final String TILES_KEY = "tiles";
     private static final String SCENES_KEY = "scenes";
+    private static final String ORIGIN_KEY = "origin";
     private static final String TERRAINS_KEY = "terrains";
     private static final String TERRAIN_MODE_KEY = "terrainMode";
     private static final String NAME_KEY = "name";
@@ -58,7 +59,7 @@ public final class SpriteTilemapJsonCodec {
 
     private static void readLayers(SpriteTilemap tilemap, Map<String, Object> root) {
         if (!(root.get(LAYERS_KEY) instanceof List<?> encodedLayers) || encodedLayers.isEmpty()) {
-            readRows(tilemap, 0, root.get(ROWS_KEY));
+            readRows(tilemap, 0, root.get(ROWS_KEY), new int[]{0, 0});
             return;
         }
         for (int layerIndex = 0; layerIndex < encodedLayers.size(); layerIndex++) {
@@ -81,25 +82,32 @@ public final class SpriteTilemapJsonCodec {
         layer.setSortingOrder(asInt(encoded.get(SORTING_ORDER_KEY)));
         Vector4f modulate = asColorOrWhite(encoded.get(MODULATE_KEY));
         layer.setModulate(modulate.x, modulate.y, modulate.z, modulate.w);
-        readRows(tilemap, layerIndex, encoded.get(ROWS_KEY));
+        readRows(tilemap, layerIndex, encoded.get(ROWS_KEY), originOf(encoded));
     }
 
-    private static void readRows(SpriteTilemap tilemap, int layerIndex, Object value) {
+    private static int[] originOf(Map<?, ?> encoded) {
+        if (encoded.get(ORIGIN_KEY) instanceof List<?> origin && origin.size() >= 2) {
+            return new int[]{asInt(origin.get(0)), asInt(origin.get(1))};
+        }
+        return new int[]{0, 0};
+    }
+
+    private static void readRows(SpriteTilemap tilemap, int layerIndex, Object value, int[] origin) {
         if (!(value instanceof List<?> rows)) {
             return;
         }
-        for (int cellY = 0; cellY < rows.size() && cellY < tilemap.height(); cellY++) {
-            if (rows.get(cellY) instanceof String encodedRow) {
-                readRow(tilemap, layerIndex, cellY, encodedRow);
+        for (int row = 0; row < rows.size(); row++) {
+            if (rows.get(row) instanceof String encodedRow) {
+                readRow(tilemap, layerIndex, origin[1] + row, encodedRow, origin[0]);
             }
         }
     }
 
-    private static void readRow(SpriteTilemap tilemap, int layerIndex, int cellY, String encodedRow) {
+    private static void readRow(SpriteTilemap tilemap, int layerIndex, int cellY, String encodedRow, int originX) {
         if (encodedRow.isEmpty()) {
             return;
         }
-        int cellX = 0;
+        int cellX = originX;
         for (String run : encodedRow.split(RUN_SEPARATOR)) {
             cellX = readRun(tilemap, layerIndex, cellX, cellY, run);
         }
@@ -258,21 +266,26 @@ public final class SpriteTilemapJsonCodec {
         writer.key(COLLISION_KEY).valueBoolean(layer.collisionEnabled());
         writer.key(SORTING_ORDER_KEY).valueNumber(layer.sortingOrder());
         writeColor(writer, MODULATE_KEY, layer.modulate());
+        CellBounds bounds = layer.usedBounds();
+        writer.key(ORIGIN_KEY).beginArray();
+        writer.valueNumber(bounds.isEmpty() ? 0 : bounds.minX());
+        writer.valueNumber(bounds.isEmpty() ? 0 : bounds.minY());
+        writer.endArray();
         writer.key(ROWS_KEY).beginArray();
-        for (int cellY = 0; cellY < tilemap.height(); cellY++) {
-            writer.valueString(encodeRow(tilemap, layerIndex, cellY));
+        for (int cellY = bounds.minY(); cellY <= bounds.maxY(); cellY++) {
+            writer.valueString(encodeRow(tilemap, layerIndex, cellY, bounds));
         }
         writer.endArray();
         writer.endObject();
     }
 
-    private static String encodeRow(SpriteTilemap tilemap, int layerIndex, int cellY) {
+    private static String encodeRow(SpriteTilemap tilemap, int layerIndex, int cellY, CellBounds bounds) {
         StringBuilder encoded = new StringBuilder();
-        int cellX = 0;
-        while (cellX < tilemap.width()) {
+        int cellX = bounds.minX();
+        while (cellX <= bounds.maxX()) {
             int tileIndex = tilemap.tileIndex(layerIndex, cellX, cellY);
             int runEnd = cellX + 1;
-            while (runEnd < tilemap.width() && tilemap.tileIndex(layerIndex, runEnd, cellY) == tileIndex) {
+            while (runEnd <= bounds.maxX() && tilemap.tileIndex(layerIndex, runEnd, cellY) == tileIndex) {
                 runEnd++;
             }
             appendRun(encoded, runEnd - cellX, tileIndex);

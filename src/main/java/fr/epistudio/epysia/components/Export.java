@@ -16,4 +16,6 @@ public @interface Export {
     float max() default Float.POSITIVE_INFINITY;
 
     float step() default 0.05f;
+
+    boolean color() default false;
 }

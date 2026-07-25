@@ -17,9 +17,11 @@ import fr.epistudio.epysia.editor.command.CompositeCommand;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.editor.gizmo.ColliderWireframeOverlay;
 import fr.epistudio.epysia.editor.gizmo.GizmoFollowers;
+import fr.epistudio.epysia.editor.gizmo.LightDirectionOverlay;
 import fr.epistudio.epysia.editor.gizmo.GridOverlay;
 import fr.epistudio.epysia.editor.gizmo.GridOverlay2D;
 import fr.epistudio.epysia.editor.gizmo.SelectionOutlineOverlay;
+import fr.epistudio.epysia.editor.gizmo.SelectionSilhouetteOverlay;
 import fr.epistudio.epysia.editor.gl.GlStateSnapshot;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -120,6 +122,7 @@ public final class ViewportView {
 
     private final float[] snapArray = new float[3];
     private final GizmoFollowers followers = new GizmoFollowers();
+    private final LightDirectionOverlay lightDirectionOverlay = new LightDirectionOverlay();
     private List<SmartSnap.Guide> smartSnapGuides = List.of();
     private final Vector3f dragStartPosition = new Vector3f();
     private final Quaternionf dragStartRotation = new Quaternionf();
@@ -130,6 +133,7 @@ public final class ViewportView {
     private GridOverlay gridOverlay;
     private ColliderWireframeOverlay colliderOverlay;
     private SelectionOutlineOverlay selectionOverlay;
+    private SelectionSilhouetteOverlay selectionSilhouette;
     private Transform3D dragTransform;
     private Transform2D dragPlanarTransform;
     private boolean showGrid = true;
@@ -274,6 +278,7 @@ public final class ViewportView {
             renderAxisIndicator(imageX, imageY, width);
         }
         renderBillboards(imageX, imageY, width, height);
+        renderLightDirections(imageX, imageY, width, height);
         drawSmartSnapGuides(imageX, imageY, width, height);
         paintTarget.ifPresentOrElse(
                 renderer -> handleTilemapPaint(renderer, imageX, imageY, width, height),
@@ -402,18 +407,35 @@ public final class ViewportView {
             return;
         }
         GlStateSnapshot snapshot = GlStateSnapshot.capture();
+        boolean silhouetteReady;
         try {
-            if (selectionOverlay == null) {
-                selectionOverlay = new SelectionOutlineOverlay();
-            }
-            selectionOverlay.render(activeDocument.get().selection().all(),
-                    editorCamera.camera().viewProjection(),
-                    editorCamera.camera().position(new Vector3f()),
-                    width * supersampleFactor, height * supersampleFactor, overlayThicknessScale());
+            silhouetteReady = renderSelectionLayers(width, height);
         } finally {
             snapshot.restore();
         }
+        if (silhouetteReady) {
+            addOverlayImage(selectionSilhouette.textureId(), imageX, imageY, width, height);
+        }
         addOverlayImage(selectionOverlay.textureId(), imageX, imageY, width, height);
+    }
+
+    private boolean renderSelectionLayers(int width, int height) {
+        if (selectionOverlay == null) {
+            selectionOverlay = new SelectionOutlineOverlay();
+        }
+        if (selectionSilhouette == null) {
+            selectionSilhouette = new SelectionSilhouetteOverlay();
+        }
+        int pixelWidth = width * supersampleFactor;
+        int pixelHeight = height * supersampleFactor;
+        boolean ready = selectionSilhouette.render(activeDocument.get().selection().all(),
+                editorCamera.camera().viewProjection(), pixelWidth, pixelHeight,
+                overlayThicknessScale(), sceneHost.backend());
+        selectionOverlay.render(activeDocument.get().selection().all(),
+                editorCamera.camera().viewProjection(),
+                editorCamera.camera().position(new Vector3f()),
+                pixelWidth, pixelHeight, overlayThicknessScale());
+        return ready;
     }
 
     private void addOverlayImage(int textureId, float imageX, float imageY, int width, int height) {
@@ -833,6 +855,12 @@ public final class ViewportView {
         return false;
     }
 
+    private void renderLightDirections(float imageX, float imageY, int width, int height) {
+        lightDirectionOverlay.render(activeDocument.get().selection().all(),
+                editorCamera.camera().viewProjection(), ImGui.getWindowDrawList(),
+                new LightDirectionOverlay.ScreenRect(imageX, imageY, width, height));
+    }
+
     private void renderBillboards(float imageX, float imageY, int width, int height) {
         Matrix4f viewProjection = new Matrix4f(editorCamera.camera().viewProjection());
         for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {
@@ -1095,13 +1123,10 @@ public final class ViewportView {
     private void drawCellQuad(Transform2D transform, SpriteTilemap tilemap, int cellX0, int cellY0,
                               int cellX1, int cellY1, float imageX, float imageY, int width, int height,
                               int fillColor, int borderColor) {
-        int minX = Math.max(0, Math.min(cellX0, cellX1));
-        int maxX = Math.min(tilemap.width() - 1, Math.max(cellX0, cellX1));
-        int minY = Math.max(0, Math.min(cellY0, cellY1));
-        int maxY = Math.min(tilemap.height() - 1, Math.max(cellY0, cellY1));
-        if (minX > maxX || minY > maxY) {
-            return;
-        }
+        int minX = Math.min(cellX0, cellX1);
+        int maxX = Math.max(cellX0, cellX1);
+        int minY = Math.min(cellY0, cellY1);
+        int maxY = Math.max(cellY0, cellY1);
         projectAndDrawQuad(transform, minX * tilemap.cellWidth(), (maxX + 1) * tilemap.cellWidth(),
                 minY * tilemap.cellHeight(), (maxY + 1) * tilemap.cellHeight(),
                 imageX, imageY, width, height, fillColor, borderColor);
@@ -1305,6 +1330,10 @@ public final class ViewportView {
         if (colliderOverlay != null) {
             colliderOverlay.close();
             colliderOverlay = null;
+        }
+        if (selectionSilhouette != null) {
+            selectionSilhouette.close();
+            selectionSilhouette = null;
         }
         if (selectionOverlay != null) {
             selectionOverlay.close();

@@ -82,9 +82,10 @@ final class LightStorage {
     private void writeCones(Light light, SpotShadowAtlas spotShadows) {
         if (light instanceof SpotLight spot) {
             float layer = light.castShadows() ? spotShadows.layerFor(spot) : -1.0f;
-            scratch.putFloat(spot.innerConeCosine()).putFloat(spot.outerConeCosine()).putFloat(layer).putFloat(0.0f);
+            scratch.putFloat(spot.innerConeCosine()).putFloat(spot.outerConeCosine()).putFloat(layer)
+                    .putFloat(light.sourceRadius());
         } else {
-            scratch.putFloat(0.0f).putFloat(0.0f).putFloat(-1.0f).putFloat(0.0f);
+            scratch.putFloat(0.0f).putFloat(0.0f).putFloat(-1.0f).putFloat(light.sourceRadius());
         }
     }
 

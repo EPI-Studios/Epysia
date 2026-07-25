@@ -193,6 +193,14 @@ public final class Transform3D extends Component {
         return cachedWorldMatrix;
     }
 
+    public Vector3f worldPosition(Vector3f destination) {
+        return worldMatrix().getTranslation(destination);
+    }
+
+    public Quaternionf worldRotation(Quaternionf destination) {
+        return worldMatrix().getNormalizedRotation(destination);
+    }
+
     public void captureInterpolationSnapshot() {
         previousPosition.set(position);
         previousRotation.set(rotation);

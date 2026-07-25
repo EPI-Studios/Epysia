@@ -99,6 +99,14 @@ tasks.register('runTerrainAutotileCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runTilemapUnboundedCheck', JavaExec) {
+    group = 'verification'
+    description = 'Paints far outside the authored box and in negative coordinates, then round trips it.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.TilemapUnboundedCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runTilemapPhysicsCheck', JavaExec) {
     group = 'verification'
     description = 'Drops a plane-locked 2D body onto a solid tilemap row merged into one static box.'

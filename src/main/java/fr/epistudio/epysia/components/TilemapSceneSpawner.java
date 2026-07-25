@@ -2,6 +2,7 @@ package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetRef;
+import fr.epistudio.epysia.assets.epytilemap.CellBounds;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TilemapLayer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
@@ -56,8 +57,9 @@ public final class TilemapSceneSpawner extends Component {
     private void spawnLayer(EngineServices services, SpriteTilemap map,
                             PrefabInstantiator instantiator, int layerIndex) {
         TilemapLayer layer = map.layer(layerIndex);
-        for (int cellY = 0; cellY < map.height(); cellY++) {
-            for (int cellX = 0; cellX < map.width(); cellX++) {
+        CellBounds bounds = layer.usedBounds();
+        for (int cellY = bounds.minY(); cellY <= bounds.maxY(); cellY++) {
+            for (int cellX = bounds.minX(); cellX <= bounds.maxX(); cellX++) {
                 Optional<String> scenePath = map.sceneForTile(layer.tileIndex(cellX, cellY));
                 if (scenePath.isPresent()) {
                     spawnCell(services, map, instantiator, scenePath.get(), layerIndex, cellX, cellY);

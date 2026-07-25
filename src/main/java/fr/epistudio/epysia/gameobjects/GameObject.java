@@ -25,7 +25,12 @@ public final class GameObject implements IGameObject {
     private boolean active = true;
     private final Map<Class<?>, IComponent> componentsByType = new HashMap<>();
     private final List<IComponent> attachedComponents = new ArrayList<>();
+    private final List<Object> unloadableComponentPayloads = new ArrayList<>();
     private Runnable structuralChangeListener = NO_LISTENER;
+
+    public List<Object> unloadableComponentPayloads() {
+        return unloadableComponentPayloads;
+    }
 
     public GameObject(String name) {
         this(name, UUID.randomUUID());

@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.epytilemap.CellBounds;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TilemapSolidRectangles;
@@ -52,8 +53,9 @@ public final class TilemapCollisionOverlay {
 
     private static void drawCollisionShapes(Transform2D transform, SpriteTilemap tilemap,
                                             ImDrawList drawList, LocalProjection projection) {
-        for (int cellY = 0; cellY < tilemap.height(); cellY++) {
-            for (int cellX = 0; cellX < tilemap.width(); cellX++) {
+        CellBounds bounds = tilemap.collisionBounds();
+        for (int cellY = bounds.minY(); cellY <= bounds.maxY(); cellY++) {
+            for (int cellX = bounds.minX(); cellX <= bounds.maxX(); cellX++) {
                 for (TileCollisionShape shape : tilemap.cellCollisionShapes(cellX, cellY)) {
                     drawShape(transform, tilemap, drawList, projection, shape, cellX, cellY);
                 }

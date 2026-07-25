@@ -36,7 +36,7 @@ public final class SpriteTilemap {
         this.cellWidth = cellWidth;
         this.cellHeight = cellHeight;
         this.atlasPath = atlasPath;
-        layers.add(new TilemapLayer("Layer 1", this.width, this.height));
+        layers.add(new TilemapLayer("Layer 1"));
     }
 
     public int width() {
@@ -89,7 +89,7 @@ public final class SpriteTilemap {
     }
 
     public SpriteTilemap addLayer(String name) {
-        layers.add(new TilemapLayer(name, width, height));
+        layers.add(new TilemapLayer(name));
         version++;
         return this;
     }
@@ -113,7 +113,25 @@ public final class SpriteTilemap {
     }
 
     public boolean contains(int cellX, int cellY) {
-        return cellX >= 0 && cellX < width && cellY >= 0 && cellY < height;
+        return true;
+    }
+
+    public CellBounds usedBounds() {
+        CellBounds bounds = CellBounds.empty();
+        for (TilemapLayer layer : layers) {
+            bounds = bounds.union(layer.usedBounds());
+        }
+        return bounds;
+    }
+
+    public CellBounds collisionBounds() {
+        CellBounds bounds = CellBounds.empty();
+        for (TilemapLayer layer : layers) {
+            if (layer.collisionEnabled()) {
+                bounds = bounds.union(layer.usedBounds());
+            }
+        }
+        return bounds;
     }
 
     public int tileIndex(int cellX, int cellY) {

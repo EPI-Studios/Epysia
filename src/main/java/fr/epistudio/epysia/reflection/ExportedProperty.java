@@ -58,6 +58,10 @@ public final class ExportedProperty {
         return annotation.step();
     }
 
+    public boolean isColor() {
+        return annotation.color();
+    }
+
     public Object read() {
         try {
             return field.get(owner);

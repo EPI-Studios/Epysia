@@ -2,6 +2,7 @@ package fr.epistudio.epysia.render.sprite;
 
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasRegion;
+import fr.epistudio.epysia.assets.epytilemap.CellBounds;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.components.TilemapRenderer;
@@ -198,13 +199,17 @@ public final class TilemapRenderSystem implements RenderSystem {
                                           SpriteTilemap tilemap, SpriteAtlas atlas, List<Integer> chunkQuadCounts) {
         ByteBuffer vertices = BufferUtils.createByteBuffer(Math.max(1, countFilledCells(tilemap))
                 * SpriteRenderSystem.VERTICES_PER_QUAD * SpriteRenderSystem.VERTEX_BYTES);
-        int chunkColumns = (tilemap.width() + CHUNK_SIZE - 1) / CHUNK_SIZE;
-        int chunkRows = (tilemap.height() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+        CellBounds bounds = tilemap.usedBounds();
+        if (bounds.isEmpty()) {
+            return vertices.flip();
+        }
+        int chunkColumns = (bounds.widthCells() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+        int chunkRows = (bounds.heightCells() + CHUNK_SIZE - 1) / CHUNK_SIZE;
         for (int layerIndex : drawOrder(tilemap)) {
             for (int chunkY = 0; chunkY < chunkRows; chunkY++) {
                 for (int chunkX = 0; chunkX < chunkColumns; chunkX++) {
                     int quadCount = appendChunk(vertices, transform, renderer, tilemap, atlas,
-                            layerIndex, chunkX, chunkY);
+                            layerIndex, bounds, chunkX, chunkY);
                     if (quadCount > 0) {
                         chunkQuadCounts.add(quadCount);
                     }
@@ -228,24 +233,21 @@ public final class TilemapRenderSystem implements RenderSystem {
     private static int countFilledCells(SpriteTilemap tilemap) {
         int filled = 0;
         for (int layerIndex = 0; layerIndex < tilemap.layerCount(); layerIndex++) {
-            for (int cellY = 0; cellY < tilemap.height(); cellY++) {
-                for (int cellX = 0; cellX < tilemap.width(); cellX++) {
-                    if (tilemap.tileIndex(layerIndex, cellX, cellY) != SpriteTilemap.EMPTY_TILE_INDEX) {
-                        filled++;
-                    }
-                }
-            }
+            filled += tilemap.layer(layerIndex).paintedCellCount();
         }
         return filled;
     }
 
     private int appendChunk(ByteBuffer vertices, Transform2D transform, TilemapRenderer renderer,
-                            SpriteTilemap tilemap, SpriteAtlas atlas, int layerIndex, int chunkX, int chunkY) {
+                            SpriteTilemap tilemap, SpriteAtlas atlas, int layerIndex,
+                            CellBounds bounds, int chunkX, int chunkY) {
         int quadCount = 0;
-        int endX = Math.min((chunkX + 1) * CHUNK_SIZE, tilemap.width());
-        int endY = Math.min((chunkY + 1) * CHUNK_SIZE, tilemap.height());
-        for (int cellY = chunkY * CHUNK_SIZE; cellY < endY; cellY++) {
-            for (int cellX = chunkX * CHUNK_SIZE; cellX < endX; cellX++) {
+        int startX = bounds.minX() + chunkX * CHUNK_SIZE;
+        int startY = bounds.minY() + chunkY * CHUNK_SIZE;
+        int endX = Math.min(startX + CHUNK_SIZE, bounds.maxX() + 1);
+        int endY = Math.min(startY + CHUNK_SIZE, bounds.maxY() + 1);
+        for (int cellY = startY; cellY < endY; cellY++) {
+            for (int cellX = startX; cellX < endX; cellX++) {
                 if (appendCell(vertices, transform, renderer, tilemap, atlas, layerIndex, cellX, cellY)) {
                     quadCount++;
                 }
