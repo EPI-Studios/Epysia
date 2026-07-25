@@ -265,7 +265,7 @@ final class CascadedShadowMaps {
         float nearPlane = camera.nearPlane();
         float cameraFar = camera.farPlane();
         float shadowFar = Math.min(cameraFar, Math.max(maxShadowDistance, nearPlane + 0.01f));
-        computeSplits(nearPlane, shadowFar);
+        computeSplits(nearPlane, shadowFar, camera.orthographic());
         computeFrustumCorners(camera, alpha);
         updateFrameCounter++;
         farCascadeRefitUsedThisFrame = false;
@@ -278,12 +278,13 @@ final class CascadedShadowMaps {
         cascadesActive = true;
     }
 
-    private void computeSplits(float nearPlane, float farPlane) {
+    private void computeSplits(float nearPlane, float farPlane, boolean orthographic) {
+        float lambda = orthographic ? 0.0f : SPLIT_LAMBDA;
         for (int i = 1; i <= CASCADE_COUNT; i++) {
             float fraction = i / (float) CASCADE_COUNT;
             float uniformSplit = nearPlane + (farPlane - nearPlane) * fraction;
             float logarithmicSplit = (float) (nearPlane * Math.pow(farPlane / nearPlane, fraction));
-            cascadeSplits[i - 1] = SPLIT_LAMBDA * logarithmicSplit + (1.0f - SPLIT_LAMBDA) * uniformSplit;
+            cascadeSplits[i - 1] = lambda * logarithmicSplit + (1.0f - lambda) * uniformSplit;
         }
     }
 
