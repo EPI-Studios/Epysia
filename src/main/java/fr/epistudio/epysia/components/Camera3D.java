@@ -22,6 +22,8 @@ public final class Camera3D extends Component {
     private float farPlane = 100.0f;
     @Export(label = "Orthographic")
     private boolean orthographic;
+    @Export(label = "Pixel Snap")
+    private boolean pixelSnap;
     @Export(label = "Ortho Size", min = 0.01f, max = 1000.0f, step = 0.1f)
     private float orthographicSize = 5.0f;
     private float aspectRatio = 16.0f / 9.0f;
@@ -36,6 +38,7 @@ public final class Camera3D extends Component {
     private final Matrix4f viewMatrix = new Matrix4f();
     private final Matrix4f projectionMatrix = new Matrix4f();
     private final Matrix4f viewProjectionMatrix = new Matrix4f();
+    private transient int renderHeightPixels;
 
     public Camera3D setFieldOfViewDegrees(float degrees) {
         this.fieldOfViewDegrees = degrees;
@@ -124,7 +127,32 @@ public final class Camera3D extends Component {
     }
 
     public Matrix4f view(float interpolationAlpha) {
-        return requireOwnerTransform().worldMatrix(interpolationAlpha).invert(viewMatrix);
+        requireOwnerTransform().worldMatrix(interpolationAlpha).invert(viewMatrix);
+        return snapToPixelGrid(viewMatrix);
+    }
+
+    public boolean pixelSnap() {
+        return pixelSnap;
+    }
+
+    public Camera3D setPixelSnap(boolean value) {
+        pixelSnap = value;
+        return this;
+    }
+
+    public Camera3D setRenderHeightPixels(int value) {
+        renderHeightPixels = Math.max(0, value);
+        return this;
+    }
+
+    private Matrix4f snapToPixelGrid(Matrix4f view) {
+        if (!pixelSnap || !orthographic || renderHeightPixels <= 0) {
+            return view;
+        }
+        float step = 2.0f * orthographicSize / renderHeightPixels;
+        view.m30(Math.round(view.m30() / step) * step);
+        view.m31(Math.round(view.m31() / step) * step);
+        return view;
     }
 
     public Matrix4f projection() {

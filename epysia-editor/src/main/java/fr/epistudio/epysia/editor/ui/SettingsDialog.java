@@ -68,6 +68,8 @@ public final class SettingsDialog {
     private boolean detachableWindows;
     private boolean lightCullingEnabled = true;
     private boolean bloomEnabled;
+    private boolean pixelPerfectEnabled;
+    private final imgui.type.ImInt pixelPerfectBaseHeight = new imgui.type.ImInt();
     private boolean ambientOcclusionEnabled;
     private boolean antiAliasEnabled;
     private EditorPreferences basePreferences = EditorPreferences.defaults();
@@ -150,6 +152,8 @@ public final class SettingsDialog {
         ambientOcclusionIntensity[0] = postProcess.ambientOcclusionIntensity();
         ambientOcclusionRadius[0] = postProcess.ambientOcclusionRadius();
         bloomEnabled = postProcess.bloomEnabled();
+        pixelPerfectEnabled = postProcess.pixelPerfectEnabled();
+        pixelPerfectBaseHeight.set(postProcess.pixelPerfectBaseHeight());
         ambientOcclusionEnabled = postProcess.ambientOcclusionEnabled();
         antiAliasEnabled = postProcess.antiAliasingEnabled();
         meshRenderSystem.ifPresent(system -> lightCullingEnabled = system.clusteringEnabled());
@@ -295,6 +299,16 @@ public final class SettingsDialog {
     }
 
     private void renderToggleRows() {
+        if (ImGui.checkbox("Pixel perfect", pixelPerfectEnabled)) {
+            pixelPerfectEnabled = !pixelPerfectEnabled;
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Render the whole scene at a low resolution, then scale it up by a whole number.\n"
+                    + "Turn on Pixel Snap on the camera too so the image does not shimmer when it moves.");
+        }
+        if (pixelPerfectEnabled) {
+            ImGui.dragInt("Base height", pixelPerfectBaseHeight.getData(), 1.0f, 64, 1080);
+        }
         if (ImGui.checkbox("Bloom", bloomEnabled)) {
             bloomEnabled = !bloomEnabled;
         }
@@ -381,6 +395,8 @@ public final class SettingsDialog {
     private void applyPostProcess(PostProcessSettings postProcess) {
         postProcess.setGradeExposure(exposure[0]);
         postProcess.setVignetteStrength(vignette[0]);
+        postProcess.setPixelPerfectEnabled(pixelPerfectEnabled);
+        postProcess.setPixelPerfectBaseHeight(pixelPerfectBaseHeight.get());
         postProcess.setBloomEnabled(bloomEnabled);
         postProcess.setBloom(postProcess.bloomThreshold(), postProcess.bloomKnee(), bloomIntensity[0]);
         postProcess.setAmbientOcclusionEnabled(ambientOcclusionEnabled);

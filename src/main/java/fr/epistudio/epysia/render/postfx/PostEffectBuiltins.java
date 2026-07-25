@@ -12,6 +12,24 @@ public final class PostEffectBuiltins {
         this.settings = settings;
     }
 
+    public boolean isPixelPerfectEnabled() {
+        return settings.get().pixelPerfectEnabled();
+    }
+
+    public PostEffectBuiltins setPixelPerfectEnabled(boolean value) {
+        settings.get().setPixelPerfectEnabled(value);
+        return this;
+    }
+
+    public int pixelPerfectBaseHeight() {
+        return settings.get().pixelPerfectBaseHeight();
+    }
+
+    public PostEffectBuiltins setPixelPerfectBaseHeight(int value) {
+        settings.get().setPixelPerfectBaseHeight(value);
+        return this;
+    }
+
     public boolean isBloomEnabled() {
         return settings.get().bloomEnabled();
     }

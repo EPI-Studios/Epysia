@@ -31,6 +31,7 @@ import fr.epistudio.epysia.render.backend.RenderTargetDescriptor;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
 import fr.epistudio.epysia.render.backend.SampledTextureBinding;
 import fr.epistudio.epysia.render.backend.ShaderSource;
+import fr.epistudio.epysia.render.backend.SamplerFilter;
 import fr.epistudio.epysia.render.backend.TextureDescriptor;
 import fr.epistudio.epysia.render.backend.TextureFormat;
 import fr.epistudio.epysia.render.backend.TextureHandle;
@@ -54,6 +55,7 @@ public final class PostProcessSystem implements RenderSystem {
     private static final String DEFAULT_VERTEX_PATH = "post.vert.glsl";
     private static final String DEFAULT_FRAGMENT_PATH = "post.frag.glsl";
     private static final String FXAA_FRAGMENT_PATH = "postfx/fxaa.frag.glsl";
+    private static final String BLIT_FRAGMENT_PATH = "postfx/blit.frag.glsl";
     private static final int UBO_SIZE = 176;
     private static final float DEFAULT_NEAR_PLANE = 0.1f;
     private static final float DEFAULT_FAR_PLANE = 100.0f;
@@ -84,6 +86,7 @@ public final class PostProcessSystem implements RenderSystem {
     private RenderTargetHandle ldrTarget;
     private PipelineHandle tonemapPipeline;
     private PipelineHandle antiAliasPipeline;
+    private PipelineHandle blitPipeline;
     private BufferHandle postUbo;
     private BindingSetHandle tonemapBindings;
     private BindingSetHandle antiAliasBindings;
@@ -92,6 +95,11 @@ public final class PostProcessSystem implements RenderSystem {
     private Camera3D activeCamera;
     private int targetWidth;
     private int targetHeight;
+    private int windowWidth = 1;
+    private int windowHeight = 1;
+    private int pixelScale = 1;
+    private boolean appliedPixelPerfect;
+    private int appliedPixelBaseHeight;
 
     public PostProcessSystem(ShaderLoader shaderLoader, RenderSurface window, Logger logger) {
         this(shaderLoader, window, logger, DEFAULT_VERTEX_PATH, DEFAULT_FRAGMENT_PATH);
@@ -121,15 +129,17 @@ public final class PostProcessSystem implements RenderSystem {
     public void initialize(RenderBackend backend, StageConfigurer configurer) {
         this.backend = backend;
         this.stageConfigurer = configurer;
-        int width = Math.max(1, window.framebufferWidth());
-        int height = Math.max(1, window.framebufferHeight());
-        targetWidth = width;
-        targetHeight = height;
+        windowWidth = Math.max(1, window.framebufferWidth());
+        windowHeight = Math.max(1, window.framebufferHeight());
+        applyInternalSize();
+        int width = targetWidth;
+        int height = targetHeight;
         quad.initialize(backend);
         createTargets(width, height);
         createPostUbo();
         tonemapPipeline = backend.createPipeline(buildPipelineDescriptor(vertexPath, fragmentPath, tonemapLayout()));
         antiAliasPipeline = backend.createPipeline(buildPipelineDescriptor(DEFAULT_VERTEX_PATH, FXAA_FRAGMENT_PATH, antiAliasLayout()));
+        blitPipeline = backend.createPipeline(buildPipelineDescriptor(DEFAULT_VERTEX_PATH, BLIT_FRAGMENT_PATH, antiAliasLayout()));
         ssao.initialize(backend, sceneDepthTexture, width, height);
         bloom.initialize(backend, sceneColorTexture, width, height);
         effectChain.initialize(backend);
@@ -142,8 +152,9 @@ public final class PostProcessSystem implements RenderSystem {
     @Override
     public void onResize(RenderBackend backend, StageConfigurer configurer, int width, int height) {
         this.stageConfigurer = configurer;
-        targetWidth = Math.max(1, width);
-        targetHeight = Math.max(1, height);
+        windowWidth = Math.max(1, width);
+        windowHeight = Math.max(1, height);
+        applyInternalSize();
         backend.destroy(tonemapBindings);
         backend.destroy(antiAliasBindings);
         destroyTargets();
@@ -171,6 +182,10 @@ public final class PostProcessSystem implements RenderSystem {
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         activeCamera = context.primaryCamera().orElse(null);
         refreshSceneClearColor(scene);
+        refreshPixelPerfectMode();
+        if (activeCamera != null) {
+            activeCamera.setRenderHeightPixels(targetHeight);
+        }
         refreshSsaoResolutionMode();
         writeUbo(activeCamera, context.interpolationAlpha());
         ssao.writeUbo(activeCamera, settings, context.interpolationAlpha());
@@ -178,7 +193,7 @@ public final class PostProcessSystem implements RenderSystem {
         updateEffectChainCameraState(activeCamera, context.interpolationAlpha());
         effectChain.prepare(resolveStack(scene));
         refreshEffectChainBindings();
-        frame.submit(RenderPasses.POST, DrawCommand.of(antiAliasPipeline, quad.mesh(), antiAliasBindings));
+        frame.submit(RenderPasses.POST, DrawCommand.of(finalPassPipeline(), quad.mesh(), antiAliasBindings));
     }
 
     private void updateEffectChainCameraState(Camera3D camera, float alpha) {
@@ -245,12 +260,44 @@ public final class PostProcessSystem implements RenderSystem {
         backend.endProfileSection();
     }
 
+    private void applyInternalSize() {
+        appliedPixelPerfect = settings.pixelPerfectEnabled();
+        appliedPixelBaseHeight = settings.pixelPerfectBaseHeight();
+        pixelScale = appliedPixelPerfect
+                ? Math.max(1, windowHeight / Math.max(1, appliedPixelBaseHeight))
+                : 1;
+        targetWidth = Math.max(1, windowWidth / pixelScale);
+        targetHeight = Math.max(1, windowHeight / pixelScale);
+    }
+
+    public int pixelScale() {
+        return pixelScale;
+    }
+
+    public int internalHeight() {
+        return targetHeight;
+    }
+
+    private void refreshPixelPerfectMode() {
+        if (appliedPixelPerfect == settings.pixelPerfectEnabled()
+                && appliedPixelBaseHeight == settings.pixelPerfectBaseHeight()) {
+            return;
+        }
+        onResize(backend, stageConfigurer, windowWidth, windowHeight);
+    }
+
+    private SamplerFilter upscaleFilter() {
+        return settings.pixelPerfectEnabled() ? SamplerFilter.NEAREST : SamplerFilter.LINEAR;
+    }
+
     private void createTargets(int width, int height) {
-        sceneColorTexture = backend.createTexture(new TextureDescriptor(width, height, TextureFormat.RGBA16F, TextureUsage.SAMPLED));
+        sceneColorTexture = backend.createTexture(new TextureDescriptor(width, height, TextureFormat.RGBA16F,
+                TextureUsage.SAMPLED, upscaleFilter()));
         sceneDepthTexture = backend.createTexture(new TextureDescriptor(width, height, TextureFormat.DEPTH32F, TextureUsage.SAMPLED_DEPTH_ATTACHMENT));
         sceneTarget = backend.createRenderTarget(new RenderTargetDescriptor(
                 width, height, List.of(sceneColorTexture), Optional.of(sceneDepthTexture)));
-        ldrColorTexture = backend.createTexture(new TextureDescriptor(width, height, TextureFormat.RGBA8, TextureUsage.SAMPLED));
+        ldrColorTexture = backend.createTexture(new TextureDescriptor(width, height, TextureFormat.RGBA8,
+                TextureUsage.SAMPLED, upscaleFilter()));
         ldrTarget = backend.createRenderTarget(new RenderTargetDescriptor(
                 width, height, List.of(ldrColorTexture), Optional.empty()));
     }
@@ -271,6 +318,10 @@ public final class PostProcessSystem implements RenderSystem {
                 new BindingSlot(3, BindingType.SAMPLED_TEXTURE_2D),
                 new BindingSlot(4, BindingType.SAMPLED_TEXTURE_2D)
         ));
+    }
+
+    private PipelineHandle finalPassPipeline() {
+        return settings.pixelPerfectEnabled() ? blitPipeline : antiAliasPipeline;
     }
 
     private BindingSetLayout antiAliasLayout() {

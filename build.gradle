@@ -107,6 +107,14 @@ tasks.register('runTilemapUnboundedCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('runPixelPerfectCheck', JavaExec) {
+    group = 'verification'
+    description = 'Renders at a low internal resolution and proves the upscale keeps hard pixel blocks.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.PixelPerfectCheck'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runTilemapPhysicsCheck', JavaExec) {
     group = 'verification'
     description = 'Drops a plane-locked 2D body onto a solid tilemap row merged into one static box.'

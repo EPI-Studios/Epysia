@@ -23,6 +23,8 @@ public final class PostProcessSettings {
     private float ambientOcclusionIntensity = 1.0f;
     private float ambientOcclusionPower = 1.5f;
     private boolean ambientOcclusionFullResolution = false;
+    private boolean pixelPerfectEnabled = false;
+    private int pixelPerfectBaseHeight = 270;
     private boolean antiAliasingEnabled = true;
 
     public boolean bloomEnabled() {
@@ -55,6 +57,24 @@ public final class PostProcessSettings {
 
     public float ambientOcclusionPower() {
         return ambientOcclusionPower;
+    }
+
+    public boolean pixelPerfectEnabled() {
+        return pixelPerfectEnabled;
+    }
+
+    public PostProcessSettings setPixelPerfectEnabled(boolean value) {
+        pixelPerfectEnabled = value;
+        return this;
+    }
+
+    public int pixelPerfectBaseHeight() {
+        return pixelPerfectBaseHeight;
+    }
+
+    public PostProcessSettings setPixelPerfectBaseHeight(int value) {
+        pixelPerfectBaseHeight = Math.clamp(value, 32, 2160);
+        return this;
     }
 
     public boolean ambientOcclusionFullResolution() {
