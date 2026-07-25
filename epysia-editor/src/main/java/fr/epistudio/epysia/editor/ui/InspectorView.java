@@ -69,6 +69,7 @@ public final class InspectorView {
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
     private final Runnable openTilemapDock;
+    private final SpriteColliderFitSection spriteColliderFit = new SpriteColliderFitSection();
 
     public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
                          Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
@@ -225,6 +226,9 @@ public final class InspectorView {
         }
         if (component instanceof GraphComponent graph) {
             graphSection.render(graph);
+        }
+        if (spriteColliderFit.render(gameObject, component)) {
+            activeDocument.get().markDirty();
         }
         if (component instanceof TilemapRenderer tilemapRenderer) {
             renderTilemapSummary(tilemapRenderer);

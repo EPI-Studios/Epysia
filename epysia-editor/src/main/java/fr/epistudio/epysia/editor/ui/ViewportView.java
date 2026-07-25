@@ -13,7 +13,10 @@ import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
 import fr.epistudio.epysia.editor.tilemap.TilePaintController;
 import fr.epistudio.epysia.editor.command.builtin.Transform2DDragCommand;
 import fr.epistudio.epysia.editor.command.builtin.TransformDragCommand;
+import fr.epistudio.epysia.editor.command.CompositeCommand;
+import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.editor.gizmo.ColliderWireframeOverlay;
+import fr.epistudio.epysia.editor.gizmo.GizmoFollowers;
 import fr.epistudio.epysia.editor.gizmo.GridOverlay;
 import fr.epistudio.epysia.editor.gizmo.GridOverlay2D;
 import fr.epistudio.epysia.editor.gizmo.SelectionOutlineOverlay;
@@ -32,6 +35,7 @@ import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import imgui.ImDrawList;
+import imgui.flag.ImGuiFocusedFlags;
 import imgui.ImGui;
 import imgui.extension.imguizmo.ImGuizmo;
 import imgui.extension.imguizmo.flag.Operation;
@@ -115,6 +119,7 @@ public final class ViewportView {
     private static final int COLOR_SMART_SNAP_GUIDE = 0xFF33CCFF;
 
     private final float[] snapArray = new float[3];
+    private final GizmoFollowers followers = new GizmoFollowers();
     private List<SmartSnap.Guide> smartSnapGuides = List.of();
     private final Vector3f dragStartPosition = new Vector3f();
     private final Quaternionf dragStartRotation = new Quaternionf();
@@ -134,6 +139,7 @@ public final class ViewportView {
     private float gridFadeDistance = GridOverlay.DEFAULT_MINOR_FADE_DISTANCE;
     private int supersampleFactor = DEFAULT_SUPERSAMPLE_FACTOR;
     private boolean viewportHoveredThisFrame;
+    private boolean viewportFocusedThisFrame;
     private boolean billboardClickConsumed;
     private boolean paintingActiveThisFrame;
     private boolean paintEnabled;
@@ -214,6 +220,10 @@ public final class ViewportView {
         return viewportHoveredThisFrame;
     }
 
+    public boolean acceptsToolHotkeys() {
+        return viewportHoveredThisFrame || viewportFocusedThisFrame;
+    }
+
     public ViewMode viewMode() {
         return viewMode;
     }
@@ -223,10 +233,13 @@ public final class ViewportView {
         boolean visible = ImGui.begin(WINDOW_TITLE, WINDOW_FLAGS);
         ImGui.popStyleVar();
         if (!visible) {
+            viewportHoveredThisFrame = false;
+            viewportFocusedThisFrame = false;
             samplePlayInput(0.0f, 0.0f, false);
             ImGui.end();
             return;
         }
+        viewportFocusedThisFrame = ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
         renderContent(deltaSeconds);
         ImGui.end();
     }
@@ -322,12 +335,19 @@ public final class ViewportView {
             return;
         }
         ImDrawList drawList = ImGui.getWindowDrawList();
+        TilemapCollisionOverlay.LocalProjection projection = (target, localX, localY) ->
+                localToScreen(target, localX, localY, imageX, imageY, width, height);
         for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {
-            tilemapOf(gameObject).ifPresent(tilemap -> gameObject.getComponent(Transform2D.class)
-                    .ifPresent(transform -> TilemapCollisionOverlay.draw(transform, tilemap, drawList,
-                            (target, localX, localY) ->
-                                    localToScreen(target, localX, localY, imageX, imageY, width, height))));
+            gameObject.getComponent(Transform2D.class).ifPresent(transform ->
+                    drawObjectCollision(gameObject, transform, drawList, projection));
         }
+    }
+
+    private void drawObjectCollision(GameObject gameObject, Transform2D transform, ImDrawList drawList,
+                                     TilemapCollisionOverlay.LocalProjection projection) {
+        tilemapOf(gameObject).ifPresent(tilemap ->
+                TilemapCollisionOverlay.draw(transform, tilemap, drawList, projection));
+        Collider2DOverlay.draw(gameObject, transform, drawList, projection);
     }
 
     private Optional<SpriteTilemap> tilemapOf(GameObject gameObject) {
@@ -549,13 +569,45 @@ public final class ViewportView {
         boolean usingNow = ImGuizmo.isUsing();
         if (usingNow && !wasUsing) {
             captureDragStart(transform);
+            followers.capture(transform, followerTransforms(transform));
         }
         if (usingNow) {
             writeWorldMatrix(transform, new Matrix4f().set(modelArray));
+            followers.follow(transform, this::writeWorldMatrix);
         }
         if (!usingNow && wasUsing) {
             commitDrag(transform);
         }
+    }
+
+    private List<Transform3D> followerTransforms(Transform3D leader) {
+        List<Transform3D> selected = selectedTransforms();
+        List<Transform3D> result = new ArrayList<>(selected.size());
+        for (Transform3D transform : selected) {
+            if (transform != leader && !hasSelectedAncestor(transform, selected)) {
+                result.add(transform);
+            }
+        }
+        return result;
+    }
+
+    private List<Transform3D> selectedTransforms() {
+        List<Transform3D> transforms = new ArrayList<>();
+        for (GameObject gameObject : activeDocument.get().selection().all()) {
+            gameObject.getComponent(Transform3D.class).ifPresent(transforms::add);
+        }
+        return transforms;
+    }
+
+    private static boolean hasSelectedAncestor(Transform3D transform, List<Transform3D> selected) {
+        Optional<Transform3D> walker = transform.parent();
+        while (walker.isPresent()) {
+            if (selected.contains(walker.get())) {
+                return true;
+            }
+            walker = walker.get().parent();
+        }
+        return false;
     }
 
     private void manipulatePlanar(Transform2D transform, int operation) {
@@ -724,6 +776,7 @@ public final class ViewportView {
         dragTransform = null;
         if (afterPosition.equals(dragStartPosition) && afterRotation.equals(dragStartRotation)
                 && afterScale.equals(dragStartScale)) {
+            followers.clear();
             return;
         }
         rewindAndExecute(transform, afterPosition, afterRotation, afterScale);
@@ -738,7 +791,16 @@ public final class ViewportView {
         transform.setRotation(dragStartRotation);
         transform.setScale(dragStartScale.x, dragStartScale.y, dragStartScale.z);
         transform.markDirty();
-        activeDocument.get().history().execute(command);
+        activeDocument.get().history().execute(withFollowers(command));
+    }
+
+    private EditorCommand withFollowers(EditorCommand leaderCommand) {
+        List<EditorCommand> commands = followers.rewindAll();
+        if (commands.isEmpty()) {
+            return leaderCommand;
+        }
+        commands.addFirst(leaderCommand);
+        return new CompositeCommand("Transform gizmo (" + commands.size() + " objects)", commands);
     }
 
     private void renderAxisIndicator(float imageX, float imageY, int width) {

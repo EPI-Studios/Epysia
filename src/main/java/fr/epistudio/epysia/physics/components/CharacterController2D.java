@@ -3,6 +3,7 @@ package fr.epistudio.epysia.physics.components;
 import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
+import org.joml.Vector2f;
 import fr.epistudio.epysia.components.RequiresComponent;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.physics.api.BodyHandle;
@@ -20,6 +21,12 @@ public final class CharacterController2D extends Component {
 
     @Export(label = "Capsule Height", min = 0.1f, max = 8.0f, step = 0.05f)
     private float capsuleHeight = 1.2f;
+
+    @Export(label = "Capsule Offset X", step = 0.05f)
+    private float capsuleOffsetX = 0.0f;
+
+    @Export(label = "Capsule Offset Y", step = 0.05f)
+    private float capsuleOffsetY = 0.0f;
 
     @Export(label = "Jump Speed", min = 0.0f, max = 30.0f, step = 0.1f)
     private float jumpSpeedMetersPerSecond = 6.0f;
@@ -43,6 +50,16 @@ public final class CharacterController2D extends Component {
     private float jumpRequestSpeed;
     private BodyHandle bodyHandle = BodyHandle.NONE;
     private Box3dCharacterController nativeController;
+
+    public Vector2f capsuleOffset() {
+        return new Vector2f(capsuleOffsetX, capsuleOffsetY);
+    }
+
+    public CharacterController2D setCapsuleOffset(float offsetX, float offsetY) {
+        this.capsuleOffsetX = offsetX;
+        this.capsuleOffsetY = offsetY;
+        return this;
+    }
 
     public CharacterController2D setCapsule(float radius, float height) {
         this.capsuleRadius = radius;

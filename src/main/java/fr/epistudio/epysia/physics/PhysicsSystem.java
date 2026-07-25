@@ -416,6 +416,13 @@ public final class PhysicsSystem implements IPhysicsSystem {
         return scaled;
     }
 
+    private static RigidBodyPose controllerPoseOf(Transform2D transform, CharacterController2D controller) {
+        Vector2f offset = controller.capsuleOffset();
+        return new RigidBodyPose(
+                new Vector3f(transform.position().x + offset.x, transform.position().y + offset.y, 0.0f),
+                new Quaternionf().rotationZ(transform.rotationRadians()));
+    }
+
     private static RigidBodyPose planePoseOf(Transform2D transform) {
         Vector3f position = new Vector3f(transform.position().x, transform.position().y, 0.0f);
         Quaternionf rotation = new Quaternionf().rotationZ(transform.rotationRadians());
@@ -456,7 +463,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
         Transform2D transform = gameObject.getComponent(Transform2D.class)
                 .orElseThrow(() -> new EpysiaException("CharacterController2D requires Transform2D on " + gameObject.name()));
         ShapeDescriptor.Capsule capsule = controller.shape();
-        BodyHandle handle = world.addKinematicBody(capsule, planePoseOf(transform), CollisionMask.DEFAULT);
+        BodyHandle handle = world.addKinematicBody(capsule,
+                controllerPoseOf(transform, controller), CollisionMask.DEFAULT);
         Box3dCharacterController nativeController = new Box3dCharacterController(world, capsule.radius(),
                 capsule.halfHeight(), controller.maxSlopeDegrees());
         ownedControllers.add(nativeController);
@@ -489,8 +497,9 @@ public final class PhysicsSystem implements IPhysicsSystem {
         float newX = transform.position().x + corrected.x();
         float newY = transform.position().y + corrected.y();
         transform.setPosition(newX, newY);
-        world.setBodyPose(controller.bodyHandle(),
-                new RigidBodyPose(new Vector3f(newX, newY, 0.0f), new Quaternionf()));
+        Vector2f offset = controller.capsuleOffset();
+        world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(
+                new Vector3f(newX + offset.x, newY + offset.y, 0.0f), new Quaternionf()));
     }
 
     private static float verticalVelocityFor2D(CharacterController2D controller, float deltaTimeSeconds) {
