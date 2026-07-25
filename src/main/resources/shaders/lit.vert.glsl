@@ -45,6 +45,7 @@ layout(location = 6) in vec4 inVertexColor;
 out vec4 vertexColor;
 #endif
 
+flat out int surfaceInstanceIndex;
 out vec3 vertexWorldPosition;
 out vec3 vertexWorldNormal;
 out vec3 vertexWorldTangent;
@@ -73,6 +74,7 @@ void main() {
 #ifdef VERTEX_COLORED
     vertexColor = inVertexColor;
 #endif
+    surfaceInstanceIndex = OBJECT_INSTANCE_INDEX;
     // SURFACE_VERTEX_CALL
     gl_Position = frame.cameraViewProjection * worldPosition;
     vertexViewDepth = gl_Position.w;

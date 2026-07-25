@@ -44,6 +44,7 @@ layout(std430, binding = 3) readonly buffer InstanceTransformSsbo {
 };
 
 #define OBJECT_MODEL (instanceTransforms[gl_InstanceID].model)
+#define OBJECT_INSTANCE_INDEX (gl_InstanceID)
 #define OBJECT_NORMAL_MATRIX (instanceTransforms[gl_InstanceID].normalMatrix)
 
 layout(std140, binding = 1) uniform ObjectUbo {

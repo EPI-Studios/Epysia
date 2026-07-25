@@ -31,6 +31,8 @@ vec3 skinPosition(vec3 position) {
 }
 #endif
 
+int surfaceInstanceIndex;
+
 // SURFACE_FUNCTIONS
 
 invariant gl_Position;
@@ -41,6 +43,7 @@ void main() {
     localPosition = skinPosition(inPosition);
 #endif
     vec4 worldPosition = OBJECT_MODEL * vec4(localPosition, 1.0);
+    surfaceInstanceIndex = OBJECT_INSTANCE_INDEX;
     // SURFACE_VERTEX_CALL
     gl_Position = frame.pointShadowViewProjection[cascade.index.x] * worldPosition;
 }

@@ -50,6 +50,31 @@ layout(binding = 8) uniform sampler2D emissiveMap;
 layout(binding = 9) uniform samplerCube irradianceMap;
 layout(binding = 10) uniform samplerCube prefilteredMap;
 layout(binding = 11) uniform sampler2D brdfLut;
+flat in int surfaceInstanceIndex;
+
+layout(binding = 14) uniform sampler2D opaqueSceneColor;
+layout(binding = 15) uniform sampler2D opaqueSceneDepth;
+
+vec2 screenUv() {
+    vec4 clip = frame.cameraViewProjection * vec4(vertexWorldPosition, 1.0);
+    return clip.xy / clip.w * 0.5 + 0.5;
+}
+
+vec3 sceneColorAt(vec2 uv) {
+    return texture(opaqueSceneColor, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+}
+
+float sceneViewDepthAt(vec2 uv) {
+    float deviceDepth = texture(opaqueSceneDepth, clamp(uv, vec2(0.0), vec2(1.0))).r;
+    float near = max(frame.clusterParams.x, 1.0e-4);
+    float far = max(frame.clusterParams.y, near + 1.0e-3);
+    float normalized = deviceDepth * 2.0 - 1.0;
+    return 2.0 * near * far / (far + near - normalized * (far - near));
+}
+
+float sceneDepthBehind(vec2 uv) {
+    return max(sceneViewDepthAt(uv) - vertexViewDepth, 0.0);
+}
 
 const float MAX_REFLECTION_LOD = 4.0;
 
@@ -149,7 +174,10 @@ vec3 shadeLight(int lightIndex, int shadowIndex, vec3 worldNormal, vec3 viewDire
     vec3 toLight;
     vec3 lightRadiance;
     float attenuation;
-    unpackLight(light, vertexWorldPosition, toLight, lightRadiance, attenuation);
+    float sourceRadius;
+    float lightDistance;
+    unpackLight(light, vertexWorldPosition, toLight, lightRadiance, attenuation,
+            sourceRadius, lightDistance);
     int lightType = int(light.positionAndType.w);
     float shadow = 1.0;
     if (lightIndex == shadowIndex) {
@@ -172,7 +200,7 @@ vec3 shadeLight(int lightIndex, int shadowIndex, vec3 worldNormal, vec3 viewDire
             radiance, lightType);
     return shaded;
 #else
-    return cookTorranceBrdf(worldNormal, viewDirection, toLight,
+    return cookTorranceSphereBrdf(worldNormal, viewDirection, toLight, lightDistance, sourceRadius,
             albedo, metallic, roughness, radiance);
 #endif
 }
@@ -211,8 +239,10 @@ void main() {
 #endif
     vec3 worldNormal = computeWorldNormal();
     vec3 viewDirection = normalize(frame.cameraPosition.xyz - vertexWorldPosition);
+    // SURFACE_NORMAL_CALL
+    // SURFACE_SHADE_CALL
     vec3 sampledAlbedo = albedoColor.rgb;
-    roughness = clamp(roughness, 0.04, 1.0);
+    roughness = clamp(filteredRoughness(worldNormal, roughness), 0.04, 1.0);
     metallic = clamp(metallic, 0.0, 1.0);
 #ifdef MATERIAL_HAS_OCCLUSIONMAP
     float occlusion = mix(1.0, texture(occlusionMap, vertexUv).r, material.occlusionStrength);
@@ -245,5 +275,5 @@ void main() {
     }
 
     vec3 ambient = imageBasedAmbient(worldNormal, viewDirection, sampledAlbedo, metallic, roughness, occlusion);
-    outColor = vec4(ambient + direct + emissive, 1.0);
+    outColor = vec4(ambient + direct + emissive, albedoColor.a);
 }
