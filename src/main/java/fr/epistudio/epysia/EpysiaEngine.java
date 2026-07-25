@@ -117,6 +117,9 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         }
         renderSystems.add(renderSystem);
         renderSystemSectionNames.add(FrameProfiler.COLLECT_PREFIX + renderSystem.getClass().getSimpleName());
+        if (renderSystem instanceof PostProcessSystem postProcess) {
+            postProcess.settings().copyFrom(detachedPostProcessSettings);
+        }
     }
 
     @Override

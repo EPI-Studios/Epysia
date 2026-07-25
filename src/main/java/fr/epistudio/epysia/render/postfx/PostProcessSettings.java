@@ -59,6 +59,44 @@ public final class PostProcessSettings {
         return ambientOcclusionPower;
     }
 
+    public PostProcessSettings copyFrom(PostProcessSettings other) {
+        vignetteStrength = other.vignetteStrength;
+        gradeGamma = other.gradeGamma;
+        gradeExposure = other.gradeExposure;
+        fogEnabled = other.fogEnabled;
+        fogColor.set(other.fogColor);
+        copyFogShape(other);
+        copyBloom(other);
+        copyAmbientOcclusion(other);
+        pixelPerfectEnabled = other.pixelPerfectEnabled;
+        pixelPerfectBaseHeight = other.pixelPerfectBaseHeight;
+        antiAliasingEnabled = other.antiAliasingEnabled;
+        return this;
+    }
+
+    private void copyFogShape(PostProcessSettings other) {
+        fogDistanceDensity = other.fogDistanceDensity;
+        fogDistanceStart = other.fogDistanceStart;
+        fogHeightOrigin = other.fogHeightOrigin;
+        fogHeightFalloff = other.fogHeightFalloff;
+        fogHeightDensity = other.fogHeightDensity;
+    }
+
+    private void copyBloom(PostProcessSettings other) {
+        bloomEnabled = other.bloomEnabled;
+        bloomThreshold = other.bloomThreshold;
+        bloomKnee = other.bloomKnee;
+        bloomIntensity = other.bloomIntensity;
+    }
+
+    private void copyAmbientOcclusion(PostProcessSettings other) {
+        ambientOcclusionEnabled = other.ambientOcclusionEnabled;
+        ambientOcclusionRadius = other.ambientOcclusionRadius;
+        ambientOcclusionIntensity = other.ambientOcclusionIntensity;
+        ambientOcclusionPower = other.ambientOcclusionPower;
+        ambientOcclusionFullResolution = other.ambientOcclusionFullResolution;
+    }
+
     public boolean pixelPerfectEnabled() {
         return pixelPerfectEnabled;
     }
