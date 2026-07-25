@@ -21,9 +21,9 @@ public final class TilePolygonEditor {
     private static final float EDGE_HIT_DISTANCE = 5.0f;
     private static final float OUTLINE_THICKNESS = 1.6f;
     private static final float GRID_THICKNESS = 1.0f;
-    private static final float SNAP_STEP = 0.125f;
     private static final int MINIMUM_POINTS = 3;
     private static final int GRID_DIVISIONS = 4;
+    private static final int MAXIMUM_GRID_LINES = 32;
     private static final int NONE = -1;
     private static final int COLOR_OUTLINE = 0xE0FFCC00;
     private static final int COLOR_FILL = 0x40FFCC00;
@@ -32,6 +32,7 @@ public final class TilePolygonEditor {
     private static final int COLOR_GRID = 0x3AFFFFFF;
     private static final int COLOR_BORDER = 0x66FFFFFF;
 
+    private int activeSnapDivisions;
     private int dragShapeIndex = NONE;
     private int dragPointIndex = NONE;
 
@@ -40,6 +41,12 @@ public final class TilePolygonEditor {
 
     public boolean render(TileData data, int previewTextureId,
                           float minU, float minV, float maxU, float maxV, float size) {
+        return render(data, previewTextureId, minU, minV, maxU, maxV, size, 0);
+    }
+
+    public boolean render(TileData data, int previewTextureId,
+                          float minU, float minV, float maxU, float maxV, float size, int snapDivisions) {
+        activeSnapDivisions = Math.max(0, snapDivisions);
         float extent = Math.max(MINIMUM_SIZE, size);
         float originX = ImGui.getCursorScreenPosX();
         float originY = ImGui.getCursorScreenPosY();
@@ -144,17 +151,25 @@ public final class TilePolygonEditor {
         return new TileCollisionShape(points, shape.oneWay(), shape.oneWayMargin());
     }
 
-    private static Vector2f pointerUnit(CellCanvas canvas) {
-        float unitX = Math.clamp(canvas.unitX(ImGui.getMousePosX()), 0.0f, 1.0f);
-        float unitY = Math.clamp(canvas.unitY(ImGui.getMousePosY()), 0.0f, 1.0f);
-        if (!ImGui.getIO().getKeyShift()) {
-            return new Vector2f(unitX, unitY);
+    private int gridDivisions() {
+        if (activeSnapDivisions <= 0) {
+            return GRID_DIVISIONS;
         }
-        return new Vector2f(snapped(unitX), snapped(unitY));
+        return Math.min(activeSnapDivisions, MAXIMUM_GRID_LINES);
     }
 
-    private static float snapped(float value) {
-        return Math.clamp(Math.round(value / SNAP_STEP) * SNAP_STEP, 0.0f, 1.0f);
+    private Vector2f pointerUnit(CellCanvas canvas) {
+        float unitX = Math.clamp(canvas.unitX(ImGui.getMousePosX()), 0.0f, 1.0f);
+        float unitY = Math.clamp(canvas.unitY(ImGui.getMousePosY()), 0.0f, 1.0f);
+        if (activeSnapDivisions <= 0 || ImGui.getIO().getKeyShift()) {
+            return new Vector2f(unitX, unitY);
+        }
+        return new Vector2f(snapped(unitX, activeSnapDivisions), snapped(unitY, activeSnapDivisions));
+    }
+
+    private static float snapped(float value, int divisions) {
+        float step = 1.0f / divisions;
+        return Math.clamp(Math.round(value / step) * step, 0.0f, 1.0f);
     }
 
     private static Optional<VertexReference> vertexAt(CellCanvas canvas, TileData data) {
@@ -238,11 +253,12 @@ public final class TilePolygonEditor {
         }
     }
 
-    private static void drawGrid(ImDrawList drawList, CellCanvas canvas) {
+    private void drawGrid(ImDrawList drawList, CellCanvas canvas) {
         float maxX = canvas.originX() + canvas.size();
         float maxY = canvas.originY() + canvas.size();
-        for (int division = 1; division < GRID_DIVISIONS; division++) {
-            float offset = division / (float) GRID_DIVISIONS * canvas.size();
+        int divisions = gridDivisions();
+        for (int division = 1; division < divisions; division++) {
+            float offset = division / (float) divisions * canvas.size();
             drawList.addLine(canvas.originX() + offset, canvas.originY(),
                     canvas.originX() + offset, maxY, COLOR_GRID, GRID_THICKNESS);
             drawList.addLine(canvas.originX(), canvas.originY() + offset,

@@ -197,6 +197,20 @@ public final class TilePalettePanel {
         handlePick(canvas, grid);
     }
 
+    public Optional<Path> atlasTextureFile(SpriteTilemap tilemap, SpriteAtlas atlas) {
+        if (atlas.texturePath().isEmpty() || tilemap.atlasPath().isEmpty()) {
+            return Optional.empty();
+        }
+        String stripped = TexturePathPrefixes.stripPrefixes(atlas.texturePath());
+        Path texture = Path.of(stripped);
+        if (!texture.isAbsolute()) {
+            Path atlasParent = Path.of(TexturePathPrefixes.stripPrefixes(tilemap.atlasPath()))
+                    .toAbsolutePath().getParent();
+            texture = atlasParent.resolve(stripped).normalize();
+        }
+        return Files.isRegularFile(texture) ? Optional.of(texture) : Optional.empty();
+    }
+
     private Optional<ImagePreviewTexture.PreviewImage> texturePreview(SpriteTilemap tilemap, SpriteAtlas atlas) {
         if (atlas.texturePath().isEmpty() || tilemap.atlasPath().isEmpty()) {
             return Optional.empty();

@@ -398,8 +398,22 @@ public final class PhysicsSystem implements IPhysicsSystem {
                     box.halfExtents().z()));
             case ShapeDescriptor.Sphere sphere -> new ShapeDescriptor.Sphere(
                     sphere.radius() * Math.max(scaleX, scaleY));
+            case ShapeDescriptor.Capsule capsule -> new ShapeDescriptor.Capsule(
+                    capsule.radius() * Math.max(scaleX, scaleY), capsule.halfHeight() * scaleY);
+            case ShapeDescriptor.ConvexHull hull -> new ShapeDescriptor.ConvexHull(
+                    scaledVertices(hull.vertices(), scaleX, scaleY));
             default -> shape;
         };
+    }
+
+    private static float[] scaledVertices(float[] vertices, float scaleX, float scaleY) {
+        float[] scaled = new float[vertices.length];
+        for (int index = 0; index + 2 < vertices.length; index += 3) {
+            scaled[index] = vertices[index] * scaleX;
+            scaled[index + 1] = vertices[index + 1] * scaleY;
+            scaled[index + 2] = vertices[index + 2];
+        }
+        return scaled;
     }
 
     private static RigidBodyPose planePoseOf(Transform2D transform) {
