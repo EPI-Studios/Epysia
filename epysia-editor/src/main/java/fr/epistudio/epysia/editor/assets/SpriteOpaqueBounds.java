@@ -9,9 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -24,41 +22,55 @@ public final class SpriteOpaqueBounds {
         }
     }
 
-    private record CacheKey(Path imageFile, long modifiedMillis, int columns, int rows) {
+    private record CacheKey(Path imageFile, long modifiedMillis) {
+    }
+
+    private record PixelWindow(int minColumn, int minRow, int maxColumn, int maxRow) {
+
+        int width() {
+            return maxColumn - minColumn;
+        }
+
+        int height() {
+            return maxRow - minRow;
+        }
     }
 
     private static final int OPAQUE_ALPHA_THRESHOLD = 8;
     private static final int BYTES_PER_PIXEL = 4;
     private static final int ALPHA_OFFSET = 3;
 
-    private final Map<CacheKey, List<Optional<UnitBounds>>> cache = new HashMap<>();
+    private final Map<CacheKey, Optional<DecodedImage>> cache = new HashMap<>();
 
     public Optional<UnitBounds> boundsOf(Path imageFile, int columns, int rows, int cellIndex) {
-        List<Optional<UnitBounds>> cells = cellsOf(imageFile, columns, rows);
-        if (cellIndex < 0 || cellIndex >= cells.size()) {
+        int safeColumns = Math.max(1, columns);
+        int safeRows = Math.max(1, rows);
+        if (cellIndex < 0 || cellIndex >= safeColumns * safeRows) {
             return Optional.empty();
         }
-        return cells.get(cellIndex);
+        int column = cellIndex % safeColumns;
+        int row = cellIndex / safeColumns;
+        return boundsOfRegion(imageFile, (float) column / safeColumns, (float) (safeRows - row - 1) / safeRows,
+                (float) (column + 1) / safeColumns, (float) (safeRows - row) / safeRows);
     }
 
-    public int cellCount(Path imageFile, int columns, int rows) {
-        return cellsOf(imageFile, columns, rows).size();
+    public Optional<UnitBounds> boundsOfRegion(Path imageFile, float minU, float minV, float maxU, float maxV) {
+        return imageOf(imageFile).flatMap(image -> image.scanRegion(minU, minV, maxU, maxV));
     }
 
     public void invalidate(Path imageFile) {
         cache.keySet().removeIf(key -> key.imageFile().equals(imageFile));
     }
 
-    private List<Optional<UnitBounds>> cellsOf(Path imageFile, int columns, int rows) {
-        CacheKey key = new CacheKey(imageFile, modifiedMillisOf(imageFile),
-                Math.max(1, columns), Math.max(1, rows));
-        return cache.computeIfAbsent(key, SpriteOpaqueBounds::decode);
+    private Optional<DecodedImage> imageOf(Path imageFile) {
+        CacheKey key = new CacheKey(imageFile, modifiedMillisOf(imageFile));
+        return cache.computeIfAbsent(key, entry -> decode(entry.imageFile()));
     }
 
-    private static List<Optional<UnitBounds>> decode(CacheKey key) {
-        Optional<ByteBuffer> encoded = readFile(key.imageFile());
+    private static Optional<DecodedImage> decode(Path imageFile) {
+        Optional<ByteBuffer> encoded = readFile(imageFile);
         if (encoded.isEmpty()) {
-            return List.of();
+            return Optional.empty();
         }
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer width = stack.mallocInt(1);
@@ -67,65 +79,72 @@ public final class SpriteOpaqueBounds {
             STBImage.stbi_set_flip_vertically_on_load(false);
             ByteBuffer pixels = STBImage.stbi_load_from_memory(encoded.get(), width, height, channels, BYTES_PER_PIXEL);
             if (pixels == null) {
-                return List.of();
+                return Optional.empty();
             }
             try {
-                return scanCells(pixels, width.get(0), height.get(0), key);
+                return Optional.of(DecodedImage.copyOf(pixels, width.get(0), height.get(0)));
             } finally {
                 STBImage.stbi_image_free(pixels);
             }
         }
     }
 
-    private static List<Optional<UnitBounds>> scanCells(ByteBuffer pixels, int imageWidth, int imageHeight,
-                                                        CacheKey key) {
-        int cellWidth = imageWidth / key.columns();
-        int cellHeight = imageHeight / key.rows();
-        if (cellWidth <= 0 || cellHeight <= 0) {
-            return List.of();
-        }
-        List<Optional<UnitBounds>> cells = new ArrayList<>();
-        for (int row = 0; row < key.rows(); row++) {
-            for (int column = 0; column < key.columns(); column++) {
-                cells.add(scanCell(pixels, imageWidth, column * cellWidth, row * cellHeight, cellWidth, cellHeight));
-            }
-        }
-        return List.copyOf(cells);
-    }
+    private record DecodedImage(byte[] pixels, int width, int height) {
 
-    private static Optional<UnitBounds> scanCell(ByteBuffer pixels, int imageWidth,
-                                                 int originX, int originY, int cellWidth, int cellHeight) {
-        int minColumn = cellWidth;
-        int minRow = cellHeight;
-        int maxColumn = -1;
-        int maxRow = -1;
-        for (int row = 0; row < cellHeight; row++) {
-            for (int column = 0; column < cellWidth; column++) {
-                if (!opaqueAt(pixels, imageWidth, originX + column, originY + row)) {
-                    continue;
+        static DecodedImage copyOf(ByteBuffer source, int width, int height) {
+            byte[] copy = new byte[width * height * BYTES_PER_PIXEL];
+            source.get(0, copy);
+            return new DecodedImage(copy, width, height);
+        }
+
+        Optional<UnitBounds> scanRegion(float minU, float minV, float maxU, float maxV) {
+            PixelWindow window = windowOf(minU, minV, maxU, maxV);
+            if (window.width() <= 0 || window.height() <= 0) {
+                return Optional.empty();
+            }
+            return scanWindow(window);
+        }
+
+        private PixelWindow windowOf(float minU, float minV, float maxU, float maxV) {
+            int minColumn = Math.clamp(Math.round(Math.min(minU, maxU) * width), 0, width);
+            int maxColumn = Math.clamp(Math.round(Math.max(minU, maxU) * width), 0, width);
+            int minRow = Math.clamp(Math.round((1.0f - Math.max(minV, maxV)) * height), 0, height);
+            int maxRow = Math.clamp(Math.round((1.0f - Math.min(minV, maxV)) * height), 0, height);
+            return new PixelWindow(minColumn, minRow, maxColumn, maxRow);
+        }
+
+        private Optional<UnitBounds> scanWindow(PixelWindow window) {
+            int leftMost = window.width();
+            int topMost = window.height();
+            int rightMost = -1;
+            int bottomMost = -1;
+            for (int row = 0; row < window.height(); row++) {
+                for (int column = 0; column < window.width(); column++) {
+                    if (!opaqueAt(window.minColumn() + column, window.minRow() + row)) {
+                        continue;
+                    }
+                    leftMost = Math.min(leftMost, column);
+                    rightMost = Math.max(rightMost, column);
+                    topMost = Math.min(topMost, row);
+                    bottomMost = Math.max(bottomMost, row);
                 }
-                minColumn = Math.min(minColumn, column);
-                maxColumn = Math.max(maxColumn, column);
-                minRow = Math.min(minRow, row);
-                maxRow = Math.max(maxRow, row);
             }
+            return rightMost < 0 ? Optional.empty()
+                    : Optional.of(toUnitBounds(leftMost, topMost, rightMost, bottomMost, window));
         }
-        return maxColumn < 0 ? Optional.empty()
-                : Optional.of(toUnitBounds(minColumn, minRow, maxColumn, maxRow, cellWidth, cellHeight));
-    }
 
-    private static UnitBounds toUnitBounds(int minColumn, int minRow, int maxColumn, int maxRow,
-                                           int cellWidth, int cellHeight) {
-        float minX = (float) minColumn / cellWidth;
-        float maxX = (float) (maxColumn + 1) / cellWidth;
-        float minY = 1.0f - (float) (maxRow + 1) / cellHeight;
-        float maxY = 1.0f - (float) minRow / cellHeight;
-        return new UnitBounds(minX, minY, maxX, maxY);
-    }
+        private static UnitBounds toUnitBounds(int leftMost, int topMost, int rightMost, int bottomMost,
+                                               PixelWindow window) {
+            return new UnitBounds((float) leftMost / window.width(),
+                    1.0f - (float) (bottomMost + 1) / window.height(),
+                    (float) (rightMost + 1) / window.width(),
+                    1.0f - (float) topMost / window.height());
+        }
 
-    private static boolean opaqueAt(ByteBuffer pixels, int imageWidth, int pixelX, int pixelY) {
-        int index = (pixelY * imageWidth + pixelX) * BYTES_PER_PIXEL + ALPHA_OFFSET;
-        return index < pixels.capacity() && (pixels.get(index) & 0xFF) > OPAQUE_ALPHA_THRESHOLD;
+        private boolean opaqueAt(int pixelX, int pixelY) {
+            int index = (pixelY * width + pixelX) * BYTES_PER_PIXEL + ALPHA_OFFSET;
+            return index < pixels.length && (pixels[index] & 0xFF) > OPAQUE_ALPHA_THRESHOLD;
+        }
     }
 
     private static Optional<ByteBuffer> readFile(Path imageFile) {

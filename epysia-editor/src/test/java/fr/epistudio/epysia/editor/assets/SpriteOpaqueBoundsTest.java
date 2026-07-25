@@ -31,6 +31,17 @@ class SpriteOpaqueBoundsTest {
     }
 
     @Test
+    void aRegionGivenAsUvCoordinatesReportsTheSameBounds() throws IOException {
+        Path sheet = writeSheetWithTopBand();
+        SpriteOpaqueBounds bounds = new SpriteOpaqueBounds();
+        Optional<SpriteOpaqueBounds.UnitBounds> measured =
+                bounds.boundsOfRegion(sheet, 0.0f, 0.5f, 0.5f, 1.0f);
+        assertTrue(measured.isPresent());
+        assertEquals(1.0f - (float) OPAQUE_ROWS / CELL_SIZE, measured.get().minY(), TOLERANCE);
+        assertEquals(1.0f, measured.get().maxY(), TOLERANCE);
+    }
+
+    @Test
     void fullyTransparentCellReportsNothing() throws IOException {
         Path sheet = writeSheetWithTopBand();
         SpriteOpaqueBounds bounds = new SpriteOpaqueBounds();

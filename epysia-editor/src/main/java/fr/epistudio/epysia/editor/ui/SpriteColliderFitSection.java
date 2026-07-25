@@ -4,6 +4,7 @@ import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasGrid;
 import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.components.SpriteFlipbook;
 import fr.epistudio.epysia.components.SpriteRenderer;
 import fr.epistudio.epysia.editor.assets.SpriteOpaqueBounds;
 import fr.epistudio.epysia.gameobjects.GameObject;
@@ -83,12 +84,9 @@ public final class SpriteColliderFitSection {
         if (sprite == null) {
             return 1.0f;
         }
-        return cellPixels(sprite) / Math.max(1.0f, sprite.pixelsPerUnit());
-    }
-
-    private static float cellPixels(SpriteRenderer sprite) {
-        return sprite.atlasRef().direct().flatMap(SpriteAtlas::grid)
+        float cellPixels = atlasSource(gameObject).flatMap(source -> source.atlas().grid())
                 .map(SpriteAtlasGrid::cellHeight).map(Integer::floatValue).orElse(1.0f);
+        return cellPixels / Math.max(1.0f, sprite.pixelsPerUnit());
     }
 
     private Optional<SpriteOpaqueBounds.UnitBounds> spriteBounds(GameObject gameObject) {
@@ -96,39 +94,56 @@ public final class SpriteColliderFitSection {
         if (sprite == null) {
             return Optional.empty();
         }
-        Optional<SpriteAtlas> atlas = sprite.atlasRef().direct();
-        Optional<SpriteAtlasGrid> grid = atlas.flatMap(SpriteAtlas::grid);
-        Optional<Path> texture = atlas.flatMap(found -> textureFile(sprite, found));
-        if (grid.isEmpty() || texture.isEmpty()) {
-            return Optional.empty();
-        }
-        return opaqueBounds.boundsOf(texture.get(), grid.get().columns(), grid.get().rows(),
-                currentCellIndex(sprite));
+        return textureFile(gameObject, sprite).flatMap(texture -> opaqueBounds.boundsOfRegion(texture,
+                sprite.regionMinU(), sprite.regionMinV(), sprite.regionMaxU(), sprite.regionMaxV()));
     }
 
-    private static int currentCellIndex(SpriteRenderer sprite) {
-        try {
-            return Integer.parseInt(sprite.regionName());
-        } catch (NumberFormatException notAGridRegion) {
-            return 0;
+    private static Optional<Path> textureFile(GameObject gameObject, SpriteRenderer sprite) {
+        Optional<Path> fromAtlas = atlasSource(gameObject)
+                .flatMap(source -> resolveTexture(source.atlasPath(), source.atlas().texturePath()));
+        if (fromAtlas.isPresent()) {
+            return fromAtlas;
         }
+        return existingFile(TexturePathPrefixes.stripPrefixes(sprite.textureRef().path()));
     }
 
-    private static Optional<Path> textureFile(SpriteRenderer sprite, SpriteAtlas atlas) {
-        if (atlas.texturePath().isEmpty()) {
+    private record AtlasSource(String atlasPath, SpriteAtlas atlas) {
+    }
+
+    private static Optional<AtlasSource> atlasSource(GameObject gameObject) {
+        SpriteRenderer sprite = gameObject.getComponentOrNull(SpriteRenderer.class);
+        if (sprite != null && sprite.atlasRef().direct().isPresent()) {
+            return Optional.of(new AtlasSource(sprite.atlasRef().path(), sprite.atlasRef().direct().get()));
+        }
+        SpriteFlipbook flipbook = gameObject.getComponentOrNull(SpriteFlipbook.class);
+        if (flipbook != null && flipbook.atlasRef().direct().isPresent()) {
+            return Optional.of(new AtlasSource(flipbook.atlasRef().path(), flipbook.atlasRef().direct().get()));
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<Path> resolveTexture(String atlasPath, String texturePath) {
+        if (texturePath.isEmpty()) {
             return Optional.empty();
         }
-        String stripped = TexturePathPrefixes.stripPrefixes(atlas.texturePath());
+        String stripped = TexturePathPrefixes.stripPrefixes(texturePath);
         Path texture = Path.of(stripped);
         if (!texture.isAbsolute()) {
-            texture = atlasParent(sprite).resolve(stripped).normalize();
+            texture = atlasParent(atlasPath).resolve(stripped).normalize();
         }
         return Files.isRegularFile(texture) ? Optional.of(texture) : Optional.empty();
     }
 
-    private static Path atlasParent(SpriteRenderer sprite) {
-        Path atlasFile = Path.of(TexturePathPrefixes.stripPrefixes(sprite.atlasRef().path())).toAbsolutePath();
-        Path parent = atlasFile.getParent();
+    private static Optional<Path> existingFile(String path) {
+        if (path.isEmpty()) {
+            return Optional.empty();
+        }
+        Path file = Path.of(path);
+        return Files.isRegularFile(file) ? Optional.of(file) : Optional.empty();
+    }
+
+    private static Path atlasParent(String atlasPath) {
+        Path parent = Path.of(TexturePathPrefixes.stripPrefixes(atlasPath)).toAbsolutePath().getParent();
         return parent == null ? Path.of("") : parent;
     }
 }
