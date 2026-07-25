@@ -107,6 +107,14 @@ tasks.register('runTilemapUnboundedCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
+tasks.register('buildIsometricProject', JavaExec) {
+    group = 'application'
+    description = 'Writes a small isometric pixel art project you can open in the editor.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.IsometricProjectBuilder'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runPixelPerfectCheck', JavaExec) {
     group = 'verification'
     description = 'Renders at a low internal resolution and proves the upscale keeps hard pixel blocks.'
