@@ -10,9 +10,31 @@ final class MaterialStateDigests {
 
     private final Map<Material, MaterialStateSnapshot> snapshots = new IdentityHashMap<>();
     private final Map<Material, Long> revisions = new IdentityHashMap<>();
+    private Material lastMaterial;
+    private long lastLitBindingsId;
+    private MaterialStateSnapshot lastSnapshot;
+
+    void beginFrame() {
+        lastMaterial = null;
+        lastSnapshot = null;
+    }
 
     MaterialStateSnapshot snapshotFor(PerSubmesh perSubmesh, MaterialPipelineCache materialCache,
                                       SurfaceUniformBinder surfaceUniforms) {
+        Material material = perSubmesh.material();
+        long litBindingsId = perSubmesh.litBindings().id();
+        if (material == lastMaterial && litBindingsId == lastLitBindingsId) {
+            return lastSnapshot;
+        }
+        MaterialStateSnapshot resolved = resolve(perSubmesh, materialCache, surfaceUniforms);
+        lastMaterial = material;
+        lastLitBindingsId = litBindingsId;
+        lastSnapshot = resolved;
+        return resolved;
+    }
+
+    private MaterialStateSnapshot resolve(PerSubmesh perSubmesh, MaterialPipelineCache materialCache,
+                                          SurfaceUniformBinder surfaceUniforms) {
         Material material = perSubmesh.material();
         long revision = revisionOf(perSubmesh);
         Long cachedRevision = revisions.get(material);

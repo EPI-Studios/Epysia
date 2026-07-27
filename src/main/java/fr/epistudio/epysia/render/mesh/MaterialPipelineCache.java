@@ -27,6 +27,7 @@ import fr.epistudio.epysia.render.material.MaterialClassMetadata;
 import fr.epistudio.epysia.render.material.MaterialClassMetadata.TextureFieldDescriptor;
 import fr.epistudio.epysia.render.shader.LoadedShader;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
+import fr.epistudio.epysia.render.shader.ShaderUniformParser;
 import fr.epistudio.epysia.render.shader.ShaderUniformParser.ParsedSource;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.render.shader.SurfaceShaderComposer;
@@ -79,7 +80,10 @@ final class MaterialPipelineCache {
 
     void beginFrame() {
         writtenThisFrame.clear();
+        frameTexturePresenceMasks.clear();
     }
+
+    private final Map<Material, Long> frameTexturePresenceMasks = new IdentityHashMap<>();
 
     void setProbeLightingActive(boolean active) {
         this.probeLightingActive = active;
@@ -94,7 +98,7 @@ final class MaterialPipelineCache {
                                  MaterialClassResources resources) {
 
         boolean matches(Material material, long currentTextureMask) {
-            return transparent == material.transparent()
+            return transparent == material.blended()
                     && doubleSided == material.doubleSided()
                     && textureMask == currentTextureMask
                     && vertexShader.equals(material.vertexShaderPath())
@@ -121,11 +125,21 @@ final class MaterialPipelineCache {
                 ignored -> buildOrFallback(material, false, false, textureMask));
         resolvedClasses.put(material, new ResolvedClass(material.vertexShaderPath(),
                 material.fragmentShaderPath(), surfaceShaderPathOf(material),
-                material.transparent(), material.doubleSided(), textureMask, built));
+                material.blended(), material.doubleSided(), textureMask, built));
         return built;
     }
 
     private long texturePresenceMask(Material material) {
+        Long cached = frameTexturePresenceMasks.get(material);
+        if (cached != null) {
+            return cached;
+        }
+        long computed = computeTexturePresenceMask(material);
+        frameTexturePresenceMasks.put(material, computed);
+        return computed;
+    }
+
+    private long computeTexturePresenceMask(Material material) {
         MaterialClassMetadata metadata = reflectionCache.computeIfAbsent(material.getClass(),
                 materialClass -> MaterialClassMetadata.reflect(materialClass,
                         shaderLoader.load(material.fragmentShaderPath()).source()));
@@ -139,6 +153,9 @@ final class MaterialPipelineCache {
         if (material instanceof LitMaterial lit && lit.alphaCutoff > 0.0f) {
             mask |= ALPHA_MASKED_BIT;
         }
+        if (material instanceof LitMaterial lit && !lit.receiveShadows()) {
+            mask |= NO_SHADOWS_BIT;
+        }
         if (probeLightingActive) {
             mask |= PROBE_LIT_BIT;
         }
@@ -147,13 +164,14 @@ final class MaterialPipelineCache {
 
     private static final long ALPHA_MASKED_BIT = 1L << 62;
     private static final long PROBE_LIT_BIT = 1L << 61;
+    private static final long NO_SHADOWS_BIT = 1L << 60;
 
     private String textureDefines(Material material, long textureMask) {
         MaterialClassMetadata metadata = reflectionCache.get(material.getClass());
         if (metadata == null || textureMask == 0L) {
-            return "";
+            return shadowFilterDefines();
         }
-        StringBuilder defines = new StringBuilder();
+        StringBuilder defines = new StringBuilder(shadowFilterDefines());
         List<TextureFieldDescriptor> fields = metadata.textureFields();
         for (int index = 0; index < fields.size(); index++) {
             if ((textureMask & (1L << index)) != 0L) {
@@ -168,7 +186,17 @@ final class MaterialPipelineCache {
         if ((textureMask & PROBE_LIT_BIT) != 0L) {
             defines.append("#define PROBE_LIT\n");
         }
+        if ((textureMask & NO_SHADOWS_BIT) != 0L) {
+            defines.append("#define MATERIAL_NO_SHADOWS\n");
+        }
         return defines.toString();
+    }
+
+    private static String shadowFilterDefines() {
+        int samples = Math.clamp(Integer.getInteger("epysia.shadow.pcfSamples", 4), 1, 32);
+        int filtered = Math.clamp(Integer.getInteger("epysia.shadow.pcfCascades", 2), 0, 4);
+        return "#define CASCADE_PCF_SAMPLES " + samples + "\n"
+                + "#define CASCADE_PCF_FILTERED_CASCADES " + filtered + "\n";
     }
 
     ParsedSource surfaceUniformsFor(Material material) {
@@ -203,13 +231,13 @@ final class MaterialPipelineCache {
                 material.vertexShaderPath(), material.fragmentShaderPath(), surfacePath,
                 skinned, colored, defines, programs);
         return new MaterialClassResources(metadata, pipeline, litLayout, ParsedSource.empty(),
-                supportsInstancing(material, ""));
+                supportsInstancing(material));
     }
 
     private static String pipelineKey(Material material, boolean skinned, boolean colored) {
         return material.getClass().getName() + "|" + material.vertexShaderPath() + "|" + material.fragmentShaderPath()
                 + "|" + surfaceShaderPathOf(material)
-                + "|" + (material.transparent() ? "transparent" : "opaque")
+                + "|" + (material.blended() ? "blended" : "opaque")
                 + "|" + (material.doubleSided() ? "doubleSided" : "culled")
                 + "|" + (skinned ? "skinned" : "static")
                 + "|" + (colored ? "colored" : "plain");
@@ -309,7 +337,7 @@ final class MaterialPipelineCache {
         LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(),
                 surfaceShaderPathOf(material), skinned, colored, defines);
         MaterialClassMetadata metadata = MaterialClassMetadata.reflect(material.getClass(), programs.fragment().source());
-        ParsedSource surfaceUniforms = parseSurfaceUniforms(surfaceShaderPathOf(material));
+        ParsedSource surfaceUniforms = parseSurfaceUniforms(material);
         BindingSetLayout litLayout = buildLitBindingLayout(metadata, surfaceUniforms, skinned,
                 (textureMask & PROBE_LIT_BIT) != 0L);
         PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout, skinned, colored));
@@ -317,27 +345,36 @@ final class MaterialPipelineCache {
                 material.vertexShaderPath(), material.fragmentShaderPath(), surfaceShaderPathOf(material),
                 skinned, colored, defines, programs);
         return new MaterialClassResources(metadata, pipeline, litLayout, surfaceUniforms,
-                supportsInstancing(material, surfaceShaderPathOf(material)));
+                supportsInstancing(material));
     }
 
-    private boolean supportsInstancing(Material material, String surfacePath) {
-        if (material.transparent()) {
-            return false;
+    private static boolean supportsInstancing(Material material) {
+        return !material.blended();
+    }
+
+    private ParsedSource parseSurfaceUniforms(Material material) {
+        return parseSurfaceUniforms(material.vertexShaderPath(), material.fragmentShaderPath(),
+                surfaceShaderPathOf(material));
+    }
+
+    private ParsedSource parseSurfaceUniforms(String vertexPath, String fragmentPath, String surfacePath) {
+        if (!surfacePath.isEmpty()) {
+            return SurfaceShaderComposer.parseUniforms(shaderLoader.load(surfacePath));
         }
-        return surfacePath.isEmpty() || !SurfaceShaderComposer.usesObjectHelpers(shaderLoader.load(surfacePath));
-    }
-
-    private ParsedSource parseSurfaceUniforms(String surfacePath) {
-        return surfacePath.isEmpty()
-                ? ParsedSource.empty()
-                : SurfaceShaderComposer.parseUniforms(shaderLoader.load(surfacePath));
+        return ShaderUniformParser.merge(List.of(
+                ShaderUniformParser.parse(shaderLoader.load(vertexPath).source()),
+                ShaderUniformParser.parse(shaderLoader.load(fragmentPath).source())));
     }
 
     private LoadedPrograms loadPrograms(String vertexPath, String fragmentPath, String surfacePath,
                                         boolean skinned, boolean colored, String textureDefines) {
         LoadedShader vertex = shaderLoader.load(vertexPath);
         LoadedShader fragment = shaderLoader.load(fragmentPath);
-        if (!surfacePath.isEmpty()) {
+        if (surfacePath.isEmpty()) {
+            ParsedSource declared = parseSurfaceUniforms(vertexPath, fragmentPath, "");
+            vertex = SurfaceShaderComposer.injectUniformBlock(vertex, declared);
+            fragment = SurfaceShaderComposer.injectUniformBlock(fragment, declared);
+        } else {
             LoadedShader surface = shaderLoader.load(surfacePath);
             vertex = SurfaceShaderComposer.composeVertex(vertex, surface);
             fragment = SurfaceShaderComposer.composeFragment(fragment, surface);
@@ -355,6 +392,7 @@ final class MaterialPipelineCache {
         return new LoadedPrograms(vertex, fragment);
     }
 
+
     private BindingSetLayout buildLitBindingLayout(MaterialClassMetadata metadata, ParsedSource surfaceUniforms,
                                                    boolean skinned, boolean probeLit) {
         List<BindingSlot> slots = new ArrayList<>();
@@ -364,6 +402,8 @@ final class MaterialPipelineCache {
         slots.add(new BindingSlot(MeshShaderBindings.CLUSTER_INDEX_SSBO_BINDING, BindingType.STORAGE_BUFFER));
         slots.add(new BindingSlot(MeshShaderBindings.OBJECT_UBO_BINDING, BindingType.UNIFORM_BUFFER));
         slots.add(new BindingSlot(MeshShaderBindings.INSTANCE_SSBO_BINDING, BindingType.STORAGE_BUFFER));
+        slots.add(new BindingSlot(MeshShaderBindings.OPAQUE_COLOR_BINDING, BindingType.SAMPLED_TEXTURE_2D));
+        slots.add(new BindingSlot(MeshShaderBindings.OPAQUE_DEPTH_BINDING, BindingType.SAMPLED_TEXTURE_2D));
         if (skinned) {
             slots.add(new BindingSlot(MeshShaderBindings.JOINT_PALETTE_SSBO_BINDING, BindingType.STORAGE_BUFFER));
         }
@@ -407,7 +447,7 @@ final class MaterialPipelineCache {
     }
 
     private static RenderState renderStateFor(Material material) {
-        RenderState base = material.transparent() ? RenderState.TRANSPARENT_3D : RenderState.OPAQUE_3D;
+        RenderState base = material.blended() ? RenderState.TRANSPARENT_3D : RenderState.OPAQUE_3D;
         if (!material.doubleSided()) {
             return base;
         }
@@ -426,15 +466,18 @@ final class MaterialPipelineCache {
         if (!surfacePath.isEmpty()) {
             dependencies.add(surfacePath);
         }
-        shaderWatcher.watch(List.copyOf(dependencies),
+        shaderWatcher.watch(List.copyOf(dependencies), cacheKey,
                 () -> reloadPipeline(cacheKey, pipeline, vertexPath, fragmentPath, surfacePath,
                         skinned, colored, textureDefines));
     }
 
     private void reloadPipeline(String cacheKey, PipelineHandle pipeline, String vertexPath, String fragmentPath,
                                 String surfacePath, boolean skinned, boolean colored, String textureDefines) {
+        if (!backend.isAlive(pipeline)) {
+            return;
+        }
         try {
-            if (surfaceDeclarationsChanged(cacheKey, surfacePath)) {
+            if (surfaceDeclarationsChanged(cacheKey, vertexPath, fragmentPath, surfacePath)) {
                 evictForRebuild(cacheKey, surfacePath);
                 return;
             }
@@ -447,10 +490,11 @@ final class MaterialPipelineCache {
         }
     }
 
-    private boolean surfaceDeclarationsChanged(String cacheKey, String surfacePath) {
+    private boolean surfaceDeclarationsChanged(String cacheKey, String vertexPath, String fragmentPath,
+                                               String surfacePath) {
         MaterialClassResources cached = classCache.get(cacheKey);
         return cached != null && !cached.surfaceUniforms().declarations()
-                .equals(parseSurfaceUniforms(surfacePath).declarations());
+                .equals(parseSurfaceUniforms(vertexPath, fragmentPath, surfacePath).declarations());
     }
 
     private void evictForRebuild(String cacheKey, String surfacePath) {
@@ -458,6 +502,7 @@ final class MaterialPipelineCache {
         if (removed == null) {
             return;
         }
+        resolvedClasses.values().removeIf(resolved -> resolved.resources() == removed);
         backend.destroy(removed.pipeline());
         logger.info("Surface shader uniforms changed in " + surfacePath + ", rebuilding material pipeline");
     }
