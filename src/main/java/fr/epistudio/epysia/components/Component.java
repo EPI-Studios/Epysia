@@ -21,4 +21,9 @@ public abstract class Component implements IComponent {
     public final Optional<GameObject> owner() {
         return Optional.ofNullable(gameObject);
     }
+
+    @Override
+    public final GameObject ownerOrNull() {
+        return gameObject;
+    }
 }

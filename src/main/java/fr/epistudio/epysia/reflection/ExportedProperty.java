@@ -62,6 +62,10 @@ public final class ExportedProperty {
         return annotation.color();
     }
 
+    public boolean isLayerMask() {
+        return annotation.layerMask();
+    }
+
     public Object read() {
         try {
             return field.get(owner);

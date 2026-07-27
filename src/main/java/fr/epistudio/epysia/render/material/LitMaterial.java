@@ -1,7 +1,6 @@
 package fr.epistudio.epysia.render.material;
 
 import fr.epistudio.epysia.render.backend.TextureHandle;
-import fr.epistudio.epysia.render.shader.ShaderUniformValues;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -45,12 +44,26 @@ public final class LitMaterial extends Material {
     @Texture(srgb = true)
     public TextureHandle emissiveMap;
 
-    private final ShaderUniformValues surfaceUniforms = new ShaderUniformValues();
     private String surfaceShaderPath = "";
     private boolean animatedShadow = true;
+    private boolean receiveShadows = true;
 
     public LitMaterial() {
         super("lit.vert.glsl", "lit.frag.glsl");
+    }
+
+    public boolean receiveShadows() {
+        return receiveShadows;
+    }
+
+    public LitMaterial setReceiveShadows(boolean value) {
+        this.receiveShadows = value;
+        return this;
+    }
+
+    @Override
+    public boolean alphaScissor() {
+        return alphaCutoff > 0.0f;
     }
 
     public boolean animatedShadow() {
@@ -71,52 +84,48 @@ public final class LitMaterial extends Material {
         return this;
     }
 
-    public ShaderUniformValues surfaceUniforms() {
-        return surfaceUniforms;
-    }
-
     public LitMaterial setFloat(String uniformName, float value) {
-        surfaceUniforms.setFloat(uniformName, value);
+        surfaceUniforms().setFloat(uniformName, value);
         return this;
     }
 
     public LitMaterial setInt(String uniformName, int value) {
-        surfaceUniforms.setInt(uniformName, value);
+        surfaceUniforms().setInt(uniformName, value);
         return this;
     }
 
     public LitMaterial setBool(String uniformName, boolean value) {
-        surfaceUniforms.setBool(uniformName, value);
+        surfaceUniforms().setBool(uniformName, value);
         return this;
     }
 
     public LitMaterial setVector2(String uniformName, Vector2f value) {
-        surfaceUniforms.setVector2(uniformName, value);
+        surfaceUniforms().setVector2(uniformName, value);
         return this;
     }
 
     public LitMaterial setVector3(String uniformName, Vector3f value) {
-        surfaceUniforms.setVector3(uniformName, value);
+        surfaceUniforms().setVector3(uniformName, value);
         return this;
     }
 
     public LitMaterial setVector4(String uniformName, Vector4f value) {
-        surfaceUniforms.setVector4(uniformName, value);
+        surfaceUniforms().setVector4(uniformName, value);
         return this;
     }
 
     public LitMaterial setColor(String uniformName, Vector3f value) {
-        surfaceUniforms.setVector3(uniformName, value);
+        surfaceUniforms().setVector3(uniformName, value);
         return this;
     }
 
     public LitMaterial setMatrix(String uniformName, Matrix4f value) {
-        surfaceUniforms.setMatrix(uniformName, value);
+        surfaceUniforms().setMatrix(uniformName, value);
         return this;
     }
 
     public LitMaterial setTexture(String uniformName, String path) {
-        surfaceUniforms.setTexture(uniformName, path);
+        surfaceUniforms().setTexture(uniformName, path);
         return this;
     }
 

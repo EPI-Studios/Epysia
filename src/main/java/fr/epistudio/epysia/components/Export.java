@@ -18,4 +18,6 @@ public @interface Export {
     float step() default 0.05f;
 
     boolean color() default false;
+
+    boolean layerMask() default false;
 }

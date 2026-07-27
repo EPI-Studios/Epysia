@@ -47,11 +47,31 @@ public final class ShaderUniformParser {
         List<int[]> spans = new ArrayList<>();
         Matcher matcher = UNIFORM_PATTERN.matcher(masked);
         while (matcher.find()) {
+            if (isQualified(masked, matcher.start())) {
+                continue;
+            }
             declarations.add(toDeclaration(source, matcher));
             spans.add(new int[] {matcher.start(), matcher.end()});
         }
         return new ParsedSource(List.copyOf(declarations), removeSpans(source, spans),
                 computeOffsets(declarations), computeBufferSize(declarations));
+    }
+
+    public static ParsedSource merge(List<ParsedSource> sources) {
+        Map<String, ShaderUniformDeclaration> byName = new LinkedHashMap<>();
+        for (ParsedSource parsed : sources) {
+            for (ShaderUniformDeclaration declaration : parsed.declarations()) {
+                byName.putIfAbsent(declaration.name(), declaration);
+            }
+        }
+        List<ShaderUniformDeclaration> declarations = List.copyOf(byName.values());
+        return new ParsedSource(declarations, "", computeOffsets(declarations),
+                computeBufferSize(declarations));
+    }
+
+    private static boolean isQualified(String masked, int declarationStart) {
+        int lineStart = masked.lastIndexOf('\n', declarationStart) + 1;
+        return masked.substring(lineStart, declarationStart).contains("layout");
     }
 
     private static ShaderUniformDeclaration toDeclaration(String source, Matcher matcher) {

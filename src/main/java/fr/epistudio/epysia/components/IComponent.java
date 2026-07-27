@@ -11,6 +11,10 @@ public interface IComponent {
 
     Optional<GameObject> owner();
 
+    default GameObject ownerOrNull() {
+        return owner().orElse(null);
+    }
+
     default void onLoad(EngineServices services) {
     }
 

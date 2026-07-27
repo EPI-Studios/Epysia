@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.render.material;
 
+import fr.epistudio.epysia.render.shader.ShaderUniformValues;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -10,6 +12,7 @@ public abstract class Material {
     private final String vertexShaderPath;
     private final String fragmentShaderPath;
     private final Map<String, String> texturePaths = new LinkedHashMap<>();
+    private final ShaderUniformValues surfaceUniforms = new ShaderUniformValues();
     private boolean transparent;
     private boolean doubleSided;
     private String assetPath = "";
@@ -27,6 +30,10 @@ public abstract class Material {
         return fragmentShaderPath;
     }
 
+    public final ShaderUniformValues surfaceUniforms() {
+        return surfaceUniforms;
+    }
+
     public final String assetPath() {
         return assetPath;
     }
@@ -38,6 +45,14 @@ public abstract class Material {
 
     public final boolean transparent() {
         return transparent;
+    }
+
+    public boolean alphaScissor() {
+        return false;
+    }
+
+    public final boolean blended() {
+        return transparent && !alphaScissor();
     }
 
     public final Material setTransparent(boolean value) {

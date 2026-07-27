@@ -20,6 +20,8 @@ public final class ShaderWatcher {
     private final Optional<Path> filesystemRoot;
     private final Map<String, Long> lastModifiedByPath = new ConcurrentHashMap<>();
     private final Map<String, List<Runnable>> listenersByPath = new HashMap<>();
+    private final Map<String, Runnable> listenerByKey = new HashMap<>();
+    private final Map<String, List<String>> pathsByListenerKey = new HashMap<>();
     private final ConcurrentLinkedQueue<String> pendingChanges = new ConcurrentLinkedQueue<>();
     private final Set<String> watchedPaths = new HashSet<>();
     private Thread pollingThread;
@@ -41,11 +43,40 @@ public final class ShaderWatcher {
     }
 
     public synchronized void watch(List<String> shaderPaths, Runnable onChange) {
+        watch(shaderPaths, String.valueOf(System.identityHashCode(onChange)), onChange);
+    }
+
+    public synchronized void watch(List<String> shaderPaths, String listenerKey, Runnable onChange) {
+        unwatch(listenerKey);
         for (String shaderPath : shaderPaths) {
             watchedPaths.add(shaderPath);
             lastModifiedByPath.putIfAbsent(shaderPath, readModifiedMillis(shaderPath));
             listenersByPath.computeIfAbsent(shaderPath, ignored -> new ArrayList<>()).add(onChange);
+            pathsByListenerKey.computeIfAbsent(listenerKey, ignored -> new ArrayList<>()).add(shaderPath);
         }
+        listenerByKey.put(listenerKey, onChange);
+    }
+
+    public synchronized void unwatch(String listenerKey) {
+        Runnable previous = listenerByKey.remove(listenerKey);
+        if (previous == null) {
+            return;
+        }
+        for (String shaderPath : pathsByListenerKey.getOrDefault(listenerKey, List.of())) {
+            List<Runnable> listeners = listenersByPath.get(shaderPath);
+            if (listeners != null) {
+                listeners.remove(previous);
+            }
+        }
+        pathsByListenerKey.remove(listenerKey);
+    }
+
+    public synchronized int listenerCount() {
+        int total = 0;
+        for (List<Runnable> listeners : listenersByPath.values()) {
+            total += listeners.size();
+        }
+        return total;
     }
 
     public synchronized void notifyFileSaved(Path savedFile) {
