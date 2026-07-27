@@ -153,6 +153,7 @@ public final class GraphEditorView {
     private final VfxPreviewPanel vfxPreview;
     private final AssetPicker assetPicker;
     private final BooleanSupplier nodePreviewsEnabled;
+    private final Supplier<List<String>> actionNames;
     private final Consumer<Boolean> onNodePreviewsToggled;
     private final GraphJsonCodec codec = new GraphJsonCodec();
     private final Map<Path, OpenGraph> openGraphs = new LinkedHashMap<>();
@@ -180,7 +181,8 @@ public final class GraphEditorView {
                            Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails,
                            Consumer<Path> onGeneratedShaderSaved, ShaderGraphPreviewService previews,
                            VfxPreviewPanel vfxPreview, AssetPicker assetPicker,
-                           BooleanSupplier nodePreviewsEnabled, Consumer<Boolean> onNodePreviewsToggled) {
+                           BooleanSupplier nodePreviewsEnabled, Consumer<Boolean> onNodePreviewsToggled,
+                           Supplier<List<String>> actionNames) {
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
         this.activeDocument = activeDocument;
@@ -191,6 +193,7 @@ public final class GraphEditorView {
         this.assetPicker = assetPicker;
         this.nodePreviewsEnabled = nodePreviewsEnabled;
         this.onNodePreviewsToggled = onNodePreviewsToggled;
+        this.actionNames = actionNames;
         rebuildRegistry();
     }
 
@@ -1217,6 +1220,7 @@ public final class GraphEditorView {
             case COMPARISON -> renderEnumSetting(graph, node, setting, COMPARISON_OPERATORS);
             case LOG_LEVEL -> renderEnumSetting(graph, node, setting, LOG_LEVELS);
             case VARIABLE_NAME -> renderEnumSetting(graph, node, setting, variableNames(graph));
+            case ACTION_NAME -> renderEnumSetting(graph, node, setting, actionNames.get());
             case WHOLE_NUMBER -> renderWholeNumberSetting(graph, node, setting);
             case NUMBER -> renderNumberSetting(graph, node, setting);
             case TOGGLE -> renderToggleSetting(graph, node, setting);

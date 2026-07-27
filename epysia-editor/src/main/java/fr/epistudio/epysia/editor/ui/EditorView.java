@@ -41,6 +41,7 @@ import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphSystem;
 import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.input.action.InputAction;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.prefab.PrefabWriter;
@@ -206,7 +207,7 @@ public final class EditorView implements FrameView {
         this.graphEditorView = new GraphEditorView(componentRegistry, toasts, active,
                 thumbnailCache, this::onShaderGraphGenerated, shaderGraphPreviews, vfxPreviewPanel,
                 new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
-                this::onShaderNodePreviewsToggled);
+                this::onShaderNodePreviewsToggled, this::projectActionNames);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
         this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, tileBrush);
@@ -1262,6 +1263,10 @@ public final class EditorView implements FrameView {
             return;
         }
         attachScriptComponent(className, selected.get());
+    }
+
+    private List<String> projectActionNames() {
+        return projectStore.readInputActions(project).stream().map(InputAction::name).toList();
     }
 
     private void onShaderNodePreviewsToggled(boolean enabled) {

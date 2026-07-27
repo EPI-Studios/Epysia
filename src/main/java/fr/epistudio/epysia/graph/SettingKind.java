@@ -9,6 +9,7 @@ public enum SettingKind {
     MOUSE_BUTTON,
     ASSET_PATH,
     VARIABLE_NAME,
+    ACTION_NAME,
     COMPARISON,
     LOG_LEVEL,
     CURVE,
