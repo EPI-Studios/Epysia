@@ -26,4 +26,7 @@ public interface IComponent {
 
     default void onPlayStop(EngineServices services) {
     }
+
+    default void onDestroy(EngineServices services) {
+    }
 }

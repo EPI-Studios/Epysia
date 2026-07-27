@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class Scene implements IScene {
 
@@ -36,6 +37,8 @@ public final class Scene implements IScene {
             new PostProcessSettings();
     private final Vector3f clearColor = defaultClearColor();
     private final Map<Class<?>, List<? extends IComponent>> componentIndex = new HashMap<>();
+    private Consumer<GameObject> removalListener = removed -> {
+    };
     private long modificationCount;
     private long indexedModificationCount = -1;
 
@@ -114,7 +117,13 @@ public final class Scene implements IScene {
             removed.clearStructuralChangeListener();
             recentlyDeactivated.add(removed);
             modificationCount++;
+            removalListener.accept(removed);
         }
+    }
+
+    public void setRemovalListener(Consumer<GameObject> listener) {
+        this.removalListener = listener == null ? removed -> {
+        } : listener;
     }
 
     private void applyPendingAdditions() {

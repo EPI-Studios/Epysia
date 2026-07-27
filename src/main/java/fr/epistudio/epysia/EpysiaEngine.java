@@ -97,6 +97,11 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
             scenes.add(scene);
         }
         activeScene = scene;
+        scene.setRemovalListener(this::dispatchDestruction);
+    }
+
+    private void dispatchDestruction(GameObject removed) {
+        invokeLifecycle(removed, component -> component.onDestroy(this), "onDestroy");
     }
 
     public void removeScene(Scene scene) {
@@ -263,12 +268,10 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     private void dispatchDeactivations(Scene scene) {
-        List<GameObject> deactivated = scene.drainRecentlyDeactivated();
-        if (!playing) {
-            return;
-        }
-        for (GameObject gameObject : deactivated) {
-            invokeLifecycle(gameObject, component -> component.onPlayStop(this), "onPlayStop");
+        for (GameObject gameObject : scene.drainRecentlyDeactivated()) {
+            if (playing) {
+                invokeLifecycle(gameObject, component -> component.onPlayStop(this), "onPlayStop");
+            }
         }
     }
 

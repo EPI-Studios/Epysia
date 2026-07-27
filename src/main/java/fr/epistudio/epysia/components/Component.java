@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.components;
 
+import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AssetRefFields;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
 
@@ -25,5 +27,10 @@ public abstract class Component implements IComponent {
     @Override
     public final GameObject ownerOrNull() {
         return gameObject;
+    }
+
+    @Override
+    public void onDestroy(EngineServices services) {
+        AssetRefFields.releaseAll(this);
     }
 }
