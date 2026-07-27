@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.render.mesh;
 
+import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.render.backend.BindingSetHandle;
 import fr.epistudio.epysia.render.backend.BufferDescriptor;
 import fr.epistudio.epysia.render.backend.BufferHandle;
@@ -10,18 +11,23 @@ import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 final class MeshInstanceBatches {
 
     @FunctionalInterface
     interface InstanceBindingSetFactory {
-        BindingSetHandle create(PerSubmesh representative, BufferHandle instanceBuffer, long byteSize, boolean shadow);
+        BindingSetHandle create(PerSubmesh representative, BufferHandle instanceBuffer, long byteOffset,
+                                long byteSize, boolean shadow);
     }
 
     private final LongLongHashMap batchIndices = new LongLongHashMap(64);
     private final List<MeshInstanceBatch> batches = new ArrayList<>();
     private final List<MeshInstanceBatch> activeBatches = new ArrayList<>();
+    private final Map<MultiMeshRenderer, BulkInstances> bulkInstances = new IdentityHashMap<>();
 
     private RenderBackend backend;
     private InstanceBindingSetFactory bindingSetFactory;
@@ -39,12 +45,13 @@ final class MeshInstanceBatches {
     }
 
     boolean add(UploadedSubmesh submesh, PerSubmesh perSubmesh, MaterialStateSnapshot state,
-                Matrix4f model, long depthBits, boolean visible,
+                Matrix4f model, long depthBits, boolean visible, boolean castsShadows,
                 Vector3f worldMin, Vector3f worldMax) {
-        MeshInstanceBatch batch = batchFor(submesh.handle().id(), state.digest());
+        MeshInstanceBatch batch = batchFor(submesh.handle().id(), state.digest(), castsShadows);
         if (batch.pendingCount() == 0) {
             batch.beginFrame();
             batch.adoptState(state);
+            batch.setCastsShadows(castsShadows);
             activeBatches.add(batch);
         } else if (!batch.state().matches(state)) {
             return false;
@@ -54,8 +61,8 @@ final class MeshInstanceBatches {
         return true;
     }
 
-    private MeshInstanceBatch batchFor(long submeshId, long materialDigest) {
-        long key = submeshId * 0x9E3779B97F4A7C15L ^ materialDigest;
+    private MeshInstanceBatch batchFor(long submeshId, long materialDigest, boolean castsShadows) {
+        long key = submeshId * 0x9E3779B97F4A7C15L ^ materialDigest ^ (castsShadows ? 0L : 0x5BF03635L);
         long index = batchIndices.getOrDefault(key, -1L);
         if (index >= 0L) {
             return batches.get((int) index);
@@ -68,6 +75,39 @@ final class MeshInstanceBatches {
 
     List<MeshInstanceBatch> activeBatches() {
         return activeBatches;
+    }
+
+    BulkInstances bulkFor(MultiMeshRenderer renderer, int submeshCount) {
+        BulkInstances existing = bulkInstances.get(renderer);
+        if (existing != null && existing.batchCount() == submeshCount) {
+            return existing;
+        }
+        releaseBulk(renderer);
+        BulkInstances created = new BulkInstances(submeshCount);
+        bulkInstances.put(renderer, created);
+        return created;
+    }
+
+    Optional<BufferHandle> instanceBufferFor(MultiMeshRenderer renderer) {
+        BulkInstances bulk = bulkInstances.get(renderer);
+        if (bulk == null || bulk.batchCount() == 0) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(bulk.batch(0).instanceBuffer());
+    }
+
+    void activate(MeshInstanceBatch batch) {
+        activeBatches.add(batch);
+    }
+
+    void releaseBulk(MultiMeshRenderer renderer) {
+        BulkInstances removed = bulkInstances.remove(renderer);
+        if (removed == null) {
+            return;
+        }
+        for (MeshInstanceBatch batch : removed.batches()) {
+            releaseResources(batch);
+        }
     }
 
     void upload(MeshInstanceBatch batch) {
@@ -88,8 +128,15 @@ final class MeshInstanceBatches {
         long byteSize = batch.requiredByteSize();
         BufferHandle buffer = backend.createBuffer(new BufferDescriptor(
                 BufferUsage.STORAGE, BufferUtils.createByteBuffer((int) byteSize)));
-        BindingSetHandle lit = bindingSetFactory.create(batch.representative(), buffer, byteSize, false);
-        BindingSetHandle shadow = bindingSetFactory.create(batch.representative(), buffer, byteSize, true);
+        int tiles = batch.tileCount();
+        BindingSetHandle[] lit = new BindingSetHandle[tiles];
+        BindingSetHandle[] shadow = new BindingSetHandle[tiles];
+        for (int tile = 0; tile < tiles; tile++) {
+            long offset = batch.tileByteOffset(tile);
+            long size = batch.tileByteSize(tile);
+            lit[tile] = bindingSetFactory.create(batch.representative(), buffer, offset, size, false);
+            shadow[tile] = bindingSetFactory.create(batch.representative(), buffer, offset, size, true);
+        }
         batch.adoptResources(buffer, lit, shadow);
     }
 
@@ -97,8 +144,12 @@ final class MeshInstanceBatches {
         if (batch.instanceBuffer() == null) {
             return;
         }
-        backend.destroy(batch.litBindings());
-        backend.destroy(batch.shadowBindings());
+        for (BindingSetHandle handle : batch.allLitBindings()) {
+            backend.destroy(handle);
+        }
+        for (BindingSetHandle handle : batch.allShadowBindings()) {
+            backend.destroy(handle);
+        }
         backend.destroy(batch.instanceBuffer());
     }
 
@@ -109,8 +160,67 @@ final class MeshInstanceBatches {
         for (MeshInstanceBatch batch : batches) {
             releaseResources(batch);
         }
+        for (BulkInstances bulk : bulkInstances.values()) {
+            for (MeshInstanceBatch batch : bulk.batches()) {
+                releaseResources(batch);
+            }
+        }
+        bulkInstances.clear();
         batches.clear();
         batchIndices.clear();
         activeBatches.clear();
+    }
+
+    static final class BulkInstances {
+
+        private final List<MeshInstanceBatch> batches;
+        private final InstanceTiles tiles = new InstanceTiles();
+        private final Vector3f boundsMin = new Vector3f();
+        private final Vector3f boundsMax = new Vector3f();
+        private long revision = -1L;
+        private int instanceCount = -1;
+
+        private BulkInstances(int submeshCount) {
+            batches = new ArrayList<>(submeshCount);
+            for (int index = 0; index < submeshCount; index++) {
+                batches.add(new MeshInstanceBatch());
+            }
+        }
+
+        List<MeshInstanceBatch> batches() {
+            return batches;
+        }
+
+        int batchCount() {
+            return batches.size();
+        }
+
+        MeshInstanceBatch batch(int index) {
+            return batches.get(index);
+        }
+
+        boolean tilesMatch(long candidateRevision, int candidateCount) {
+            return revision == candidateRevision && instanceCount == candidateCount;
+        }
+
+        void rebuildTiles(float[] source, int count, long candidateRevision, Aabb localBounds) {
+            revision = candidateRevision;
+            instanceCount = count;
+            boundsMin.set(Float.POSITIVE_INFINITY);
+            boundsMax.set(Float.NEGATIVE_INFINITY);
+            tiles.build(source, count, localBounds, boundsMin, boundsMax);
+        }
+
+        InstanceTiles tiles() {
+            return tiles;
+        }
+
+        Vector3f boundsMin() {
+            return boundsMin;
+        }
+
+        Vector3f boundsMax() {
+            return boundsMax;
+        }
     }
 }

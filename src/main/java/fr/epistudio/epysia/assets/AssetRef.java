@@ -101,6 +101,10 @@ public final class AssetRef<T> {
         return Optional.ofNullable(cached);
     }
 
+    public T directOrNull() {
+        return cached;
+    }
+
     public void setDirect(T value) {
         releaseHeld();
         this.cached = value;

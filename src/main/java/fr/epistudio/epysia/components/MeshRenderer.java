@@ -18,14 +18,33 @@ import java.util.Optional;
 
 @EpysiaComponent(name = "Mesh Renderer", category = "Rendering")
 @RequiresComponent(Transform3D.class)
-public final class MeshRenderer extends Component {
+public final class MeshRenderer extends Component implements MeshRenderSource {
 
     @Export(label = "Mesh")
     private final AssetRef<UploadedMesh> mesh = new AssetRef<>(UploadedMesh.class);
+    @Export(label = "Layer Mask", layerMask = true)
+    private int layerMask = RenderLayers.DEFAULT;
+    @Export(label = "Cast Shadows")
+    private boolean castShadows = true;
+    @Export(label = "View Model")
+    private boolean viewModel;
+    @Export(label = "Visible From", min = 0.0f, max = 100000.0f, step = 0.5f)
+    private float visibilityRangeBegin;
+    @Export(label = "Visible Until", min = 0.0f, max = 100000.0f, step = 0.5f)
+    private float visibilityRangeEnd;
     private final List<Material> materials = new ArrayList<>();
 
     public AssetRef<UploadedMesh> meshRef() {
         return mesh;
+    }
+
+    public boolean viewModel() {
+        return viewModel;
+    }
+
+    public MeshRenderer setViewModel(boolean value) {
+        viewModel = value;
+        return this;
     }
 
     public MeshRenderer setMesh(UploadedMesh value) {
@@ -40,6 +59,47 @@ public final class MeshRenderer extends Component {
 
     public Optional<UploadedMesh> mesh() {
         return mesh.direct();
+    }
+
+    @Override
+    public int layerMask() {
+        return layerMask;
+    }
+
+    @Override
+    public boolean castsShadows() {
+        return castShadows;
+    }
+
+    @Override
+    public float visibilityRangeBegin() {
+        return visibilityRangeBegin;
+    }
+
+    @Override
+    public float visibilityRangeEnd() {
+        return visibilityRangeEnd;
+    }
+
+    public MeshRenderer setVisibilityRange(float begin, float end) {
+        this.visibilityRangeBegin = begin;
+        this.visibilityRangeEnd = end;
+        return this;
+    }
+
+    public MeshRenderer setCastShadows(boolean value) {
+        this.castShadows = value;
+        return this;
+    }
+
+    public MeshRenderer setLayerMask(int layerMask) {
+        this.layerMask = layerMask;
+        return this;
+    }
+
+    @Override
+    public UploadedMesh meshOrNull() {
+        return mesh.directOrNull();
     }
 
     public MeshRenderer setMaterial(Material material) {
@@ -63,6 +123,7 @@ public final class MeshRenderer extends Component {
         return Collections.unmodifiableList(materials);
     }
 
+    @Override
     public Optional<Material> materialForSlot(int slot) {
         if (slot < 0 || slot >= materials.size()) {
             return Optional.empty();

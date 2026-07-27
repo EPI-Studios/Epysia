@@ -11,6 +11,7 @@ import java.nio.ByteBuffer;
 final class MeshInstanceBatch {
 
     private static final int INITIAL_CAPACITY = 8;
+    private static final int INSTANCE_FLOAT_COUNT = MeshShaderBindings.INSTANCE_TRANSFORM_BYTES / Float.BYTES;
 
     private final Vector3f boundsMin = new Vector3f();
     private final Vector3f boundsMax = new Vector3f();
@@ -31,16 +32,38 @@ final class MeshInstanceBatch {
     private long uploadHash;
     private long lastUploadedHash;
 
+    private static final BindingSetHandle[] NO_BINDINGS = new BindingSetHandle[0];
+    private static final int[] NO_TILES = new int[0];
+    private static final float[] NO_BOUNDS = new float[0];
+
     private UploadedSubmesh submesh;
     private PerSubmesh representative;
     private BufferHandle instanceBuffer;
-    private BindingSetHandle litBindings;
-    private BindingSetHandle shadowBindings;
+    private BindingSetHandle[] litBindings = NO_BINDINGS;
+    private BindingSetHandle[] shadowBindings = NO_BINDINGS;
+    private int[] tileStart = NO_TILES;
+    private int[] tileLength = NO_TILES;
+    private float[] tileBounds = NO_BOUNDS;
+    private int tileCount = 1;
+    private int uploadedTileCount = 1;
     private int uploadedCapacity;
     private long boundLitBindingsId = -1L;
     private MaterialStateSnapshot state;
+    private boolean bulk;
+    private boolean castsShadows = true;
+    private float visibilityRangeBegin;
+    private float visibilityRangeEnd;
+    private long bulkRevision = -1L;
 
     void beginFrame() {
+        bulk = false;
+        castsShadows = true;
+        visibilityRangeBegin = 0.0f;
+        visibilityRangeEnd = 0.0f;
+        tileStart = NO_TILES;
+        tileLength = NO_TILES;
+        tileBounds = NO_BOUNDS;
+        tileCount = 1;
         boundsMin.set(Float.POSITIVE_INFINITY);
         boundsMax.set(Float.NEGATIVE_INFINITY);
         instanceData.clear();
@@ -87,6 +110,64 @@ final class MeshInstanceBatch {
         uploadHash = ShadowSignatures.mix(ShadowSignatures.mixMatrix(uploadHash, model), visible ? 1L : 0L);
     }
 
+    void beginBulk(UploadedSubmesh addedSubmesh, PerSubmesh perSubmesh) {
+        submesh = addedSubmesh;
+        representative = perSubmesh;
+        bulk = true;
+    }
+
+    void setCastsShadows(boolean value) {
+        castsShadows = value;
+    }
+
+    void setVisibilityRange(float begin, float end) {
+        visibilityRangeBegin = begin;
+        visibilityRangeEnd = end;
+    }
+
+    float visibilityRangeBegin() {
+        return visibilityRangeBegin;
+    }
+
+    float visibilityRangeEnd() {
+        return visibilityRangeEnd;
+    }
+
+    boolean castsShadows() {
+        return castsShadows;
+    }
+
+    void writeBulkIfStale(float[] source, int count, long revision) {
+        if (bulkRevision == revision && capacity == count) {
+            return;
+        }
+        int byteSize = count * MeshShaderBindings.INSTANCE_TRANSFORM_BYTES;
+        if (instanceData.capacity() < byteSize) {
+            instanceData = BufferUtils.createByteBuffer(byteSize);
+        }
+        instanceData.clear();
+        instanceData.asFloatBuffer().put(source, 0, count * INSTANCE_FLOAT_COUNT);
+        firstModel.set(source);
+        capacity = count;
+        bulkRevision = revision;
+    }
+
+    int tileDrawCount(int tile) {
+        if (tileLength.length == 0) {
+            return visibleCount;
+        }
+        return Math.max(0, Math.min(tileLength[tile], instanceCount - tileStart[tile]));
+    }
+
+    void adoptBulkCounts(int count, boolean visible, long depthBits) {
+        instanceCount = count;
+        visibleCount = visible ? count : 0;
+        culledCount = visible ? 0 : count;
+        minDepthBits = depthBits;
+        transformHash = bulkRevision;
+        uploadHash = ShadowSignatures.mix(bulkRevision, count);
+    }
+
     boolean uploadUnchangedSinceLastFrame() {
         return uploadHash == lastUploadedHash;
     }
@@ -100,6 +181,9 @@ final class MeshInstanceBatch {
     }
 
     void mergeCulledInstances() {
+        if (bulk) {
+            return;
+        }
         instanceCount = visibleCount + culledCount;
         if (culledCount == 0) {
             return;
@@ -149,8 +233,9 @@ final class MeshInstanceBatch {
     }
 
     ByteBuffer instancePayload() {
+        int uploaded = bulk ? capacity : instanceCount;
         instanceData.position(0);
-        instanceData.limit(instanceCount * MeshShaderBindings.INSTANCE_TRANSFORM_BYTES);
+        instanceData.limit(uploaded * MeshShaderBindings.INSTANCE_TRANSFORM_BYTES);
         return instanceData;
     }
 
@@ -159,16 +244,63 @@ final class MeshInstanceBatch {
     }
 
     boolean needsBufferRebuild() {
-        return instanceBuffer == null || uploadedCapacity != capacity
+        return instanceBuffer == null || uploadedCapacity != capacity || uploadedTileCount != tileCount
                 || boundLitBindingsId != representative.litBindings().id();
     }
 
-    void adoptResources(BufferHandle buffer, BindingSetHandle lit, BindingSetHandle shadow) {
+    void adoptResources(BufferHandle buffer, BindingSetHandle[] lit, BindingSetHandle[] shadow) {
         instanceBuffer = buffer;
         litBindings = lit;
         shadowBindings = shadow;
         uploadedCapacity = capacity;
+        uploadedTileCount = tileCount;
         boundLitBindingsId = representative.litBindings().id();
+    }
+
+    void adoptTiles(int[] starts, int[] lengths, float[] bounds) {
+        tileStart = starts;
+        tileLength = lengths;
+        tileBounds = bounds;
+        tileCount = Math.max(1, starts.length);
+    }
+
+    void tileBounds(int tile, Vector3f outMin, Vector3f outMax) {
+        if (tileBounds.length < (tile + 1) * 6) {
+            outMin.set(boundsMin);
+            outMax.set(boundsMax);
+            return;
+        }
+        int base = tile * 6;
+        outMin.set(tileBounds[base], tileBounds[base + 1], tileBounds[base + 2]);
+        outMax.set(tileBounds[base + 3], tileBounds[base + 4], tileBounds[base + 5]);
+    }
+
+    int tileCount() {
+        return tileCount;
+    }
+
+    int tileInstanceStart(int tile) {
+        return tileStart.length == 0 ? 0 : tileStart[tile];
+    }
+
+    int tileInstanceCount(int tile) {
+        return tileLength.length == 0 ? instanceCount : tileLength[tile];
+    }
+
+    long tileByteOffset(int tile) {
+        return (long) tileInstanceStart(tile) * MeshShaderBindings.INSTANCE_TRANSFORM_BYTES;
+    }
+
+    long tileByteSize(int tile) {
+        return (long) Math.max(1, tileInstanceCount(tile)) * MeshShaderBindings.INSTANCE_TRANSFORM_BYTES;
+    }
+
+    BindingSetHandle[] allLitBindings() {
+        return litBindings;
+    }
+
+    BindingSetHandle[] allShadowBindings() {
+        return shadowBindings;
     }
 
     void adoptState(MaterialStateSnapshot snapshot) {
@@ -215,11 +347,11 @@ final class MeshInstanceBatch {
         return instanceBuffer;
     }
 
-    BindingSetHandle litBindings() {
-        return litBindings;
+    BindingSetHandle litBindings(int tile) {
+        return litBindings[tile];
     }
 
-    BindingSetHandle shadowBindings() {
-        return shadowBindings;
+    BindingSetHandle shadowBindings(int tile) {
+        return shadowBindings[tile];
     }
 }
