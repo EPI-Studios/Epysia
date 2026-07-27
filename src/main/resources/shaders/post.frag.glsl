@@ -62,22 +62,61 @@ float sampleAmbientOcclusion(vec2 uv) {
     return maximumDifference < tolerance ? texture(ambientOcclusion, uv).r : bestOcclusion;
 }
 
-float computeFogFactor(vec2 uv) {
-    float rawDepth = texture(sceneDepth, uv).r;
-    if (rawDepth >= 1.0) {
-        return 0.0;
-    }
-    float viewDistance = linearizeDepth(rawDepth, post.cameraDepth.x, post.cameraDepth.y);
-    float distanceBeyondStart = max(viewDistance - post.fogDistance.x, 0.0);
-    float distanceTerm = 1.0 - exp(-pow(distanceBeyondStart * post.fogDistance.y, 2.0));
+float fogDistanceStart() {
+    return post.fogDistance.x;
+}
 
-    vec3 worldPosition = reconstructWorldPosition(uv, rawDepth);
-    float heightAboveOrigin = worldPosition.y - post.fogDistance.z;
-    float heightAttenuation = exp(-max(heightAboveOrigin, 0.0) * post.fogDistance.w);
-    float heightTerm = heightAttenuation * post.cameraDepth.z;
+float fogDistanceDensity() {
+    return post.fogDistance.y;
+}
+
+float fogHeightOrigin() {
+    return post.fogDistance.z;
+}
+
+float fogHeightFalloff() {
+    return post.fogDistance.w;
+}
+
+float fogHeightDensity() {
+    return post.cameraDepth.z;
+}
+
+vec3 fogTint() {
+    return post.fogColor.rgb;
+}
+
+vec3 cameraPosition() {
+    return post.cameraPosition.xyz;
+}
+
+float builtinFogFactor(vec3 worldPosition, float viewDistance) {
+    float distanceBeyondStart = max(viewDistance - fogDistanceStart(), 0.0);
+    float distanceTerm = 1.0 - exp(-pow(distanceBeyondStart * fogDistanceDensity(), 2.0));
+
+    float heightAboveOrigin = worldPosition.y - fogHeightOrigin();
+    float heightAttenuation = exp(-max(heightAboveOrigin, 0.0) * fogHeightFalloff());
+    float heightTerm = heightAttenuation * fogHeightDensity();
 
     float combined = 1.0 - (1.0 - distanceTerm) * (1.0 - clamp(heightTerm, 0.0, 1.0));
     return clamp(combined, 0.0, 1.0);
+}
+
+// FOG_FUNCTIONS
+
+vec3 applyFog(vec3 color, vec2 uv, float strength) {
+    float rawDepth = texture(sceneDepth, uv).r;
+    if (rawDepth >= 1.0) {
+        return color;
+    }
+    float viewDistance = linearizeDepth(rawDepth, post.cameraDepth.x, post.cameraDepth.y);
+    vec3 worldPosition = reconstructWorldPosition(uv, rawDepth);
+#ifdef FOG_SHADER_ENABLED
+    vec4 fog = fogShade(worldPosition, viewDistance, uv, post.effectParams.w);
+    return mix(color, fog.rgb, clamp(fog.a, 0.0, 1.0) * strength);
+#else
+    return mix(color, fogTint(), builtinFogFactor(worldPosition, viewDistance) * strength);
+#endif
 }
 
 void main() {
@@ -96,8 +135,7 @@ void main() {
 
     float fogStrength = post.fogColor.w;
     if (fogStrength > 0.0) {
-        float fogFactor = computeFogFactor(vertexUv) * fogStrength;
-        color = mix(color, post.fogColor.rgb, fogFactor);
+        color = applyFog(color, vertexUv, fogStrength);
     }
 
     color *= max(post.gradeParams.y, 0.0);
