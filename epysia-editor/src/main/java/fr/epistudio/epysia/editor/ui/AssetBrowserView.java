@@ -3,6 +3,7 @@ package fr.epistudio.epysia.editor.ui;
 import fr.epistudio.epysia.assets.AssetMetaFile;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.editor.assets.AssetEntry;
+import fr.epistudio.epysia.editor.assets.AssetFileNames;
 import fr.epistudio.epysia.editor.assets.AssetQuery;
 import fr.epistudio.epysia.editor.assets.AssetScanner;
 import fr.epistudio.epysia.editor.assets.AssetType;
@@ -78,6 +79,7 @@ public final class AssetBrowserView {
     private static final String POST_SHADER_GRAPH_TEMPLATE_RESOURCE = "/templates/NewPostShaderGraph.epygraph";
 
     private static final String MATERIAL_TEMPLATE_RESOURCE = "/templates/NewMaterial.epymaterial";
+    private static final String SHADER_MATERIAL_TEMPLATE_RESOURCE = "/templates/NewShaderMaterial.epymaterial";
     private static final String MATERIAL_EXTENSION = ".epymaterial";
     private static final String MATERIALS_CATEGORY = "Materials";
     private static final String SHADERS_CATEGORY = "Shaders";
@@ -90,10 +92,12 @@ public final class AssetBrowserView {
     private static final String FRAGMENT_SHADER_SUFFIX = ".frag.glsl";
     private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
     private static final String POST_EFFECT_SUFFIX = ".post.glsl";
+    private static final String FOG_SHADER_SUFFIX = ".fog.glsl";
     private static final String VERTEX_SHADER_TEMPLATE_RESOURCE = "/templates/NewShader.vert.glsl";
     private static final String FRAGMENT_SHADER_TEMPLATE_RESOURCE = "/templates/NewShader.frag.glsl";
     private static final String SURFACE_SHADER_TEMPLATE_RESOURCE = "/templates/NewSurfaceShader.surf.glsl";
     private static final String POST_EFFECT_TEMPLATE_RESOURCE = "/templates/NewPostEffect.post.glsl";
+    private static final String FOG_SHADER_TEMPLATE_RESOURCE = "/templates/NewFogShader.fog.glsl";
 
 
     private final Project project;
@@ -432,8 +436,10 @@ public final class AssetBrowserView {
 
     private List<NewAssetDialog.AssetKind> assetKinds() {
         return List.of(
-                kind("Material", MATERIALS_CATEGORY, "shareable material, assign to mesh slots",
+                kind("Material", MATERIALS_CATEGORY, "lit material, assign to mesh slots",
                         EditorIcon.MESH, "MyMaterial", this::createMaterial),
+                kind("Shader Material", MATERIALS_CATEGORY, "material driven by a vert + frag pair",
+                        EditorIcon.MESH, "MyShaderMaterial", this::createShaderMaterial),
                 kind("Surface Shader", SHADERS_CATEGORY, "GLSL injected into the lit pipeline",
                         EditorIcon.MESH, "MySurfaceShader", this::createSurfaceShader),
                 kind("Shader Graph", SHADERS_CATEGORY, "nodes, compiles to a surface shader",
@@ -442,6 +448,8 @@ public final class AssetBrowserView {
                         EditorIcon.FILE, "MyShader", this::createShaderPair),
                 kind("Post Effect", POST_CATEGORY, "fullscreen pass",
                         EditorIcon.VISIBILITY_VISIBLE, "MyPostEffect", this::createPostEffect),
+                kind("Fog Shader", POST_CATEGORY, "replaces the built-in fog",
+                        EditorIcon.VISIBILITY_VISIBLE, "MyFog", this::createFogShader),
                 kind("Post Graph", POST_CATEGORY, "nodes, compiles to a post effect",
                         EditorIcon.GRID, "MyPostGraph", this::createPostShaderGraph),
                 kind("VFX Graph", EFFECTS_CATEGORY, "gpu particles, compiles to compute",
@@ -461,6 +469,22 @@ public final class AssetBrowserView {
         createShaderAsset(requestedName, this::writePostEffect);
     }
 
+    private void createFogShader(String requestedName) {
+        createShaderAsset(requestedName, this::writeFogShader);
+    }
+
+    private Path writeFogShader(String name) throws IOException {
+        Path directory = targetDirectory();
+        Files.createDirectories(directory);
+        Path fogFile = directory.resolve(name + FOG_SHADER_SUFFIX);
+        if (Files.exists(fogFile)) {
+            throw new IOException("Shader already exists: " + name);
+        }
+        Files.writeString(fogFile, loadTemplate(FOG_SHADER_TEMPLATE_RESOURCE));
+        notifier.show("Fog shader created: " + name);
+        return fogFile;
+    }
+
     private void createVfxGraph(String requestedName) {
         createGraphFromTemplate(requestedName, VFX_GRAPH_TEMPLATE_RESOURCE);
     }
@@ -478,7 +502,7 @@ public final class AssetBrowserView {
     }
 
     private void createShaderGraphFromTemplate(String requestedName, String templateResource) {
-        String name = requestedName.replace("\0", "").strip();
+        String name = assetBaseName(requestedName);
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
             notifier.show("Invalid graph name: " + requestedName);
             return;
@@ -509,32 +533,40 @@ public final class AssetBrowserView {
     }
 
     private void createMaterial(String requestedName) {
-        String name = requestedName.replace("\0", "").strip();
+        createMaterialFromTemplate(requestedName, MATERIAL_TEMPLATE_RESOURCE);
+    }
+
+    private void createShaderMaterial(String requestedName) {
+        createMaterialFromTemplate(requestedName, SHADER_MATERIAL_TEMPLATE_RESOURCE);
+    }
+
+    private void createMaterialFromTemplate(String requestedName, String templateResource) {
+        String name = assetBaseName(requestedName);
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
             notifier.show("Invalid material name: " + requestedName);
             return;
         }
         try {
-            writeMaterialTemplate(name);
+            writeMaterialTemplate(name, templateResource);
             refresh();
         } catch (IOException | InvalidPathException error) {
             notifier.show("Material creation failed: " + error.getMessage());
         }
     }
 
-    private void writeMaterialTemplate(String name) throws IOException {
+    private void writeMaterialTemplate(String name, String templateResource) throws IOException {
         Path directory = targetDirectory();
         Files.createDirectories(directory);
         Path materialFile = directory.resolve(name + MATERIAL_EXTENSION);
         if (Files.exists(materialFile)) {
             throw new IOException("Material already exists: " + name);
         }
-        Files.writeString(materialFile, loadTemplate(MATERIAL_TEMPLATE_RESOURCE));
+        Files.writeString(materialFile, loadTemplate(templateResource));
         notifier.show("Material created: " + name);
     }
 
     private void createGraphFromTemplate(String requestedName, String templateResource) {
-        String name = requestedName.replace("\0", "").strip();
+        String name = assetBaseName(requestedName);
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
             notifier.show("Invalid graph name: " + requestedName);
             return;
@@ -590,7 +622,7 @@ public final class AssetBrowserView {
     }
 
     private void createShaderAsset(String requestedName, ShaderTemplateWriter templateWriter) {
-        String name = requestedName.replace("\0", "").strip();
+        String name = assetBaseName(requestedName);
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
             notifier.show("Invalid shader name: " + requestedName);
             return;
@@ -791,6 +823,10 @@ public final class AssetBrowserView {
         }
     }
 
+    private static String assetBaseName(String requestedName) {
+        return AssetFileNames.baseName(requestedName.replace("\0", "").strip());
+    }
+
     private String sanitizeFileName(Path path, String requested) {
         String trimmed = requested.strip();
         while (trimmed.endsWith(".")) {
@@ -799,12 +835,11 @@ public final class AssetBrowserView {
         if (trimmed.isEmpty()) {
             return "";
         }
-        String originalName = path.getFileName().toString();
-        int extensionIndex = originalName.lastIndexOf('.');
-        if (extensionIndex > 0 && !trimmed.contains(".")) {
-            return trimmed + originalName.substring(extensionIndex);
+        String extension = AssetFileNames.extensionOf(path.getFileName().toString());
+        if (AssetFileNames.hasExtension(trimmed, extension)) {
+            return trimmed;
         }
-        return trimmed;
+        return trimmed.contains(".") ? trimmed : trimmed + extension;
     }
 
     private void renamePublicClassIfScript(Path target, String fileName) throws IOException {

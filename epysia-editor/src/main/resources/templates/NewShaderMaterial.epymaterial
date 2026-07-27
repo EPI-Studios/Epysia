@@ -1,0 +1,9 @@
+{
+  "class": "fr.epistudio.epysia.render.material.ShaderMaterial",
+  "vertexShader": "custom_default.vert.glsl",
+  "fragmentShader": "custom_default.frag.glsl",
+  "transparent": false,
+  "doubleSided": false,
+  "uniforms": {},
+  "textures": {}
+}

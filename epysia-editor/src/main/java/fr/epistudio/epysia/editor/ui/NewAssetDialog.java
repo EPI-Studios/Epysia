@@ -5,7 +5,6 @@ import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiInputTextFlags;
 import imgui.flag.ImGuiSelectableFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImString;
@@ -152,7 +151,7 @@ public final class NewAssetDialog {
         ImGui.popStyleColor();
         ImGui.sameLine();
         ImGui.setNextItemWidth(-1.0f);
-        if (ImGui.inputText("##new-asset-name", nameInput, ImGuiInputTextFlags.EnterReturnsTrue)) {
+        if (TextFields.inputSubmitted("##new-asset-name", nameInput)) {
             accept(matches);
         }
     }

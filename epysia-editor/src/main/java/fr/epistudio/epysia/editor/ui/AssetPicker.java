@@ -24,7 +24,10 @@ public final class AssetPicker {
     private static final Set<String> MESH_EXTENSIONS = Set.of(".obj", ".epymesh");
     private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
     private static final Set<String> ATLAS_EXTENSIONS = Set.of(".epyatlas");
-    private static final List<String> MESH_PRESETS = List.of("preset:cube", "preset:plane", "preset:capsule");
+    private static final Set<String> INSTANCES_EXTENSIONS = Set.of(".epyinstances");
+    private static final Set<String> MATERIAL_EXTENSIONS = Set.of(".epymaterial");
+    private static final List<String> MESH_PRESETS = List.of("preset:cube", "preset:plane", "preset:capsule",
+            "preset:sphere", "preset:quad", "preset:unitQuad");
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
 
@@ -65,6 +68,12 @@ public final class AssetPicker {
         }
         if (AssetMimeTypes.ATLAS.equals(mimeType)) {
             return ATLAS_EXTENSIONS;
+        }
+        if (AssetMimeTypes.INSTANCES.equals(mimeType)) {
+            return INSTANCES_EXTENSIONS;
+        }
+        if (AssetMimeTypes.MATERIAL.equals(mimeType)) {
+            return MATERIAL_EXTENSIONS;
         }
         return Set.of();
     }

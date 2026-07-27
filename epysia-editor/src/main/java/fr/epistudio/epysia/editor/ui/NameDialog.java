@@ -1,7 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
 import imgui.ImGui;
-import imgui.flag.ImGuiInputTextFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImString;
 
@@ -52,7 +51,7 @@ public final class NameDialog {
             focusRequested = false;
         }
         ImGui.setNextItemWidth(FIELD_WIDTH);
-        if (ImGui.inputText("##name", nameInput, ImGuiInputTextFlags.EnterReturnsTrue)) {
+        if (TextFields.inputSubmitted("##name", nameInput)) {
             accept();
         }
     }
