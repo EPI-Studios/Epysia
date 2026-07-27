@@ -14,4 +14,14 @@ record ShadowCaster(DrawCommand command, long identity, long signature, boolean 
     boolean bounded() {
         return minX != Float.NEGATIVE_INFINITY;
     }
+
+    boolean intersectsSphere(float centerX, float centerY, float centerZ, float radius) {
+        if (!bounded()) {
+            return true;
+        }
+        float dx = Math.max(minX - centerX, Math.max(0.0f, centerX - maxX));
+        float dy = Math.max(minY - centerY, Math.max(0.0f, centerY - maxY));
+        float dz = Math.max(minZ - centerZ, Math.max(0.0f, centerZ - maxZ));
+        return dx * dx + dy * dy + dz * dz <= radius * radius;
+    }
 }

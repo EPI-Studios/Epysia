@@ -8,11 +8,16 @@ import fr.epistudio.epysia.animation.SkinningPalette;
 import fr.epistudio.epysia.assets.epyprobes.BakedProbes;
 import fr.epistudio.epysia.components.Animator;
 import fr.epistudio.epysia.components.Camera3D;
+import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.Light;
 import fr.epistudio.epysia.components.LightProbeVolume;
+import fr.epistudio.epysia.components.MeshRenderSource;
 import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.MultiMeshRenderer;
+import fr.epistudio.epysia.components.RenderLayers;
 import fr.epistudio.epysia.components.PointLight;
+import fr.epistudio.epysia.components.Skybox;
 import fr.epistudio.epysia.components.SpotLight;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
@@ -25,6 +30,7 @@ import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.RenderPass;
 import fr.epistudio.epysia.render.RenderPasses;
+import fr.epistudio.epysia.render.SceneTexture;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
@@ -35,14 +41,22 @@ import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.BufferUsage;
 import fr.epistudio.epysia.render.backend.DrawCommand;
 import fr.epistudio.epysia.render.backend.PipelineHandle;
+import fr.epistudio.epysia.render.backend.PipelineDescriptor;
 import fr.epistudio.epysia.render.backend.RenderBackend;
+import fr.epistudio.epysia.render.backend.RenderState;
+import fr.epistudio.epysia.render.backend.ShaderSource;
+import fr.epistudio.epysia.render.backend.VertexAttribute;
+import fr.epistudio.epysia.render.backend.VertexFormat;
+import fr.epistudio.epysia.render.backend.VertexLayout;
 import fr.epistudio.epysia.render.backend.SampledTextureBinding;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.backend.StorageBufferBinding;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
 import fr.epistudio.epysia.render.environment.Environment;
+import fr.epistudio.epysia.render.environment.SkySource;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
+import fr.epistudio.epysia.render.material.MaterialClassMetadata;
 import fr.epistudio.epysia.render.material.MaterialClassMetadata.TextureFieldDescriptor;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
@@ -83,7 +97,13 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             new Vector3f(0.0f, -1.0f, 0.0f), new Vector3f(0.0f, -1.0f, 0.0f)
     };
 
+    private static final String DEPTH_PREPASS_VERTEX_PATH = "depth_prepass.vert.glsl";
+    private static final String DEPTH_PREPASS_FRAGMENT_PATH = "depth_prepass.frag.glsl";
+
+    private final ShaderLoader shaderLoader;
     private final ShaderWatcher shaderWatcher;
+    private final SurfaceShadowVariants depthPrepassVariants;
+    private boolean depthPrepassEnabled = Boolean.getBoolean("epysia.depthPrepass");
     private final ShadowStatistics shadowStatistics = new ShadowStatistics();
     private final Logger logger;
     private final SurfaceTimeDependence surfaceTimeDependence;
@@ -100,7 +120,6 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private final PointShadowAtlas pointShadows;
     private final MaterialPipelineCache materialCache;
     private final SurfaceUniformBinder surfaceUniforms;
-    private final InstancedMeshPass instancedPass;
     private final MeshInstanceBatches instanceBatches = new MeshInstanceBatches();
     private final MaterialStateDigests materialStates = new MaterialStateDigests();
     private boolean instancingEnabled = true;
@@ -108,14 +127,19 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private int instancedBatchesThisFrame;
     private final FrustumCuller culler = new FrustumCuller();
 
-    private final Map<MeshRenderer, RenderableMesh> objectResources = new IdentityHashMap<>();
+    private final Map<MeshRenderSource, RenderableMesh> objectResources = new IdentityHashMap<>();
+    private final Map<MeshRenderSource, CachedWorldBounds> boundsCache = new IdentityHashMap<>();
+    private int boundsCacheHits;
+    private int boundsCacheMisses;
     private final Map<BufferHandle, Long> objectUboTransformHashes = new HashMap<>();
     private final Vector3f scratchCasterMin = new Vector3f();
     private final Vector3f scratchCasterMax = new Vector3f();
     private final Vector3f scratchSkinnedCorner = new Vector3f();
-    private final Set<MeshRenderer> renderersSeenThisFrame =
+    private final Vector3f scratchTileMin = new Vector3f();
+    private final Vector3f scratchTileMax = new Vector3f();
+    private final Set<MeshRenderSource> renderersSeenThisFrame =
             Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Set<MeshRenderer> loggedShadowExclusions =
+    private final Set<MeshRenderSource> loggedShadowExclusions =
             Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<BufferHandle> ownedBuffers = new ArrayList<>();
     private final List<BindingSetHandle> ownedBindings = new ArrayList<>();
@@ -139,10 +163,15 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private final Vector3f scratchPointTarget = new Vector3f();
     private final Environment environment;
     private float shadowDistance = 60.0f;
+    private float appliedSkyIntensity = Float.NaN;
+    private float appliedAmbientIntensity = Float.NaN;
     private LitMaterial fallback;
 
+    private StageConfigurer stageConfigurer;
+    private TextureHandle lastOpaqueColorTexture;
     private final ClipSampler clipSampler = new ClipSampler();
     private RenderBackend backend;
+    private int activeCullMask = RenderLayers.ALL;
     private int culledThisFrame;
     private int submittedThisFrame;
     private long startNanos;
@@ -151,7 +180,11 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     public MeshRenderSystem(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger) {
         this.logger = logger;
+        this.shaderLoader = shaderLoader;
         this.shaderWatcher = shaderWatcher;
+        this.depthPrepassVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
+                DEPTH_PREPASS_VERTEX_PATH, DEPTH_PREPASS_FRAGMENT_PATH,
+                RenderState.OPAQUE_3D.withoutColorWrite(), this::invalidateShadowCaches);
         this.surfaceTimeDependence = new SurfaceTimeDependence(shaderLoader, logger);
         this.shadowCascades = new CascadedShadowMaps(shaderLoader, shaderWatcher, logger,
                 shadowStatistics, this::invalidateShadowCaches);
@@ -161,13 +194,13 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
                 shadowStatistics, this::invalidateShadowCaches);
         this.materialCache = new MaterialPipelineCache(shaderLoader, shaderWatcher, logger);
         this.surfaceUniforms = new SurfaceUniformBinder(logger);
-        this.instancedPass = new InstancedMeshPass(shaderLoader);
         this.environment = new Environment(shaderLoader);
     }
 
     @Override
     public void initialize(RenderBackend backend, StageConfigurer configurer) {
         this.backend = backend;
+        this.stageConfigurer = configurer;
         this.startNanos = System.nanoTime();
         this.lastFrameNanos = this.startNanos;
         shadowCascades.initialize(backend);
@@ -182,8 +215,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         lightStorage.initialize(backend);
         probeGrid.initialize(backend);
         clusterCuller.initialize(backend);
-        instancedPass.initialize(backend, frameUboWriter.handle(), lightStorage);
         instanceBatches.initialize(backend, this::createInstanceBindingSet);
+        depthPrepassVariants.initialize(backend, shadowCascades.bindingLayout(), createDepthPrepassPipeline());
         environment.initialize(backend);
     }
 
@@ -197,14 +230,29 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         lastFrameNanos = nowNanos;
     }
 
+    private final Map<Material, TextureHandle[]> frameTextureSnapshots = new IdentityHashMap<>();
+
     private long markSection(String name, long since) {
         long now = System.nanoTime();
         profiler.record(name, now - since);
         return now;
     }
 
-    public InstancedMeshPass instancedPass() {
-        return instancedPass;
+    public Optional<BufferHandle> instanceBufferFor(MultiMeshRenderer renderer) {
+        return instanceBatches.instanceBufferFor(renderer);
+    }
+
+    public void writeProbeCoefficients(int probeIndex, float[] coefficients) {
+        probeGrid.writeProbe(probeIndex, coefficients);
+    }
+
+    public Optional<StorageBufferBinding> jointPaletteBinding(MeshRenderer renderer) {
+        RenderableMesh renderable = objectResources.get(renderer);
+        if (renderable == null) {
+            return Optional.empty();
+        }
+        return renderable.jointPalette()
+                .map(palette -> StorageBufferBinding.whole(palette.buffer(), palette.byteSize()));
     }
 
     public BufferHandle frameUniformBuffer() {
@@ -223,6 +271,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         }
         Optional<DirectionalLight> primaryDirectional = gatherLights(scene);
         resolveSunDirection(primaryDirectional);
+        refreshSceneTextureBindings();
+        applySkybox(scene);
         environment.prepareFrame(scratchSunDirection);
         refreshProbeLighting(scene);
         mark = markSection("mesh/lights", mark);
@@ -249,26 +299,39 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         lightStorage.update(activeLights, spotShadows, pointShadows);
         mark = markSection("mesh/uniforms", mark);
         materialCache.beginFrame();
+        materialStates.beginFrame();
         surfaceUniforms.beginFrame();
         renderersSeenThisFrame.clear();
+        frameTextureSnapshots.clear();
         camera.position(scratchCameraPosition, alpha);
         culler.setProjection(camera.viewProjection(alpha));
         culledThisFrame = 0;
         submittedThisFrame = 0;
         instanceBatches.beginFrame();
-        for (GameObject gameObject : scene.gameObjects()) {
-            submitMeshDraws(gameObject, frame, alpha);
+        boundsCacheHits = 0;
+        boundsCacheMisses = 0;
+        activeCullMask = camera.cullMask();
+        for (MeshRenderer renderer : scene.componentsOf(MeshRenderer.class)) {
+            submitMeshDraws(renderer, frame, alpha);
         }
         mark = markSection("mesh/objectLoop", mark);
+        for (MultiMeshRenderer renderer : scene.componentsOf(MultiMeshRenderer.class)) {
+            submitMultiMeshDraws(renderer);
+        }
+        mark = markSection("mesh/instancedLoop", mark);
         flushInstanceBatches(frame);
-        instancedPass.collect(scene, frame);
         environment.collectSky(camera, scratchSunDirection, frame, alpha);
         purgeOrphanRenderers();
+        purgeOrphanBounds();
         markSection("mesh/flush", mark);
     }
 
     public Environment environment() {
         return environment;
+    }
+
+    public float shadowDistance() {
+        return shadowDistance;
     }
 
     public MeshRenderSystem setShadowDistance(float distance) {
@@ -284,10 +347,46 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         materialCache.setProbeLightingActive(activeProbes.isPresent());
     }
 
+    private TextureHandle opaqueSceneTexture(SceneTexture slot) {
+        if (stageConfigurer == null) {
+            return shadowCascades.texture();
+        }
+        return stageConfigurer.sceneTexture(slot).orElseGet(shadowCascades::texture);
+    }
+
+    private void refreshSceneTextureBindings() {
+        TextureHandle color = opaqueSceneTexture(SceneTexture.OPAQUE_COLOR);
+        if (color.equals(lastOpaqueColorTexture)) {
+            return;
+        }
+        lastOpaqueColorTexture = color;
+        invalidateObjectResources();
+    }
+
+    private void applySkybox(Scene scene) {
+        for (Skybox skybox : scene.componentsOf(Skybox.class)) {
+            environment.setSource(skybox.source());
+            applySkyboxIntensities(skybox.skyIntensity(), skybox.ambientIntensity());
+            return;
+        }
+        environment.setSource(SkySource.PROCEDURAL);
+        appliedSkyIntensity = Float.NaN;
+        appliedAmbientIntensity = Float.NaN;
+    }
+
+    private void applySkyboxIntensities(float sky, float ambient) {
+        if (sky == appliedSkyIntensity && ambient == appliedAmbientIntensity) {
+            return;
+        }
+        appliedSkyIntensity = sky;
+        appliedAmbientIntensity = ambient;
+        environment.settings().setSkyIntensity(sky);
+        environment.settings().setAmbientIntensity(ambient);
+    }
+
     private static Optional<BakedProbes> gatherProbes(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            LightProbeVolume volume = gameObject.getComponentOrNull(LightProbeVolume.class);
-            if (volume != null && volume.bakedProbes().isPresent()) {
+        for (LightProbeVolume volume : scene.componentsOf(LightProbeVolume.class)) {
+            if (volume.bakedProbes().isPresent()) {
                 return volume.bakedProbes();
             }
         }
@@ -357,6 +456,34 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
                 + pointShadows.staticVideoMemoryBytes();
     }
 
+    private PipelineHandle createDepthPrepassPipeline() {
+        VertexLayout layout = new VertexLayout(
+                List.of(new VertexAttribute(0, VertexFormat.FLOAT3, 0)), MeshShaderBindings.VERTEX_STRIDE);
+        return backend.createPipeline(new PipelineDescriptor(
+                new ShaderSource(shaderLoader.load(DEPTH_PREPASS_VERTEX_PATH).source(),
+                        shaderLoader.load(DEPTH_PREPASS_FRAGMENT_PATH).source()),
+                layout, RenderState.OPAQUE_3D.withoutColorWrite(), shadowCascades.bindingLayout()));
+    }
+
+    public void setDepthPrepassEnabled(boolean enabled) {
+        this.depthPrepassEnabled = enabled;
+    }
+
+    public boolean depthPrepassEnabled() {
+        return depthPrepassEnabled;
+    }
+
+    private void submitDepthPrepass(FrameBuilder frame, UploadedSubmesh submesh, BindingSetHandle bindings,
+                                    Material material, long depthBits, int instanceCount, boolean skinned) {
+        if (!depthPrepassEnabled || skinned || material.blended() || material.alphaScissor()) {
+            return;
+        }
+        PipelineHandle pipeline = depthPrepassVariants.pipelineFor(
+                MaterialPipelineCache.surfaceShaderPathOf(material), false, false);
+        frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, submesh.handle(), bindings,
+                depthBits, instanceCount));
+    }
+
     public void setInstancingEnabled(boolean enabled) {
         this.instancingEnabled = enabled;
         invalidateShadowCaches();
@@ -401,9 +528,10 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         ownedBuffers.clear();
         objectResources.clear();
         renderersSeenThisFrame.clear();
+        frameTextureSnapshots.clear();
         loggedShadowExclusions.clear();
         instanceBatches.shutdown();
-        instancedPass.shutdown();
+        depthPrepassVariants.shutdown();
         surfaceUniforms.shutdown();
         materialCache.shutdown();
         shadowCascades.shutdown();
@@ -419,17 +547,13 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private Optional<DirectionalLight> gatherLights(Scene scene) {
         scratchDirectionalLights.clear();
         scratchOtherLights.clear();
-        DirectionalLight primary = null;
-        for (GameObject gameObject : scene.gameObjects()) {
-            if (primary == null) {
-                primary = gameObject.getComponentOrNull(DirectionalLight.class);
-            }
-            Light light = gameObject.getComponentOrNull(Light.class);
-            if (light != null) {
-                classifyLight(light);
-            }
+        for (Light light : scene.componentsOf(Light.class)) {
+            classifyLight(light);
         }
-        Optional<DirectionalLight> primaryDirectional = Optional.ofNullable(primary);
+        List<DirectionalLight> directionals = scene.componentsOf(DirectionalLight.class);
+        Optional<DirectionalLight> primaryDirectional = directionals.isEmpty()
+                ? Optional.empty()
+                : Optional.of(directionals.getFirst());
         assembleActiveLights(primaryDirectional);
         return primaryDirectional;
     }
@@ -529,33 +653,41 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return faces;
     }
 
-    private void submitMeshDraws(GameObject gameObject, FrameBuilder frame, float alpha) {
-        MeshRenderer renderer = gameObject.getComponentOrNull(MeshRenderer.class);
+    private void submitMeshDraws(MeshRenderer renderer, FrameBuilder frame, float alpha) {
+        if (!RenderLayers.intersects(renderer.layerMask(), activeCullMask)) {
+            return;
+        }
+        GameObject gameObject = renderer.ownerOrNull();
+        if (gameObject == null) {
+            return;
+        }
         Transform3D transformComponent = gameObject.getComponentOrNull(Transform3D.class);
-        if (renderer == null || transformComponent == null) {
+        UploadedMesh mesh = renderer.meshOrNull();
+        if (transformComponent == null || mesh == null) {
             return;
         }
-        Optional<UploadedMesh> meshOpt = renderer.mesh();
-        if (meshOpt.isEmpty()) {
-            return;
-        }
-        UploadedMesh mesh = meshOpt.get();
         renderersSeenThisFrame.add(renderer);
-        boolean excludedFromShadows = mesh.vertexColored();
+        boolean viewModel = renderer.viewModel();
+        boolean castsShadows = renderer.castsShadows() && !mesh.vertexColored() && !viewModel;
         if (mesh.vertexColored()) {
             logExclusionOnce(gameObject, renderer, "Vertex-colored");
         }
         RenderableMesh renderable = resolvePerSubmeshes(renderer, mesh);
         List<PerSubmesh> perSubmeshes = renderable.submeshes();
         refreshStalePerSubmeshes(renderer, mesh, perSubmeshes, renderable.jointPalette());
-        if (mesh.skinned()) {
-            renderable.jointPalette().ifPresent(palette -> updateAnimatedPalette(gameObject, mesh, palette));
+        JointPalette palette = renderable.jointPaletteOrNull();
+        if (mesh.skinned() && palette != null) {
+            updateAnimatedPalette(gameObject, mesh, palette);
         }
         Matrix4f modelMatrix = transformComponent.worldMatrix(alpha);
         Aabb cullBounds = cullBounds(mesh, renderable);
-        culler.computeWorldBounds(cullBounds, modelMatrix, scratchCasterMin, scratchCasterMax);
+        computeCachedWorldBounds(renderer, transformComponent, cullBounds, modelMatrix, alpha);
         boolean visible = cullBounds == null
                 || !culler.isCulled(scratchCasterMin, scratchCasterMax);
+        if (outOfVisibilityRange(renderer, scratchCasterMin, scratchCasterMax)) {
+            culledThisFrame++;
+            return;
+        }
         long depthBits = viewDepthBits(modelMatrix);
         long transformHash = ShadowSignatures.mixMatrix(ShadowSignatures.seed(), modelMatrix);
         if (visible) {
@@ -568,19 +700,73 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             PerSubmesh perSubmesh = perSubmeshes.get(i);
             materialCache.writeMaterialUboIfNeeded(perSubmesh.material(), perSubmesh.classResources());
             surfaceUniforms.writeIfNeeded(perSubmesh.material(), perSubmesh.classResources().surfaceUniforms());
-            if (!excludedFromShadows && !mesh.skinned() && batchable(perSubmesh)
+            if (!viewModel && !mesh.skinned() && batchable(perSubmesh)
                     && instanceBatches.add(submesh, perSubmesh,
                             materialStates.snapshotFor(perSubmesh, materialCache, surfaceUniforms),
-                            modelMatrix, depthBits, visible, scratchCasterMin, scratchCasterMax)) {
+                            modelMatrix, depthBits, visible, castsShadows,
+                            scratchCasterMin, scratchCasterMax)) {
                 continue;
             }
             writeObjectUboIfChanged(perSubmesh.modelUbo(), modelMatrix, transformHash);
             submitSubmesh(frame, submesh, perSubmesh, depthBits, transformHash, visible,
-                    excludedFromShadows, mesh.skinned());
+                    !castsShadows, mesh.skinned(), viewModel);
         }
     }
 
-    private void logExclusionOnce(GameObject gameObject, MeshRenderer renderer, String reason) {
+    private void submitMultiMeshDraws(MultiMeshRenderer renderer) {
+        if (!RenderLayers.intersects(renderer.layerMask(), activeCullMask)) {
+            return;
+        }
+        UploadedMesh mesh = renderer.meshOrNull();
+        int count = renderer.visibleInstanceCount();
+        if (mesh == null || mesh.skinned() || count == 0 || renderer.materialOrNull() == null) {
+            return;
+        }
+        renderersSeenThisFrame.add(renderer);
+        RenderableMesh renderable = resolvePerSubmeshes(renderer, mesh);
+        refreshStalePerSubmeshes(renderer, mesh, renderable.submeshes(), renderable.jointPalette());
+        MeshInstanceBatches.BulkInstances bulk = instanceBatches.bulkFor(renderer, mesh.submeshes().size());
+        if (!bulk.tilesMatch(renderer.dataRevision(), renderer.instanceCount())) {
+            bulk.rebuildTiles(renderer.instanceData(), renderer.instanceCount(), renderer.dataRevision(),
+                    mesh.localBounds());
+        }
+        if (outOfVisibilityRange(renderer, bulk.boundsMin(), bulk.boundsMax())) {
+            culledThisFrame++;
+            return;
+        }
+        boolean unbounded = mesh.localBounds() == null;
+        boolean visible = unbounded || !culler.isCulled(bulk.boundsMin(), bulk.boundsMax());
+        long depthBits = unbounded ? 0L : viewDepthBits(
+                (bulk.boundsMin().x + bulk.boundsMax().x) * 0.5f,
+                (bulk.boundsMin().y + bulk.boundsMax().y) * 0.5f,
+                (bulk.boundsMin().z + bulk.boundsMax().z) * 0.5f);
+        for (int slot = 0; slot < mesh.submeshes().size(); slot++) {
+            submitInstancedSubmesh(bulk, slot, mesh, renderable.submeshes().get(slot), renderer, count,
+                    visible, depthBits);
+        }
+        submittedThisFrame += visible ? 1 : 0;
+        culledThisFrame += visible ? 0 : 1;
+    }
+
+    private void submitInstancedSubmesh(MeshInstanceBatches.BulkInstances bulk, int slot, UploadedMesh mesh,
+                                        PerSubmesh perSubmesh, MultiMeshRenderer renderer, int count,
+                                        boolean visible, long depthBits) {
+        materialCache.writeMaterialUboIfNeeded(perSubmesh.material(), perSubmesh.classResources());
+        surfaceUniforms.writeIfNeeded(perSubmesh.material(), perSubmesh.classResources().surfaceUniforms());
+        MeshInstanceBatch batch = bulk.batch(slot);
+        batch.beginFrame();
+        batch.beginBulk(mesh.submeshes().get(slot), perSubmesh);
+        batch.setCastsShadows(renderer.castsShadows() && !mesh.vertexColored());
+        batch.setVisibilityRange(renderer.visibilityRangeBegin(), renderer.visibilityRangeEnd());
+        batch.adoptTiles(bulk.tiles().tileStart(), bulk.tiles().tileLength(), bulk.tiles().tileBounds());
+        batch.writeBulkIfStale(bulk.tiles().payload(), renderer.instanceCount(), renderer.dataRevision());
+        batch.adoptBulkCounts(count, visible, depthBits);
+        batch.accumulateBounds(bulk.boundsMin(), bulk.boundsMax());
+        batch.adoptState(materialStates.snapshotFor(perSubmesh, materialCache, surfaceUniforms));
+        instanceBatches.activate(batch);
+    }
+
+    private void logExclusionOnce(GameObject gameObject, MeshRenderSource renderer, String reason) {
         if (!loggedShadowExclusions.add(renderer)) {
             return;
         }
@@ -590,7 +776,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     private boolean batchable(PerSubmesh perSubmesh) {
         return instancingEnabled
-                && !perSubmesh.material().transparent()
+                && !perSubmesh.material().blended()
                 && perSubmesh.classResources().supportsInstancing();
     }
 
@@ -613,20 +799,81 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         writeObjectUbo(perSubmesh.modelUbo(), batch.firstModel());
         long transformHash = ShadowSignatures.mixMatrix(ShadowSignatures.seed(), batch.firstModel());
         submitSubmesh(frame, batch.submesh(), perSubmesh, batch.minDepthBits(), transformHash,
-                batch.visibleCount() == 1, false, false);
+                batch.visibleCount() == 1, !batch.castsShadows(), false, false);
     }
 
     private void submitInstancedBatch(FrameBuilder frame, MeshInstanceBatch batch) {
         PerSubmesh perSubmesh = batch.representative();
         PipelineHandle pipeline = perSubmesh.classResources().pipeline();
+        if (perSubmesh.material().blended()) {
+            submitTransparentInstancedBatch(frame, batch, pipeline);
+            return;
+        }
         String surfacePath = MaterialPipelineCache.surfaceShaderPathOf(perSubmesh.material());
-        submitInstancedShadowCasters(batch, surfacePath);
+        if (batch.castsShadows()) {
+            submitInstancedShadowCasters(batch, surfacePath);
+        }
         if (batch.visibleCount() == 0) {
             return;
         }
-        long opaqueKey = (pipeline.id() << 32) | batch.minDepthBits();
-        frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, batch.submesh().handle(),
-                batch.litBindings(), opaqueKey, batch.visibleCount()));
+        for (int tile = 0; tile < batch.tileCount(); tile++) {
+            if (tileDrawCount(batch, tile) == 0 || !tileVisible(batch, tile)) {
+                continue;
+            }
+            long tileDepth = tileDepthBits(batch, tile);
+            submitDepthPrepass(frame, batch.submesh(), batch.shadowBindings(tile),
+                    perSubmesh.material(), tileDepth, tileDrawCount(batch, tile), false);
+            frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, batch.submesh().handle(),
+                    batch.litBindings(tile), (pipeline.id() << 32) | tileDepth, tileDrawCount(batch, tile)));
+        }
+    }
+
+    private boolean tileVisible(MeshInstanceBatch batch, int tile) {
+        if (batch.tileCount() == 1) {
+            return true;
+        }
+        batch.tileBounds(tile, scratchTileMin, scratchTileMax);
+        if (withinRange(batch.visibilityRangeBegin(), batch.visibilityRangeEnd())) {
+            return false;
+        }
+        return !culler.isCulled(scratchTileMin, scratchTileMax);
+    }
+
+    private boolean withinRange(float begin, float end) {
+        if (begin <= 0.0f && end <= 0.0f) {
+            return false;
+        }
+        float distance = distanceToBounds(scratchTileMin, scratchTileMax);
+        return (end > 0.0f && distance > end) || (begin > 0.0f && distance < begin);
+    }
+
+    private long tileDepthBits(MeshInstanceBatch batch, int tile) {
+        if (batch.tileCount() == 1) {
+            return batch.minDepthBits();
+        }
+        batch.tileBounds(tile, scratchTileMin, scratchTileMax);
+        return viewDepthBits((scratchTileMin.x + scratchTileMax.x) * 0.5f,
+                (scratchTileMin.y + scratchTileMax.y) * 0.5f,
+                (scratchTileMin.z + scratchTileMax.z) * 0.5f);
+    }
+
+    private int tileDrawCount(MeshInstanceBatch batch, int tile) {
+        return batch.tileDrawCount(tile);
+    }
+
+    private void submitTransparentInstancedBatch(FrameBuilder frame, MeshInstanceBatch batch,
+                                                 PipelineHandle pipeline) {
+        if (batch.visibleCount() == 0) {
+            return;
+        }
+        for (int tile = 0; tile < batch.tileCount(); tile++) {
+            if (tileDrawCount(batch, tile) == 0 || !tileVisible(batch, tile)) {
+                continue;
+            }
+            long backToFrontKey = 0xFFFFFFFFL - tileDepthBits(batch, tile);
+            frame.submit(RenderPasses.TRANSPARENT_3D, new DrawCommand(pipeline, batch.submesh().handle(),
+                    batch.litBindings(tile), backToFrontKey, tileDrawCount(batch, tile)));
+        }
     }
 
     private void submitInstancedShadowCasters(MeshInstanceBatch batch, String surfacePath) {
@@ -640,29 +887,42 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
                 ShadowSignatures.mix(INSTANCED_CASTER_DOMAIN, batch.submesh().handle().id()),
                 batch.state().digest());
         long signature = instancedCasterSignature(batch, surfacePath, frozen);
-        int count = batch.instanceCount();
+        for (int tile = 0; tile < batch.tileCount(); tile++) {
+            submitInstancedTileCasters(batch, perSubmesh, surfacePath, frozen, timeAnimated,
+                    ShadowSignatures.mix(identity, tile), ShadowSignatures.mix(signature, tile), tile);
+        }
+    }
+
+    private void submitInstancedTileCasters(MeshInstanceBatch batch, PerSubmesh perSubmesh, String surfacePath,
+                                            boolean frozen, boolean timeAnimated, long identity, long signature,
+                                            int tile) {
+        int count = tileDrawCount(batch, tile);
+        if (count == 0) {
+            return;
+        }
+        batch.tileBounds(tile, scratchTileMin, scratchTileMax);
         if (shadowCascades.cascadesActive()) {
             shadowCascades.submitCaster(new DrawCommand(
                     shadowCascades.pipelineFor(surfacePath, perSubmesh.shadowMasked(), frozen, false),
-                    batch.submesh().handle(), batch.shadowBindings(), 0L, count),
-                    identity, signature, timeAnimated, batch.boundsMin(), batch.boundsMax());
+                    batch.submesh().handle(), batch.shadowBindings(tile), 0L, count),
+                    identity, signature, timeAnimated, scratchTileMin, scratchTileMax);
         }
         if (spotShadows.activeCount() > 0) {
             spotShadows.submitCaster(new DrawCommand(spotShadows.pipelineFor(surfacePath, frozen, false),
-                    batch.submesh().handle(), batch.shadowBindings(), 0L, count),
-                    identity, signature, timeAnimated);
+                    batch.submesh().handle(), batch.shadowBindings(tile), 0L, count),
+                    identity, signature, timeAnimated, scratchTileMin, scratchTileMax);
         }
         if (pointShadows.activeCount() > 0) {
             pointShadows.submitCaster(new DrawCommand(pointShadows.pipelineFor(surfacePath, frozen, false),
-                    batch.submesh().handle(), batch.shadowBindings(), 0L, count),
-                    identity, signature, timeAnimated);
+                    batch.submesh().handle(), batch.shadowBindings(tile), 0L, count),
+                    identity, signature, timeAnimated, scratchTileMin, scratchTileMax);
         }
     }
 
     private static long instancedCasterSignature(MeshInstanceBatch batch, String surfacePath, boolean frozen) {
         PerSubmesh perSubmesh = batch.representative();
         long signature = ShadowSignatures.mix(batch.transformHash(), batch.submesh().handle().id());
-        signature = ShadowSignatures.mix(signature, batch.shadowBindings().id());
+        signature = ShadowSignatures.mix(signature, batch.tileCount());
         signature = ShadowSignatures.mix(signature, batch.instanceCount());
         signature = ShadowSignatures.mix(signature, surfacePath.hashCode());
         signature = ShadowSignatures.mix(signature, perSubmesh.shadowMasked() ? 1L : 0L);
@@ -682,9 +942,16 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     private void submitSubmesh(FrameBuilder frame, UploadedSubmesh submesh, PerSubmesh perSubmesh,
                                long depthBits, long transformHash, boolean visible,
-                               boolean excludedFromShadows, boolean skinned) {
+                               boolean excludedFromShadows, boolean skinned, boolean viewModel) {
         PipelineHandle pipeline = perSubmesh.classResources().pipeline();
-        if (perSubmesh.material().transparent()) {
+        if (viewModel) {
+            if (visible) {
+                frame.submit(RenderPasses.VIEW_MODEL_3D, new DrawCommand(pipeline, submesh.handle(),
+                        perSubmesh.litBindings(), (pipeline.id() << 32) | depthBits, 1));
+            }
+            return;
+        }
+        if (perSubmesh.material().blended()) {
             if (!visible) {
                 return;
             }
@@ -699,6 +966,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         if (!visible) {
             return;
         }
+        submitDepthPrepass(frame, submesh, perSubmesh.shadowBindings(), perSubmesh.material(), depthBits, 1, skinned);
         long opaqueKey = (pipeline.id() << 32) | depthBits;
         frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, submesh.handle(), perSubmesh.litBindings(), opaqueKey, 1));
     }
@@ -723,11 +991,13 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         }
         if (spotShadows.activeCount() > 0) {
             spotShadows.submitCaster(new DrawCommand(spotShadows.pipelineFor(surfacePath, frozen, skinned),
-                    submesh.handle(), perSubmesh.shadowBindings(), 0L, 1), identity, signature, animated);
+                    submesh.handle(), perSubmesh.shadowBindings(), 0L, 1), identity, signature, animated,
+                    scratchCasterMin, scratchCasterMax);
         }
         if (pointShadows.activeCount() > 0) {
             pointShadows.submitCaster(new DrawCommand(pointShadows.pipelineFor(surfacePath, frozen, skinned),
-                    submesh.handle(), perSubmesh.shadowBindings(), 0L, 1), identity, signature, animated);
+                    submesh.handle(), perSubmesh.shadowBindings(), 0L, 1), identity, signature, animated,
+                    scratchCasterMin, scratchCasterMax);
         }
     }
 
@@ -746,10 +1016,31 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return material instanceof LitMaterial lit ? Float.floatToRawIntBits(lit.alphaCutoff) : 0L;
     }
 
+    private boolean outOfVisibilityRange(MeshRenderSource renderer, Vector3f worldMin, Vector3f worldMax) {
+        float begin = renderer.visibilityRangeBegin();
+        float end = renderer.visibilityRangeEnd();
+        if (begin <= 0.0f && end <= 0.0f) {
+            return false;
+        }
+        float distance = distanceToBounds(worldMin, worldMax);
+        return (end > 0.0f && distance > end) || (begin > 0.0f && distance < begin);
+    }
+
+    private float distanceToBounds(Vector3f worldMin, Vector3f worldMax) {
+        float dx = Math.max(0.0f, Math.max(worldMin.x - scratchCameraPosition.x, scratchCameraPosition.x - worldMax.x));
+        float dy = Math.max(0.0f, Math.max(worldMin.y - scratchCameraPosition.y, scratchCameraPosition.y - worldMax.y));
+        float dz = Math.max(0.0f, Math.max(worldMin.z - scratchCameraPosition.z, scratchCameraPosition.z - worldMax.z));
+        return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
     private long viewDepthBits(Matrix4f modelMatrix) {
-        float dx = modelMatrix.m30() - scratchCameraPosition.x;
-        float dy = modelMatrix.m31() - scratchCameraPosition.y;
-        float dz = modelMatrix.m32() - scratchCameraPosition.z;
+        return viewDepthBits(modelMatrix.m30(), modelMatrix.m31(), modelMatrix.m32());
+    }
+
+    private long viewDepthBits(float x, float y, float z) {
+        float dx = x - scratchCameraPosition.x;
+        float dy = y - scratchCameraPosition.y;
+        float dz = z - scratchCameraPosition.z;
         float distanceSquared = dx * dx + dy * dy + dz * dz;
         return Float.floatToIntBits(distanceSquared) & 0xFFFFFFFFL;
     }
@@ -784,24 +1075,110 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         backend.writeBuffer(ubo, scratchObjectUbo, 0L);
     }
 
+    private void computeCachedWorldBounds(MeshRenderSource renderer, Transform3D transform,
+                                          Aabb localBounds, Matrix4f modelMatrix, float alpha) {
+        CachedWorldBounds cached = boundsCache.get(renderer);
+        if (cached == null) {
+            cached = new CachedWorldBounds();
+            boundsCache.put(renderer, cached);
+        }
+        if (cached.matches(transform, localBounds, alpha)) {
+            boundsCacheHits++;
+            scratchCasterMin.set(cached.min);
+            scratchCasterMax.set(cached.max);
+            return;
+        }
+        boundsCacheMisses++;
+        culler.computeWorldBounds(localBounds, modelMatrix, scratchCasterMin, scratchCasterMax);
+        cached.store(transform, localBounds, alpha, scratchCasterMin, scratchCasterMax);
+    }
+
+    public int boundsCacheHits() {
+        return boundsCacheHits;
+    }
+
+    public int boundsCacheMisses() {
+        return boundsCacheMisses;
+    }
+
+    private static final class CachedWorldBounds {
+
+        private final Vector3f min = new Vector3f();
+        private final Vector3f max = new Vector3f();
+        private Aabb localBounds;
+        private long worldVersion = -1L;
+        private boolean stored;
+
+        boolean matches(Transform3D transform, Aabb candidateBounds, float alpha) {
+            return stored
+                    && localBounds == candidateBounds
+                    && worldVersion == transform.worldVersion()
+                    && transform.worldMatrixStable(alpha);
+        }
+
+        void store(Transform3D transform, Aabb candidateBounds, float alpha,
+                   Vector3f worldMin, Vector3f worldMax) {
+            min.set(worldMin);
+            max.set(worldMax);
+            localBounds = candidateBounds;
+            worldVersion = transform.worldVersion();
+            stored = transform.worldMatrixStable(alpha);
+        }
+    }
+
+    private void purgeOrphanBounds() {
+        if (boundsCache.size() == objectResources.size()) {
+            return;
+        }
+        boundsCache.keySet().retainAll(objectResources.keySet());
+    }
+
     private void purgeOrphanRenderers() {
         if (objectResources.size() == renderersSeenThisFrame.size()) {
             return;
         }
-        Iterator<Map.Entry<MeshRenderer, RenderableMesh>> iterator = objectResources.entrySet().iterator();
+        Iterator<Map.Entry<MeshRenderSource, RenderableMesh>> iterator = objectResources.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<MeshRenderer, RenderableMesh> entry = iterator.next();
-            if (renderersSeenThisFrame.contains(entry.getKey())) {
+            Map.Entry<MeshRenderSource, RenderableMesh> entry = iterator.next();
+            if (renderersSeenThisFrame.contains(entry.getKey()) || stillAttached(entry.getKey())) {
                 continue;
             }
             destroyPerSubmeshes(entry.getValue().submeshes());
             entry.getValue().jointPalette().ifPresent(this::destroyJointPalette);
             loggedShadowExclusions.remove(entry.getKey());
+            if (entry.getKey() instanceof MultiMeshRenderer instanced) {
+                instanceBatches.releaseBulk(instanced);
+            }
             iterator.remove();
         }
     }
 
-    private RenderableMesh resolvePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh) {
+    private static boolean stillAttached(MeshRenderSource renderer) {
+        return renderer instanceof Component component && component.ownerOrNull() != null;
+    }
+
+    public int warmUpPipelines(Scene scene) {
+        int warmed = 0;
+        for (MeshRenderer renderer : scene.componentsOf(MeshRenderer.class)) {
+            UploadedMesh mesh = renderer.meshOrNull();
+            if (mesh == null) {
+                continue;
+            }
+            resolvePerSubmeshes(renderer, mesh);
+            warmed++;
+        }
+        for (MultiMeshRenderer renderer : scene.componentsOf(MultiMeshRenderer.class)) {
+            UploadedMesh mesh = renderer.meshOrNull();
+            if (mesh == null || renderer.materialOrNull() == null) {
+                continue;
+            }
+            resolvePerSubmeshes(renderer, mesh);
+            warmed++;
+        }
+        return warmed;
+    }
+
+    private RenderableMesh resolvePerSubmeshes(MeshRenderSource renderer, UploadedMesh mesh) {
         RenderableMesh cached = objectResources.get(renderer);
         if (cached != null && cached.mesh() == mesh) {
             return cached;
@@ -869,9 +1246,11 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         if (!mesh.skinned()) {
             return mesh.localBounds();
         }
-        return renderable.jointPalette()
-                .map(palette -> palette.animatedBounds == null ? mesh.localBounds() : palette.animatedBounds)
-                .orElse(mesh.localBounds());
+        JointPalette palette = renderable.jointPaletteOrNull();
+        if (palette == null || palette.animatedBounds == null) {
+            return mesh.localBounds();
+        }
+        return palette.animatedBounds;
     }
 
     private static Aabb animatedBounds(Matrix4f[] skinningMatrices, Aabb bindBounds, Vector3f scratchCorner) {
@@ -939,7 +1318,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         objectUboTransformHashes.remove(perSubmesh.modelUbo());
     }
 
-    private Material resolveMaterial(MeshRenderer renderer, int slot) {
+    private Material resolveMaterial(MeshRenderSource renderer, int slot) {
         Material forSlot = renderer.materialForSlot(slot).orElse(null);
         if (forSlot != null) {
             return forSlot;
@@ -955,7 +1334,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return fallback;
     }
 
-    private List<PerSubmesh> createPerSubmeshes(MeshRenderer renderer, UploadedMesh mesh,
+    private List<PerSubmesh> createPerSubmeshes(MeshRenderSource renderer, UploadedMesh mesh,
                                                 Optional<JointPalette> jointPalette) {
         List<PerSubmesh> result = new ArrayList<>(mesh.submeshes().size());
         for (UploadedSubmesh submesh : mesh.submeshes()) {
@@ -964,7 +1343,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return result;
     }
 
-    private PerSubmesh createPerSubmesh(MeshRenderer renderer, UploadedSubmesh submesh, boolean skinned,
+    private PerSubmesh createPerSubmesh(MeshRenderSource renderer, UploadedSubmesh submesh, boolean skinned,
                                         boolean colored, Optional<JointPalette> jointPalette) {
         Material material = resolveMaterial(renderer, submesh.materialSlot());
         MaterialClassResources classResources = materialCache.classResourcesFor(material, skinned, colored);
@@ -1024,9 +1403,9 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private BindingSetHandle createInstanceBindingSet(PerSubmesh perSubmesh, BufferHandle instanceBuffer,
-                                                      long byteSize, boolean shadow) {
+                                                      long byteOffset, long byteSize, boolean shadow) {
         List<Binding> transformBindings =
-                instanceTransformBindings(perSubmesh.modelUbo(), instanceBuffer, byteSize);
+                instanceTransformBindings(perSubmesh.modelUbo(), instanceBuffer, byteOffset, byteSize);
         Material material = perSubmesh.material();
         MaterialClassResources classResources = perSubmesh.classResources();
         BufferHandle materialUbo = materialCache.materialUboFor(material);
@@ -1059,7 +1438,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return snapshot;
     }
 
-    private void refreshStalePerSubmeshes(MeshRenderer renderer, UploadedMesh mesh, List<PerSubmesh> perSubmeshes,
+    private void refreshStalePerSubmeshes(MeshRenderSource renderer, UploadedMesh mesh, List<PerSubmesh> perSubmeshes,
                                           Optional<JointPalette> jointPalette) {
         boolean skinned = mesh.skinned();
         boolean colored = mesh.vertexColored();
@@ -1113,18 +1492,30 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private boolean texturesChangedSinceCapture(PerSubmesh perSubmesh) {
-        List<TextureFieldDescriptor> textureFields = perSubmesh.classResources().metadata().textureFields();
+        TextureHandle[] current = currentTexturesOf(perSubmesh);
         TextureHandle[] captured = perSubmesh.capturedTextures();
-        for (int i = 0; i < textureFields.size(); i++) {
-            TextureHandle current = perSubmesh.classResources().metadata().readTexture(perSubmesh.material(), textureFields.get(i));
-            if (current == null) {
-                current = materialCache.defaultFor(textureFields.get(i));
-            }
-            if (!current.equals(captured[i])) {
+        for (int i = 0; i < current.length; i++) {
+            if (!current[i].equals(captured[i])) {
                 return true;
             }
         }
         return false;
+    }
+
+    private TextureHandle[] currentTexturesOf(PerSubmesh perSubmesh) {
+        TextureHandle[] cached = frameTextureSnapshots.get(perSubmesh.material());
+        if (cached != null) {
+            return cached;
+        }
+        MaterialClassMetadata metadata = perSubmesh.classResources().metadata();
+        List<TextureFieldDescriptor> textureFields = metadata.textureFields();
+        TextureHandle[] current = new TextureHandle[textureFields.size()];
+        for (int i = 0; i < textureFields.size(); i++) {
+            TextureHandle handle = metadata.readTexture(perSubmesh.material(), textureFields.get(i));
+            current[i] = handle == null ? materialCache.defaultFor(textureFields.get(i)) : handle;
+        }
+        frameTextureSnapshots.put(perSubmesh.material(), current);
+        return current;
     }
 
     private BindingSetDescriptor buildLitBindingSetDescriptor(Material material, MaterialClassResources classResources,
@@ -1143,12 +1534,13 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private static List<Binding> instanceTransformBindings(BufferHandle representativeUbo,
-                                                           BufferHandle instanceBuffer, long byteSize) {
+                                                           BufferHandle instanceBuffer, long byteOffset,
+                                                           long byteSize) {
         return List.of(
                 new Binding(MeshShaderBindings.OBJECT_UBO_BINDING,
                         UniformBufferBinding.whole(representativeUbo, MeshShaderBindings.OBJECT_UBO_SIZE)),
                 new Binding(MeshShaderBindings.INSTANCE_SSBO_BINDING,
-                        new StorageBufferBinding(instanceBuffer, 0L, byteSize)));
+                        new StorageBufferBinding(instanceBuffer, byteOffset, byteSize)));
     }
 
     private BindingSetDescriptor buildLitBindingSetDescriptor(Material material, MaterialClassResources classResources,
@@ -1177,6 +1569,10 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         }
         bindings.add(new Binding(MeshShaderBindings.SHADOW_MAP_BINDING,
                 new SampledTextureBinding(shadowCascades.texture())));
+        bindings.add(new Binding(MeshShaderBindings.OPAQUE_COLOR_BINDING,
+                new SampledTextureBinding(opaqueSceneTexture(SceneTexture.OPAQUE_COLOR))));
+        bindings.add(new Binding(MeshShaderBindings.OPAQUE_DEPTH_BINDING,
+                new SampledTextureBinding(opaqueSceneTexture(SceneTexture.OPAQUE_DEPTH))));
         for (TextureFieldDescriptor textureField : classResources.metadata().textureFields()) {
             TextureHandle texture = classResources.metadata().readTexture(material, textureField);
             TextureHandle fallback = materialCache.defaultFor(textureField);
@@ -1198,6 +1594,10 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     private record RenderableMesh(UploadedMesh mesh, List<PerSubmesh> submeshes,
                                   Optional<JointPalette> jointPalette) {
+
+        JointPalette jointPaletteOrNull() {
+            return jointPalette.orElse(null);
+        }
     }
 
     private static final class JointPalette {

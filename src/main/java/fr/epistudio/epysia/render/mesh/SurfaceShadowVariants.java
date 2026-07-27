@@ -136,10 +136,14 @@ final class SurfaceShadowVariants {
         if (!shaderWatcher.active()) {
             return;
         }
-        shaderWatcher.watch(composeVertex(variant).dependencyPaths(), () -> reloadPipeline(handle, variant));
+        shaderWatcher.watch(composeVertex(variant).dependencyPaths(),
+                "shadow:" + variant, () -> reloadPipeline(handle, variant));
     }
 
     private void reloadPipeline(PipelineHandle handle, Variant variant) {
+        if (!backend.isAlive(handle)) {
+            return;
+        }
         try {
             backend.updatePipelineShaders(handle, loadShaderSource(variant));
             pipelineInvalidation.run();

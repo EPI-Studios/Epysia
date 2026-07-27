@@ -134,15 +134,15 @@ final class SurfaceUniformBinder {
     }
 
     private static ShaderUniformValues valuesOf(Material material) {
-        return material instanceof LitMaterial lit ? lit.surfaceUniforms() : new ShaderUniformValues();
+        return material.surfaceUniforms();
     }
 
     static long valueRevisionOf(Material material) {
-        return material instanceof LitMaterial lit ? lit.surfaceUniforms().valueRevision() : 0L;
+        return material.surfaceUniforms().valueRevision();
     }
 
     static long structureRevisionOf(Material material) {
-        return material instanceof LitMaterial lit ? lit.surfaceUniforms().structureRevision() : 0L;
+        return material.surfaceUniforms().structureRevision();
     }
 
     byte[] uniformSnapshotOf(Material material, ParsedSource parsed) {
