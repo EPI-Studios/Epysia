@@ -107,14 +107,6 @@ tasks.register('runTilemapUnboundedCheck', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
-tasks.register('buildIsometricProject', JavaExec) {
-    group = 'application'
-    description = 'Writes a small isometric pixel art project you can open in the editor.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.IsometricProjectBuilder'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
 tasks.register('runPixelPerfectCheck', JavaExec) {
     group = 'verification'
     description = 'Renders at a low internal resolution and proves the upscale keeps hard pixel blocks.'
@@ -200,38 +192,6 @@ tasks.register('runVfxExamplesCheck', JavaExec) {
     description = 'Renders the four example VFX graphs and checks each one produces its own colors.'
     classpath = sourceSets.example.runtimeClasspath
     mainClass = 'com.meekdev.psyhou.game.VfxExamplesPixelCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runVfxShowcase', JavaExec) {
-    group = 'application'
-    description = 'Opens a window playing the four example VFX graphs side by side until closed.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.VfxShowcase'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runEmbersDemo', JavaExec) {
-    group = 'application'
-    description = 'Opens a window playing the Embers VFX graph until closed.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.EmbersDemo'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runThunderDemo', JavaExec) {
-    group = 'application'
-    description = 'Opens a window playing the ThunderStrike VFX graph on a loop until closed.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.ThunderStrikeDemo'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runForest', JavaExec) {
-    group = 'application'
-    description = 'Runs the Psyhou forest scene (instanced trees + procedural ground + swaying grass + fog).'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.forest.ForestMain'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
@@ -348,18 +308,15 @@ tasks.register('psyhouJar', ShadowJar) {
 
 tasks.withType(JavaExec).configureEach {
     systemProperties System.getProperties().findAll { it.key.toString().startsWith('epysia.') }
-}
-
-tasks.register('runEmbersScreenshot', JavaExec) {
-    group = 'verification'
-    description = 'Saves a PNG of the embers render for inspection.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.EmbersScreenshot'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.withType(JavaExec).configureEach {
-    if (name.endsWith('Check') || name.endsWith('Screenshot')) {
+    if (name.endsWith('Check')) {
         systemProperty 'epysia.offscreen', 'true'
     }
+}
+
+tasks.register('runRenderBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Synthetic render benchmark: scales object count and reports CPU/GPU cost per frame.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.RenderBenchmark'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
