@@ -23,6 +23,14 @@ public final class NodeContext {
         this.node = node;
     }
 
+    public float memory(float fallback) {
+        return instance.nodeMemory(node.id(), fallback);
+    }
+
+    public void setMemory(float value) {
+        instance.setNodeMemory(node.id(), value);
+    }
+
     public GraphInterpreter interpreter() {
         return interpreter;
     }

@@ -21,6 +21,7 @@ public final class GraphInstance {
     private final Set<String> warnedTypeKeys = new HashSet<>();
     private final Map<Integer, Long> nodeFireNanos = new HashMap<>();
     private final Map<Integer, Integer> nodeFireCounts = new HashMap<>();
+    private final Map<Integer, Float> nodeMemory = new HashMap<>();
     private final Map<GraphEdge, Long> edgeFireNanos = new HashMap<>();
     private static final int NO_ACTIVE_STATE = -1;
 
@@ -45,6 +46,14 @@ public final class GraphInstance {
             Object initial = overridden == null ? variable.defaultValue() : overridden;
             variableValues.put(variable.name(), GraphValues.coerce(initial, variable.type()));
         }
+    }
+
+    public float nodeMemory(int nodeId, float fallback) {
+        return nodeMemory.getOrDefault(nodeId, fallback);
+    }
+
+    public void setNodeMemory(int nodeId, float value) {
+        nodeMemory.put(nodeId, value);
     }
 
     public GraphAsset asset() {

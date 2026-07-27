@@ -3,6 +3,7 @@ package fr.epistudio.epysia.graph;
 import fr.epistudio.epysia.GameSystem;
 import fr.epistudio.epysia.audio.AudioSystem;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.SpriteFlipbook;
 import fr.epistudio.epysia.components.SpriteRenderer;
 import fr.epistudio.epysia.components.TilemapRenderer;
@@ -38,6 +39,7 @@ public final class ReflectionNodes {
     public static final List<Class<?>> CURATED_ENGINE_CLASSES = List.of(
             Transform3D.class,
             Transform2D.class,
+            Camera3D.class,
             GameObject.class,
             Scene.class,
             CharacterControllerComponent.class,

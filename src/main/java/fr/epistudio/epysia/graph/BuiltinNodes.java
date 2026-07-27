@@ -2,7 +2,9 @@ package fr.epistudio.epysia.graph;
 
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.input.KeyCode;
+import fr.epistudio.epysia.input.action.InputActions;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import fr.epistudio.epysia.physics.api.QueryFilter;
 import fr.epistudio.epysia.physics.api.RaycastHit2D;
@@ -42,6 +44,12 @@ public final class BuiltinNodes {
     public static final String INPUT_KEY_DOWN = "input.keyDown";
     public static final String INPUT_AXIS = "input.axis";
     public static final String PHYSICS_RAYCAST_2D = "physics.raycast2D";
+    public static final String INPUT_ACTION_DOWN = "input.actionDown";
+    public static final String INPUT_ACTION_PRESSED = "input.actionPressed";
+    public static final String INPUT_ACTION_RELEASED = "input.actionReleased";
+    public static final String INPUT_ACTION_AXIS = "input.actionAxis";
+    public static final String FLOW_TIMER = "flow.timer";
+    public static final String ACTION_SETTING = "action";
 
     public static final String VARIABLE_NAME_SETTING = "variableName";
     public static final String OUTPUT_COUNT_SETTING = "outputCount";
@@ -61,6 +69,8 @@ public final class BuiltinNodes {
     private static final String CATEGORY_MATH = "Math";
     private static final String CATEGORY_LOGIC = "Logic";
     private static final String CATEGORY_GAME_OBJECT = "GameObject";
+    private static final float MINIMUM_SMOOTH_TIME = 0.0001f;
+
     private static final String CATEGORY_PHYSICS = "Physics";
     private static final String CATEGORY_UTILITY = "Utility";
 
@@ -74,9 +84,11 @@ public final class BuiltinNodes {
     public static void registerInto(GraphNodeRegistry registry) {
         registerEvents(registry);
         registerInputValues(registry);
+        registerActionNodes(registry);
         registerFlow(registry);
         registerVariables(registry);
         registerFloatMath(registry);
+        registerScalarHelpers(registry);
         registerVectorMath(registry);
         registerLogic(registry);
         registerGameObject(registry);
@@ -130,6 +142,39 @@ public final class BuiltinNodes {
                 BuiltinNodes::runInputAxis));
     }
 
+    private static void registerActionNodes(GraphNodeRegistry registry) {
+        registry.register(actionNode(INPUT_ACTION_DOWN, "Action Down", InputActions::isDown));
+        registry.register(actionNode(INPUT_ACTION_PRESSED, "Action Pressed", InputActions::wasPressed));
+        registry.register(actionNode(INPUT_ACTION_RELEASED, "Action Released", InputActions::wasReleased));
+        registry.register(dataNode(INPUT_ACTION_AXIS, "Action Axis", CATEGORY_INPUT, true,
+                List.of(),
+                List.of(new PinDefinition(VALUE_PIN, PinType.FLOAT)),
+                List.of(new NodeSetting(ACTION_SETTING, SettingKind.TEXT, InputActions.MOVE_RIGHT)),
+                context -> context.setOutput(VALUE_PIN, actionsOf(context)
+                        .value(actionNameOf(context), context.inputState()))));
+    }
+
+    private static NodeDefinition actionNode(String typeKey, String displayName, ActionTest test) {
+        return dataNode(typeKey, displayName, CATEGORY_INPUT, true,
+                List.of(),
+                List.of(new PinDefinition(VALUE_PIN, PinType.BOOLEAN)),
+                List.of(new NodeSetting(ACTION_SETTING, SettingKind.TEXT, InputActions.JUMP)),
+                context -> context.setOutput(VALUE_PIN,
+                        test.matches(actionsOf(context), actionNameOf(context), context.inputState())));
+    }
+
+    private interface ActionTest {
+        boolean matches(InputActions actions, String name, InputState input);
+    }
+
+    private static InputActions actionsOf(NodeContext context) {
+        return context.services().inputActions();
+    }
+
+    private static String actionNameOf(NodeContext context) {
+        return context.settingString(ACTION_SETTING, InputActions.JUMP);
+    }
+
     private static void runInputAxis(NodeContext context) {
         boolean negativeHeld = keyHeld(context, NEGATIVE_KEY_SETTING, "A");
         boolean positiveHeld = keyHeld(context, POSITIVE_KEY_SETTING, "D");
@@ -151,6 +196,7 @@ public final class BuiltinNodes {
         registry.register(sequenceDefinition());
         registry.register(delayDefinition());
         registry.register(repeatDefinition());
+        registry.register(timerDefinition());
         registry.register(whileLoopDefinition());
     }
 
@@ -223,6 +269,31 @@ public final class BuiltinNodes {
                     + GraphInterpreter.WHILE_LOOP_ITERATION_LIMIT + " in " + context.instance().sourcePath());
         }
         context.triggerExec("Completed");
+    }
+
+    private static NodeDefinition timerDefinition() {
+        return execNode(FLOW_TIMER, "Timer", CATEGORY_FLOW,
+                List.of(PinDefinition.exec(IN_PIN),
+                        new PinDefinition("Restart", PinType.BOOLEAN),
+                        new PinDefinition("Duration", PinType.FLOAT),
+                        new PinDefinition(DELTA_TIME_PIN, PinType.FLOAT)),
+                List.of(PinDefinition.exec(OUT_PIN),
+                        new PinDefinition("Remaining", PinType.FLOAT),
+                        new PinDefinition("Finished", PinType.BOOLEAN)),
+                List.of(),
+                BuiltinNodes::runTimer);
+    }
+
+    private static void runTimer(NodeContext context) {
+        float duration = context.floatInput("Duration");
+        float remaining = context.booleanInput("Restart")
+                ? duration
+                : context.memory(0.0f) - context.floatInput(DELTA_TIME_PIN);
+        float clamped = Math.max(remaining, 0.0f);
+        context.setMemory(clamped);
+        context.setOutput("Remaining", clamped);
+        context.setOutput("Finished", clamped <= 0.0f);
+        context.triggerExec(OUT_PIN);
     }
 
     private static void registerVariables(GraphNodeRegistry registry) {
@@ -319,6 +390,95 @@ public final class BuiltinNodes {
                 List.of(),
                 context -> context.setOutput(RESULT_PIN, context.floatInput("A")
                         + (context.floatInput("B") - context.floatInput("A")) * context.floatInput("T")));
+    }
+
+    private static void registerScalarHelpers(GraphNodeRegistry registry) {
+        registry.register(singleFloat("math.sign", "Sign", Math::signum));
+        registry.register(singleFloat("math.abs", "Abs", Math::abs));
+        registry.register(pairFloat("math.min", "Min", Math::min));
+        registry.register(pairFloat("math.max", "Max", Math::max));
+        registry.register(clampDefinition());
+        registry.register(moveTowardDefinition());
+        registry.register(smoothDampDefinition());
+    }
+
+    private static NodeDefinition singleFloat(String typeKey, String displayName, FloatUnary operation) {
+        return dataNode(typeKey, displayName, CATEGORY_MATH, true,
+                List.of(new PinDefinition(VALUE_PIN, PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)),
+                List.of(),
+                context -> context.setOutput(RESULT_PIN, operation.apply(context.floatInput(VALUE_PIN))));
+    }
+
+    private static NodeDefinition pairFloat(String typeKey, String displayName, FloatBinary operation) {
+        return dataNode(typeKey, displayName, CATEGORY_MATH, true,
+                List.of(new PinDefinition("A", PinType.FLOAT), new PinDefinition("B", PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)),
+                List.of(),
+                context -> context.setOutput(RESULT_PIN,
+                        operation.apply(context.floatInput("A"), context.floatInput("B"))));
+    }
+
+    private static NodeDefinition clampDefinition() {
+        return dataNode("math.clamp", "Clamp", CATEGORY_MATH, true,
+                List.of(new PinDefinition(VALUE_PIN, PinType.FLOAT),
+                        new PinDefinition("Min", PinType.FLOAT), new PinDefinition("Max", PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)),
+                List.of(),
+                context -> context.setOutput(RESULT_PIN, Math.clamp(context.floatInput(VALUE_PIN),
+                        context.floatInput("Min"), context.floatInput("Max"))));
+    }
+
+    private static NodeDefinition moveTowardDefinition() {
+        return dataNode("math.moveToward", "Move Toward", CATEGORY_MATH, true,
+                List.of(new PinDefinition("Current", PinType.FLOAT),
+                        new PinDefinition("Target", PinType.FLOAT),
+                        new PinDefinition("Max Step", PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)),
+                List.of(),
+                context -> context.setOutput(RESULT_PIN, moveToward(context.floatInput("Current"),
+                        context.floatInput("Target"), context.floatInput("Max Step"))));
+    }
+
+    private static float moveToward(float current, float target, float maxStep) {
+        float difference = target - current;
+        if (Math.abs(difference) <= maxStep) {
+            return target;
+        }
+        return current + Math.signum(difference) * maxStep;
+    }
+
+    private static NodeDefinition smoothDampDefinition() {
+        return dataNode("math.smoothDamp", "Smooth Damp", CATEGORY_MATH, false,
+                List.of(new PinDefinition("Current", PinType.FLOAT),
+                        new PinDefinition("Target", PinType.FLOAT),
+                        new PinDefinition("Smooth Time", PinType.FLOAT),
+                        new PinDefinition(DELTA_TIME_PIN, PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)),
+                List.of(),
+                BuiltinNodes::runSmoothDamp);
+    }
+
+    private static void runSmoothDamp(NodeContext context) {
+        float current = context.floatInput("Current");
+        float target = context.floatInput("Target");
+        float smoothTime = Math.max(context.floatInput("Smooth Time"), MINIMUM_SMOOTH_TIME);
+        float delta = context.floatInput(DELTA_TIME_PIN);
+        float omega = 2.0f / smoothTime;
+        float decay = (float) Math.exp(-omega * delta);
+        float difference = current - target;
+        float velocity = context.memory(0.0f);
+        float acceleration = (velocity + omega * difference) * delta;
+        context.setMemory((velocity - omega * acceleration) * decay);
+        context.setOutput(RESULT_PIN, target + (difference + acceleration) * decay);
+    }
+
+    private interface FloatUnary {
+        float apply(float value);
+    }
+
+    private interface FloatBinary {
+        float apply(float left, float right);
     }
 
     private static void registerVectorMath(GraphNodeRegistry registry) {
