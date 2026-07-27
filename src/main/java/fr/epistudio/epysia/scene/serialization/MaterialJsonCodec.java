@@ -54,6 +54,9 @@ public final class MaterialJsonCodec {
         if (material instanceof LitMaterial lit && !lit.animatedShadow()) {
             writer.key("animatedShadow").valueBoolean(false);
         }
+        if (material instanceof LitMaterial lit && !lit.receiveShadows()) {
+            writer.key("receiveShadows").valueBoolean(false);
+        }
         writer.key("transparent").valueBoolean(material.transparent());
         writer.key("doubleSided").valueBoolean(material.doubleSided());
         writer.key("uniforms").beginObject();
@@ -71,11 +74,11 @@ public final class MaterialJsonCodec {
     }
 
     private void writeSurfaceUniforms(JsonWriter writer, Material material) {
-        if (!(material instanceof LitMaterial lit) || lit.surfaceUniforms().isEmpty()) {
+        if (material.surfaceUniforms().isEmpty()) {
             return;
         }
         writer.key("surfaceUniforms").beginObject();
-        for (Map.Entry<String, ShaderUniformValue> entry : lit.surfaceUniforms().all().entrySet()) {
+        for (Map.Entry<String, ShaderUniformValue> entry : material.surfaceUniforms().all().entrySet()) {
             writeSurfaceUniform(writer, entry.getKey(), entry.getValue());
         }
         writer.endObject();
@@ -139,6 +142,9 @@ public final class MaterialJsonCodec {
                 if (materialJson.get("animatedShadow") instanceof Boolean animatedShadow) {
                     lit.setAnimatedShadow(animatedShadow);
                 }
+                if (materialJson.get("receiveShadows") instanceof Boolean receiveShadows) {
+                    lit.setReceiveShadows(receiveShadows);
+                }
             }
             if (materialJson.get("transparent") instanceof Boolean transparent) {
                 material.setTransparent(transparent);
@@ -192,17 +198,14 @@ public final class MaterialJsonCodec {
 
     @SuppressWarnings("unchecked")
     private void applySurfaceUniforms(Material material, Map<String, Object> surfaceUniforms) {
-        if (!(material instanceof LitMaterial lit)) {
-            return;
-        }
         for (Map.Entry<String, Object> entry : surfaceUniforms.entrySet()) {
             if (entry.getValue() instanceof Map<?, ?> encoded) {
-                applySurfaceUniform(lit, entry.getKey(), (Map<String, Object>) encoded);
+                applySurfaceUniform(material, entry.getKey(), (Map<String, Object>) encoded);
             }
         }
     }
 
-    private void applySurfaceUniform(LitMaterial material, String name, Map<String, Object> encoded) {
+    private void applySurfaceUniform(Material material, String name, Map<String, Object> encoded) {
         String tag = encoded.get("type") instanceof String type ? type : "";
         SurfaceUniformTypeTags.parse(tag, encoded.get("value"))
                 .ifPresent(value -> material.surfaceUniforms().set(name, value));

@@ -16,8 +16,14 @@ import java.util.function.Predicate;
 
 public final class SceneSerializer {
 
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMembers(Map<?, ?> members) {
+        return (Map<String, Object>) members;
+    }
+
     private final GameObjectJsonCodec codec;
     private final PostEffectStackJsonCodec postEffectCodec = new PostEffectStackJsonCodec();
+    private final PostProcessSettingsJsonCodec postProcessCodec = new PostProcessSettingsJsonCodec();
 
     public SceneSerializer(ComponentRegistry componentRegistry) {
         this.codec = new GameObjectJsonCodec(componentRegistry);
@@ -43,6 +49,8 @@ public final class SceneSerializer {
         writer.key("name").valueString(scene.name());
         writer.key("gameObjects");
         codec.writeGameObjectArray(writer, exported);
+        writer.key("postProcess");
+        postProcessCodec.write(writer, scene.postProcess());
         if (!scene.postEffects().isEmpty()) {
             writer.key("postEffects");
             postEffectCodec.writeStack(writer, scene.postEffects());
@@ -63,6 +71,9 @@ public final class SceneSerializer {
     public void deserialize(Scene scene, String text, EngineServices services) {
         Map<String, Object> root = new JsonReader(text).readRootObject();
         clearScene(scene);
+        if (root.get("postProcess") instanceof Map<?, ?> postProcessJson) {
+            postProcessCodec.read(castMembers(postProcessJson), scene.postProcess());
+        }
         scene.postEffects().clear();
         if (root.get("postEffects") instanceof List<?> postEffectsJson) {
             postEffectCodec.readStack(postEffectsJson, scene.postEffects());

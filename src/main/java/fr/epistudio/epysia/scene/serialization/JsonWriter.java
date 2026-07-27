@@ -76,6 +76,13 @@ public final class JsonWriter {
         return this;
     }
 
+    public JsonWriter valueNull() {
+        prepareValue();
+        buffer.append("null");
+        needsComma = true;
+        return this;
+    }
+
     public JsonWriter valueBoolean(boolean value) {
         prepareValue();
         buffer.append(value ? "true" : "false");
