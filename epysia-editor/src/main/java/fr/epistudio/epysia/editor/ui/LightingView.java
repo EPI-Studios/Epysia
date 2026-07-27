@@ -4,6 +4,8 @@ import fr.epistudio.epysia.components.LightProbeVolume;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.render.baking.BakeProgress;
 import fr.epistudio.epysia.render.baking.BakeRequest;
 import fr.epistudio.epysia.render.baking.LightBakeHashes;
@@ -59,7 +61,7 @@ public final class LightingView {
             return;
         }
         ImGui.setNextWindowSize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, ImGuiCond.FirstUseEver);
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_LIGHTING_VIEW_TITLE, WINDOW_TITLE))) {
             ImGui.end();
             return;
         }
@@ -70,7 +72,7 @@ public final class LightingView {
     private void renderContents(Scene scene) {
         Optional<LightProbeVolume> volume = findVolume(scene);
         if (volume.isEmpty()) {
-            ImGui.textDisabled("No Light Probe Volume in the scene.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_LIGHTING_VIEW_NO_VOLUME));
             stepRunningBake();
             return;
         }
@@ -81,14 +83,15 @@ public final class LightingView {
 
     private void renderVolumeStatus(Scene scene, LightProbeVolume volume) {
         int probeCount = volume.resolutionX() * volume.resolutionY() * volume.resolutionZ();
-        ImGui.text("Probes: " + probeCount);
+        ImGui.text(I18n.translate(TextKey.EDITOR_LIGHTING_VIEW_PROBES, probeCount));
         refreshSceneHash(scene);
         if (volume.bakedProbes().isEmpty()) {
-            ImGui.textDisabled("Not baked yet.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_LIGHTING_VIEW_NOT_BAKED));
         } else if (volume.bakedProbes().get().bakeHash() != currentSceneHash) {
-            ImGui.textColored(1.0f, 0.72f, 0.25f, 1.0f, "Lighting out of date");
+            ImGui.textColored(1.0f, 0.72f, 0.25f, 1.0f,
+                    I18n.translate(TextKey.EDITOR_LIGHTING_VIEW_OUT_OF_DATE));
         } else {
-            ImGui.textDisabled("Lighting up to date.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_LIGHTING_VIEW_UP_TO_DATE));
         }
     }
 
@@ -102,14 +105,15 @@ public final class LightingView {
 
     private void renderBakeControls() {
         if (runningBaker.isPresent()) {
-            ImGui.text("Baking " + lastProgress.completedSteps() + " / " + lastProgress.totalSteps());
-            if (ImGui.button("Cancel")) {
+            ImGui.text(I18n.translate(TextKey.EDITOR_LIGHTING_VIEW_BAKING,
+                    lastProgress.completedSteps(), lastProgress.totalSteps()));
+            if (ImGui.button(I18n.label(TextKey.EDITOR_LIGHTING_VIEW_CANCEL, "lighting-cancel"))) {
                 runningBaker.get().cancel();
                 runningBaker = Optional.empty();
             }
             return;
         }
-        if (ImGui.button("Bake")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_LIGHTING_VIEW_BAKE, "lighting-bake"))) {
             startBake();
         }
     }

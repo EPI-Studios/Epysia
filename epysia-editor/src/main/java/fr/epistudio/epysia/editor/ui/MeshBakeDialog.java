@@ -4,6 +4,8 @@ import fr.epistudio.epysia.assets.epymesh.BakedCollider;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshFormat;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshWriter;
 import fr.epistudio.epysia.editor.notify.Notifier;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.render.mesh.MeshData;
 import fr.epistudio.epysia.render.mesh.ObjMesh;
 import imgui.ImGui;
@@ -38,10 +40,11 @@ public final class MeshBakeDialog {
 
     public void render() {
         if (openRequested) {
-            ImGui.openPopup(POPUP_TITLE);
+            ImGui.openPopup(I18n.label(TextKey.EDITOR_MESH_BAKE_DIALOG_TITLE, "mesh-bake-dialog"));
             openRequested = false;
         }
-        if (!ImGui.beginPopupModal(POPUP_TITLE, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_MESH_BAKE_DIALOG_TITLE, "mesh-bake-dialog"),
+                ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
         renderBody();
@@ -49,28 +52,37 @@ public final class MeshBakeDialog {
     }
 
     private void renderBody() {
-        ImGui.labelText("Source", sourcePath == null ? "-" : sourcePath.getFileName().toString());
+        ImGui.labelText(I18n.label(TextKey.EDITOR_MESH_BAKE_DIALOG_SOURCE, "mesh-bake-source"),
+                sourcePath == null ? "-" : sourcePath.getFileName().toString());
         renderColliderChoices();
         ImGui.separator();
-        if (ImGui.button("Bake")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_MESH_BAKE_DIALOG_BAKE, "mesh-bake-bake"))) {
             bake();
         }
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_MESH_BAKE_DIALOG_CANCEL, "mesh-bake-cancel"))) {
             ImGui.closeCurrentPopup();
         }
     }
 
     private void renderColliderChoices() {
-        ImGui.textDisabled("Collider");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_MESH_BAKE_DIALOG_COLLIDER));
         for (ColliderChoice candidate : ColliderChoice.values()) {
-            if (ImGui.radioButton(candidate.name().charAt(0)
-                    + candidate.name().substring(1).toLowerCase(java.util.Locale.ROOT), choice == candidate)) {
+            if (ImGui.radioButton(I18n.label(colliderKey(candidate), "mesh-bake-collider-" + candidate.name()),
+                    choice == candidate)) {
                 choice = candidate;
             }
             ImGui.sameLine();
         }
         ImGui.newLine();
+    }
+
+    private static TextKey colliderKey(ColliderChoice candidate) {
+        return switch (candidate) {
+            case NONE -> TextKey.EDITOR_MESH_BAKE_DIALOG_COLLIDER_NONE;
+            case CONVEX -> TextKey.EDITOR_MESH_BAKE_DIALOG_COLLIDER_CONVEX;
+            case TRIANGLE -> TextKey.EDITOR_MESH_BAKE_DIALOG_COLLIDER_TRIANGLE;
+        };
     }
 
     private void bake() {
@@ -81,7 +93,8 @@ public final class MeshBakeDialog {
             ImGui.closeCurrentPopup();
             onBaked.accept(output);
         } catch (RuntimeException error) {
-            notifier.show("Bake failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_MESH_BAKE_DIALOG_TOAST_BAKE_FAILED,
+                    error.getMessage()));
         }
     }
 

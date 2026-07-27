@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
@@ -97,15 +99,16 @@ public final class AssetPicker {
 
     public void render() {
         if (openRequested) {
-            ImGui.openPopup(POPUP_ID);
+            ImGui.openPopup(I18n.label(TextKey.EDITOR_ASSET_PICKER_TITLE, "asset-picker"));
             openRequested = false;
         }
-        if (!ImGui.beginPopupModal(POPUP_ID, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_ASSET_PICKER_TITLE, "asset-picker"),
+                ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
-        ImGui.inputText("Filter", filterInput);
+        ImGui.inputText(I18n.label(TextKey.EDITOR_ASSET_PICKER_FILTER, "asset-picker-filter"), filterInput);
         renderCandidateList();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_ASSET_PICKER_CANCEL, "asset-picker-cancel"))) {
             ImGui.closeCurrentPopup();
         }
         ImGui.endPopup();

@@ -5,6 +5,8 @@ import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
 import imgui.ImGui;
@@ -70,7 +72,8 @@ public final class ProjectSelectorView implements FrameView {
         ImGuiViewport viewport = ImGui.getMainViewport();
         ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY(), ImGuiCond.Always);
         ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY(), ImGuiCond.Always);
-        if (ImGui.begin(WINDOW_TITLE, HOST_WINDOW_FLAGS)) {
+        if (ImGui.begin(I18n.label(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TITLE, "project-selector"),
+                HOST_WINDOW_FLAGS)) {
             renderContent();
         }
         newProjectDialog.render();
@@ -95,7 +98,7 @@ public final class ProjectSelectorView implements FrameView {
 
     private void renderRecentsColumn(float width) {
         ImGui.beginChild("##recents", width, 0.0f, false);
-        ImGui.textDisabled("RECENT PROJECTS");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_RECENT_PROJECTS));
         ImGui.separator();
         if (recents.isEmpty()) {
             renderEmptyRecents();
@@ -108,8 +111,8 @@ public final class ProjectSelectorView implements FrameView {
 
     private void renderEmptyRecents() {
         ImGui.spacing();
-        ImGui.textDisabled("No recent projects");
-        ImGui.textDisabled("Create your first project via \"New Project\".");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NO_RECENT_PROJECTS));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FIRST_PROJECT_HELP));
     }
 
     private void renderRecentCards() {
@@ -141,7 +144,9 @@ public final class ProjectSelectorView implements FrameView {
         drawList.addImage(icons.atlasTextureId(EditorIcon.FOLDER), cardMinX + padding, cardMinY + (CARD_HEIGHT - iconSize) * 0.5f,
                 cardMinX + padding + iconSize, cardMinY + (CARD_HEIGHT + iconSize) * 0.5f);
         drawList.addText(textX, cardMinY + padding, EditorStyle.COLOR_TEXT, entry.project().name());
-        String pathLine = entry.exists() ? entry.project().rootDirectory().toString() : "Folder not found";
+        String pathLine = entry.exists()
+                ? entry.project().rootDirectory().toString()
+                : I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FOLDER_NOT_FOUND);
         drawList.addText(textX, cardMinY + padding + ImGui.getTextLineHeight() + 2.0f,
                 EditorStyle.COLOR_TEXT_MUTED, pathLine);
         String date = relativeDateText(entry.project().lastOpenedMillis());
@@ -151,27 +156,32 @@ public final class ProjectSelectorView implements FrameView {
 
     private void renderClearLink() {
         ImGui.spacing();
-        if (ImGui.smallButton("Clear list")) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CLEAR_LIST,
+                "project-selector-clear-list"))) {
             confirmClearRequested = true;
         }
     }
 
     private void renderClearConfirm() {
         if (confirmClearRequested) {
-            ImGui.openPopup("Clear recent projects?");
+            ImGui.openPopup(I18n.label(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CLEAR_RECENT_TITLE,
+                    "project-selector-clear-recent"));
             confirmClearRequested = false;
         }
-        if (!ImGui.beginPopupModal("Clear recent projects?", ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CLEAR_RECENT_TITLE,
+                "project-selector-clear-recent"), ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
-        ImGui.textUnformatted("This removes entries from the list but does not delete any files on disk.");
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CLEAR_RECENT_MESSAGE));
         ImGui.separator();
-        if (ImGui.button("Clear")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CLEAR,
+                "project-selector-clear-confirm"))) {
             clearRecents();
             ImGui.closeCurrentPopup();
         }
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CANCEL,
+                "project-selector-clear-cancel"))) {
             ImGui.closeCurrentPopup();
         }
         ImGui.endPopup();
@@ -179,12 +189,14 @@ public final class ProjectSelectorView implements FrameView {
 
     private void renderActionsColumn(float width) {
         ImGui.beginChild("##actions", width, 0.0f, false);
-        ImGui.textDisabled("GET STARTED");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_GET_STARTED));
         ImGui.separator();
-        if (actionButton("new-project", EditorIcon.ADD, "New Project")) {
+        if (actionButton("new-project", EditorIcon.ADD,
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NEW_PROJECT))) {
             newProjectDialog.open();
         }
-        if (actionButton("open-folder", EditorIcon.FOLDER, "Open Folder")) {
+        if (actionButton("open-folder", EditorIcon.FOLDER,
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_OPEN_FOLDER))) {
             pickProjectFolder();
         }
         ImGui.endChild();
@@ -214,7 +226,8 @@ public final class ProjectSelectorView implements FrameView {
     }
 
     private void pickProjectFolder() {
-        Optional<Path> picked = FileDialogs.pickFolder("Open a project folder",
+        Optional<Path> picked = FileDialogs.pickFolder(I18n.translate(
+                        TextKey.EDITOR_PROJECT_SELECTOR_VIEW_OPEN_PROJECT_FOLDER),
                 Path.of(System.getProperty("user.home")));
         picked.ifPresent(this::openFolder);
     }
@@ -222,7 +235,7 @@ public final class ProjectSelectorView implements FrameView {
     private void openFolder(Path folder) {
         Optional<Project> project = store.readProjectFromDisk(folder, System.currentTimeMillis());
         if (project.isEmpty()) {
-            notifier.show("This folder does not contain an Epysia project.");
+            notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_NOT_EPYSIA_PROJECT));
             return;
         }
         openExistingProject(project.get());
@@ -232,7 +245,8 @@ public final class ProjectSelectorView implements FrameView {
         try {
             store.recordOpened(project);
         } catch (IOException error) {
-            notifier.show("Could not record the project: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_COULD_NOT_RECORD,
+                    error.getMessage()));
             return;
         }
         onProjectOpened.accept(project);
@@ -242,9 +256,10 @@ public final class ProjectSelectorView implements FrameView {
         try {
             store.clearRecents();
             reloadRecents();
-            notifier.show("Recent projects list cleared.");
+            notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_RECENT_CLEARED));
         } catch (IOException error) {
-            notifier.show("Could not clear the list: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_COULD_NOT_CLEAR,
+                    error.getMessage()));
         }
     }
 
@@ -255,12 +270,14 @@ public final class ProjectSelectorView implements FrameView {
         LocalDate date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate();
         long daysBetween = ChronoUnit.DAYS.between(date, LocalDate.now());
         if (daysBetween == 0L) {
-            return "Today";
+            return I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TODAY);
         }
         if (daysBetween == 1L) {
-            return "Yesterday";
+            return I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_YESTERDAY);
         }
-        return daysBetween < 7L ? daysBetween + " days ago" : date.format(ABSOLUTE_DATE_FORMAT);
+        return daysBetween < 7L
+                ? I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_DAYS_AGO, daysBetween)
+                : date.format(ABSOLUTE_DATE_FORMAT);
     }
 
     private record RecentEntry(Project project, boolean exists) {

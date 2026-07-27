@@ -8,6 +8,8 @@ import fr.epistudio.epysia.graph.GraphVariable;
 import fr.epistudio.epysia.graph.NodeDefinition;
 import fr.epistudio.epysia.graph.StateNodes;
 import fr.epistudio.epysia.graph.shader.ShaderNodes;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImString;
@@ -25,7 +27,6 @@ final class GraphNodePalette {
     static final String NODE_PAYLOAD = "graph/node-type";
 
     private static final char PAYLOAD_SEPARATOR = '|';
-    private static final String VARIABLES_CATEGORY = "Variables";
     private static final int HEADER_FLAGS = ImGuiTreeNodeFlags.SpanAvailWidth;
     private static final float ENTRY_INDENT = 8.0f;
 
@@ -40,7 +41,8 @@ final class GraphNodePalette {
                 Consumer<Entry> onCreate) {
         ImGui.pushID(identifier);
         ImGui.setNextItemWidth(-1.0f);
-        ImGui.inputTextWithHint("##palette-filter", "Search nodes", filter);
+        ImGui.inputTextWithHint("##palette-filter",
+                I18n.translate(TextKey.EDITOR_GRAPH_NODE_PALETTE_SEARCH), filter);
         ImGui.beginChild("##palette-entries", width, height, false);
         renderGroups(asset, registry, onCreate);
         ImGui.endChild();
@@ -51,7 +53,7 @@ final class GraphNodePalette {
         String query = filter.get().replace("\0", "").strip().toLowerCase(Locale.ROOT);
         Map<String, List<Entry>> groups = groups(asset, registry, query);
         if (groups.isEmpty()) {
-            ImGui.textDisabled("No node matches the filter.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_NODE_PALETTE_NO_MATCH));
             return;
         }
         for (Map.Entry<String, List<Entry>> group : groups.entrySet()) {
@@ -94,7 +96,7 @@ final class GraphNodePalette {
                                                    String query) {
         Map<String, List<Entry>> groups = new TreeMap<>();
         for (Entry entry : variableEntries(asset)) {
-            addIfMatching(groups, VARIABLES_CATEGORY, entry, query);
+            addIfMatching(groups, I18n.translate(TextKey.EDITOR_GRAPH_NODE_PALETTE_VARIABLES), entry, query);
         }
         for (NodeDefinition definition : registry.all()) {
             if (isVariableNode(definition.typeKey()) || !allowedInKind(asset.kind(), definition)) {
@@ -127,8 +129,10 @@ final class GraphNodePalette {
             return entries;
         }
         for (GraphVariable variable : new ArrayList<>(asset.variables())) {
-            entries.add(new Entry(BuiltinNodes.VARIABLE_GET, variable.name(), "Get " + variable.name()));
-            entries.add(new Entry(BuiltinNodes.VARIABLE_SET, variable.name(), "Set " + variable.name()));
+            entries.add(new Entry(BuiltinNodes.VARIABLE_GET, variable.name(),
+                    I18n.translate(TextKey.EDITOR_GRAPH_NODE_PALETTE_GET_VARIABLE, variable.name())));
+            entries.add(new Entry(BuiltinNodes.VARIABLE_SET, variable.name(),
+                    I18n.translate(TextKey.EDITOR_GRAPH_NODE_PALETTE_SET_VARIABLE, variable.name())));
         }
         return entries;
     }

@@ -5,6 +5,8 @@ import fr.epistudio.epysia.editor.export.GameExporter;
 import fr.epistudio.epysia.editor.export.TargetPlatform;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
@@ -53,7 +55,8 @@ public final class ExportGameDialog {
                 addScene(scene.getFileName().toString(), activeSceneName);
             }
         } catch (IOException error) {
-            notifier.show("Could not list scenes: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_TOAST_COULD_NOT_LIST_SCENES,
+                    error.getMessage()));
         }
     }
 
@@ -66,10 +69,11 @@ public final class ExportGameDialog {
 
     public void render() {
         if (openRequested) {
-            ImGui.openPopup(POPUP_ID);
+            ImGui.openPopup(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_TITLE, "export-game-dialog"));
             openRequested = false;
         }
-        if (!ImGui.beginPopupModal(POPUP_ID, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_TITLE, "export-game-dialog"),
+                ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
         renderFields();
@@ -80,7 +84,8 @@ public final class ExportGameDialog {
 
     private void renderFields() {
         ImGui.setNextItemWidth(FIELD_WIDTH);
-        ImGui.inputText("Game title", titleInput);
+        ImGui.inputText(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_GAME_TITLE,
+                "export-game-title"), titleInput);
         renderSceneCombo();
         renderPlatformCombo();
         renderOutputRow();
@@ -88,21 +93,33 @@ public final class ExportGameDialog {
 
     private void renderPlatformCombo() {
         ImGui.setNextItemWidth(FIELD_WIDTH);
-        if (!ImGui.beginCombo("Platform", platforms[selectedPlatformIndex].displayName())) {
+        if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_PLATFORM,
+                "export-game-platform"), I18n.translate(platformKey(platforms[selectedPlatformIndex])))) {
             return;
         }
         for (int index = 0; index < platforms.length; index++) {
-            if (ImGui.selectable(platforms[index].displayName(), index == selectedPlatformIndex)) {
+            if (ImGui.selectable(I18n.label(platformKey(platforms[index]),
+                    "export-game-platform-" + platforms[index].name()), index == selectedPlatformIndex)) {
                 selectedPlatformIndex = index;
             }
         }
         ImGui.endCombo();
     }
 
+    private static TextKey platformKey(TargetPlatform platform) {
+        return switch (platform) {
+            case WINDOWS -> TextKey.EDITOR_TARGET_PLATFORM_WINDOWS;
+            case LINUX -> TextKey.EDITOR_TARGET_PLATFORM_LINUX;
+        };
+    }
+
     private void renderSceneCombo() {
-        String preview = sceneFileNames.isEmpty() ? "(no scenes)" : sceneFileNames.get(selectedSceneIndex);
+        String preview = sceneFileNames.isEmpty()
+                ? I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_NO_SCENES)
+                : sceneFileNames.get(selectedSceneIndex);
         ImGui.setNextItemWidth(FIELD_WIDTH);
-        if (!ImGui.beginCombo("Scene", preview)) {
+        if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_SCENE,
+                "export-game-scene"), preview)) {
             return;
         }
         for (int index = 0; index < sceneFileNames.size(); index++) {
@@ -114,25 +131,29 @@ public final class ExportGameDialog {
     }
 
     private void renderOutputRow() {
-        if (ImGui.button("Choose folder…")) {
-            FileDialogs.pickFolder("Export destination", project.rootDirectory().getParent())
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_CHOOSE_FOLDER,
+                "export-game-choose-folder"))) {
+            FileDialogs.pickFolder(I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_DESTINATION),
+                            project.rootDirectory().getParent())
                     .ifPresent(path -> outputDirectory = path);
         }
         ImGui.sameLine();
-        ImGui.textDisabled(outputDirectory == null ? "No folder selected" : outputDirectory.toString());
+        ImGui.textDisabled(outputDirectory == null
+                ? I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_NO_FOLDER_SELECTED)
+                : outputDirectory.toString());
     }
 
     private void renderButtons() {
         boolean ready = outputDirectory != null && !sceneFileNames.isEmpty()
                 && !titleInput.get().trim().isEmpty();
         ImGui.beginDisabled(!ready);
-        if (ImGui.button("Export")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_EXPORT, "export-game-export"))) {
             runExport();
             ImGui.closeCurrentPopup();
         }
         ImGui.endDisabled();
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_CANCEL, "export-game-cancel"))) {
             ImGui.closeCurrentPopup();
         }
     }
@@ -142,9 +163,10 @@ public final class ExportGameDialog {
                 sceneFileNames.get(selectedSceneIndex), platforms[selectedPlatformIndex]);
         try {
             Path destination = new GameExporter(project).export(request);
-            notifier.show("Game exported to " + destination);
+            notifier.show(I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_TOAST_GAME_EXPORTED, destination));
         } catch (IOException error) {
-            notifier.show("Export failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_TOAST_EXPORT_FAILED,
+                    error.getMessage()));
         }
     }
 }
