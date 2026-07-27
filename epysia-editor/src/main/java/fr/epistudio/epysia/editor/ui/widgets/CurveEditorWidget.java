@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.editor.ui.widgets;
 
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.vfx.lut.VfxCurve;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
@@ -49,7 +51,7 @@ public final class CurveEditorWidget {
         List<VfxCurve.Keyframe> keyframes(float low, float high);
     }
 
-    private record CurvePreset(String label, PresetShape shape) {
+    private record CurvePreset(TextKey labelKey, String stableId, PresetShape shape) {
     }
 
     private record ScreenPoint(float x, float y) {
@@ -63,16 +65,23 @@ public final class CurveEditorWidget {
     }
 
     private static final List<CurvePreset> PRESETS = List.of(
-            new CurvePreset("Rise", CurveEditorWidget::riseShape),
-            new CurvePreset("Fall", CurveEditorWidget::fallShape),
-            new CurvePreset("Ease In", CurveEditorWidget::easeInShape),
-            new CurvePreset("Ease Out", CurveEditorWidget::easeOutShape),
-            new CurvePreset("Ease In Out", CurveEditorWidget::easeInOutShape),
-            new CurvePreset("Bell", CurveEditorWidget::bellShape),
-            new CurvePreset("Constant", CurveEditorWidget::constantShape));
+            new CurvePreset(TextKey.EDITOR_CURVE_EDITOR_WIDGET_PRESET_RISE, "curve-preset-rise",
+                    CurveEditorWidget::riseShape),
+            new CurvePreset(TextKey.EDITOR_CURVE_EDITOR_WIDGET_PRESET_FALL, "curve-preset-fall",
+                    CurveEditorWidget::fallShape),
+            new CurvePreset(TextKey.EDITOR_CURVE_EDITOR_WIDGET_PRESET_EASE_IN, "curve-preset-ease-in",
+                    CurveEditorWidget::easeInShape),
+            new CurvePreset(TextKey.EDITOR_CURVE_EDITOR_WIDGET_PRESET_EASE_OUT, "curve-preset-ease-out",
+                    CurveEditorWidget::easeOutShape),
+            new CurvePreset(TextKey.EDITOR_CURVE_EDITOR_WIDGET_PRESET_EASE_IN_OUT, "curve-preset-ease-in-out",
+                    CurveEditorWidget::easeInOutShape),
+            new CurvePreset(TextKey.EDITOR_CURVE_EDITOR_WIDGET_PRESET_BELL, "curve-preset-bell",
+                    CurveEditorWidget::bellShape),
+            new CurvePreset(TextKey.EDITOR_CURVE_EDITOR_WIDGET_PRESET_CONSTANT, "curve-preset-constant",
+                    CurveEditorWidget::constantShape));
 
-    private String horizontalAxisLabel = "life";
-    private String verticalAxisLabel = "value";
+    private String horizontalAxisLabel = I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_AXIS_LIFE);
+    private String verticalAxisLabel = I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_AXIS_VALUE);
     private String activeIdentifier = "";
     private DragMode dragMode = DragMode.NONE;
     private boolean brokenTangents;
@@ -118,14 +127,14 @@ public final class CurveEditorWidget {
             modified |= renderPresetButton(PRESETS.get(index), curve);
         }
         ImGui.sameLine();
-        if (ImGui.checkbox("Broken", brokenTangents)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_CURVE_EDITOR_WIDGET_BROKEN, "curve-broken"), brokenTangents)) {
             brokenTangents = !brokenTangents;
         }
         return modified;
     }
 
     private boolean renderPresetButton(CurvePreset preset, VfxCurve curve) {
-        if (!ImGui.smallButton(preset.label())) {
+        if (!ImGui.smallButton(I18n.label(preset.labelKey(), preset.stableId()))) {
             return false;
         }
         curve.clearKeyframes();
@@ -140,13 +149,16 @@ public final class CurveEditorWidget {
     private void renderSelectionRow(VfxCurve curve) {
         List<VfxCurve.Keyframe> keyframes = curve.keyframes();
         if (selectedKeyframe < 0 || selectedKeyframe >= keyframes.size()) {
-            ImGui.textDisabled("no keyframe selected");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_NO_KEYFRAME_SELECTED));
             return;
         }
         VfxCurve.Keyframe keyframe = keyframes.get(selectedKeyframe);
-        ImGui.textDisabled(String.format(Locale.ROOT, "key %d   %s %.3f   %s %.3f   in %.2f   out %.2f",
-                selectedKeyframe, horizontalAxisLabel, keyframe.time(), verticalAxisLabel, keyframe.value(),
-                keyframe.inTangent(), keyframe.outTangent()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_KEYFRAME,
+                selectedKeyframe,
+                horizontalAxisLabel, String.format(Locale.ROOT, "%.3f", keyframe.time()),
+                verticalAxisLabel, String.format(Locale.ROOT, "%.3f", keyframe.value()),
+                String.format(Locale.ROOT, "%.2f", keyframe.inTangent()),
+                String.format(Locale.ROOT, "%.2f", keyframe.outTangent())));
     }
 
     private boolean renderCanvas(VfxCurve curve, float height) {
@@ -439,8 +451,9 @@ public final class CurveEditorWidget {
             return;
         }
         VfxCurve.Keyframe keyframe = keyframes.get(hoveredKeyframe);
-        ImGui.setTooltip(String.format(Locale.ROOT, "%s %.3f   %s %.3f",
-                horizontalAxisLabel, keyframe.time(), verticalAxisLabel, keyframe.value()));
+        ImGui.setTooltip(I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_TOOLTIP,
+                horizontalAxisLabel, String.format(Locale.ROOT, "%.3f", keyframe.time()),
+                verticalAxisLabel, String.format(Locale.ROOT, "%.3f", keyframe.value())));
     }
 
     private static List<VfxCurve.Keyframe> riseShape(float low, float high) {

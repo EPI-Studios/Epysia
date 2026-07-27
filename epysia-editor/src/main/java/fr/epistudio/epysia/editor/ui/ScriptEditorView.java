@@ -12,6 +12,8 @@ import fr.epistudio.epysia.editor.scripteditor.ImportPlanner;
 import fr.epistudio.epysia.editor.scripteditor.JavaLanguageDefinition;
 import fr.epistudio.epysia.editor.scripteditor.JavaSymbols;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import imgui.ImGui;
 import imgui.extension.texteditor.TextEditor;
@@ -117,7 +119,8 @@ public final class ScriptEditorView {
             String text = Files.readString(path);
             openScripts.put(path, new OpenScript(createEditor(text)));
         } catch (IOException error) {
-            notifier.show("Could not open script: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_TOAST_COULD_NOT_OPEN_SCRIPT,
+                    error.getMessage()));
         }
     }
 
@@ -190,7 +193,7 @@ public final class ScriptEditorView {
             ImGui.setNextWindowFocus();
             windowFocusRequest = false;
         }
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_TITLE, WINDOW_TITLE))) {
             windowFocused = false;
             ImGui.end();
             completionPopup.hide();
@@ -203,9 +206,9 @@ public final class ScriptEditorView {
 
     private void renderEmptyWindow() {
         windowFocused = false;
-        if (ImGui.begin(WINDOW_TITLE)) {
-            ImGui.textDisabled("No script open.");
-            ImGui.textDisabled("Double-click a script in the asset browser.");
+        if (ImGui.begin(I18n.label(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_TITLE, WINDOW_TITLE))) {
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_NO_SCRIPT_OPEN));
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_OPEN_HELP));
         }
         ImGui.end();
     }
@@ -655,7 +658,8 @@ public final class ScriptEditorView {
 
     private void renderDiagnosticLine(Path path, Diagnostic diagnostic) {
         ImGui.textColored(EditorStyle.COLOR_DANGER,
-                "Line " + diagnostic.line() + ": " + diagnostic.message());
+                I18n.translate(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_DIAGNOSTIC,
+                        diagnostic.line(), diagnostic.message()));
         if (ImGui.isItemClicked()) {
             open(path, diagnostic.line());
         }
@@ -665,10 +669,11 @@ public final class ScriptEditorView {
         try {
             Files.writeString(path, script.editor().getText());
             script.markSaved();
-            notifier.show("Saved " + path.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_TOAST_SAVED, path.getFileName()));
             onSaved.accept(path);
         } catch (IOException error) {
-            notifier.show("Save failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_TOAST_SAVE_FAILED,
+                    error.getMessage()));
         }
     }
 

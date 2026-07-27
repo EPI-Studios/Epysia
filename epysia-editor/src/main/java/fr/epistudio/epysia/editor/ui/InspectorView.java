@@ -20,6 +20,8 @@ import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphComponent;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.vfx.ParticleEffect;
@@ -57,7 +59,9 @@ public final class InspectorView {
     private final IconWidgets icons;
     private final PropertyRows propertyRows;
     private final AssetPicker assetPicker;
-    private final ConfirmDialog removeConfirm = new ConfirmDialog("Remove this component?", "Remove");
+    private final ConfirmDialog removeConfirm = new ConfirmDialog(
+            I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_TITLE),
+            I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_CONFIRM));
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final MaterialsSection materialsSection;
     private final PopulateSection populateSection;
@@ -110,7 +114,7 @@ public final class InspectorView {
     }
 
     public void render() {
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_TITLE, WINDOW_TITLE))) {
             ImGui.end();
             return;
         }
@@ -135,10 +139,10 @@ public final class InspectorView {
 
     private void renderEmpty() {
         centerVertically();
-        centerText("Nothing selected");
+        centerText(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NOTHING_SELECTED));
         ImGui.dummy(0.0f, EMPTY_STATE_LINE_GAP);
-        centerText("Pick an object in the hierarchy");
-        centerText("to edit its components.");
+        centerText(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_PICK_OBJECT));
+        centerText(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_EDIT_COMPONENTS));
     }
 
     private static void centerVertically() {
@@ -174,7 +178,9 @@ public final class InspectorView {
         ImGui.sameLine();
         ImGui.textUnformatted(gameObject.name());
         int componentCount = gameObject.components().size();
-        ImGui.textDisabled(componentCount + (componentCount <= 1 ? " component" : " components"));
+        ImGui.textDisabled(componentCount <= 1
+                ? I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_SINGULAR, componentCount)
+                : I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_PLURAL, componentCount));
     }
 
     private void renderComponentBlock(GameObject gameObject, IComponent component) {
@@ -194,20 +200,21 @@ public final class InspectorView {
         }
         ImGui.sameLine(ImGui.getContentRegionMaxX() - EditorStyle.ICON_SIZE_SMALL * 2.0f);
         if (icons.iconButton("remove-component", EditorIcon.REMOVE, EditorStyle.ICON_SIZE_SMALL - 2.0f)) {
-            removeConfirm.open(displayNameOf(component) + " will be removed from " + gameObject.name() + ".",
+            removeConfirm.open(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_MESSAGE,
+                            displayNameOf(component), gameObject.name()),
                     () -> removeComponent(gameObject, component));
         }
     }
 
     private void removeComponent(GameObject gameObject, IComponent component) {
         history().execute(new RemoveComponentCommand(gameObject, asComponentClass(component), component));
-        notifier.show("Component removed.");
+            notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TOAST_COMPONENT_REMOVED));
     }
 
     private void renderComponentProperties(GameObject gameObject, IComponent component) {
         List<ExportedProperty> properties = Reflection.scan(component);
         if (properties.isEmpty() && !(component instanceof MeshRenderer)) {
-            ImGui.textDisabled("No exported fields.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NO_EXPORTED_FIELDS));
             return;
         }
         String keyPrefix = gameObject.id() + "#" + component.getClass().getName()
@@ -263,10 +270,11 @@ public final class InspectorView {
 
     private void renderCameraPostEffects(Camera3D camera) {
         ImGui.spacing();
-        ImGui.textDisabled("Post Effects");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_POST_EFFECTS));
         ImGui.separator();
         boolean overrideActive = camera.postEffectStack().isPresent();
-        if (ImGui.checkbox("Override Post Effects", overrideActive)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_OVERRIDE_POST_EFFECTS,
+                "inspector-override-post-effects"), overrideActive)) {
             toggleCameraPostEffects(camera, overrideActive);
         }
         camera.postEffectStack().ifPresent(stack ->
@@ -283,7 +291,8 @@ public final class InspectorView {
     }
 
     private void renderAddComponentButton(GameObject gameObject) {
-        if (ImGui.button("Add Component", ImGui.getContentRegionAvailX(), 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_ADD_COMPONENT,
+                "inspector-add-component"), ImGui.getContentRegionAvailX(), 0.0f)) {
             componentSearch.set("");
             ImGui.openPopup(ADD_COMPONENT_POPUP);
         }
@@ -294,7 +303,8 @@ public final class InspectorView {
         if (!ImGui.beginPopup(ADD_COMPONENT_POPUP)) {
             return;
         }
-        ImGui.inputTextWithHint("##component-search", "Search components", componentSearch);
+        ImGui.inputTextWithHint("##component-search",
+                I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_SEARCH_COMPONENTS), componentSearch);
         ImGui.separator();
         renderNewScriptOption(gameObject);
         ImGui.separator();
@@ -317,8 +327,9 @@ public final class InspectorView {
     }
 
     private void renderNewScriptOption(GameObject gameObject) {
-        if (ImGui.selectable("New Script...")) {
-            scriptNameDialog.open("New script class name", "MyBehaviour",
+        if (ImGui.selectable(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT,
+                "inspector-new-script"))) {
+            scriptNameDialog.open(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT_CLASS_NAME), "MyBehaviour",
                     name -> requestScriptCreation(name, gameObject));
             ImGui.closeCurrentPopup();
         }
@@ -327,7 +338,8 @@ public final class InspectorView {
     private void requestScriptCreation(String requestedName, GameObject gameObject) {
         String className = pascalCase(requestedName);
         if (!SourceVersion.isName(className)) {
-            notifier.show("Invalid class name: " + requestedName);
+            notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TOAST_INVALID_CLASS_NAME,
+                    requestedName));
             return;
         }
         onCreateScriptForObject.accept(className, gameObject);
@@ -343,11 +355,11 @@ public final class InspectorView {
 
     private void addComponent(GameObject gameObject, ComponentRegistry.Entry entry) {
         if (gameObject.getComponent(entry.componentClass()).isPresent()) {
-            notifier.show("This component already exists on the object.");
+            notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TOAST_COMPONENT_EXISTS));
             return;
         }
         history().execute(new AddComponentCommand(gameObject, entry.componentClass()));
-        notifier.show("Component added.");
+        notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TOAST_COMPONENT_ADDED));
     }
 
     @SuppressWarnings("unchecked")

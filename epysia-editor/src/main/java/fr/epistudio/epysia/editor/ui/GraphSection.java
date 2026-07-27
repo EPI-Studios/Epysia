@@ -7,6 +7,8 @@ import fr.epistudio.epysia.graph.GraphComponent;
 import fr.epistudio.epysia.graph.GraphJsonCodec;
 import fr.epistudio.epysia.graph.GraphValues;
 import fr.epistudio.epysia.graph.GraphVariable;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 import imgui.type.ImString;
 import org.joml.Vector3f;
@@ -44,9 +46,9 @@ public final class GraphSection {
 
     private void renderPathRow(GraphComponent component) {
         String fileName = component.graphPath().isEmpty()
-                ? "(drop a .epygraph here)"
+                ? I18n.translate(TextKey.EDITOR_GRAPH_SECTION_DROP_HINT)
                 : Path.of(component.graphPath()).getFileName().toString();
-        ImGui.textDisabled("Graph");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_SECTION_GRAPH));
         ImGui.sameLine();
         ImGui.button(fileName, ImGui.getContentRegionAvailX(), 0.0f);
         acceptGraphDrop(component);
@@ -66,7 +68,8 @@ public final class GraphSection {
 
     private void renderOpenButton(GraphComponent component) {
         ImGui.beginDisabled(component.graphPath().isEmpty());
-        if (ImGui.button("Open in Graph Editor", ImGui.getContentRegionAvailX(), 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_SECTION_OPEN_IN_GRAPH_EDITOR,
+                "graph-section-open"), ImGui.getContentRegionAvailX(), 0.0f)) {
             onOpenGraph.accept(Path.of(component.graphPath()));
         }
         ImGui.endDisabled();
@@ -90,7 +93,7 @@ public final class GraphSection {
     private static boolean showHeaderOnce(boolean headerShown) {
         if (!headerShown) {
             ImGui.spacing();
-            ImGui.textDisabled("Exposed Variables");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_SECTION_EXPOSED_VARIABLES));
             ImGui.separator();
         }
         return true;
@@ -123,7 +126,8 @@ public final class GraphSection {
             return;
         }
         ImGui.sameLine();
-        if (ImGui.smallButton("x")) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_GRAPH_SECTION_RESET,
+                "graph-section-reset-" + variable.name()))) {
             component.variableOverrides().remove(variable.name());
             textBuffers.remove(variable.name());
             activeDocument.get().markDirty();

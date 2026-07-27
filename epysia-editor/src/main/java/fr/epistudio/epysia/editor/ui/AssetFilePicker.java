@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
@@ -78,15 +80,17 @@ public final class AssetFilePicker {
 
     public void render() {
         if (openRequested) {
-            ImGui.openPopup(POPUP_ID);
+            ImGui.openPopup(I18n.label(TextKey.EDITOR_ASSET_FILE_PICKER_TITLE, "asset-file-picker"));
             openRequested = false;
         }
-        if (!ImGui.beginPopupModal(POPUP_ID, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_ASSET_FILE_PICKER_TITLE, "asset-file-picker"),
+                ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
-        ImGui.inputTextWithHint("##file-filter", "Search", filterInput);
+        ImGui.inputTextWithHint("##file-filter",
+                I18n.translate(TextKey.EDITOR_ASSET_FILE_PICKER_SEARCH), filterInput);
         renderCandidateList();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_ASSET_FILE_PICKER_CANCEL, "asset-file-picker-cancel"))) {
             ImGui.closeCurrentPopup();
         }
         ImGui.endPopup();
@@ -109,7 +113,7 @@ public final class AssetFilePicker {
     private void renderClearEntry() {
         ImGui.dummy(PREVIEW_SIZE, PREVIEW_SIZE);
         ImGui.sameLine();
-        if (ImGui.selectable("None")) {
+        if (ImGui.selectable(I18n.label(TextKey.EDITOR_ASSET_FILE_PICKER_NONE, "asset-file-picker-none"))) {
             ImGui.closeCurrentPopup();
             onPicked.accept("");
         }

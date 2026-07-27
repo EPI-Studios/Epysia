@@ -3,6 +3,8 @@ package fr.epistudio.epysia.editor.ui;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiSelectableFlags;
@@ -80,7 +82,8 @@ public final class NewAssetDialog {
             searchFocusRequested = false;
         }
         ImGui.setNextItemWidth(-1.0f);
-        if (ImGui.inputTextWithHint("##new-asset-search", "Search", searchInput)) {
+        if (ImGui.inputTextWithHint("##new-asset-search",
+                I18n.translate(TextKey.EDITOR_NEW_ASSET_DIALOG_SEARCH), searchInput)) {
             selectedIndex = 0;
             applySelectedDefaultName();
         }
@@ -90,7 +93,7 @@ public final class NewAssetDialog {
     private void renderKindList(List<AssetKind> matches) {
         ImGui.beginChild("##new-asset-list", 0.0f, LIST_HEIGHT, true);
         if (matches.isEmpty()) {
-            ImGui.textDisabled("Nothing matches.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_NEW_ASSET_DIALOG_NO_MATCH));
         }
         String renderedCategory = "";
         for (int index = 0; index < matches.size(); index++) {
@@ -147,7 +150,7 @@ public final class NewAssetDialog {
     private void renderNameField(List<AssetKind> matches) {
         ImGui.alignTextToFramePadding();
         ImGui.pushStyleColor(ImGuiCol.Text, EditorStyle.COLOR_TEXT_MUTED);
-        ImGui.textUnformatted("Name");
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_NEW_ASSET_DIALOG_NAME));
         ImGui.popStyleColor();
         ImGui.sameLine();
         ImGui.setNextItemWidth(-1.0f);
@@ -161,13 +164,15 @@ public final class NewAssetDialog {
         ImGui.beginDisabled(!creatable);
         ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
         ImGui.pushStyleColor(ImGuiCol.ButtonHovered, EditorStyle.COLOR_ACCENT_HOVER);
-        if (ImGui.button("Create", 96.0f, 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_NEW_ASSET_DIALOG_CREATE,
+                "new-asset-create"), 96.0f, 0.0f)) {
             accept(matches);
         }
         ImGui.popStyleColor(2);
         ImGui.endDisabled();
         ImGui.sameLine();
-        if (ImGui.button("Cancel", 96.0f, 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_NEW_ASSET_DIALOG_CANCEL,
+                "new-asset-cancel"), 96.0f, 0.0f)) {
             ImGui.closeCurrentPopup();
         }
     }

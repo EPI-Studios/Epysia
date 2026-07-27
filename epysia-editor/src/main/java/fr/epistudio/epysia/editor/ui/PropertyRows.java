@@ -9,6 +9,8 @@ import fr.epistudio.epysia.editor.inspector.EulerCache;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.components.RenderLayers;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import imgui.ImGui;
 import imgui.flag.ImGuiColorEditFlags;
@@ -33,8 +35,6 @@ public final class PropertyRows {
             | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.HDR | ImGuiColorEditFlags.Float;
     private static final float NUMERIC_RANGE_FALLBACK = 1_000_000.0f;
     private static final int STRING_CAPACITY = 512;
-    private static final String NONE_LABEL = "None";
-
     private final Supplier<SceneDocument> activeDocument;
     private final AssetPicker assetPicker;
     private final Map<String, EulerCache> eulerCaches = new HashMap<>();
@@ -72,7 +72,7 @@ public final class PropertyRows {
             case QUATERNION -> renderQuaternion(owner, property, key);
             case ASSET_REF -> renderAssetRef(owner, property, key);
             case GAMEOBJECT_REF -> renderGameObjectRef(owner, property);
-            default -> ImGui.labelText(property.label(), "(unsupported)");
+            default -> ImGui.labelText(property.label(), I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_UNSUPPORTED));
         }
         ImGui.popID();
     }
@@ -141,7 +141,7 @@ public final class PropertyRows {
 
     private void renderEnum(IComponent owner, ExportedProperty property) {
         Object current = property.read();
-        String label = current == null ? "(none)" : current.toString();
+        String label = current == null ? I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_NONE_LOWER) : current.toString();
         if (!ImGui.beginCombo(property.label(), label)) {
             return;
         }
@@ -220,7 +220,7 @@ public final class PropertyRows {
     private void renderAssetRef(IComponent owner, ExportedProperty property, String key) {
         AssetRef<?> reference = (AssetRef<?>) property.read();
         if (reference == null) {
-            ImGui.labelText(property.label(), "(missing reference)");
+            ImGui.labelText(property.label(), I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_MISSING_REFERENCE));
             return;
         }
         ImString buffer = stringBuffer(key, reference.path());
@@ -236,7 +236,8 @@ public final class PropertyRows {
         }
         acceptAssetDrop(owner, property, reference, buffer);
         ImGui.sameLine();
-        if (ImGui.button("…", pickerWidth, 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_PROPERTY_ROWS_PICK,
+                "property-asset-picker"), pickerWidth, 0.0f)) {
             assetPicker.open(reference.type(), path ->
                     applyAssetPath(owner, property, reference, buffer, path));
         }
@@ -267,7 +268,9 @@ public final class PropertyRows {
 
     private void renderGameObjectRef(IComponent owner, ExportedProperty property) {
         Object current = property.read();
-        String label = current instanceof GameObject target ? target.name() : NONE_LABEL;
+        String label = current instanceof GameObject target
+                ? target.name()
+                : I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_NONE);
         renderGameObjectCombo(owner, property, current, label);
         acceptGameObjectDrop(owner, property);
         ImGui.sameLine();
@@ -279,7 +282,8 @@ public final class PropertyRows {
         if (!ImGui.beginCombo("##gameobject-ref", label)) {
             return;
         }
-        if (ImGui.selectable(NONE_LABEL, current == null) && current != null) {
+        if (ImGui.selectable(I18n.label(TextKey.EDITOR_PROPERTY_ROWS_NONE,
+                "property-gameobject-none"), current == null) && current != null) {
             history().execute(new SetPropertyCommand(owner, property, current, null));
         }
         for (GameObject candidate : activeDocument.get().scene().gameObjects()) {

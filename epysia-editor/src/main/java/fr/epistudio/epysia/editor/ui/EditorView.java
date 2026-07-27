@@ -40,6 +40,8 @@ import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphSystem;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.prefab.PrefabWriter;
 import fr.epistudio.epysia.project.Project;
@@ -84,8 +86,8 @@ public final class EditorView implements FrameView {
     private static final float TWO_DIMENSIONAL_FRAME_MINIMUM_RADIUS = 3.0f;
     private static final String PREFABS_DIRECTORY_NAME = "prefabs";
     private static final String PREFAB_EXTENSION = ".epyprefab";
-    private static final String ABOUT_POPUP = "About Epysia";
-    private static final String CLOSE_SCENE_POPUP = "Unsaved changes";
+    private static final String ABOUT_POPUP_ID = "about-epysia";
+    private static final String CLOSE_SCENE_POPUP_ID = "close-scene-unsaved-changes";
     private static final Set<String> COMPILED_SCRIPT_EXTENSIONS = Set.of(".java");
     private static final Set<String> SHADER_FILE_EXTENSIONS = Set.of(".glsl", ".vert", ".frag");
     private static final int HOST_WINDOW_FLAGS = ImGuiWindowFlags.NoTitleBar
@@ -400,58 +402,66 @@ public final class EditorView implements FrameView {
     }
 
     private void renderFileMenu() {
-        if (!ImGui.beginMenu("File")) {
+        if (!ImGui.beginMenu(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE, "menu-file"))) {
             return;
         }
         renderFileSceneItems();
         ImGui.separator();
         renderFileScriptItems();
         ImGui.separator();
-        if (ImGui.menuItem("Export Game…")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_EXPORT_GAME, "menu-file-export-game"))) {
             exportGameDialog.open(workspace.active().name());
         }
         ImGui.separator();
-        if (ImGui.menuItem("New / Open Project…")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_OPEN_PROJECT,
+                "menu-file-new-open-project"))) {
             onOpenProjectSelector.run();
         }
         ImGui.separator();
-        if (ImGui.menuItem("Exit")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_EXIT, "menu-file-exit"))) {
             shell.requestClose();
         }
         ImGui.endMenu();
     }
 
     private void renderFileSceneItems() {
-        if (ImGui.menuItem("New Scene")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCENE, "menu-file-new-scene"))) {
             workspace.create();
         }
-        if (ImGui.menuItem("Open Scene…")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_OPEN_SCENE, "menu-file-open-scene"))) {
             openSceneDialog();
         }
-        if (ImGui.menuItem("Save", "Ctrl+S")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_SAVE, "menu-file-save"), "Ctrl+S")) {
             saveScene();
         }
-        if (ImGui.menuItem("Save As…")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_SAVE_AS, "menu-file-save-as"))) {
             saveSceneAs();
         }
     }
 
     private void renderFileScriptItems() {
-        if (ImGui.menuItem("New Script")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT, "menu-file-new-script"))) {
             createNewScript();
         }
-        if (ImGui.menuItem("Reload Scripts")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_RELOAD_SCRIPTS,
+                "menu-file-reload-scripts"))) {
             reloadScripts();
         }
     }
 
     private void renderEditMenu() {
-        if (!ImGui.beginMenu("Edit")) {
+        if (!ImGui.beginMenu(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT, "menu-edit"))) {
             return;
         }
         EditorHistory history = history();
-        String undoLabel = history.undoLabel().map(label -> "Undo " + label).orElse("Undo");
-        String redoLabel = history.redoLabel().map(label -> "Redo " + label).orElse("Redo");
+        String undoLabel = history.undoLabel()
+                .map(label -> I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_UNDO_ACTION,
+                        "menu-edit-undo", label))
+                .orElse(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_UNDO, "menu-edit-undo"));
+        String redoLabel = history.redoLabel()
+                .map(label -> I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_REDO_ACTION,
+                        "menu-edit-redo", label))
+                .orElse(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_REDO, "menu-edit-redo"));
         if (ImGui.menuItem(undoLabel, "Ctrl+Z", false, history.canUndo())) {
             history.undo();
         }
@@ -464,24 +474,26 @@ public final class EditorView implements FrameView {
     }
 
     private void renderEditSelectionItems() {
-        if (ImGui.menuItem("Duplicate", "Ctrl+D")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_DUPLICATE,
+                "menu-edit-duplicate"), "Ctrl+D")) {
             hierarchyView.duplicateSelected();
         }
-        if (ImGui.menuItem("Delete", "Del")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_DELETE, "menu-edit-delete"), "Del")) {
             hierarchyView.askDeleteSelected();
         }
         ImGui.separator();
-        if (ImGui.menuItem("Settings…")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_SETTINGS, "menu-edit-settings"))) {
             openSettings();
         }
     }
 
     private void renderGameObjectMenu() {
-        if (!ImGui.beginMenu("GameObject")) {
+        if (!ImGui.beginMenu(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT, "menu-gameobject"))) {
             return;
         }
         ImGui.beginDisabled(playSession.isActive());
-        if (ImGui.menuItem("Create Empty")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CREATE_EMPTY,
+                "menu-gameobject-create-empty"))) {
             objectFactory.createEmpty(spawnPositionInFront());
         }
         ImGui.separator();
@@ -493,13 +505,14 @@ public final class EditorView implements FrameView {
     }
 
     private void renderPrimitiveItems() {
-        if (ImGui.menuItem("Cube")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CUBE, "menu-gameobject-cube"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.CUBE, spawnPositionInFront());
         }
-        if (ImGui.menuItem("Plane")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_PLANE, "menu-gameobject-plane"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.PLANE, spawnPositionInFront());
         }
-        if (ImGui.menuItem("Capsule")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CAPSULE,
+                "menu-gameobject-capsule"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawnPositionInFront());
         }
         ImGui.separator();
@@ -512,17 +525,20 @@ public final class EditorView implements FrameView {
     }
 
     private void renderLightAndCameraItems() {
-        if (ImGui.menuItem("Directional Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_DIRECTIONAL_LIGHT,
+                "menu-gameobject-directional-light"))) {
             objectFactory.createDirectionalLight(spawnPositionInFront());
         }
-        if (ImGui.menuItem("Point Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_POINT_LIGHT,
+                "menu-gameobject-point-light"))) {
             objectFactory.createPointLight(spawnPositionInFront());
         }
-        if (ImGui.menuItem("Spot Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_SPOT_LIGHT,
+                "menu-gameobject-spot-light"))) {
             objectFactory.createSpotLight(spawnPositionInFront());
         }
         ImGui.separator();
-        if (ImGui.menuItem("Camera")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CAMERA, "menu-gameobject-camera"))) {
             objectFactory.createCamera(spawnPositionInFront());
         }
     }
@@ -534,23 +550,28 @@ public final class EditorView implements FrameView {
     }
 
     private void renderWindowMenu() {
-        if (!ImGui.beginMenu("Window")) {
+        if (!ImGui.beginMenu(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW, "menu-window"))) {
             return;
         }
-        if (ImGui.menuItem("Reset Layout")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_RESET_LAYOUT,
+                "menu-window-reset-layout"))) {
             dockLayout.requestDefaultLayout();
         }
         ImGui.separator();
-        if (ImGui.menuItem("Grid", "", viewportView.showGrid())) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_GRID, "menu-window-grid"),
+                "", viewportView.showGrid())) {
             toggleGridPreference();
         }
-        if (ImGui.menuItem("Collider Wireframes", "", viewportView.showColliderWireframes())) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_COLLIDER_WIREFRAMES,
+                "menu-window-collider-wireframes"), "", viewportView.showColliderWireframes())) {
             viewportView.setShowColliderWireframes(!viewportView.showColliderWireframes());
         }
-        if (ImGui.menuItem("Profiler", "", profilerView.isVisible())) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_PROFILER,
+                "menu-window-profiler"), "", profilerView.isVisible())) {
             profilerView.setVisible(!profilerView.isVisible());
         }
-        if (ImGui.menuItem("Lighting", "", lightingView.isVisible())) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_LIGHTING,
+                "menu-window-lighting"), "", lightingView.isVisible())) {
             lightingView.setVisible(!lightingView.isVisible());
         }
         if (ImGui.menuItem(TilemapDockView.WINDOW_TITLE, "", tilemapDockView.isVisible())) {
@@ -563,10 +584,10 @@ public final class EditorView implements FrameView {
     }
 
     private void renderHelpMenu() {
-        if (!ImGui.beginMenu("Help")) {
+        if (!ImGui.beginMenu(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_HELP, "menu-help"))) {
             return;
         }
-        if (ImGui.menuItem(ABOUT_POPUP)) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_ABOUT_TITLE, "menu-help-about"))) {
             aboutRequested = true;
         }
         ImGui.endMenu();
@@ -574,19 +595,25 @@ public final class EditorView implements FrameView {
 
     private void renderAboutPopup() {
         if (aboutRequested) {
-            ImGui.openPopup(ABOUT_POPUP);
+            ImGui.openPopup(aboutPopupLabel());
             aboutRequested = false;
         }
-        if (!ImGui.beginPopupModal(ABOUT_POPUP, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(aboutPopupLabel(), ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
-        ImGui.textUnformatted("Epysia Engine " + ProjectStore.CURRENT_ENGINE_VERSION);
-        ImGui.textDisabled("Project: " + project.name() + " (engine " + project.engineVersion() + ")");
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_ABOUT_ENGINE,
+                ProjectStore.CURRENT_ENGINE_VERSION));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_ABOUT_PROJECT,
+                project.name(), project.engineVersion()));
         ImGui.separator();
-        if (ImGui.button("Close")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_CLOSE, "about-close"))) {
             ImGui.closeCurrentPopup();
         }
         ImGui.endPopup();
+    }
+
+    private static String aboutPopupLabel() {
+        return I18n.label(TextKey.EDITOR_EDITOR_VIEW_ABOUT_TITLE, ABOUT_POPUP_ID);
     }
 
     private void renderToolbarStrip() {
@@ -617,18 +644,25 @@ public final class EditorView implements FrameView {
     }
 
     private void renderGizmoToolButtons() {
-        renderToolButton("tool-select", EditorIcon.TOOL_SELECT, GizmoState.Tool.SELECT, "Select (Q)");
+        renderToolButton("tool-select", EditorIcon.TOOL_SELECT, GizmoState.Tool.SELECT,
+                TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_SELECT);
         ImGui.sameLine();
-        renderToolButton("tool-move", EditorIcon.TOOL_MOVE, GizmoState.Tool.TRANSLATE, "Move (W), Space switches to Scale");
+        renderToolButton("tool-move", EditorIcon.TOOL_MOVE, GizmoState.Tool.TRANSLATE,
+                TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_MOVE);
         ImGui.sameLine();
-        renderToolButton("tool-rotate", EditorIcon.TOOL_ROTATE, GizmoState.Tool.ROTATE, "Rotate (R), Space toggles world/local pivot");
+        renderToolButton("tool-rotate", EditorIcon.TOOL_ROTATE, GizmoState.Tool.ROTATE,
+                TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_ROTATE);
         ImGui.sameLine();
-        renderToolButton("tool-scale", EditorIcon.TOOL_SCALE, GizmoState.Tool.SCALE, "Scale (S), Space switches back to Move");
+        renderToolButton("tool-scale", EditorIcon.TOOL_SCALE, GizmoState.Tool.SCALE,
+                TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_SCALE);
         ImGui.sameLine();
-        if (ImGui.button(gizmoState.worldSpace() ? "World" : "Local")) {
+        TextKey spaceKey = gizmoState.worldSpace()
+                ? TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_WORLD
+                : TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_LOCAL;
+        if (ImGui.button(I18n.label(spaceKey, "toolbar-gizmo-space"))) {
             gizmoState.toggleSpace();
         }
-        tooltip("Toggle gizmo space (X)");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_TOGGLE_GIZMO_SPACE);
         ImGui.sameLine();
         renderTwoDimensionalToggle();
         ImGui.sameLine();
@@ -682,11 +716,11 @@ public final class EditorView implements FrameView {
         persistPreferences();
     }
 
-    private void renderToolButton(String id, EditorIcon icon, GizmoState.Tool tool, String tooltipText) {
+    private void renderToolButton(String id, EditorIcon icon, GizmoState.Tool tool, TextKey tooltipKey) {
         if (icons.toggleButton(id, icon, EditorStyle.ICON_SIZE_TOOLBAR, gizmoState.tool() == tool)) {
             gizmoState.setTool(tool);
         }
-        tooltip(tooltipText);
+        tooltip(tooltipKey);
     }
 
     private void renderToggleButtons() {
@@ -694,13 +728,13 @@ public final class EditorView implements FrameView {
                 gizmoState.snapEnabled())) {
             toggleSnapPreference();
         }
-        tooltip("Snap (hold Ctrl to invert)");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_SNAP);
         ImGui.sameLine();
         if (icons.toggleButton("toolbar-grid", EditorIcon.GRID, EditorStyle.ICON_SIZE_TOOLBAR,
                 viewportView.showGrid())) {
             toggleGridPreference();
         }
-        tooltip("Grid");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_GRID);
         ImGui.sameLine();
         renderSaveButton();
     }
@@ -709,7 +743,7 @@ public final class EditorView implements FrameView {
         if (icons.iconButton("toolbar-save", EditorIcon.SAVE, EditorStyle.ICON_SIZE_TOOLBAR)) {
             saveScene();
         }
-        tooltip("Save scene (Ctrl+S)");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_SAVE_SCENE);
     }
 
     private void renderPlayControls() {
@@ -727,7 +761,7 @@ public final class EditorView implements FrameView {
             playSession.start();
         }
         ImGui.endDisabled();
-        tooltip("Play in editor (Ctrl+P)");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_PLAY);
         ImGui.sameLine();
         renderPauseStepStopButtons(active);
     }
@@ -738,19 +772,19 @@ public final class EditorView implements FrameView {
                 playSession.state() == EmbeddedPlaySession.State.PAUSED)) {
             playSession.togglePause();
         }
-        tooltip("Pause / resume");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_PAUSE);
         ImGui.sameLine();
         ImGui.beginDisabled(playSession.state() != EmbeddedPlaySession.State.PAUSED);
         if (icons.iconButton("toolbar-step", EditorIcon.REDO, EditorStyle.ICON_SIZE_TOOLBAR)) {
             playSession.step();
         }
         ImGui.endDisabled();
-        tooltip("Advance one fixed tick");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_STEP);
         ImGui.sameLine();
         if (icons.iconButton("toolbar-stop", EditorIcon.STOP, EditorStyle.ICON_SIZE_TOOLBAR)) {
             playSession.stop();
         }
-        tooltip("Stop and restore the scene (Ctrl+P)");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_STOP);
         ImGui.endDisabled();
     }
 
@@ -758,17 +792,17 @@ public final class EditorView implements FrameView {
         renderToolbarSeparator();
         boolean subprocessRunning = playController.isRunning();
         ImGui.beginDisabled(subprocessRunning || playSession.isActive());
-        if (ImGui.button("Run Game")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_RUN_GAME, "toolbar-run-game"))) {
             startPlay();
         }
         ImGui.endDisabled();
-        tooltip("Run the game in a separate process");
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_RUN_GAME_TOOLTIP);
         if (subprocessRunning) {
             ImGui.sameLine();
-            if (ImGui.button("Kill")) {
+            if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_KILL, "toolbar-kill-game"))) {
                 playController.stop();
             }
-            tooltip("Stop the game process");
+            tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_KILL_TOOLTIP);
         }
     }
 
@@ -778,9 +812,16 @@ public final class EditorView implements FrameView {
         }
     }
 
+    private void tooltip(TextKey key) {
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(I18n.translate(key));
+        }
+    }
+
     private void renderSceneTabs() {
         if (playSession.isActive()) {
-            ImGui.textDisabled("Scene: " + workspace.active().name() + " (playing)");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCENE_PLAYING,
+                    workspace.active().name()));
             return;
         }
         if (!ImGui.beginTabBar("##scene-tabs", ImGuiTabBarFlags.AutoSelectNewTabs)) {
@@ -826,31 +867,39 @@ public final class EditorView implements FrameView {
 
     private void renderCloseScenePopup() {
         if (closeSceneRequested) {
-            ImGui.openPopup(CLOSE_SCENE_POPUP);
+            ImGui.openPopup(closeScenePopupLabel());
             closeSceneRequested = false;
         }
-        if (!ImGui.beginPopupModal(CLOSE_SCENE_POPUP, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(closeScenePopupLabel(), ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
-        ImGui.textUnformatted("Save changes to \"" + pendingCloseDocument.name() + "\" before closing?");
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_UNSAVED_CHANGES_MESSAGE,
+                pendingCloseDocument.name()));
         ImGui.separator();
         renderCloseSceneButtons();
         ImGui.endPopup();
     }
 
+    private static String closeScenePopupLabel() {
+        return I18n.label(TextKey.EDITOR_EDITOR_VIEW_UNSAVED_CHANGES_TITLE, CLOSE_SCENE_POPUP_ID);
+    }
+
     private void renderCloseSceneButtons() {
-        if (ImGui.button("Save")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_UNSAVED_CHANGES_SAVE,
+                "close-scene-save"))) {
             workspace.save(pendingCloseDocument);
             workspace.close(pendingCloseDocument);
             ImGui.closeCurrentPopup();
         }
         ImGui.sameLine();
-        if (ImGui.button("Discard")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_UNSAVED_CHANGES_DISCARD,
+                "close-scene-discard"))) {
             workspace.close(pendingCloseDocument);
             ImGui.closeCurrentPopup();
         }
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_UNSAVED_CHANGES_CANCEL,
+                "close-scene-cancel"))) {
             ImGui.closeCurrentPopup();
         }
     }
@@ -868,13 +917,14 @@ public final class EditorView implements FrameView {
 
     private void renderPlayState() {
         if (playSession.state() == EmbeddedPlaySession.State.PLAYING) {
-            ImGui.textColored(EditorStyle.COLOR_ACCENT, "Playing");
+            ImGui.textColored(EditorStyle.COLOR_ACCENT, I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_PLAYING));
         } else if (playSession.state() == EmbeddedPlaySession.State.PAUSED) {
-            ImGui.textColored(EditorStyle.COLOR_WARNING, "Paused");
+            ImGui.textColored(EditorStyle.COLOR_WARNING, I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_PAUSED));
         } else if (playController.isRunning()) {
-            ImGui.textColored(EditorStyle.COLOR_ACCENT, "Game running");
+            ImGui.textColored(EditorStyle.COLOR_ACCENT,
+                    I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_GAME_RUNNING));
         } else {
-            ImGui.textDisabled("Ready");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_READY));
         }
         ImGui.sameLine();
         ImGui.textDisabled(contextHint());
@@ -882,13 +932,13 @@ public final class EditorView implements FrameView {
 
     private String contextHint() {
         if (playSession.isActive()) {
-            return "Ctrl+P Stop  |  Pause and Step in the toolbar  |  Stop play mode to edit";
+            return I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_PLAY_CONTEXT);
         }
         if (viewportView.isHovered() && editorCamera.twoDimensional()) {
             return "RMB/MMB Pan  |  Scroll Zoom  |  F Frame  |  Ctrl+D Duplicate";
         }
         if (viewportView.isHovered()) {
-            return "RMB Fly  |  Alt+LMB Orbit  |  F Frame  |  Ctrl+D Duplicate";
+            return I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_VIEWPORT_CONTEXT);
         }
         return "";
     }
@@ -902,17 +952,21 @@ public final class EditorView implements FrameView {
     }
 
     private void renderFramerate() {
-        String fps = String.format(Locale.ROOT, "%.0f FPS", ImGui.getIO().getFramerate());
+        String fps = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_FPS,
+                String.format(Locale.ROOT, "%.0f", ImGui.getIO().getFramerate()));
         ImGui.sameLine(ImGui.getWindowWidth() - ImGui.calcTextSize(fps).x - EditorStyle.WINDOW_PADDING);
         ImGui.textColored(EditorStyle.COLOR_ACCENT, fps);
     }
 
     private String objectCountLabel() {
         int count = workspace.active().scene().gameObjects().size();
-        String label = count + (count == 1 ? " object" : " objects");
+        String label = I18n.translate(count == 1
+                ? TextKey.EDITOR_EDITOR_VIEW_STATUS_OBJECT_COUNT_ONE
+                : TextKey.EDITOR_EDITOR_VIEW_STATUS_OBJECT_COUNT_MANY, count);
         int selectedCount = workspace.active().selection().count();
         if (selectedCount > 1) {
-            return label + "  |  " + selectedCount + " selected";
+            return label + "  |  " + I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_SELECTED_COUNT,
+                    selectedCount);
         }
         return workspace.active().selection().get()
                 .map(primary -> label + "  |  " + primary.name())
@@ -1003,14 +1057,15 @@ public final class EditorView implements FrameView {
     }
 
     private void openSceneDialog() {
-        FileDialogs.pickFile("Open Scene", project.scenesDirectory(),
-                        "*" + Project.SCENE_EXTENSION, "Epysia scenes")
+        FileDialogs.pickFile(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_TITLE),
+                        project.scenesDirectory(), "*" + Project.SCENE_EXTENSION,
+                        I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_FILTER))
                 .ifPresent(this::openScenePath);
     }
 
     private void openScenePath(Path path) {
         if (!path.getFileName().toString().endsWith(Project.SCENE_EXTENSION)) {
-            toasts.show("Not a scene file");
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_NOT_SCENE_FILE));
             return;
         }
         workspace.open(path);
@@ -1083,7 +1138,7 @@ public final class EditorView implements FrameView {
 
     private void saveScene() {
         if (playSession.isActive()) {
-            toasts.show("Stop play mode to save");
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_STOP_PLAY_MODE_TO_SAVE));
             return;
         }
         int tilemaps = tilePalettePanel.saveDirtyTilemaps(workspace.active().scene());
@@ -1095,7 +1150,8 @@ public final class EditorView implements FrameView {
     }
 
     private void saveSceneAs() {
-        nameDialog.open("Save scene as", workspace.active().name(), this::saveSceneAsNamed);
+        nameDialog.open(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SAVE_SCENE_AS_TITLE),
+                workspace.active().name(), this::saveSceneAsNamed);
     }
 
     private void saveSceneAsNamed(String name) {
@@ -1106,7 +1162,8 @@ public final class EditorView implements FrameView {
     }
 
     private void saveAsPrefab(GameObject root) {
-        nameDialog.open("Save prefab", root.name(), name -> writePrefab(root, name));
+        nameDialog.open(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SAVE_PREFAB_TITLE),
+                root.name(), name -> writePrefab(root, name));
     }
 
     private void writePrefab(GameObject root, String name) {
@@ -1115,10 +1172,11 @@ public final class EditorView implements FrameView {
         try {
             Files.createDirectories(directory);
             new PrefabWriter(componentRegistry).write(root, target);
-            toasts.show("Prefab saved: " + target.getFileName());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_PREFAB_SAVED, target.getFileName()));
             assetBrowserView.refreshAssets();
         } catch (IOException error) {
-            toasts.show("Prefab save failed: " + error.getMessage());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_PREFAB_SAVE_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -1135,12 +1193,13 @@ public final class EditorView implements FrameView {
             scriptEditorView.open(target);
             reloadScripts();
         } catch (IOException error) {
-            toasts.show("Script creation failed: " + error.getMessage());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_CREATION_FAILED,
+                    error.getMessage()));
         }
     }
 
     private static Path nextScriptFile(Path scriptsDirectory) {
-        String baseName = "Script";
+        String baseName = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCRIPT_DEFAULT_NAME);
         Path target = scriptsDirectory.resolve(baseName + ".java");
         int suffix = 2;
         while (Files.exists(target)) {
@@ -1155,7 +1214,7 @@ public final class EditorView implements FrameView {
             Files.createDirectories(project.scriptsDirectory());
             Path file = project.scriptsDirectory().resolve(className + ".java");
             if (Files.exists(file)) {
-                toasts.show("Script already exists: " + className);
+                toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_ALREADY_EXISTS, className));
                 scriptEditorView.open(file);
                 return;
             }
@@ -1164,22 +1223,25 @@ public final class EditorView implements FrameView {
             attachScriptComponent(className, target);
             scriptEditorView.open(file);
         } catch (IOException error) {
-            toasts.show("Script creation failed: " + error.getMessage());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_CREATION_FAILED,
+                    error.getMessage()));
         }
     }
 
     private void attachScriptComponent(String className, GameObject target) {
         Optional<ComponentRegistry.Entry> entry = findScriptEntry(className);
         if (entry.isEmpty()) {
-            toasts.show("Script did not compile: " + className);
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_DID_NOT_COMPILE, className));
             return;
         }
         if (target.getComponent(entry.get().componentClass()).isPresent()) {
-            toasts.show(entry.get().displayName() + " is already on " + target.name());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_COMPONENT_ALREADY_ON,
+                    entry.get().displayName(), target.name()));
             return;
         }
         history().execute(new AddComponentCommand(target, entry.get().componentClass()));
-        toasts.show("Attached " + entry.get().displayName() + " to " + target.name());
+        toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_ATTACHED_COMPONENT,
+                entry.get().displayName(), target.name()));
     }
 
     private Optional<ComponentRegistry.Entry> findScriptEntry(String className) {
@@ -1196,7 +1258,7 @@ public final class EditorView implements FrameView {
         String className = scriptPath.getFileName().toString().replace(".java", "");
         Optional<GameObject> selected = workspace.active().selection().get();
         if (selected.isEmpty()) {
-            toasts.show("Select a GameObject first");
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SELECT_GAMEOBJECT_FIRST));
             return;
         }
         attachScriptComponent(className, selected.get());
@@ -1239,7 +1301,7 @@ public final class EditorView implements FrameView {
             playController.start();
             playedDocument = workspace.active();
         } catch (IOException error) {
-            toasts.show("Play failed: " + error.getMessage());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_PLAY_FAILED, error.getMessage()));
         }
     }
 
@@ -1261,9 +1323,10 @@ public final class EditorView implements FrameView {
             projectStore.writeQuality(project, settingsDialog.buildQuality());
             projectStore.writeInputActions(project, settingsDialog.buildInputActions());
             workspace.active().markDirty();
-            toasts.show("Settings saved");
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SETTINGS_SAVED));
         } catch (IOException error) {
-            toasts.show("Settings save failed: " + error.getMessage());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SETTINGS_SAVE_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -1278,7 +1341,8 @@ public final class EditorView implements FrameView {
         try {
             preferences.save(EditorPreferences.defaultFile());
         } catch (IOException error) {
-            toasts.show("Preferences save failed: " + error.getMessage());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_PREFERENCES_SAVE_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -1315,7 +1379,7 @@ public final class EditorView implements FrameView {
     }
 
     private void onMeshBaked(Path output) {
-        toasts.show("Mesh baked: " + output.getFileName());
+        toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_MESH_BAKED, output.getFileName()));
         assetBrowserView.refreshAssets();
     }
 

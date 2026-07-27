@@ -10,6 +10,8 @@ import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphSystem;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import fr.epistudio.epysia.project.ProjectQuality;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
@@ -177,7 +179,8 @@ public final class EmbeddedPlaySession {
 
     private void failAndStop(RuntimeException error) {
         console.error("[play] Runtime error, stopping play mode: " + error);
-        notifier.show("Play stopped: " + error.getClass().getSimpleName());
+            notifier.show(I18n.translate(TextKey.EDITOR_EMBEDDED_PLAY_SESSION_TOAST_PLAY_STOPPED,
+                    error.getClass().getSimpleName()));
         dispatchLifecycle("onPlayStop", component -> component.onPlayStop(engine()));
         restoreEditingState();
     }
@@ -231,7 +234,7 @@ public final class EmbeddedPlaySession {
                 return;
             }
         }
-        notifier.show("No active Camera3D in scene, playing with editor camera");
+            notifier.show(I18n.translate(TextKey.EDITOR_EMBEDDED_PLAY_SESSION_TOAST_NO_ACTIVE_CAMERA));
     }
 
     private void dispatchLifecycle(String hookName, Consumer<IComponent> hook) {

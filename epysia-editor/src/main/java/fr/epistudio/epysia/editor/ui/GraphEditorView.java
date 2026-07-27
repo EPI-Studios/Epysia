@@ -30,6 +30,8 @@ import fr.epistudio.epysia.graph.SettingKind;
 import fr.epistudio.epysia.graph.StateNodes;
 import fr.epistudio.epysia.graph.shader.ShaderGraphCompiler;
 import fr.epistudio.epysia.graph.shader.ShaderNodes;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MouseButton;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
@@ -102,7 +104,7 @@ public final class GraphEditorView {
     private static final float PREVIEW_IMAGE_SIZE = 280.0f;
     private static final float ORBIT_SPEED = 0.01f;
     private static final float PREVIEW_CULL_MARGIN = 96.0f;
-    private static final String PROJECT_MESH_LABEL = "Project Mesh...";
+    private static final String PROJECT_MESH_ID = "project-mesh";
     private static final int COLOR_PREVIEW_ERROR = 0xFF5A5AE8;
     private static final int CUSTOM_CODE_WIDTH = 260;
     private static final int CUSTOM_CODE_HEIGHT = 110;
@@ -234,7 +236,8 @@ public final class GraphEditorView {
         try {
             openGraphs.put(path, new OpenGraph(codec.readFromFile(path)));
         } catch (IOException | RuntimeException error) {
-            notifier.show("Could not open graph: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_COULD_NOT_OPEN_GRAPH,
+                    error.getMessage()));
         }
     }
 
@@ -248,7 +251,7 @@ public final class GraphEditorView {
             ImGui.setNextWindowFocus();
             windowFocusRequest = false;
         }
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TITLE, WINDOW_TITLE))) {
             ImGui.end();
             return;
         }
@@ -271,9 +274,9 @@ public final class GraphEditorView {
     }
 
     private void renderEmptyWindow() {
-        if (ImGui.begin(WINDOW_TITLE)) {
-            ImGui.textDisabled("No graph open.");
-            ImGui.textDisabled("Double-click a .epygraph file in the asset browser.");
+        if (ImGui.begin(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TITLE, WINDOW_TITLE))) {
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_GRAPH_OPEN));
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_OPEN_HELP));
         }
         ImGui.end();
     }
@@ -339,18 +342,24 @@ public final class GraphEditorView {
 
     private void renderVfxPreviewPanel(Path path) {
         ImGui.beginChild("##graph-vfx-preview", 0.0f, 0.0f, true);
-        ImGui.textDisabled("Effect Preview");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_EFFECT_PREVIEW));
         vfxPreview.render(path);
         ImGui.endChild();
     }
 
     private void renderPanelToggles(OpenGraph graph) {
-        if (ImGui.smallButton(sidePanelVisible ? "< Panel" : "> Panel")) {
+        TextKey sidePanelKey = sidePanelVisible
+                ? TextKey.EDITOR_GRAPH_EDITOR_VIEW_SIDE_PANEL_HIDDEN
+                : TextKey.EDITOR_GRAPH_EDITOR_VIEW_SIDE_PANEL_VISIBLE;
+        if (ImGui.smallButton(I18n.label(sidePanelKey, "graph-side-panel-toggle"))) {
             sidePanelVisible = !sidePanelVisible;
         }
         if (hasPreview(graph.asset.kind())) {
             ImGui.sameLine();
-            if (ImGui.smallButton(previewPanelVisible ? "Preview >" : "Preview <")) {
+            TextKey previewPanelKey = previewPanelVisible
+                    ? TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW_PANEL_VISIBLE
+                    : TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW_PANEL_HIDDEN;
+            if (ImGui.smallButton(I18n.label(previewPanelKey, "graph-preview-panel-toggle"))) {
                 previewPanelVisible = !previewPanelVisible;
             }
         }
@@ -375,7 +384,7 @@ public final class GraphEditorView {
 
     private void renderPreviewPanel(Path path, OpenGraph graph) {
         ImGui.beginChild("##graph-preview", 0.0f, 0.0f, true);
-        ImGui.textDisabled("Preview");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW));
         renderMeshSelector(path, graph);
         renderMainPreviewImage(path, graph);
         renderPreviewToggles();
@@ -385,10 +394,12 @@ public final class GraphEditorView {
     private void renderMainPreviewImage(Path path, OpenGraph graph) {
         previews.mainPreviewTexture(path, graph.asset, System.nanoTime())
                 .ifPresentOrElse(this::drawMainPreview,
-                        () -> ImGui.textDisabled("Building preview..."));
+                        () -> ImGui.textDisabled(I18n.translate(
+                                TextKey.EDITOR_GRAPH_EDITOR_VIEW_BUILDING_PREVIEW)));
         previews.mainErrorMessage().ifPresent(message -> {
             ImGui.pushTextWrapPos(0.0f);
-            ImGui.textColored(COLOR_PREVIEW_ERROR, "Compile error: " + message);
+            ImGui.textColored(COLOR_PREVIEW_ERROR,
+                    I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_COMPILE_ERROR, message));
             ImGui.popTextWrapPos();
         });
     }
@@ -421,41 +432,45 @@ public final class GraphEditorView {
         if (!ImGui.beginCombo("##preview-mesh", meshLabel(current))) {
             return;
         }
-        selectMeshItem(path, "Sphere", ShaderGraphPreviewService.SPHERE_MESH, current);
-        selectMeshItem(path, "Cube", ShaderGraphPreviewService.CUBE_MESH, current);
-        selectMeshItem(path, "Plane", ShaderGraphPreviewService.PLANE_MESH, current);
-        if (ImGui.selectable(PROJECT_MESH_LABEL)) {
+        selectMeshItem(path, TextKey.EDITOR_GRAPH_EDITOR_VIEW_MESH_SPHERE,
+                ShaderGraphPreviewService.SPHERE_MESH, current);
+        selectMeshItem(path, TextKey.EDITOR_GRAPH_EDITOR_VIEW_MESH_CUBE,
+                ShaderGraphPreviewService.CUBE_MESH, current);
+        selectMeshItem(path, TextKey.EDITOR_GRAPH_EDITOR_VIEW_MESH_PLANE,
+                ShaderGraphPreviewService.PLANE_MESH, current);
+        if (ImGui.selectable(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PROJECT_MESH, PROJECT_MESH_ID))) {
             assetPicker.open(UploadedMesh.class, picked -> previews.setMeshPath(path, picked));
         }
         ImGui.endCombo();
     }
 
-    private void selectMeshItem(Path path, String label, String meshPath, String current) {
-        if (ImGui.selectable(label, meshPath.equals(current))) {
+    private void selectMeshItem(Path path, TextKey key, String meshPath, String current) {
+        if (ImGui.selectable(I18n.label(key, "preview-mesh-" + meshPath), meshPath.equals(current))) {
             previews.setMeshPath(path, meshPath);
         }
     }
 
     private static String meshLabel(String meshPath) {
         if (meshPath.equals(ShaderGraphPreviewService.SPHERE_MESH)) {
-            return "Sphere";
+            return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_MESH_SPHERE);
         }
         if (meshPath.equals(ShaderGraphPreviewService.CUBE_MESH)) {
-            return "Cube";
+            return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_MESH_CUBE);
         }
         if (meshPath.equals(ShaderGraphPreviewService.PLANE_MESH)) {
-            return "Plane";
+            return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_MESH_PLANE);
         }
         return Path.of(meshPath).getFileName().toString();
     }
 
     private void renderPreviewToggles() {
         ImBoolean enabled = new ImBoolean(nodePreviewsEnabled.getAsBoolean());
-        if (ImGui.checkbox("Node previews", enabled)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODE_PREVIEWS,
+                "graph-node-previews"), enabled)) {
             onNodePreviewsToggled.accept(enabled.get());
         }
-        ImGui.textDisabled("Live targets: " + previews.liveNodeTargetCount()
-                + " / " + NodePreviewCache.MAX_LIVE_TARGETS);
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_LIVE_TARGETS,
+                previews.liveNodeTargetCount(), NodePreviewCache.MAX_LIVE_TARGETS));
     }
 
     private void handleSaveShortcut(Path path, OpenGraph graph) {
@@ -469,10 +484,11 @@ public final class GraphEditorView {
         try {
             codec.writeToFile(graph.asset, path);
             graph.dirty = false;
-            notifier.show("Saved " + path.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_SAVED, path.getFileName()));
             writeGeneratedShader(path, graph);
         } catch (IOException error) {
-            notifier.show("Graph save failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_GRAPH_SAVE_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -484,13 +500,15 @@ public final class GraphEditorView {
         try {
             source = new ShaderGraphCompiler().compile(graph.asset, path.getFileName().toString());
         } catch (EpysiaException error) {
-            notifier.show("Shader graph compile failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_SHADER_GRAPH_COMPILE_FAILED,
+                    error.getMessage()));
             return;
         }
         Path generatedFile = generatedShaderPath(path, graph.asset);
         Files.writeString(generatedFile, source);
         onGeneratedShaderSaved.accept(generatedFile);
-        notifier.show("Generated " + generatedFile.getFileName());
+        notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_GENERATED,
+                generatedFile.getFileName()));
     }
 
     private static Path generatedShaderPath(Path graphPath, GraphAsset asset) {
@@ -516,22 +534,24 @@ public final class GraphEditorView {
 
     private void renderPanelActions(Path path, OpenGraph graph) {
         ImGui.textDisabled(kindLabel(graph.asset.kind()));
-        if (ImGui.button("Save", -1.0f, 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_SAVE, "graph-save"), -1.0f, 0.0f)) {
             save(path, graph);
         }
-        if (ImGui.button("Center View", -1.0f, 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_CENTER_VIEW,
+                "graph-center-view"), -1.0f, 0.0f)) {
             centerViewRequested = true;
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Middle-click drag pans the canvas");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_CENTER_VIEW_TOOLTIP));
         }
-        if (ImGui.button("Add Node", -1.0f, 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_NODE,
+                "graph-add-node"), -1.0f, 0.0f)) {
             nodeSearchRequested = true;
         }
     }
 
     private void renderVariablesSection(OpenGraph graph) {
-        ImGui.textDisabled("Variables");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_VARIABLES));
         int removeIndex = -1;
         for (int index = 0; index < graph.asset.variables().size(); index++) {
             if (renderVariableRow(graph, index)) {
@@ -539,15 +559,16 @@ public final class GraphEditorView {
             }
         }
         removeVariableIfRequested(graph, removeIndex);
-        if (ImGui.button("Add Variable", -1.0f, 0.0f)) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_VARIABLE,
+                "graph-add-variable"), -1.0f, 0.0f)) {
             addVariable(graph);
         }
     }
 
     private void renderPalettePanel(OpenGraph graph) {
         ImGui.separator();
-        ImGui.textDisabled("Nodes");
-        ImGui.textDisabled("Click to add, or drag onto the canvas");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES_HELP));
         dockedPalette.render(0.0f, 0.0f, graph.asset, registry,
                 entry -> spawnPaletteEntry(graph, entry, panelSpawnX(), panelSpawnY()));
     }
@@ -562,16 +583,16 @@ public final class GraphEditorView {
 
     private static String kindLabel(GraphKind kind) {
         return switch (kind) {
-            case LOGIC -> "Logic Graph";
-            case STATE_MACHINE -> "State Machine";
-            case SHADER_SURFACE -> "Surface Shader Graph";
-            case SHADER_POST -> "Post Effect Shader Graph";
-            case VFX -> "VFX Graph";
+            case LOGIC -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_KIND_LOGIC);
+            case STATE_MACHINE -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_KIND_STATE_MACHINE);
+            case SHADER_SURFACE -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_KIND_SURFACE_SHADER);
+            case SHADER_POST -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_KIND_POST_EFFECT_SHADER);
+            case VFX -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_KIND_VFX);
         };
     }
 
     private void renderShaderPanel(Path path, OpenGraph graph) {
-        ImGui.textDisabled("Parameters");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PARAMETERS));
         boolean anyParameter = false;
         for (GraphNode node : graph.asset.nodes()) {
             if (node.typeKey().startsWith("shader.parameter.")) {
@@ -580,21 +601,22 @@ public final class GraphEditorView {
             }
         }
         if (!anyParameter) {
-            ImGui.textDisabled("Add Parameter nodes to expose values.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_PARAMETER_HELP));
         }
         ImGui.separator();
-        ImGui.textDisabled("Generated file:");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_GENERATED_FILE));
         ImGui.textWrapped(generatedShaderPath(path, graph.asset).getFileName().toString());
     }
 
     private static String parameterLabel(GraphNode node) {
         String name = GraphValues.asString(node.values().getOrDefault(ShaderNodes.NAME_SETTING, ""));
         String kind = switch (node.typeKey()) {
-            case ShaderNodes.PARAMETER_FLOAT -> "Float";
-            case ShaderNodes.PARAMETER_COLOR -> "Color";
-            default -> "Texture";
+            case ShaderNodes.PARAMETER_FLOAT -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PARAMETER_FLOAT);
+            case ShaderNodes.PARAMETER_COLOR -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PARAMETER_COLOR);
+            default -> I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PARAMETER_TEXTURE);
         };
-        return (name.isEmpty() ? "(unnamed)" : name) + "  [" + kind + "]";
+        return (name.isEmpty() ? I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_UNNAMED) : name)
+                + "  [" + kind + "]";
     }
 
     private void removeVariableIfRequested(OpenGraph graph, int removeIndex) {
@@ -622,12 +644,14 @@ public final class GraphEditorView {
         renderVariableType(graph, variable);
         renderVariableDefault(graph, variable);
         boolean exposed = variable.exposed();
-        if (ImGui.checkbox("Exposed", exposed)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_EXPOSED,
+                "graph-variable-exposed"), exposed)) {
             variable.setExposed(!exposed);
             graph.dirty = true;
         }
         ImGui.sameLine();
-        boolean removeRequested = ImGui.smallButton("Remove");
+        boolean removeRequested = ImGui.smallButton(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_REMOVE,
+                "graph-variable-remove"));
         ImGui.separator();
         ImGui.popID();
         return removeRequested;
@@ -931,7 +955,7 @@ public final class GraphEditorView {
         ImGui.textUnformatted(titleOf(graph, node));
         if (StateNodes.isState(node) && StateNodes.markedInitial(node)) {
             ImGui.sameLine();
-            ImGui.textDisabled("[Initial]");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_INITIAL_MARKER));
         }
         debugInstance.ifPresent(instance -> renderTitleDebug(node, instance));
         ImNodes.endNodeTitleBar();
@@ -956,7 +980,8 @@ public final class GraphEditorView {
     }
 
     private void renderPreviewExpandButton(OpenGraph graph, GraphNode node) {
-        if (ImGui.smallButton("Show preview##" + node.id())) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_SHOW_PREVIEW,
+                "show-preview-" + node.id()))) {
             graph.collapsedPreviews.remove(node.id());
         }
     }
@@ -979,7 +1004,8 @@ public final class GraphEditorView {
 
     private void renderNodePreviewFallback(OpenGraph graph, GraphNode node, String pinName) {
         previews.nodeErrorMessage(graph.graphPath, node.id(), pinName)
-                .ifPresentOrElse(message -> ImGui.textColored(COLOR_PREVIEW_ERROR, "No preview"),
+                .ifPresentOrElse(message -> ImGui.textColored(COLOR_PREVIEW_ERROR,
+                                I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_PREVIEW)),
                         () -> ImGui.textDisabled("..."));
     }
 
@@ -1033,18 +1059,19 @@ public final class GraphEditorView {
 
     private String titleOf(OpenGraph graph, GraphNode node) {
         if (StateNodes.isState(node)) {
-            return "State: " + StateNodes.stateName(node);
+            return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_STATE_TITLE, StateNodes.stateName(node));
         }
         if (StateNodes.isTransition(node)) {
-            return "When " + StateNodes.conditionSummary(node);
+            return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TRANSITION_TITLE,
+                    StateNodes.conditionSummary(node));
         }
         String variableName = GraphValues.asString(
                 node.values().getOrDefault(BuiltinNodes.VARIABLE_NAME_SETTING, ""));
         if (node.typeKey().equals(BuiltinNodes.VARIABLE_GET)) {
-            return "Get " + variableName;
+            return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_GET_VARIABLE, variableName);
         }
         if (node.typeKey().equals(BuiltinNodes.VARIABLE_SET)) {
-            return "Set " + variableName;
+            return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_SET_VARIABLE, variableName);
         }
         return registry.find(node.typeKey()).map(NodeDefinition::displayName).orElse(node.typeKey());
     }
@@ -1064,7 +1091,8 @@ public final class GraphEditorView {
     private void renderStateSettings(OpenGraph graph, GraphNode node) {
         ImNodes.beginStaticAttribute(node.id() * PIN_STRIDE + SETTING_SLOT_OFFSET);
         renderStateNameSetting(graph, node);
-        if (ImGui.checkbox("Initial", StateNodes.markedInitial(node))) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_INITIAL,
+                "state-initial-" + node.id()), StateNodes.markedInitial(node))) {
             markInitial(graph, node);
         }
         ImNodes.endStaticAttribute();
@@ -1090,7 +1118,8 @@ public final class GraphEditorView {
     private void renderTransitionSettings(OpenGraph graph, GraphNode node) {
         ImNodes.beginStaticAttribute(node.id() * PIN_STRIDE + SETTING_SLOT_OFFSET);
         boolean always = StateNodes.alwaysTaken(node);
-        if (ImGui.checkbox("Always", always)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ALWAYS,
+                "transition-always-" + node.id()), always)) {
             node.values().put(StateNodes.ALWAYS_SETTING, !always);
             graph.dirty = true;
         }
@@ -1110,7 +1139,7 @@ public final class GraphEditorView {
     }
 
     private void renderPriorityRow(OpenGraph graph, GraphNode node) {
-        ImGui.textDisabled("Priority");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PRIORITY));
         ImGui.sameLine();
         renderWholeNumberSetting(graph, node, TRANSITION_PRIORITY_SETTING);
     }
@@ -1118,7 +1147,7 @@ public final class GraphEditorView {
     private void renderGenericSettings(OpenGraph graph, GraphNode node) {
         Optional<NodeDefinition> definition = registry.find(node.typeKey());
         if (definition.isEmpty()) {
-            ImGui.textDisabled("Unknown node type");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_UNKNOWN_NODE_TYPE));
             return;
         }
         List<NodeSetting> settings = definition.get().settings();
@@ -1171,7 +1200,7 @@ public final class GraphEditorView {
         thumbnails.get(path).ifPresentOrElse(
                 texture -> ImGui.image(texture, scaledWidth(TEXTURE_PREVIEW_SIZE),
                         scaledWidth(TEXTURE_PREVIEW_SIZE)),
-                () -> ImGui.textDisabled("No preview"));
+                () -> ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_PREVIEW)));
         ImNodes.endStaticAttribute();
     }
 
@@ -1555,7 +1584,8 @@ public final class GraphEditorView {
             return;
         }
         if (!input.pin().type().acceptsFrom(output.pin().type())) {
-            notifier.show("Incompatible pin types: " + output.pin().type() + " -> " + input.pin().type());
+            notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_INCOMPATIBLE_PIN_TYPES,
+                    output.pin().type(), input.pin().type()));
             return;
         }
         if (output.pin().type() == PinType.EXEC && !isTransitionsPin(output)) {
@@ -1646,7 +1676,8 @@ public final class GraphEditorView {
         ImNodes.getSelectedNodes(selected);
         for (int nodeId : selected) {
             if (isProtectedOutputNode(graph, nodeId)) {
-                notifier.show("The output node cannot be deleted");
+                notifier.show(I18n.translate(
+                        TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_OUTPUT_NODE_CANNOT_BE_DELETED));
                 continue;
             }
             graph.asset.removeNode(nodeId);
@@ -1695,7 +1726,8 @@ public final class GraphEditorView {
         try {
             handleCanvasDrops(graph, ImGui.getMousePosX(), ImGui.getMousePosY());
         } catch (RuntimeException error) {
-            notifier.show("Drop failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_DROP_FAILED,
+                    error.getMessage()));
         } finally {
             ImGui.endDragDropTarget();
         }
@@ -1719,7 +1751,7 @@ public final class GraphEditorView {
     private void reportUnsupportedDrop() {
         for (String mimeType : AssetMimeTypes.ALL) {
             if (ImGui.acceptDragDropPayload(mimeType, String.class) != null) {
-                notifier.show("Nothing to create from this asset on a graph canvas");
+                notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_UNSUPPORTED_DROP));
                 return;
             }
         }
@@ -1728,13 +1760,14 @@ public final class GraphEditorView {
     private void spawnTextureNode(OpenGraph graph, String texturePath, float dropX, float dropY) {
         Optional<String> typeKey = textureNodeTypeFor(graph.asset.kind());
         if (typeKey.isEmpty()) {
-            notifier.show("This graph has no texture node to create");
+            notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_NO_TEXTURE_NODE));
             return;
         }
         GraphNode node = spawnNodeAt(graph, typeKey.get(), dropX, dropY);
         node.values().put(texturePathSettingFor(typeKey.get()), texturePath);
         applyTextureParameterName(node, texturePath);
-        notifier.show("Added " + titleOf(graph, node) + " for " + Path.of(texturePath).getFileName());
+        notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_ADDED_NODE_FOR_ASSET,
+                titleOf(graph, node), Path.of(texturePath).getFileName()));
     }
 
     private Optional<String> textureNodeTypeFor(GraphKind kind) {

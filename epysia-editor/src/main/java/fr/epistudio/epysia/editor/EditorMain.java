@@ -11,6 +11,8 @@ import fr.epistudio.epysia.editor.ui.FrameView;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.ui.ProjectSelectorView;
 import fr.epistudio.epysia.gpu.GpuLauncher;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectQualityProperties;
 import fr.epistudio.epysia.project.ProjectStore;
@@ -130,7 +132,8 @@ public final class EditorMain {
         try {
             Files.createDirectories(layoutFile.getParent());
         } catch (IOException error) {
-            toasts.show("Could not prepare layout directory: " + error.getMessage());
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_MAIN_TOAST_LAYOUT_DIRECTORY_FAILED,
+                    error.getMessage()));
         }
         currentLayoutFile = layoutFile;
         ImGui.getIO().setIniFilename(layoutFile.toString());
