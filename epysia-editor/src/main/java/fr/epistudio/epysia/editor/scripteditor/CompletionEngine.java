@@ -31,6 +31,7 @@ public final class CompletionEngine {
             Pattern.compile("\\b[A-Za-z_][A-Za-z0-9_]{2,}\\b");
     private static final Pattern IMPORT_LINE_PATTERN =
             Pattern.compile("^\\s*import\\s+(static\\s+)?([A-Za-z0-9_.]*)$");
+    private static final String BEHAVIOUR_TYPE_NAME = "Behaviour";
     private static final int MAX_RESULTS = 50;
     private static final int MINIMUM_PREFIX_LENGTH = 2;
     private static final String IMPORT_STATEMENT_SUFFIX = ";";
@@ -55,17 +56,9 @@ public final class CompletionEngine {
         }
         String prefix = lineText.substring(start, end);
         if (start > 0 && lineText.charAt(start - 1) == '.') {
-            return new Context(prefix, Optional.of(receiverBefore(lineText, start - 1)));
+            return new Context(prefix, Optional.of(ReceiverChain.expressionBefore(lineText, start - 1)));
         }
         return new Context(prefix, Optional.empty());
-    }
-
-    private static String receiverBefore(String lineText, int dotIndex) {
-        int start = dotIndex;
-        while (start > 0 && isWordCharacter(lineText.charAt(start - 1))) {
-            start--;
-        }
-        return lineText.substring(start, dotIndex);
     }
 
     public boolean shouldTrigger(Context context) {
@@ -142,16 +135,37 @@ public final class CompletionEngine {
     }
 
     private List<CompletionSymbol> memberPool(String receiver, String fullText) {
-        if (symbols.knowsType(receiver)) {
-            return symbols.staticMembersOf(receiver);
+        List<String> segments = ReceiverChain.segmentsOf(receiver);
+        if (segments.size() == 1 && symbols.knowsType(segments.getFirst())) {
+            return symbols.staticMembersOf(segments.getFirst());
         }
-        Optional<String> declaredType = declaredTypeOf(receiver, fullText);
-        if (declaredType.isPresent() && symbols.knowsType(declaredType.get())) {
-            return symbols.instanceMembersOf(declaredType.get());
+        Optional<String> resolved = resolveChain(segments, fullText);
+        if (resolved.isPresent()) {
+            return symbols.instanceMembersOf(resolved.get());
         }
         return symbols.globalPool().stream()
                 .filter(symbol -> symbol.kind() != CompletionKind.KEYWORD)
                 .toList();
+    }
+
+    private Optional<String> resolveChain(List<String> segments, String fullText) {
+        Optional<String> currentType = rootTypeOf(segments.getFirst(), fullText);
+        for (int index = 1; index < segments.size() && currentType.isPresent(); index++) {
+            currentType = symbols.memberTypeOf(currentType.get(),
+                    ReceiverChain.memberNameOf(segments.get(index)));
+        }
+        return currentType.filter(symbols::knowsType);
+    }
+
+    private Optional<String> rootTypeOf(String segment, String fullText) {
+        String name = ReceiverChain.memberNameOf(segment);
+        if (symbols.knowsType(name)) {
+            return Optional.of(name);
+        }
+        if (segment.contains("(")) {
+            return symbols.memberTypeOf(BEHAVIOUR_TYPE_NAME, name);
+        }
+        return declaredTypeOf(name, fullText);
     }
 
     private static Optional<String> declaredTypeOf(String receiver, String fullText) {
@@ -222,7 +236,7 @@ public final class CompletionEngine {
         return matched == prefix.length();
     }
 
-    static boolean isWordCharacter(char character) {
+    public static boolean isWordCharacter(char character) {
         return Character.isLetterOrDigit(character) || character == '_';
     }
 }

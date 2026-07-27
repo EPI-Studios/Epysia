@@ -1,12 +1,7 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
 import fr.epistudio.epysia.EngineServices;
-import fr.epistudio.epysia.components.transforms.Transform3D;
-import fr.epistudio.epysia.gameobjects.GameObject;
-import fr.epistudio.epysia.input.InputState;
-import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
-import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.Behaviour;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
@@ -20,6 +15,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +24,8 @@ import java.util.StringJoiner;
 import java.util.TreeMap;
 
 public final class JavaSymbols {
+
+    private static final String ENGINE_PACKAGE = "fr.epistudio.epysia";
 
     private static final List<String> KEYWORDS = List.of(
             "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class",
@@ -38,45 +36,81 @@ public final class JavaSymbols {
             "this", "throw", "throws", "transient", "try", "var", "void", "volatile", "while",
             "yield", "true", "false", "null");
 
-    private static final List<Class<?>> CORE_CLASSES = List.of(
-            Behaviour.class, EngineServices.class, GameObject.class, Transform3D.class,
-            Scene.class, InputState.class, KeyCode.class,
+    private static final List<Class<?>> EXTRA_CLASSES = List.of(
             Vector2f.class, Vector3f.class, Vector4f.class,
             Matrix3f.class, Matrix4f.class, Quaternionf.class,
             String.class, Math.class, Optional.class, List.class, Map.class);
 
+    private final Map<String, Class<?>> typesBySimpleName = new TreeMap<>();
+    private final Map<String, String> qualifiedBySimpleName = new TreeMap<>();
     private final Map<String, List<CompletionSymbol>> instanceMembers = new HashMap<>();
     private final Map<String, List<CompletionSymbol>> staticMembers = new HashMap<>();
     private final List<CompletionSymbol> globalPool = new ArrayList<>();
-    private final Map<String, String> qualifiedBySimpleName = new TreeMap<>();
 
     public JavaSymbols(ComponentRegistry registry) {
-        List<Class<?>> classes = new ArrayList<>(CORE_CLASSES);
-        registry.entries().forEach(entry -> classes.add(entry.componentClass()));
-        classes.forEach(this::indexClass);
-        buildGlobalPool(classes);
+        indexAll(discoverTypes(registry));
+        buildGlobalPool();
     }
 
-    private void buildGlobalPool(List<Class<?>> classes) {
+    private static List<Class<?>> discoverTypes(ComponentRegistry registry) {
+        List<Class<?>> classes = new ArrayList<>(EXTRA_CLASSES);
+        classes.addAll(ClasspathTypeScanner.typesUnder(Behaviour.class, ENGINE_PACKAGE));
+        classes.addAll(ClasspathTypeScanner.typesUnder(EngineServices.class, ENGINE_PACKAGE));
+        registry.entries().forEach(entry -> classes.add(entry.componentClass()));
+        return classes;
+    }
+
+    private void indexAll(List<Class<?>> classes) {
+        for (Class<?> type : classes) {
+            typesBySimpleName.putIfAbsent(type.getSimpleName(), type);
+            qualifiedBySimpleName.putIfAbsent(type.getSimpleName(), type.getName());
+        }
+    }
+
+    private void buildGlobalPool() {
         for (String keyword : KEYWORDS) {
             globalPool.add(new CompletionSymbol(keyword, keyword, CompletionKind.KEYWORD));
         }
-        for (Class<?> type : classes) {
-            globalPool.add(new CompletionSymbol(type.getSimpleName(), type.getSimpleName(),
-                    CompletionKind.TYPE, Optional.of(type.getName())));
+        for (Map.Entry<String, Class<?>> entry : typesBySimpleName.entrySet()) {
+            globalPool.add(new CompletionSymbol(entry.getKey(), entry.getKey(),
+                    CompletionKind.TYPE, Optional.of(entry.getValue().getName())));
         }
         globalPool.addAll(instanceMembersOf(Behaviour.class.getSimpleName()));
     }
 
-    private void indexClass(Class<?> type) {
-        String name = type.getSimpleName();
-        instanceMembers.putIfAbsent(name, collectMembers(type, false));
-        staticMembers.putIfAbsent(name, collectMembers(type, true));
-        qualifiedBySimpleName.putIfAbsent(name, type.getName());
+    public List<CompletionSymbol> instanceMembersOf(String simpleTypeName) {
+        return membersOf(instanceMembers, simpleTypeName, false);
+    }
+
+    public List<CompletionSymbol> staticMembersOf(String simpleTypeName) {
+        return membersOf(staticMembers, simpleTypeName, true);
+    }
+
+    private List<CompletionSymbol> membersOf(Map<String, List<CompletionSymbol>> cache,
+                                             String simpleTypeName, boolean wantStatic) {
+        Class<?> type = typesBySimpleName.get(simpleTypeName);
+        if (type == null) {
+            return List.of();
+        }
+        return cache.computeIfAbsent(simpleTypeName, ignored -> collectMembers(type, wantStatic));
+    }
+
+    public Optional<String> memberTypeOf(String simpleTypeName, String memberName) {
+        for (CompletionSymbol symbol : instanceMembersOf(simpleTypeName)) {
+            if (symbol.name().equals(memberName)) {
+                return symbol.memberTypeName();
+            }
+        }
+        for (CompletionSymbol symbol : staticMembersOf(simpleTypeName)) {
+            if (symbol.name().equals(memberName)) {
+                return symbol.memberTypeName();
+            }
+        }
+        return Optional.empty();
     }
 
     private static List<CompletionSymbol> collectMembers(Class<?> type, boolean wantStatic) {
-        Map<String, CompletionSymbol> byLabel = new TreeMap<>();
+        Map<String, CompletionSymbol> byLabel = new LinkedHashMap<>();
         for (Method method : type.getMethods()) {
             boolean matchesStaticness = Modifier.isStatic(method.getModifiers()) == wantStatic;
             if (method.getDeclaringClass() != Object.class && matchesStaticness) {
@@ -86,11 +120,15 @@ public final class JavaSymbols {
         }
         for (Field field : type.getFields()) {
             if (Modifier.isStatic(field.getModifiers()) == wantStatic) {
-                byLabel.putIfAbsent(field.getName(),
-                        new CompletionSymbol(field.getName(), field.getName(), CompletionKind.FIELD));
+                byLabel.putIfAbsent(field.getName(), fieldSymbol(field));
             }
         }
-        return List.copyOf(byLabel.values());
+        return List.copyOf(new TreeMap<>(byLabel).values());
+    }
+
+    private static CompletionSymbol fieldSymbol(Field field) {
+        return new CompletionSymbol(field.getName(), field.getName(), CompletionKind.FIELD,
+                Optional.empty(), Optional.of(field.getType().getSimpleName()));
     }
 
     private static CompletionSymbol methodSymbol(Method method) {
@@ -102,23 +140,16 @@ public final class JavaSymbols {
         String insertText = method.getParameterCount() == 0
                 ? method.getName() + "()"
                 : method.getName() + "(";
-        return new CompletionSymbol(label, insertText, CompletionKind.METHOD);
-    }
-
-    public List<CompletionSymbol> instanceMembersOf(String simpleTypeName) {
-        return instanceMembers.getOrDefault(simpleTypeName, List.of());
-    }
-
-    public List<CompletionSymbol> staticMembersOf(String simpleTypeName) {
-        return staticMembers.getOrDefault(simpleTypeName, List.of());
+        return new CompletionSymbol(label, insertText, CompletionKind.METHOD,
+                Optional.empty(), Optional.of(method.getReturnType().getSimpleName()));
     }
 
     public boolean knowsType(String simpleTypeName) {
-        return instanceMembers.containsKey(simpleTypeName);
+        return typesBySimpleName.containsKey(simpleTypeName);
     }
 
     public Set<String> typeNames() {
-        return Set.copyOf(instanceMembers.keySet());
+        return Set.copyOf(typesBySimpleName.keySet());
     }
 
     public List<String> qualifiedTypeNames() {

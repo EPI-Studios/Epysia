@@ -6,6 +6,8 @@ import fr.epistudio.epysia.editor.scripteditor.CompletionEngine;
 import fr.epistudio.epysia.editor.scripteditor.CompletionKind;
 import fr.epistudio.epysia.editor.scripteditor.CompletionPopup;
 import fr.epistudio.epysia.editor.scripteditor.CompletionSymbol;
+import fr.epistudio.epysia.editor.scripteditor.DelimiterAutoClose;
+import fr.epistudio.epysia.editor.scripteditor.SourceIndent;
 import fr.epistudio.epysia.editor.scripteditor.ImportPlanner;
 import fr.epistudio.epysia.editor.scripteditor.JavaLanguageDefinition;
 import fr.epistudio.epysia.editor.scripteditor.JavaSymbols;
@@ -79,10 +81,15 @@ public final class ScriptEditorView {
     private final Map<Path, OpenScript> openScripts = new LinkedHashMap<>();
     private final List<Diagnostic> diagnostics = new ArrayList<>();
     private final TextEditorCoordinates cursorCoordinates = new TextEditorCoordinates();
+    private final DelimiterAutoClose autoClose = new DelimiterAutoClose();
     private Path focusRequest;
     private boolean windowFocusRequest;
     private boolean markersDirty;
     private boolean selectionDragActive;
+    private boolean keyboardGateOpen = true;
+    private boolean pendingEnter;
+    private boolean pendingWordDelete;
+    private boolean windowFocused;
 
     public ScriptEditorView(ComponentRegistry componentRegistry, Notifier notifier, Consumer<Path> onSaved) {
         this.notifier = notifier;
@@ -167,6 +174,10 @@ public final class ScriptEditorView {
         }
     }
 
+    public boolean isFocused() {
+        return windowFocused;
+    }
+
     public void render() {
         if (openScripts.isEmpty()) {
             renderEmptyWindow();
@@ -180,15 +191,18 @@ public final class ScriptEditorView {
             windowFocusRequest = false;
         }
         if (!ImGui.begin(WINDOW_TITLE)) {
+            windowFocused = false;
             ImGui.end();
             completionPopup.hide();
             return;
         }
+        windowFocused = ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
         renderTabs();
         ImGui.end();
     }
 
     private void renderEmptyWindow() {
+        windowFocused = false;
         if (ImGui.begin(WINDOW_TITLE)) {
             ImGui.textDisabled("No script open.");
             ImGui.textDisabled("Double-click a script in the asset browser.");
@@ -250,6 +264,8 @@ public final class ScriptEditorView {
         handleSaveShortcut(path, script);
         boolean forceCompletion = isCompletionShortcutPressed();
         gateEditorKeyboard(script);
+        pendingEnter = claimSmartEnter(script);
+        pendingWordDelete = !pendingEnter && claimWordDelete(script);
         float editorHeight = Math.max(MINIMUM_EDITOR_HEIGHT,
                 ImGui.getContentRegionAvailY() - diagnosticsHeightFor(path));
         renderEditorChild(path, script, editorHeight, forceCompletion);
@@ -259,13 +275,38 @@ public final class ScriptEditorView {
 
     private void gateEditorKeyboard(OpenScript script) {
         CompletionPopup.KeyAction action = completionPopup.handleKeys();
-        script.editor().setHandleKeyboardInputs(action == CompletionPopup.KeyAction.NONE);
+        keyboardGateOpen = action == CompletionPopup.KeyAction.NONE;
+        script.editor().setHandleKeyboardInputs(keyboardGateOpen);
         if (action == CompletionPopup.KeyAction.ACCEPT) {
             completionPopup.selected().ifPresent(symbol -> acceptCompletion(script, symbol));
         }
         if (action == CompletionPopup.KeyAction.CLOSE) {
             completionPopup.hide();
         }
+    }
+
+    private boolean claimSmartEnter(OpenScript script) {
+        if (!keyboardGateOpen || ImGui.getIO().getKeyCtrl() || !isEnterPressed()
+                || !ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)) {
+            return false;
+        }
+        script.editor().setHandleKeyboardInputs(false);
+        return true;
+    }
+
+    private boolean claimWordDelete(OpenScript script) {
+        if (!keyboardGateOpen || !ImGui.getIO().getKeyCtrl()
+                || !ImGui.isKeyPressed(ImGuiKey.Backspace, false)
+                || !ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)) {
+            return false;
+        }
+        script.editor().setHandleKeyboardInputs(false);
+        return true;
+    }
+
+    private static boolean isEnterPressed() {
+        return ImGui.isKeyPressed(ImGuiKey.Enter, false)
+                || ImGui.isKeyPressed(ImGuiKey.KeypadEnter, false);
     }
 
     private void renderEditorChild(Path path, OpenScript script, float height, boolean forceCompletion) {
@@ -280,16 +321,89 @@ public final class ScriptEditorView {
         EditorStyle.monospaceFont().ifPresent(ImGui::pushFont);
         editor.render("##texteditor-" + path);
         EditorStyle.monospaceFont().ifPresent(ignored -> ImGui.popFont());
-        autoScrollWhileSelecting(editorOriginY, height);
+        autoScrollWhileSelecting();
         handleEditorShortcuts(script);
         boolean textChanged = editor.isTextChanged();
         boolean cursorMoved = editor.isCursorPositionChanged();
         if (textChanged) {
             script.markDirty();
         }
+        if (pendingEnter) {
+            insertSmartNewLine(script);
+            textChanged = true;
+        } else if (pendingWordDelete) {
+            deletePreviousWord(script);
+            textChanged = true;
+        } else {
+            applyAutoClose(script);
+        }
         updateCompletion(editor, textChanged, cursorMoved, forceCompletion);
         renderAssetDropOverlay(script, editorOriginX, editorOriginY, editorWidth, height);
         ImGui.endChild();
+    }
+
+    private void insertSmartNewLine(OpenScript script) {
+        TextEditor editor = script.editor();
+        editor.getCursorPosition(cursorCoordinates);
+        String lineText = editor.getCurrentLineText();
+        int cursorIndex = characterIndexForColumn(lineText, cursorCoordinates.mColumn);
+        String indent = SourceIndent.forNewLineAfter(
+                textBeforeCursor(editor, cursorCoordinates.mLine, lineText, cursorIndex));
+        editor.insertText("\n" + indent);
+        expandBlockIfClosingFollows(editor, lineText, cursorIndex, indent);
+        autoClose.forget();
+        script.markDirty();
+    }
+
+    private void expandBlockIfClosingFollows(TextEditor editor, String lineText, int cursorIndex,
+                                             String indent) {
+        if (cursorIndex >= lineText.length() || lineText.charAt(cursorIndex) != '}') {
+            return;
+        }
+        editor.getCursorPosition(cursorCoordinates);
+        int openedLine = cursorCoordinates.mLine;
+        int openedColumn = cursorCoordinates.mColumn;
+        editor.insertText("\n" + SourceIndent.indentOf(indent.length() - 1));
+        editor.setCursorPosition(openedLine, openedColumn);
+    }
+
+    private static String textBeforeCursor(TextEditor editor, int line, String lineText, int cursorIndex) {
+        StringBuilder builder = new StringBuilder();
+        String[] lines = editor.getTextLines();
+        for (int index = 0; index < line && index < lines.length; index++) {
+            builder.append(lines[index]).append('\n');
+        }
+        builder.append(lineText, 0, Math.min(cursorIndex, lineText.length()));
+        return builder.toString();
+    }
+
+    private void applyAutoClose(OpenScript script) {
+        TextEditor editor = script.editor();
+        editor.getCursorPosition(cursorCoordinates);
+        String lineText = editor.getCurrentLineText();
+        int cursorIndex = characterIndexForColumn(lineText, cursorCoordinates.mColumn);
+        DelimiterAutoClose.Decision decision =
+                autoClose.observe(cursorCoordinates.mLine, cursorIndex, lineText);
+        switch (decision.action()) {
+            case INSERT_CLOSER -> insertCloser(editor, decision.closer());
+            case SKIP_CLOSER -> skipCloser(editor);
+            case NONE -> {
+            }
+        }
+    }
+
+    private void insertCloser(TextEditor editor, String closer) {
+        int line = cursorCoordinates.mLine;
+        int column = cursorCoordinates.mColumn;
+        editor.insertText(closer);
+        editor.setCursorPosition(line, column);
+    }
+
+    private void skipCloser(TextEditor editor) {
+        int line = cursorCoordinates.mLine;
+        editor.setSelection(line, cursorCoordinates.mColumn, line, cursorCoordinates.mColumn + 1);
+        editor.delete();
+        editor.setCursorPosition(line, cursorCoordinates.mColumn);
     }
 
     private void handleEditorShortcuts(OpenScript script) {
@@ -315,10 +429,52 @@ public final class ScriptEditorView {
             editor.paste();
             script.markDirty();
         }
+        if (ImGui.isKeyPressed(ImGuiKey.Z)) {
+            editor.undo();
+            script.markDirty();
+        }
         if (ImGui.isKeyPressed(ImGuiKey.Y)) {
             editor.redo();
             script.markDirty();
         }
+    }
+
+    private void deletePreviousWord(OpenScript script) {
+        TextEditor editor = script.editor();
+        editor.getCursorPosition(cursorCoordinates);
+        String lineText = editor.getCurrentLineText();
+        int cursorIndex = characterIndexForColumn(lineText, cursorCoordinates.mColumn);
+        int wordStart = wordStartBefore(lineText, cursorIndex);
+        if (wordStart == cursorIndex) {
+            return;
+        }
+        editor.setSelection(cursorCoordinates.mLine, columnForCharacterIndex(lineText, wordStart),
+                cursorCoordinates.mLine, cursorCoordinates.mColumn);
+        editor.delete();
+        autoClose.forget();
+        script.markDirty();
+    }
+
+    private static int wordStartBefore(String lineText, int cursorIndex) {
+        int index = Math.min(cursorIndex, lineText.length());
+        while (index > 0 && Character.isWhitespace(lineText.charAt(index - 1))) {
+            index--;
+        }
+        if (index > 0 && !CompletionEngine.isWordCharacter(lineText.charAt(index - 1))) {
+            return index - 1;
+        }
+        while (index > 0 && CompletionEngine.isWordCharacter(lineText.charAt(index - 1))) {
+            index--;
+        }
+        return index;
+    }
+
+    private static int columnForCharacterIndex(String lineText, int characterIndex) {
+        int column = 0;
+        for (int index = 0; index < characterIndex && index < lineText.length(); index++) {
+            column = lineText.charAt(index) == '\t' ? (column / TAB_SIZE + 1) * TAB_SIZE : column + 1;
+        }
+        return column;
     }
 
     private void claimKeyboardFocusOnClick() {
@@ -331,19 +487,27 @@ public final class ScriptEditorView {
         }
     }
 
-    private void autoScrollWhileSelecting(float originY, float height) {
+    private void autoScrollWhileSelecting() {
         if (!selectionDragActive || !ImGui.isMouseDown(ImGuiMouseButton.Left)) {
             return;
         }
-        float mouseY = ImGui.getMousePosY();
-        float aboveTop = originY - mouseY;
-        float belowBottom = mouseY - (originY + height);
-        float overshoot = aboveTop > 0.0f ? -aboveTop : Math.max(belowBottom, 0.0f);
+        float overshoot = verticalOvershoot(ImGui.getMousePosY(), ImGui.getWindowPosY(),
+                ImGui.getWindowPosY() + ImGui.getWindowSizeY());
         if (overshoot == 0.0f) {
             return;
         }
         float clamped = Math.copySign(Math.min(Math.abs(overshoot), MAXIMUM_AUTOSCROLL_OVERSHOOT), overshoot);
         ImGui.setScrollY(Math.max(0.0f, ImGui.getScrollY() + clamped * AUTOSCROLL_SPEED));
+    }
+
+    private static float verticalOvershoot(float mouseY, float top, float bottom) {
+        if (mouseY < top) {
+            return mouseY - top;
+        }
+        if (mouseY > bottom) {
+            return mouseY - bottom;
+        }
+        return 0.0f;
     }
 
     private void renderAssetDropOverlay(OpenScript script, float originX, float originY,
