@@ -42,6 +42,7 @@ import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -60,6 +61,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private static final float RESTING_DISPLACEMENT_SQUARED = 1.0e-8f;
 
     private final Vector3f defaultGravity = new Vector3f(0.0f, -9.81f, 0.0f);
+    private Set<GameObject> residentSnapshot;
+    private long residentModificationCount = -1L;
     private float worldFloorY = DEFAULT_WORLD_FLOOR_Y;
     private final Vector3f scratchPosition = new Vector3f();
     private final Quaternionf scratchRotation = new Quaternionf();
@@ -79,6 +82,13 @@ public final class PhysicsSystem implements IPhysicsSystem {
         this.services = services;
         world = new Box3dPhysicsWorld();
         world.setGravity(defaultGravity);
+    }
+
+    public void setGravity(float x, float y, float z) {
+        defaultGravity.set(x, y, z);
+        if (world != null) {
+            world.setGravity(defaultGravity);
+        }
     }
 
     public void setCollisionLayers(CollisionLayers layers) {
@@ -123,45 +133,87 @@ public final class PhysicsSystem implements IPhysicsSystem {
     }
 
     private void registerSceneBodies(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
+        for (GameObject gameObject : physicsCandidates(scene)) {
             ensureRegistered(gameObject);
             ensureRegistered2D(gameObject);
         }
     }
 
+    private Collection<GameObject> physicsCandidates(Scene scene) {
+        Set<GameObject> candidates = new LinkedHashSet<>();
+        collectOwners(scene, RigidBodyComponent.class, candidates);
+        collectOwners(scene, Collider.class, candidates);
+        collectOwners(scene, RigidBody2D.class, candidates);
+        collectOwners(scene, Collider2D.class, candidates);
+        return candidates;
+    }
+
+    private void collectOwners(Scene scene, Class<? extends IComponent> type, Set<GameObject> owners) {
+        for (IComponent component : scene.componentsOf(type)) {
+            GameObject owner = component.ownerOrNull();
+            if (owner != null) {
+                owners.add(owner);
+            }
+        }
+    }
+
     private void syncKinematicBodiesToPhysics(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(RigidBodyComponent.class).ifPresent(rigidBody ->
-                    syncRigidBodyToPhysics(gameObject, rigidBody));
-            gameObject.getComponent(RigidBody2D.class).ifPresent(rigidBody ->
-                    syncRigidBody2DToPhysics(gameObject, rigidBody));
+        for (RigidBodyComponent rigidBody : scene.componentsOf(RigidBodyComponent.class)) {
+            GameObject owner = rigidBody.ownerOrNull();
+            if (owner != null) {
+                syncRigidBodyToPhysics(owner, rigidBody);
+            }
+        }
+        for (RigidBody2D rigidBody : scene.componentsOf(RigidBody2D.class)) {
+            GameObject owner = rigidBody.ownerOrNull();
+            if (owner != null) {
+                syncRigidBody2DToPhysics(owner, rigidBody);
+            }
         }
     }
 
     private void ensureCharacterControllers(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(CharacterControllerComponent.class).ifPresent(controller ->
-                    ensureCharacterController(gameObject, controller));
-            gameObject.getComponent(CharacterController2D.class).ifPresent(controller ->
-                    ensureCharacterController2D(gameObject, controller));
+        for (CharacterControllerComponent controller : scene.componentsOf(CharacterControllerComponent.class)) {
+            GameObject owner = controller.ownerOrNull();
+            if (owner != null) {
+                ensureCharacterController(owner, controller);
+            }
+        }
+        for (CharacterController2D controller : scene.componentsOf(CharacterController2D.class)) {
+            GameObject owner = controller.ownerOrNull();
+            if (owner != null) {
+                ensureCharacterController2D(owner, controller);
+            }
         }
     }
 
     private void pullDynamicTransforms(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(RigidBodyComponent.class).ifPresent(rigidBody ->
-                    pullDynamicTransform(gameObject, rigidBody));
-            gameObject.getComponent(RigidBody2D.class).ifPresent(rigidBody ->
-                    pullDynamicTransform2D(gameObject, rigidBody));
+        for (RigidBodyComponent rigidBody : scene.componentsOf(RigidBodyComponent.class)) {
+            GameObject owner = rigidBody.ownerOrNull();
+            if (owner != null) {
+                pullDynamicTransform(owner, rigidBody);
+            }
+        }
+        for (RigidBody2D rigidBody : scene.componentsOf(RigidBody2D.class)) {
+            GameObject owner = rigidBody.ownerOrNull();
+            if (owner != null) {
+                pullDynamicTransform2D(owner, rigidBody);
+            }
         }
     }
 
     private void stepCharacterControllers(Scene scene, float deltaTimeSeconds) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(CharacterControllerComponent.class).ifPresent(controller ->
-                    stepCharacterController(gameObject, controller, deltaTimeSeconds));
-            gameObject.getComponent(CharacterController2D.class).ifPresent(controller ->
-                    stepCharacterController2D(gameObject, controller, deltaTimeSeconds));
+        for (CharacterControllerComponent controller : scene.componentsOf(CharacterControllerComponent.class)) {
+            GameObject owner = controller.ownerOrNull();
+            if (owner != null) {
+                stepCharacterController(owner, controller, deltaTimeSeconds);
+            }
+        }
+        for (CharacterController2D controller : scene.componentsOf(CharacterController2D.class)) {
+            GameObject owner = controller.ownerOrNull();
+            if (owner != null) {
+                stepCharacterController2D(owner, controller, deltaTimeSeconds);
+            }
         }
     }
 
@@ -538,8 +590,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (bodyOwners.isEmpty()) {
             return;
         }
-        Set<GameObject> resident = Collections.newSetFromMap(new IdentityHashMap<>());
-        resident.addAll(scene.gameObjects());
+        Set<GameObject> resident = residentObjects(scene);
         Iterator<Map.Entry<Long, GameObject>> entries = bodyOwners.entrySet().iterator();
         while (entries.hasNext()) {
             Map.Entry<Long, GameObject> entry = entries.next();
@@ -550,19 +601,27 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
     }
 
+    private Set<GameObject> residentObjects(Scene scene) {
+        if (residentSnapshot == null || residentModificationCount != scene.modificationCount()) {
+            residentSnapshot = Collections.newSetFromMap(new IdentityHashMap<>());
+            residentSnapshot.addAll(scene.gameObjects());
+            residentModificationCount = scene.modificationCount();
+        }
+        return residentSnapshot;
+    }
+
     private void removeBodiesBelowWorldFloor(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(RigidBodyComponent.class).ifPresent(rigidBody -> {
-                if (rigidBody.kind() != RigidBodyKind.DYNAMIC || !rigidBody.handle().isValid()) {
-                    return;
-                }
-                float bodyY = world.getBodyPose(rigidBody.handle()).position().y();
-                if (bodyY < worldFloorY) {
-                    services.logger().warn("[PhysicsSystem] Removing " + gameObject.name()
-                            + " — fell below the world floor (y=" + bodyY + ")");
-                    scene.removeGameObject(gameObject);
-                }
-            });
+        for (RigidBodyComponent rigidBody : List.copyOf(scene.componentsOf(RigidBodyComponent.class))) {
+            GameObject gameObject = rigidBody.ownerOrNull();
+            if (gameObject == null || rigidBody.kind() != RigidBodyKind.DYNAMIC || !rigidBody.handle().isValid()) {
+                continue;
+            }
+            float bodyY = world.getBodyPose(rigidBody.handle()).position().y();
+            if (bodyY < worldFloorY) {
+                services.logger().warn("[PhysicsSystem] Removing " + gameObject.name()
+                        + ", fell below the world floor (y=" + bodyY + ")");
+                scene.removeGameObject(gameObject);
+            }
         }
     }
 

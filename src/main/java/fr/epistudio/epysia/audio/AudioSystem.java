@@ -192,19 +192,16 @@ public final class AudioSystem implements GameSystem {
     }
 
     private AudioListenerComponent findListener(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            var listener = gameObject.getComponent(AudioListenerComponent.class);
-            if (listener.isPresent()) {
-                return listener.get();
-            }
+        for (AudioListenerComponent listener : scene.componentsOf(AudioListenerComponent.class)) {
+            return listener;
         }
         return null;
     }
 
     private void updateComponentSources(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(AudioSourceComponent.class).ifPresent(component ->
-                    updateComponent(component, gameObject.getComponent(Transform3D.class).orElse(null)));
+        for (AudioSourceComponent component : scene.componentsOf(AudioSourceComponent.class)) {
+            GameObject owner = component.ownerOrNull();
+            updateComponent(component, owner == null ? null : owner.getComponentOrNull(Transform3D.class));
         }
     }
 

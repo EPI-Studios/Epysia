@@ -27,11 +27,7 @@ public final class UiInputSystem implements GameSystem {
         float cursorY = scaleCursor(input.cursorY(), window.framebufferHeight(), window.height());
         boolean mouseDown = input.isMouseButtonDown(MouseButton.LEFT);
         UiButton hovered = null;
-        for (GameObject gameObject : scene.gameObjects()) {
-            UiCanvasComponent canvas = gameObject.getComponent(UiCanvasComponent.class).orElse(null);
-            if (canvas == null) {
-                continue;
-            }
+        for (UiCanvasComponent canvas : scene.componentsOf(UiCanvasComponent.class)) {
             hovered = findHoveredButton(canvas.root(), cursorX, cursorY, hovered);
         }
         applyHoverAndClicks(hovered, mouseDown);

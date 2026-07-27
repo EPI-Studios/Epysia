@@ -17,15 +17,11 @@ public final class FlipbookSystem implements GameSystem {
 
     @Override
     public void update(Scene scene, InputState input, float deltaTimeSeconds) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            SpriteRenderer sprite = gameObject.getComponentOrNull(SpriteRenderer.class);
-            if (sprite != null) {
-                sprite.refreshAtlas(services);
-            }
-            SpriteFlipbook flipbook = gameObject.getComponentOrNull(SpriteFlipbook.class);
-            if (flipbook != null) {
-                flipbook.advance(deltaTimeSeconds);
-            }
+        for (SpriteRenderer sprite : scene.componentsOf(SpriteRenderer.class)) {
+            sprite.refreshAtlas(services);
+        }
+        for (SpriteFlipbook flipbook : scene.componentsOf(SpriteFlipbook.class)) {
+            flipbook.advance(deltaTimeSeconds);
         }
     }
 }

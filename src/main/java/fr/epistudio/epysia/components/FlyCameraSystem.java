@@ -34,10 +34,15 @@ public final class FlyCameraSystem implements GameSystem {
     @Override
     public void update(Scene scene, InputState input, float deltaTimeSeconds) {
         updateLookCursorMode(input);
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(FlyCameraComponent.class).ifPresent(controller ->
-                    gameObject.getComponent(Transform3D.class).ifPresent(transform ->
-                            updateCamera(controller, transform, input, deltaTimeSeconds)));
+        for (FlyCameraComponent controller : scene.componentsOf(FlyCameraComponent.class)) {
+            GameObject owner = controller.ownerOrNull();
+            if (owner == null) {
+                continue;
+            }
+            Transform3D transform = owner.getComponentOrNull(Transform3D.class);
+            if (transform != null) {
+                updateCamera(controller, transform, input, deltaTimeSeconds);
+            }
         }
     }
 

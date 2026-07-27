@@ -164,13 +164,7 @@ public final class ScriptDispatcherSystem implements GameSystem {
 
     private void collectBehaviours(Scene scene) {
         cachedBehaviours.clear();
-        for (GameObject gameObject : scene.gameObjects()) {
-            for (IComponent component : gameObject.components()) {
-                if (component instanceof Behaviour behaviour) {
-                    cachedBehaviours.add(behaviour);
-                }
-            }
-        }
+        cachedBehaviours.addAll(scene.componentsOf(Behaviour.class));
     }
 
     private void invokeDestroyForRemovedBehaviours() {

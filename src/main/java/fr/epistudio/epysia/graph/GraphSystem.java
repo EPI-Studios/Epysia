@@ -205,9 +205,7 @@ public final class GraphSystem implements GameSystem {
 
     private void collectComponents(Scene scene) {
         cachedComponents.clear();
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(GraphComponent.class).ifPresent(cachedComponents::add);
-        }
+        cachedComponents.addAll(scene.componentsOf(GraphComponent.class));
     }
 
     private void releaseRemovedInstances() {

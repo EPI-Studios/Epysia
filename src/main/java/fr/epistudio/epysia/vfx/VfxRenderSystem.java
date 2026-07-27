@@ -67,6 +67,7 @@ public final class VfxRenderSystem implements RenderSystem {
     private static final int INDIRECT_BYTES = VfxEffectResources.INDIRECT_BYTES;
     private static final int INDIRECT_INSTANCE_COUNT_OFFSET = 4;
     private static final int WORKGROUP_SIZE = 64;
+    private static final String FRAGMENT_BODY_MARKER = "// PARTICLE_FRAGMENT_BODY";
     private static final float MAXIMUM_DELTA_SECONDS = 0.25f;
 
     private final ShaderLoader shaderLoader;
@@ -174,9 +175,9 @@ public final class VfxRenderSystem implements RenderSystem {
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         float delta = advanceClock();
         List<ParticleEffect> seen = new ArrayList<>();
-        for (GameObject gameObject : scene.gameObjects()) {
-            ParticleEffect effect = gameObject.getComponentOrNull(ParticleEffect.class);
-            if (effect == null) {
+        for (ParticleEffect effect : scene.componentsOf(ParticleEffect.class)) {
+            GameObject gameObject = effect.ownerOrNull();
+            if (gameObject == null) {
                 continue;
             }
             Transform3D transform = gameObject.getComponentOrNull(Transform3D.class);
@@ -367,18 +368,8 @@ public final class VfxRenderSystem implements RenderSystem {
     }
 
     private PipelineHandle createGraphBillboardPipeline(String fragmentBody) {
-        String fragment = """
-                #version 430 core
-
-                in vec2 particleCorner;
-                in vec4 particleColor;
-
-                out vec4 fragmentColor;
-
-                void main() {
-                %s
-                }
-                """.formatted(fragmentBody);
+        String fragment = shaderLoader.load("vfx/particle_billboard_graph.frag.glsl").source()
+                .replace(FRAGMENT_BODY_MARKER, fragmentBody);
         ShaderSource source = new ShaderSource(
                 shaderLoader.load("vfx/particle_billboard.vert.glsl").source(), fragment);
         return backend.createPipeline(new PipelineDescriptor(source, quadVertexLayout(),

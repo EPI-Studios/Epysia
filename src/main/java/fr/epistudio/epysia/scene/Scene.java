@@ -1,8 +1,10 @@
 package fr.epistudio.epysia.scene;
 
+import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.postfx.PostEffectStack;
+import fr.epistudio.epysia.render.postfx.PostProcessSettings;
 import org.joml.Vector3f;
 
 import java.util.ArrayDeque;
@@ -30,8 +32,12 @@ public final class Scene implements IScene {
     private final List<GameObject> recentlyActivated = new ArrayList<>();
     private final List<GameObject> recentlyDeactivated = new ArrayList<>();
     private final PostEffectStack postEffects = new PostEffectStack();
+    private final PostProcessSettings postProcess =
+            new PostProcessSettings();
     private final Vector3f clearColor = defaultClearColor();
+    private final Map<Class<?>, List<? extends IComponent>> componentIndex = new HashMap<>();
     private long modificationCount;
+    private long indexedModificationCount = -1;
 
     public Scene(String name) {
         this.name = name;
@@ -146,6 +152,31 @@ public final class Scene implements IScene {
 
     public long modificationCount() {
         return modificationCount;
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends IComponent> List<T> componentsOf(Class<T> componentClass) {
+        if (indexedModificationCount != modificationCount) {
+            componentIndex.clear();
+            indexedModificationCount = modificationCount;
+        }
+        return (List<T>) componentIndex.computeIfAbsent(componentClass, this::collectComponents);
+    }
+
+    private List<? extends IComponent> collectComponents(Class<?> componentClass) {
+        List<IComponent> collected = new ArrayList<>();
+        for (GameObject gameObject : gameObjects) {
+            for (IComponent component : gameObject.components()) {
+                if (componentClass.isInstance(component)) {
+                    collected.add(component);
+                }
+            }
+        }
+        return collected;
+    }
+
+    public PostProcessSettings postProcess() {
+        return postProcess;
     }
 
     public PostEffectStack postEffects() {
