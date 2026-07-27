@@ -160,10 +160,11 @@ public final class SpriteRenderSystem implements RenderSystem {
     }
 
     private void gatherSprites(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            Transform2D transform = gameObject.getComponentOrNull(Transform2D.class);
-            SpriteRenderer sprite = gameObject.getComponentOrNull(SpriteRenderer.class);
-            if (transform == null || sprite == null || !transform.visible()) {
+        for (SpriteRenderer sprite : scene.componentsOf(SpriteRenderer.class)) {
+            Transform2D transform = sprite.owner()
+                    .map(owner -> owner.getComponentOrNull(Transform2D.class))
+                    .orElse(null);
+            if (transform == null || !transform.visible()) {
                 continue;
             }
             sprite.texture().ifPresent(texture -> entries.add(new SpriteEntry(transform, sprite, texture)));

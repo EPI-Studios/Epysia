@@ -88,8 +88,8 @@ public final class TilemapRenderSystem implements RenderSystem {
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         seenRenderers.clear();
         submitSequence = 0L;
-        for (GameObject gameObject : scene.gameObjects()) {
-            collectGameObject(frame, gameObject);
+        for (TilemapRenderer renderer : scene.componentsOf(TilemapRenderer.class)) {
+            renderer.owner().ifPresent(owner -> collectGameObject(frame, owner));
         }
         releaseUnseenGeometry();
     }

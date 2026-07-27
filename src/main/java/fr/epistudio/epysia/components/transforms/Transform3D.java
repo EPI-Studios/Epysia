@@ -38,6 +38,7 @@ public final class Transform3D extends Component {
     private boolean blendDirty = true;
     private float blendedAlpha = Float.NaN;
     private boolean previousStateCaptured;
+    private long worldVersion;
 
     public Vector3f position() {
         return position;
@@ -103,6 +104,7 @@ public final class Transform3D extends Component {
     private void markWorldDirty() {
         boolean alreadyPropagated = worldDirty && blendDirty;
         blendDirty = true;
+        worldVersion++;
         if (alreadyPropagated) {
             return;
         }
@@ -110,6 +112,10 @@ public final class Transform3D extends Component {
         for (Transform3D child : children) {
             child.markWorldDirty();
         }
+    }
+
+    public long worldVersion() {
+        return worldVersion;
     }
 
     public Transform3D setUniformScale(float value) {
@@ -223,6 +229,10 @@ public final class Transform3D extends Component {
         blendedAlpha = alpha;
         blendDirty = false;
         return blendedWorldMatrix;
+    }
+
+    public boolean worldMatrixStable(float alpha) {
+        return alpha >= 1.0f || !previousStateCaptured || hierarchyInterpolationIdle();
     }
 
     private boolean hierarchyInterpolationIdle() {

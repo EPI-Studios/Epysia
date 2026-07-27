@@ -24,8 +24,12 @@ public final class Camera3D extends Component {
     private boolean orthographic;
     @Export(label = "Pixel Snap")
     private boolean pixelSnap;
+    @Export(label = "Cull Mask", layerMask = true)
+    private int cullMask = RenderLayers.ALL;
     @Export(label = "Ortho Size", min = 0.01f, max = 1000.0f, step = 0.1f)
     private float orthographicSize = 5.0f;
+    @Export(label = "Pixels Per Unit", min = 0.0f, max = 512.0f, step = 1.0f)
+    private float pixelsPerUnit;
     private float aspectRatio = 16.0f / 9.0f;
     private final PostEffectStack postEffectOverrideStack = new PostEffectStack();
     private boolean postEffectOverrideEnabled;
@@ -53,6 +57,15 @@ public final class Camera3D extends Component {
     public Camera3D setNearFar(float near, float far) {
         this.nearPlane = near;
         this.farPlane = far;
+        return this;
+    }
+
+    public int cullMask() {
+        return cullMask;
+    }
+
+    public Camera3D setCullMask(int cullMask) {
+        this.cullMask = cullMask;
         return this;
     }
 
@@ -145,11 +158,27 @@ public final class Camera3D extends Component {
         return this;
     }
 
+    public float pixelsPerUnit() {
+        return pixelsPerUnit;
+    }
+
+    public Camera3D setPixelsPerUnit(float value) {
+        pixelsPerUnit = Math.max(0.0f, value);
+        return this;
+    }
+
+    private float effectiveOrthographicSize() {
+        if (pixelsPerUnit <= 0.0f || renderHeightPixels <= 0) {
+            return orthographicSize;
+        }
+        return renderHeightPixels / (2.0f * pixelsPerUnit);
+    }
+
     private Matrix4f snapToPixelGrid(Matrix4f view) {
         if (!pixelSnap || !orthographic || renderHeightPixels <= 0) {
             return view;
         }
-        float step = 2.0f * orthographicSize / renderHeightPixels;
+        float step = 2.0f * effectiveOrthographicSize() / renderHeightPixels;
         view.m30(Math.round(view.m30() / step) * step);
         view.m31(Math.round(view.m31() / step) * step);
         return view;
@@ -164,11 +193,12 @@ public final class Camera3D extends Component {
         projectionNearPlane = nearPlane;
         projectionFarPlane = farPlane;
         projectionOrthographic = orthographic;
-        projectionOrthographicSize = orthographicSize;
+        projectionOrthographicSize = effectiveOrthographicSize();
         if (orthographic) {
-            float halfWidth = orthographicSize * aspectRatio;
+            float halfHeight = effectiveOrthographicSize();
+            float halfWidth = halfHeight * aspectRatio;
             return projectionMatrix.identity().setOrtho(-halfWidth, halfWidth,
-                    -orthographicSize, orthographicSize, nearPlane, farPlane);
+                    -halfHeight, halfHeight, nearPlane, farPlane);
         }
         return projectionMatrix.identity().perspective(
                 (float) Math.toRadians(fieldOfViewDegrees),
@@ -181,7 +211,8 @@ public final class Camera3D extends Component {
     private boolean projectionMatchesSettings() {
         return projectionFieldOfViewDegrees == fieldOfViewDegrees && projectionAspectRatio == aspectRatio
                 && projectionNearPlane == nearPlane && projectionFarPlane == farPlane
-                && projectionOrthographic == orthographic && projectionOrthographicSize == orthographicSize;
+                && projectionOrthographic == orthographic
+                && projectionOrthographicSize == effectiveOrthographicSize();
     }
 
     public Matrix4f viewProjection() {
