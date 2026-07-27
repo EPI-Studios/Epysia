@@ -51,10 +51,11 @@ public final class SpriteAtlasAssetLoader implements AssetLoader<SpriteAtlas> {
     }
 
     private SpriteAtlas readResolved(String path) {
-        AssetResolvers.ResolvedLocation location = AssetResolvers.forPath(path, CLASSPATH_ROOT);
+        String assetPath = TexturePathPrefixes.stripPrefixes(path);
+        AssetResolvers.ResolvedLocation location = AssetResolvers.forPath(assetPath, CLASSPATH_ROOT);
         AssetSource source = location.source().orElseThrow(() ->
-                new EpysiaException("Sprite atlas not found on filesystem or classpath: " + path));
-        return rebaseTexturePath(codec.read(readText(source)), path);
+                new EpysiaException("Sprite atlas not found on filesystem or classpath: " + assetPath));
+        return rebaseTexturePath(codec.read(readText(source)), assetPath);
     }
 
     private static SpriteAtlas rebaseTexturePath(SpriteAtlas atlas, String origin) {

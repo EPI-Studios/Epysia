@@ -61,10 +61,11 @@ public final class SpriteTilemapAssetLoader implements AssetLoader<SpriteTilemap
     }
 
     private SpriteTilemap readResolved(String path) {
-        AssetResolvers.ResolvedLocation location = AssetResolvers.forPath(path, CLASSPATH_ROOT);
+        String assetPath = TexturePathPrefixes.stripPrefixes(path);
+        AssetResolvers.ResolvedLocation location = AssetResolvers.forPath(assetPath, CLASSPATH_ROOT);
         AssetSource source = location.source().orElseThrow(() ->
-                new EpysiaException("Tilemap not found on filesystem or classpath: " + path));
-        return rebaseAtlasPath(codec.read(readText(source)), path);
+                new EpysiaException("Tilemap not found on filesystem or classpath: " + assetPath));
+        return rebaseAtlasPath(codec.read(readText(source)), assetPath);
     }
 
     private static SpriteTilemap rebaseAtlasPath(SpriteTilemap tilemap, String origin) {
