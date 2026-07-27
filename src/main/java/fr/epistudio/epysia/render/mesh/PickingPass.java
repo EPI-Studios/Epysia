@@ -127,6 +127,9 @@ public final class PickingPass {
                 logExclusionOnce(gameObject, renderer, "Vertex-colored");
                 continue;
             }
+            if (!allSubmeshesAlive(mesh)) {
+                continue;
+            }
             PerRenderer perRenderer = resourcesByRenderer.computeIfAbsent(renderer, this::createPerRenderer);
             writeObjectUbo(perRenderer.modelUbo(), transformOpt.get().worldMatrix());
             writePickingId(index + 1);
@@ -167,6 +170,15 @@ public final class PickingPass {
             backend.destroy(depthTexture);
         }
         initialized = false;
+    }
+
+    private boolean allSubmeshesAlive(UploadedMesh mesh) {
+        for (UploadedSubmesh submesh : mesh.submeshes()) {
+            if (!backend.isAlive(submesh.handle())) {
+                return false;
+            }
+        }
+        return !mesh.submeshes().isEmpty();
     }
 
     private void logExclusionOnce(GameObject gameObject, MeshRenderer renderer, String reason) {
