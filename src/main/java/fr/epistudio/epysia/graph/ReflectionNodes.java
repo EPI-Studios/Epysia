@@ -3,10 +3,16 @@ package fr.epistudio.epysia.graph;
 import fr.epistudio.epysia.GameSystem;
 import fr.epistudio.epysia.audio.AudioSystem;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.components.SpriteFlipbook;
+import fr.epistudio.epysia.components.SpriteRenderer;
+import fr.epistudio.epysia.components.TilemapRenderer;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.PhysicsSystem;
+import fr.epistudio.epysia.physics.components.CharacterController2D;
 import fr.epistudio.epysia.physics.components.CharacterControllerComponent;
+import fr.epistudio.epysia.physics.components.RigidBody2D;
 import fr.epistudio.epysia.physics.components.RigidBodyComponent;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.Scene;
@@ -31,10 +37,16 @@ public final class ReflectionNodes {
 
     public static final List<Class<?>> CURATED_ENGINE_CLASSES = List.of(
             Transform3D.class,
+            Transform2D.class,
             GameObject.class,
             Scene.class,
             CharacterControllerComponent.class,
+            CharacterController2D.class,
             RigidBodyComponent.class,
+            RigidBody2D.class,
+            SpriteRenderer.class,
+            SpriteFlipbook.class,
+            TilemapRenderer.class,
             PhysicsSystem.class,
             AudioSystem.class);
 
