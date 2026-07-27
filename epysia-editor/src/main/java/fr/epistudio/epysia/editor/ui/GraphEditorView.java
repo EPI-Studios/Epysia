@@ -1004,8 +1004,13 @@ public final class GraphEditorView {
     private boolean nodeVisibleInViewport(int nodeId) {
         float nodeMinX = ImNodes.getNodeScreenSpacePosX(nodeId);
         float nodeMinY = ImNodes.getNodeScreenSpacePosY(nodeId);
-        float nodeMaxX = nodeMinX + ImNodes.getNodeDimensionsX(nodeId);
-        float nodeMaxY = nodeMinY + ImNodes.getNodeDimensionsY(nodeId);
+        float nodeWidth = ImNodes.getNodeDimensionsX(nodeId);
+        float nodeHeight = ImNodes.getNodeDimensionsY(nodeId);
+        if (nodeWidth <= 0.0f || nodeHeight <= 0.0f) {
+            return true;
+        }
+        float nodeMaxX = nodeMinX + nodeWidth;
+        float nodeMaxY = nodeMinY + nodeHeight;
         return nodeMaxX >= canvasMinX - PREVIEW_CULL_MARGIN
                 && nodeMinX <= canvasMaxX + PREVIEW_CULL_MARGIN
                 && nodeMaxY >= canvasMinY - PREVIEW_CULL_MARGIN

@@ -37,8 +37,8 @@ public final class ShaderGraphPreviewService {
     private final Map<Path, String> meshPathsByGraph = new HashMap<>();
     private ShaderPreviewStage mainSurfaceStage;
     private ShaderPreviewStage mainPostStage;
-    private ShaderPreviewStage nodeSurfaceStage;
-    private ShaderPreviewStage nodePostStage;
+    private final Map<String, ShaderPreviewStage> nodeSurfaceStages = new HashMap<>();
+    private final Map<String, ShaderPreviewStage> nodePostStages = new HashMap<>();
     private PreviewRenderTarget mainTarget;
     private String mainAppliedKey = "";
     private String mainErrorMessage = "";
@@ -58,12 +58,9 @@ public final class ShaderGraphPreviewService {
         surfaceEngine.initialize();
         postEngine.initialize();
         mainSurfaceStage = registerStage(surfaceEngine, "PreviewMainSurface", SPHERE_MESH, true);
-        nodeSurfaceStage = registerStage(surfaceEngine, "PreviewNodeSurface", PLANE_MESH, false);
         mainPostStage = registerStage(postEngine, "PreviewMainPost", PLANE_MESH, false);
-        nodePostStage = registerStage(postEngine, "PreviewNodePost", PLANE_MESH, false);
         postEngine.publishSource(REFERENCE_PATH, ShaderPreviewReference.SURFACE_SOURCE);
         preparePostStage(mainPostStage, MAIN_POST_PATH);
-        preparePostStage(nodePostStage, MAIN_POST_PATH);
         mainTarget = PreviewRenderTarget.create(surfaceEngine.backend(), MAIN_PREVIEW_PIXELS, MAIN_PREVIEW_PIXELS);
         initialized = true;
     }
@@ -170,7 +167,7 @@ public final class ShaderGraphPreviewService {
             animateNodePreview(known.get(), asset);
             return textureOf(known.get());
         }
-        if (!nodeCache.canRebuild()) {
+        if (!nodeCache.canRebuild() || !nodeCache.hasRoomFor(key)) {
             return known.map(ShaderGraphPreviewService::textureOf).orElseGet(OptionalInt::empty);
         }
         nodeCache.consumeRebuild();
@@ -182,6 +179,10 @@ public final class ShaderGraphPreviewService {
         if (entry.hasError() || !entry.animationDue(nowNanos, NODE_ANIMATION_INTERVAL_NANOS)) {
             return;
         }
+        if (!nodeCache.canAnimate()) {
+            return;
+        }
+        nodeCache.consumeAnimation();
         boolean surface = asset.kind() == GraphKind.SHADER_SURFACE;
         ShaderPreviewEngine engine = surface ? surfaceEngine : postEngine;
         renderNodeStage(surface, engine, nodeSlotPath(entry.slot(), surface), entry);
@@ -197,11 +198,11 @@ public final class ShaderGraphPreviewService {
         try {
             engine.publishSource(shaderPath,
                     compiler.compilePreview(asset, nodeId, pinName, "node" + nodeId));
+            renderNodeStage(surface, engine, shaderPath, entry);
         } catch (EpysiaException failure) {
             entry.markFailed(upstreamKey, failure.getMessage());
             return entry;
         }
-        renderNodeStage(surface, engine, shaderPath, entry);
         entry.markRendered(upstreamKey);
         entry.stampFrame(System.nanoTime());
         return entry;
@@ -209,15 +210,30 @@ public final class ShaderGraphPreviewService {
 
     private void renderNodeStage(boolean surface, ShaderPreviewEngine engine, String shaderPath,
                                  NodePreviewEntry entry) {
-        ShaderPreviewStage stage = surface ? nodeSurfaceStage : nodePostStage;
-        if (surface) {
-            stage.setSurfaceShaderPath(shaderPath);
-        } else {
-            stage.scene().postEffects().effects().get(0).setShaderPath(shaderPath);
-        }
-        stage.reloadMesh(engine.engine());
+        ShaderPreviewStage stage = nodeStageFor(surface, engine, shaderPath);
         engine.render(stage.scene(), stage.camera(), entry.target());
     }
+
+    private ShaderPreviewStage nodeStageFor(boolean surface, ShaderPreviewEngine engine, String shaderPath) {
+        Map<String, ShaderPreviewStage> stages = surface ? nodeSurfaceStages : nodePostStages;
+        ShaderPreviewStage known = stages.get(shaderPath);
+        if (known != null) {
+            return known;
+        }
+        ShaderPreviewStage created = registerStage(engine, "PreviewNode " + shaderPath, PLANE_MESH, false);
+        if (surface) {
+            created.setSurfaceShaderPath(shaderPath);
+        } else {
+            preparePostStage(created, shaderPath);
+        }
+        created.reloadMesh(engine.engine());
+        stages.put(shaderPath, created);
+        return created;
+    }
+
+
+
+
 
     private static String nodeSlotPath(int slot, boolean surface) {
         return "epysiaPreview/node" + slot + (surface ? ".surf.glsl" : ".post.glsl");

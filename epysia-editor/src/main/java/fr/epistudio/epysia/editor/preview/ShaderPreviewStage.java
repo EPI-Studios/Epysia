@@ -9,7 +9,9 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.scene.Scene;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class ShaderPreviewStage {
 
@@ -23,7 +25,8 @@ public final class ShaderPreviewStage {
 
     private final Scene scene;
     private final MeshRenderer renderer = new MeshRenderer();
-    private final LitMaterial material = new LitMaterial();
+    private final Map<String, LitMaterial> materialsByShaderPath = new HashMap<>();
+    private LitMaterial material = materialFor("");
     private final Transform3D cameraTransform = new Transform3D();
     private final Camera3D camera = new Camera3D()
             .setFieldOfViewDegrees(FIELD_OF_VIEW_DEGREES).setNearFar(0.05f, 50.0f);
@@ -70,7 +73,17 @@ public final class ShaderPreviewStage {
     }
 
     public void setSurfaceShaderPath(String shaderPath) {
-        material.setSurfaceShaderPath(shaderPath);
+        LitMaterial next = materialFor(shaderPath);
+        if (next == material) {
+            return;
+        }
+        material = next;
+        renderer.setMaterial(next);
+    }
+
+    private LitMaterial materialFor(String shaderPath) {
+        return materialsByShaderPath.computeIfAbsent(shaderPath,
+                path -> new LitMaterial().setSurfaceShaderPath(path).setReceiveShadows(false));
     }
 
     public void setMeshPath(String path, EngineServices services) {

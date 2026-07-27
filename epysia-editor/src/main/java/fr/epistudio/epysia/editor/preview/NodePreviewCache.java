@@ -14,13 +14,15 @@ import java.util.Optional;
 
 public final class NodePreviewCache {
 
-    public static final int MAX_LIVE_TARGETS = 24;
-    public static final int MAX_REBUILDS_PER_FRAME = 3;
+    public static final int MAX_LIVE_TARGETS = 64;
+    public static final int MAX_REBUILDS_PER_FRAME = 1;
+    public static final int MAX_ANIMATIONS_PER_FRAME = 2;
 
     private final Map<PreviewKey, NodePreviewEntry> entries = new LinkedHashMap<>(16, 0.75f, true);
     private final Deque<Integer> freeSlots = new ArrayDeque<>();
     private final List<PreviewRenderTarget> retiredTargets = new ArrayList<>();
     private int rebuildBudget = MAX_REBUILDS_PER_FRAME;
+    private int animationBudget = MAX_ANIMATIONS_PER_FRAME;
 
     public NodePreviewCache() {
         for (int slot = 0; slot < MAX_LIVE_TARGETS; slot++) {
@@ -31,6 +33,7 @@ public final class NodePreviewCache {
     public void beginFrame(OpenGlRenderBackend backend) {
         releaseRetiredTargets(backend);
         rebuildBudget = MAX_REBUILDS_PER_FRAME;
+        animationBudget = MAX_ANIMATIONS_PER_FRAME;
     }
 
     private void retire(NodePreviewEntry entry) {
@@ -53,12 +56,24 @@ public final class NodePreviewCache {
         rebuildBudget--;
     }
 
+    public boolean canAnimate() {
+        return animationBudget > 0;
+    }
+
+    public void consumeAnimation() {
+        animationBudget--;
+    }
+
     public Optional<NodePreviewEntry> find(PreviewKey key) {
         return Optional.ofNullable(entries.get(key));
     }
 
     public int liveTargetCount() {
         return entries.size();
+    }
+
+    public boolean hasRoomFor(PreviewKey key) {
+        return entries.containsKey(key) || !freeSlots.isEmpty() || !entries.isEmpty();
     }
 
     public NodePreviewEntry claim(PreviewKey key, OpenGlRenderBackend backend, int pixelSize) {

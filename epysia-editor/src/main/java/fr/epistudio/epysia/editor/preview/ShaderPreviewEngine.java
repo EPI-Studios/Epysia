@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.preview;
 
+import java.util.HashMap;
+import java.util.Map;
 import fr.epistudio.epysia.EpysiaEngine;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
@@ -14,11 +16,14 @@ import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.window.Window;
+import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
+
 public final class ShaderPreviewEngine {
 
+    private final Map<String, String> publishedSources = new HashMap<>();
     private final OpenGlRenderBackend backend;
     private final EpysiaEngine engine;
     private final ShaderLoader shaderLoader = ShaderLoader.autoDetect();
@@ -63,6 +68,9 @@ public final class ShaderPreviewEngine {
 
     public void publishSource(String shaderPath, String source) {
         shaderLoader.putVirtualSource(shaderPath, source);
+        if (source.equals(publishedSources.put(shaderPath, source))) {
+            return;
+        }
         shaderWatcher.notifyPathChanged(shaderPath);
     }
 
@@ -73,6 +81,7 @@ public final class ShaderPreviewEngine {
         camera.setAspectRatio((float) target.width() / (float) target.height());
         GlStateSnapshot snapshot = GlStateSnapshot.capture();
         try {
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
             shaderWatcher.poll();
             resizeIfNeeded(target);
             engine.setActiveScene(scene);
