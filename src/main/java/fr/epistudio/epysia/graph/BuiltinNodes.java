@@ -3,13 +3,18 @@ package fr.epistudio.epysia.graph;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.KeyCode;
+import fr.epistudio.epysia.physics.PhysicsSystem;
+import fr.epistudio.epysia.physics.api.QueryFilter;
+import fr.epistudio.epysia.physics.api.RaycastHit2D;
 import fr.epistudio.epysia.prefab.PrefabInstantiator;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class BuiltinNodes {
@@ -36,6 +41,7 @@ public final class BuiltinNodes {
     public static final String EVENT_ON_MOUSE_BUTTON_PRESSED = "event.onMouseButtonPressed";
     public static final String INPUT_KEY_DOWN = "input.keyDown";
     public static final String INPUT_AXIS = "input.axis";
+    public static final String PHYSICS_RAYCAST_2D = "physics.raycast2D";
 
     public static final String VARIABLE_NAME_SETTING = "variableName";
     public static final String OUTPUT_COUNT_SETTING = "outputCount";
@@ -55,6 +61,7 @@ public final class BuiltinNodes {
     private static final String CATEGORY_MATH = "Math";
     private static final String CATEGORY_LOGIC = "Logic";
     private static final String CATEGORY_GAME_OBJECT = "GameObject";
+    private static final String CATEGORY_PHYSICS = "Physics";
     private static final String CATEGORY_UTILITY = "Utility";
 
     private BuiltinNodes() {
@@ -73,6 +80,7 @@ public final class BuiltinNodes {
         registerVectorMath(registry);
         registerLogic(registry);
         registerGameObject(registry);
+        registerPhysics2D(registry);
         registerUtility(registry);
     }
 
@@ -507,6 +515,60 @@ public final class BuiltinNodes {
         } catch (IOException | RuntimeException error) {
             context.services().logger().error("[Graph] Instantiate Prefab failed for " + path, error);
         }
+    }
+
+    private static void registerPhysics2D(GraphNodeRegistry registry) {
+        registry.register(raycast2DDefinition());
+    }
+
+    private static NodeDefinition raycast2DDefinition() {
+        return dataNode(PHYSICS_RAYCAST_2D, "Raycast 2D", CATEGORY_PHYSICS, false,
+                List.of(new PinDefinition("Origin X", PinType.FLOAT),
+                        new PinDefinition("Origin Y", PinType.FLOAT),
+                        new PinDefinition("Direction X", PinType.FLOAT),
+                        new PinDefinition("Direction Y", PinType.FLOAT),
+                        new PinDefinition("Distance", PinType.FLOAT)),
+                List.of(new PinDefinition("Hit", PinType.BOOLEAN),
+                        new PinDefinition("Distance", PinType.FLOAT),
+                        new PinDefinition("Normal X", PinType.FLOAT),
+                        new PinDefinition("Normal Y", PinType.FLOAT),
+                        new PinDefinition("Hit Object", PinType.GAME_OBJECT)),
+                List.of(),
+                BuiltinNodes::performRaycast2D);
+    }
+
+    private static void performRaycast2D(NodeContext context) {
+        PhysicsSystem physics = context.services().systems().get(PhysicsSystem.class);
+        if (physics == null) {
+            writeRaycastMiss(context);
+            return;
+        }
+        Vector2f origin = new Vector2f(context.floatInput("Origin X"), context.floatInput("Origin Y"));
+        Vector2f direction = new Vector2f(context.floatInput("Direction X"), context.floatInput("Direction Y"));
+        Optional<RaycastHit2D> hit = physics.raycast2D(origin, direction,
+                context.floatInput("Distance"), selfExcludingFilter(context, physics));
+        hit.ifPresentOrElse(found -> writeRaycastHit(context, physics, found), () -> writeRaycastMiss(context));
+    }
+
+    private static QueryFilter selfExcludingFilter(NodeContext context, PhysicsSystem physics) {
+        return physics.bodyOf(context.self())
+                .map(body -> new QueryFilter(QueryFilter.ALL.mask(), body.id()))
+                .orElse(QueryFilter.ALL);
+    }
+
+    private static void writeRaycastHit(NodeContext context, PhysicsSystem physics, RaycastHit2D hit) {
+        context.setOutput("Hit", true);
+        context.setOutput("Distance", hit.distance());
+        context.setOutput("Normal X", hit.normal().x());
+        context.setOutput("Normal Y", hit.normal().y());
+        physics.ownerOf(hit.body()).ifPresent(owner -> context.setOutput("Hit Object", owner));
+    }
+
+    private static void writeRaycastMiss(NodeContext context) {
+        context.setOutput("Hit", false);
+        context.setOutput("Distance", 0.0f);
+        context.setOutput("Normal X", 0.0f);
+        context.setOutput("Normal Y", 0.0f);
     }
 
     private static void registerUtility(GraphNodeRegistry registry) {

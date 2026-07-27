@@ -111,6 +111,27 @@ public final class PhysicsSystem implements IPhysicsSystem {
         world.setGravity(defaultGravity);
     }
 
+    public Optional<BodyHandle> bodyOf(GameObject gameObject) {
+        if (gameObject == null) {
+            return Optional.empty();
+        }
+        return firstValidHandle(
+                gameObject.getComponent(CharacterController2D.class).map(CharacterController2D::bodyHandle),
+                gameObject.getComponent(CharacterControllerComponent.class).map(CharacterControllerComponent::bodyHandle),
+                gameObject.getComponent(RigidBody2D.class).map(RigidBody2D::handle),
+                gameObject.getComponent(RigidBodyComponent.class).map(RigidBodyComponent::handle));
+    }
+
+    @SafeVarargs
+    private static Optional<BodyHandle> firstValidHandle(Optional<BodyHandle>... candidates) {
+        for (Optional<BodyHandle> candidate : candidates) {
+            if (candidate.isPresent() && candidate.get().isValid()) {
+                return candidate;
+            }
+        }
+        return Optional.empty();
+    }
+
     @Override
     public Optional<GameObject> ownerOf(BodyHandle body) {
         return Optional.ofNullable(bodyOwners.get(body.id()));
@@ -537,6 +558,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
                 .move(controller.bodyHandle(), scratchDisplacement, controller.stepHeight(), snap);
         applyControllerDisplacement2D(controller, transform, result);
         controller.setGrounded(result.grounded());
+        controller.setContacts(result.contacts());
         controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
     }
 
@@ -556,7 +578,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
 
     private static float verticalVelocityFor2D(CharacterController2D controller, float deltaTimeSeconds) {
         float jumpSpeed = controller.consumeJumpRequest();
-        if (jumpSpeed > 0.0f && controller.grounded()) {
+        if (jumpSpeed != 0.0f) {
             return jumpSpeed;
         }
         return controller.verticalVelocity() + controller.gravity() * deltaTimeSeconds;

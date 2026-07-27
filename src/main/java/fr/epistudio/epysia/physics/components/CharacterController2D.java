@@ -4,9 +4,13 @@ import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import org.joml.Vector2f;
+import org.joml.Vector3fc;
+
+import java.util.List;
 import fr.epistudio.epysia.components.RequiresComponent;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.physics.api.BodyHandle;
+import fr.epistudio.epysia.physics.api.CharacterContact;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 
@@ -43,6 +47,9 @@ public final class CharacterController2D extends Component {
     @Export(label = "Snap To Ground")
     private boolean snapToGround = true;
 
+    private static final float MINIMUM_TOUCH_TOLERANCE = -1.0f;
+
+    private List<CharacterContact> contacts = List.of();
     private float desiredMove;
     private float verticalVelocity;
     private boolean grounded;
@@ -87,12 +94,68 @@ public final class CharacterController2D extends Component {
         return this;
     }
 
+    public void setContacts(List<CharacterContact> newContacts) {
+        contacts = newContacts == null ? List.of() : newContacts;
+    }
+
+    public int contactCount() {
+        return contacts.size();
+    }
+
+    public float contactNormalX(int index) {
+        return normalAt(index) == null ? 0.0f : normalAt(index).x();
+    }
+
+    public float contactNormalY(int index) {
+        return normalAt(index) == null ? 0.0f : normalAt(index).y();
+    }
+
+    private Vector3fc normalAt(int index) {
+        return index < 0 || index >= contacts.size() ? null : contacts.get(index).normal();
+    }
+
+    public boolean touching(float directionX, float directionY, float tolerance) {
+        float length = (float) Math.sqrt(directionX * directionX + directionY * directionY);
+        if (length <= 0.0f) {
+            return false;
+        }
+        float wantedX = directionX / length;
+        float wantedY = directionY / length;
+        return anyContactOpposing(wantedX, wantedY, Math.max(tolerance, MINIMUM_TOUCH_TOLERANCE));
+    }
+
+    private boolean anyContactOpposing(float wantedX, float wantedY, float tolerance) {
+        for (CharacterContact contact : contacts) {
+            Vector3fc normal = contact.normal();
+            if (-(normal.x() * wantedX + normal.y() * wantedY) >= tolerance) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void setDesiredMove(float horizontalVelocity) {
         this.desiredMove = horizontalVelocity;
     }
 
     public void move(float horizontalVelocity) {
         setDesiredMove(horizontalVelocity);
+    }
+
+    public float velocityX() {
+        return desiredMove;
+    }
+
+    public void setVelocityX(float metersPerSecond) {
+        desiredMove = metersPerSecond;
+    }
+
+    public float velocityY() {
+        return verticalVelocity;
+    }
+
+    public void setVelocityY(float metersPerSecond) {
+        verticalVelocity = metersPerSecond;
     }
 
     public void jump() {
