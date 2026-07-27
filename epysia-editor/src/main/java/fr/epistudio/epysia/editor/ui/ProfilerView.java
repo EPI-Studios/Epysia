@@ -24,6 +24,7 @@ public final class ProfilerView {
     public static final String WINDOW_TITLE = "Profiler";
 
     private static final float NANOS_PER_MILLISECOND = 1_000_000.0f;
+    private static final String FRAME_TOTAL_SECTION = "frameTotal";
     private static final int HISTORY_LENGTH = 120;
     private static final float PLOT_HEIGHT = 60.0f;
     private static final float PLOT_HEADROOM = 1.2f;
@@ -38,18 +39,22 @@ public final class ProfilerView {
     private final ImGuiShell shell;
     private final Supplier<SceneDocument> activeDocument;
     private final ViewportView viewportView;
+    private final PanelTimings panelTimings;
     private final FrameTimeHistory frameHistory = new FrameTimeHistory(HISTORY_LENGTH);
+    private final AllocationMeter allocationMeter = new AllocationMeter();
     private final SectionAverages gpuAverages = new SectionAverages(HISTORY_LENGTH);
     private final SectionAverages cpuAverages = new SectionAverages(HISTORY_LENGTH);
     private boolean visible = true;
     private boolean recenterRequested;
 
     public ProfilerView(EditorScene3DHost sceneHost, ImGuiShell shell,
-                        Supplier<SceneDocument> activeDocument, ViewportView viewportView) {
+                        Supplier<SceneDocument> activeDocument, ViewportView viewportView,
+                        PanelTimings panelTimings) {
         this.sceneHost = sceneHost;
         this.shell = shell;
         this.activeDocument = activeDocument;
         this.viewportView = viewportView;
+        this.panelTimings = panelTimings;
     }
 
     public boolean isVisible() {
@@ -109,6 +114,8 @@ public final class ProfilerView {
     private void renderSections() {
         renderFrameSummary();
         ImGui.separator();
+        appendPanelBreakdown();
+        ImGui.separator();
         renderToggles();
         ImGui.separator();
         renderGpuTable();
@@ -123,6 +130,7 @@ public final class ProfilerView {
     }
 
     private void sampleThisFrame() {
+        allocationMeter.sample();
         frameHistory.record(frameMilliseconds());
         for (Map.Entry<String, Long> entry : gpuTimings().entrySet()) {
             gpuAverages.record(entry.getKey(), entry.getValue() / NANOS_PER_MILLISECOND);
@@ -152,12 +160,39 @@ public final class ProfilerView {
         ImGui.plotLines("##frame-history", frameHistory.samples(), frameHistory.length(),
                 frameHistory.cursor(), "", 0.0f, frameHistory.maximum() * PLOT_HEADROOM,
                 0.0f, PLOT_HEIGHT);
+        renderAllocationSummary();
+    }
+
+    private void renderAllocationSummary() {
+        if (!allocationMeter.available()) {
+            ImGui.textDisabled("Allocation metering unavailable on this JVM.");
+            return;
+        }
+        ImGui.text(String.format("Garbage %.1f KB/frame  (%.1f MB/s)",
+                allocationMeter.bytesPerFrame() / 1024.0, allocationMeter.megabytesPerSecond()));
+        ImGui.textDisabled(String.format("GC since launch: %d collections, %d ms total",
+                allocationMeter.collectionsSinceStart(), allocationMeter.collectionMillisSinceStart()));
+        renderShaderCompileSummary();
+    }
+
+    private void renderShaderCompileSummary() {
+        ImGui.textDisabled(String.format(
+                "Shader compile: %d programs, %.0f ms total, worst frame %.1f ms, worst program %.1f ms%s",
+                sceneHost.backend().shaderCompileCount(),
+                sceneHost.backend().shaderCompileNanos() / NANOS_PER_MILLISECOND,
+                sceneHost.backend().worstFrameShaderCompileNanos() / NANOS_PER_MILLISECOND,
+                sceneHost.backend().worstProgramShaderCompileNanos() / NANOS_PER_MILLISECOND,
+                sceneHost.backend().frameShaderCompileNanos() > 0L ? "  <- compiling now" : ""));
     }
 
     private void renderToggles() {
         boolean vsync = shell.isVsyncEnabled();
         if (ImGui.checkbox("Vertical sync", vsync)) {
             shell.setVsyncEnabled(!vsync);
+        }
+        boolean frameCap = shell.isFrameRateCapEnabled();
+        if (ImGui.checkbox("Frame rate cap (144 fps)", frameCap)) {
+            shell.setFrameRateCapEnabled(!frameCap);
         }
         boolean supersampled = viewportView.supersampleFactor() > 1;
         if (ImGui.checkbox("Viewport supersampling (2x)", supersampled)) {
@@ -171,12 +206,22 @@ public final class ProfilerView {
         if (ImGui.checkbox("Static/dynamic shadow caster split", shadowSplit)) {
             sceneHost.meshRenderSystem().setShadowSplitEnabled(!shadowSplit);
         }
+        boolean prepass = sceneHost.meshRenderSystem().depthPrepassEnabled();
+        if (ImGui.checkbox("Depth prepass (experimental)", prepass)) {
+            sceneHost.meshRenderSystem().setDepthPrepassEnabled(!prepass);
+        }
+        if (prepass) {
+            ImGui.textDisabled("Depth is filled first inside the opaque pass, so shading runs once per pixel.");
+        }
         boolean instancing = sceneHost.meshRenderSystem().instancingEnabled();
         if (ImGui.checkbox("Automatic GPU instancing", instancing)) {
             sceneHost.meshRenderSystem().setInstancingEnabled(!instancing);
         }
         if (vsync) {
             ImGui.textDisabled("Frame rate is capped to the monitor refresh rate. Disable to measure.");
+        }
+        if (!frameCap && !vsync) {
+            ImGui.textDisabled("Uncapped: the editor renders as fast as it can while focused.");
         }
         ImGui.textDisabled(String.format("Rendering %d x %d",
                 sceneHost.currentWidth(), sceneHost.currentHeight()));
@@ -199,7 +244,8 @@ public final class ProfilerView {
                     percentOf(milliseconds, totalMilliseconds));
         }
         ImGui.endTable();
-        ImGui.text(String.format("GPU total %.3f ms", totalMilliseconds));
+        ImGui.text(String.format("GPU sections %.3f ms  (frame %.3f ms measured end to end)",
+                totalMilliseconds, frameTotalMilliseconds(timings)));
     }
 
     private void renderCpuTable() {
@@ -231,6 +277,46 @@ public final class ProfilerView {
         appendShellTimingRow("ui draw", shell.drawDataNanos());
         appendShellTimingRow("detached viewports", shell.viewportsNanos());
         appendShellTimingRow("present (includes vsync wait)", shell.swapNanos());
+    }
+
+    private void appendPanelBreakdown() {
+        List<PanelTimings.Entry> entries = panelTimings.ordered();
+        if (entries.isEmpty()) {
+            return;
+        }
+        ImGui.spacing();
+        ImGui.text(String.format("ui build by panel  (total %.3f ms)", panelTimings.totalMilliseconds()));
+        for (PanelTimings.Entry entry : entries) {
+            ImGui.textDisabled(String.format("%s  %.3f ms", entry.name(), entry.milliseconds()));
+        }
+        appendViewportBreakdown();
+    }
+
+    private void appendSceneImageBreakdown() {
+        long[] steps = sceneHost.frameStepNanos();
+        String[] labels = {"target resize", "gl state capture", "engine.render", "gl state restore",
+                "probe refresh"};
+        ImGui.spacing();
+        ImGui.text(String.format("scene image by step   (watchers: %d, frames skipped: %d)",
+                sceneHost.shaderWatcherListenerCount(), sceneHost.skippedFrames()));
+        for (int index = 0; index < labels.length; index++) {
+            ImGui.textDisabled(String.format("  %s  %.3f ms",
+                    labels[index], steps[index] / NANOS_PER_MILLISECOND));
+        }
+    }
+
+    private void appendViewportBreakdown() {
+        List<PanelTimings.Entry> entries = viewportView.timings().ordered();
+        if (entries.isEmpty()) {
+            return;
+        }
+        ImGui.spacing();
+        ImGui.text(String.format("viewport by step  (measured %.3f ms)",
+                viewportView.timings().totalMilliseconds()));
+        for (PanelTimings.Entry entry : entries) {
+            ImGui.textDisabled(String.format("  %s  %.3f ms", entry.name(), entry.milliseconds()));
+        }
+        appendSceneImageBreakdown();
     }
 
     private static void appendShellTimingRow(String label, long nanos) {
@@ -267,8 +353,8 @@ public final class ProfilerView {
         ImGui.textDisabled("Draw calls: " + statistics.drawCalls()
                 + " (instanced " + statistics.instancedDrawCalls() + ")");
         ImGui.textDisabled("Instance batches: " + sceneHost.meshRenderSystem().batchCount()
-                + " — collapsed: " + sceneHost.meshRenderSystem().instancedBatchCount()
-                + " — instances drawn: " + statistics.instances());
+                + ", collapsed: " + sceneHost.meshRenderSystem().instancedBatchCount()
+                + ", instances drawn: " + statistics.instances());
         ImGui.textDisabled("Triangles: " + statistics.triangles());
         ImGui.textDisabled("Render passes: " + statistics.passes());
         ImGui.textDisabled("Pipeline switches: " + statistics.pipelineSwitches());
@@ -279,7 +365,7 @@ public final class ProfilerView {
         ShadowStatistics statistics = sceneHost.meshRenderSystem().shadowStatistics();
         ImGui.text("Shadows");
         ImGui.textDisabled("Targets rendered: " + statistics.targetsRendered()
-                + " — skipped: " + statistics.targetsSkipped());
+                + ", skipped: " + statistics.targetsSkipped());
         ImGui.textDisabled("Casters submitted: " + statistics.castersSubmitted());
         ImGui.textDisabled("Time animated casters: " + statistics.animatedCasters());
         ImGui.textDisabled("Static layers rebuilt: " + statistics.staticLayersRebuilt());
@@ -293,6 +379,8 @@ public final class ProfilerView {
         ImGui.text("Scene");
         ImGui.textDisabled("Objects: " + activeDocument.get().scene().gameObjects().size());
         ImGui.textDisabled("Meshes submitted: " + sceneHost.meshRenderSystem().submittedMeshCount());
+        ImGui.textDisabled("Bounds cache: " + sceneHost.meshRenderSystem().boundsCacheHits()
+                + " hits, " + sceneHost.meshRenderSystem().boundsCacheMisses() + " recomputed");
         ImGui.textDisabled("Meshes culled: " + sceneHost.meshRenderSystem().culledMeshCount());
         ImGui.textDisabled("Lights: " + countLights());
     }
@@ -323,9 +411,15 @@ public final class ProfilerView {
 
     private static float totalMilliseconds(Map<String, Long> timings) {
         long total = 0L;
-        for (long nanos : timings.values()) {
-            total += nanos;
+        for (Map.Entry<String, Long> entry : timings.entrySet()) {
+            if (!FRAME_TOTAL_SECTION.equals(entry.getKey())) {
+                total += entry.getValue();
+            }
         }
         return total / NANOS_PER_MILLISECOND;
+    }
+
+    private static float frameTotalMilliseconds(Map<String, Long> timings) {
+        return timings.getOrDefault(FRAME_TOTAL_SECTION, 0L) / NANOS_PER_MILLISECOND;
     }
 }
