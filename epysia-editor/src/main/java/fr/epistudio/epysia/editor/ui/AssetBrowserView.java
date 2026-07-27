@@ -17,6 +17,8 @@ import fr.epistudio.epysia.editor.importer.ImportOutcome;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
@@ -108,7 +110,9 @@ public final class AssetBrowserView {
     private final AssetImportPipeline importPipeline;
     private final NameDialog nameDialog = new NameDialog("##asset-name-dialog");
     private final NewAssetDialog newAssetDialog;
-    private final ConfirmDialog deleteConfirm = new ConfirmDialog("Delete this file?", "Delete");
+    private final ConfirmDialog deleteConfirm = new ConfirmDialog(
+            I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_DELETE_FILE_TITLE),
+            I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_DELETE));
     private final List<AssetEntry> entries = new ArrayList<>();
     private final Deque<Path> importQueue = new ArrayDeque<>();
     private final Set<Path> queuedSources = new HashSet<>();
@@ -153,12 +157,14 @@ public final class AssetBrowserView {
         try {
             Files.walkFileTree(project.rootDirectory(), new ImportSweepVisitor());
         } catch (IOException error) {
-            notifier.show("Import sweep failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_IMPORT_SWEEP_FAILED,
+                    error.getMessage()));
             return;
         }
         int enqueuedCount = importQueue.size() - queuedBeforeSweep;
         if (enqueuedCount > 0) {
-            notifier.show(enqueuedCount + " assets need reimport, importing in background");
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_ASSETS_NEED_REIMPORT,
+                    enqueuedCount));
         }
     }
 
@@ -191,7 +197,7 @@ public final class AssetBrowserView {
         processImportQueue();
         thumbnails.beginFrame();
         meshThumbnails.beginFrame();
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_TITLE, WINDOW_TITLE))) {
             ImGui.end();
             return;
         }
@@ -220,7 +226,8 @@ public final class AssetBrowserView {
         }
         ImGui.sameLine();
         if (icons.iconButton("assets-new-folder", EditorIcon.FOLDER, EditorStyle.ICON_SIZE_SMALL)) {
-            nameDialog.open("New folder", "NewFolder", this::createFolder);
+            nameDialog.open(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_NEW_FOLDER),
+                    I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_NEW_FOLDER_DEFAULT_NAME), this::createFolder);
         }
         ImGui.sameLine();
         if (icons.iconButton("assets-refresh", EditorIcon.LOAD, EditorStyle.ICON_SIZE_SMALL)) {
@@ -280,7 +287,8 @@ public final class AssetBrowserView {
             ImGui.setCursorPosX(offset);
         }
         ImGui.setNextItemWidth(SEARCH_FIELD_WIDTH);
-        if (ImGui.inputTextWithHint("##assets-search", "Search", searchInput)) {
+        if (ImGui.inputTextWithHint("##assets-search",
+                I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_SEARCH), searchInput)) {
             query.setSearchText(searchInput.get());
             refresh();
         }
@@ -300,7 +308,8 @@ public final class AssetBrowserView {
         if (showingBuiltins) {
             flags |= ImGuiTreeNodeFlags.Selected;
         }
-        ImGui.treeNodeEx(BuiltinAssets.FOLDER_LABEL, flags, BuiltinAssets.FOLDER_LABEL);
+        ImGui.treeNodeEx(BuiltinAssets.FOLDER_LABEL, flags,
+                I18n.translate(TextKey.EDITOR_BUILTIN_ASSETS_FOLDER));
         if (ImGui.isItemClicked()) {
             showingBuiltins = true;
             grid.clearSelection();
@@ -343,7 +352,8 @@ public final class AssetBrowserView {
                 }
             }
         } catch (IOException error) {
-            notifier.show("Could not list directory: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_COULD_NOT_LIST_DIRECTORY,
+                    error.getMessage()));
         }
         result.sort(Comparator.comparing(path -> path.getFileName().toString()));
         return result;
@@ -374,36 +384,45 @@ public final class AssetBrowserView {
         ImGui.sameLine();
         renderTypeCombo();
         ImGui.sameLine();
-        ImGui.textDisabled(entries.size() + " items");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ITEMS, entries.size()));
     }
 
     private void renderSortCombo() {
         ImGui.setNextItemWidth(SMALL_COMBO_WIDTH);
-        if (ImGui.beginCombo("##assets-sort", "Sort: " + query.sortField().label())) {
+        if (ImGui.beginCombo("##assets-sort", I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_SORT,
+                I18n.translate(sortFieldKey(query.sortField()))))) {
             for (AssetQuery.SortField field : AssetQuery.SortField.values()) {
-                if (ImGui.selectable(field.label(), field == query.sortField())) {
+                if (ImGui.selectable(I18n.label(sortFieldKey(field), "asset-sort-" + field.name()),
+                        field == query.sortField())) {
                     query.setSortField(field);
                 }
             }
             ImGui.endCombo();
         }
         ImGui.sameLine();
-        if (ImGui.smallButton(query.ascending() ? "Asc" : "Desc")) {
+        TextKey directionKey = query.ascending()
+                ? TextKey.EDITOR_ASSET_BROWSER_VIEW_ASCENDING
+                : TextKey.EDITOR_ASSET_BROWSER_VIEW_DESCENDING;
+        if (ImGui.smallButton(I18n.label(directionKey, "asset-sort-direction"))) {
             query.toggleDirection();
         }
     }
 
     private void renderTypeCombo() {
-        String label = query.typeFilter().map(AssetType::pluralLabel).orElse("All");
+        String label = query.typeFilter()
+                .map(type -> I18n.translate(assetTypeKey(type)))
+                .orElse(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ALL));
         ImGui.setNextItemWidth(SMALL_COMBO_WIDTH);
-        if (!ImGui.beginCombo("##assets-type", "Type: " + label)) {
+        if (!ImGui.beginCombo("##assets-type", I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TYPE, label))) {
             return;
         }
-        if (ImGui.selectable("All", query.typeFilter().isEmpty())) {
+        if (ImGui.selectable(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_ALL, "asset-type-all"),
+                query.typeFilter().isEmpty())) {
             query.setTypeFilter(null);
         }
         for (AssetType type : AssetType.values()) {
-            if (ImGui.selectable(type.pluralLabel(), query.typeFilter().orElse(null) == type)) {
+            if (ImGui.selectable(I18n.label(assetTypeKey(type), "asset-type-" + type.name()),
+                    query.typeFilter().orElse(null) == type)) {
                 query.setTypeFilter(type);
             }
         }
@@ -415,7 +434,8 @@ public final class AssetBrowserView {
         if (!ImGui.beginPopupContextWindow("##asset-browser-context", flags)) {
             return;
         }
-        if (ImGui.menuItem("New Asset...")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_NEW_ASSET,
+                "asset-browser-context-new-asset"))) {
             newAssetDialog.setKinds(assetKinds());
             newAssetDialog.open();
         }
@@ -424,23 +444,41 @@ public final class AssetBrowserView {
 
     private List<NewAssetDialog.AssetKind> assetKinds() {
         return List.of(
-                kind("Material", MATERIALS_CATEGORY, "shareable material, assign to mesh slots",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_MATERIAL),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_MATERIALS),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_MATERIAL_DESCRIPTION),
                         EditorIcon.MESH, "MyMaterial", this::createMaterial),
-                kind("Surface Shader", SHADERS_CATEGORY, "GLSL injected into the lit pipeline",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SURFACE_SHADER),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SHADERS),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SURFACE_SHADER_DESCRIPTION),
                         EditorIcon.MESH, "MySurfaceShader", this::createSurfaceShader),
-                kind("Shader Graph", SHADERS_CATEGORY, "nodes, compiles to a surface shader",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_GRAPH),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SHADERS),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_GRAPH_DESCRIPTION),
                         EditorIcon.GRID, "MySurfaceGraph", this::createSurfaceShaderGraph),
-                kind("Shader Pair", SHADERS_CATEGORY, "vert + frag, replaces the pipeline",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_PAIR),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SHADERS),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_PAIR_DESCRIPTION),
                         EditorIcon.FILE, "MyShader", this::createShaderPair),
-                kind("Post Effect", POST_CATEGORY, "fullscreen pass",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_POST_EFFECT),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_POST_PROCESSING),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_POST_EFFECT_DESCRIPTION),
                         EditorIcon.VISIBILITY_VISIBLE, "MyPostEffect", this::createPostEffect),
-                kind("Post Graph", POST_CATEGORY, "nodes, compiles to a post effect",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_POST_GRAPH),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_POST_PROCESSING),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_POST_GRAPH_DESCRIPTION),
                         EditorIcon.GRID, "MyPostGraph", this::createPostShaderGraph),
-                kind("VFX Graph", EFFECTS_CATEGORY, "gpu particles, compiles to compute",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_VFX_GRAPH),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_EFFECTS),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_VFX_GRAPH_DESCRIPTION),
                         EditorIcon.GRID, "MyEffect", this::createVfxGraph),
-                kind("Logic Graph", SCRIPTING_CATEGORY, "attaches like a script",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_LOGIC_GRAPH),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SCRIPTING),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_LOGIC_GRAPH_DESCRIPTION),
                         EditorIcon.SCRIPT, "MyGraph", this::createGraph),
-                kind("State Machine", SCRIPTING_CATEGORY, "states and transitions",
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_STATE_MACHINE),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SCRIPTING),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_STATE_MACHINE_DESCRIPTION),
                         EditorIcon.ANIMATION_PLAYER, "MyStateMachine", this::createStateMachine));
     }
 
@@ -472,7 +510,8 @@ public final class AssetBrowserView {
     private void createShaderGraphFromTemplate(String requestedName, String templateResource) {
         String name = requestedName.replace("\0", "").strip();
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
-            notifier.show("Invalid graph name: " + requestedName);
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_GRAPH_NAME,
+                    requestedName));
             return;
         }
         try {
@@ -480,7 +519,8 @@ public final class AssetBrowserView {
             refresh();
             onOpenGraph.accept(createdFile);
         } catch (IOException | InvalidPathException error) {
-            notifier.show("Shader graph creation failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_GRAPH_CREATION_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -489,10 +529,11 @@ public final class AssetBrowserView {
         Files.createDirectories(directory);
         Path graphFile = directory.resolve(name + GRAPH_EXTENSION);
         if (Files.exists(graphFile)) {
-            throw new IOException("Graph already exists: " + name);
+            throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_GRAPH_ALREADY_EXISTS,
+                    name));
         }
         Files.writeString(graphFile, loadTemplate(templateResource));
-        notifier.show("Shader graph created: " + name);
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_GRAPH_CREATED, name));
         return graphFile;
     }
 
@@ -503,14 +544,16 @@ public final class AssetBrowserView {
     private void createMaterial(String requestedName) {
         String name = requestedName.replace("\0", "").strip();
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
-            notifier.show("Invalid material name: " + requestedName);
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_MATERIAL_NAME,
+                    requestedName));
             return;
         }
         try {
             writeMaterialTemplate(name);
             refresh();
         } catch (IOException | InvalidPathException error) {
-            notifier.show("Material creation failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_MATERIAL_CREATION_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -519,16 +562,18 @@ public final class AssetBrowserView {
         Files.createDirectories(directory);
         Path materialFile = directory.resolve(name + MATERIAL_EXTENSION);
         if (Files.exists(materialFile)) {
-            throw new IOException("Material already exists: " + name);
+            throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_MATERIAL_ALREADY_EXISTS,
+                    name));
         }
         Files.writeString(materialFile, loadTemplate(MATERIAL_TEMPLATE_RESOURCE));
-        notifier.show("Material created: " + name);
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_MATERIAL_CREATED, name));
     }
 
     private void createGraphFromTemplate(String requestedName, String templateResource) {
         String name = requestedName.replace("\0", "").strip();
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
-            notifier.show("Invalid graph name: " + requestedName);
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_GRAPH_NAME,
+                    requestedName));
             return;
         }
         try {
@@ -536,7 +581,8 @@ public final class AssetBrowserView {
             refresh();
             onOpenGraph.accept(createdFile);
         } catch (IOException | InvalidPathException error) {
-            notifier.show("Graph creation failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_GRAPH_CREATION_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -545,17 +591,19 @@ public final class AssetBrowserView {
         Files.createDirectories(directory);
         Path graphFile = directory.resolve(name + GRAPH_EXTENSION);
         if (Files.exists(graphFile)) {
-            throw new IOException("Graph already exists: " + name);
+            throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_GRAPH_ALREADY_EXISTS,
+                    name));
         }
         Files.writeString(graphFile, loadTemplate(templateResource));
-        notifier.show("Graph created: " + name);
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_GRAPH_CREATED, name));
         return graphFile;
     }
 
     private static String loadTemplate(String templateResource) throws IOException {
         try (InputStream stream = AssetBrowserView.class.getResourceAsStream(templateResource)) {
             if (stream == null) {
-                throw new IOException("Missing template resource: " + templateResource);
+                throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_MISSING_TEMPLATE_RESOURCE,
+                        templateResource));
             }
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
@@ -566,10 +614,11 @@ public final class AssetBrowserView {
         Files.createDirectories(directory);
         Path effectFile = directory.resolve(name + POST_EFFECT_SUFFIX);
         if (Files.exists(effectFile)) {
-            throw new IOException("Shader already exists: " + name);
+            throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_ALREADY_EXISTS,
+                    name));
         }
         Files.writeString(effectFile, loadTemplate(POST_EFFECT_TEMPLATE_RESOURCE));
-        notifier.show("Post effect created: " + name);
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_POST_EFFECT_CREATED, name));
         return effectFile;
     }
 
@@ -584,7 +633,8 @@ public final class AssetBrowserView {
     private void createShaderAsset(String requestedName, ShaderTemplateWriter templateWriter) {
         String name = requestedName.replace("\0", "").strip();
         if (name.isEmpty() || !name.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '_')) {
-            notifier.show("Invalid shader name: " + requestedName);
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_SHADER_NAME,
+                    requestedName));
             return;
         }
         try {
@@ -592,7 +642,8 @@ public final class AssetBrowserView {
             refresh();
             onOpenScript.accept(createdFile);
         } catch (IOException | InvalidPathException error) {
-            notifier.show("Shader creation failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_CREATION_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -605,10 +656,11 @@ public final class AssetBrowserView {
         Files.createDirectories(directory);
         Path surfaceFile = directory.resolve(name + SURFACE_SHADER_SUFFIX);
         if (Files.exists(surfaceFile)) {
-            throw new IOException("Shader already exists: " + name);
+            throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_ALREADY_EXISTS,
+                    name));
         }
         Files.writeString(surfaceFile, loadTemplate(SURFACE_SHADER_TEMPLATE_RESOURCE));
-        notifier.show("Surface shader created: " + name);
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SURFACE_SHADER_CREATED, name));
         return surfaceFile;
     }
 
@@ -618,11 +670,12 @@ public final class AssetBrowserView {
         Path vertexFile = directory.resolve(name + VERTEX_SHADER_SUFFIX);
         Path fragmentFile = directory.resolve(name + FRAGMENT_SHADER_SUFFIX);
         if (Files.exists(vertexFile) || Files.exists(fragmentFile)) {
-            throw new IOException("Shader already exists: " + name);
+            throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_ALREADY_EXISTS,
+                    name));
         }
         Files.writeString(vertexFile, loadTemplate(VERTEX_SHADER_TEMPLATE_RESOURCE));
         Files.writeString(fragmentFile, loadTemplate(FRAGMENT_SHADER_TEMPLATE_RESOURCE));
-        notifier.show("Shader created: " + name);
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_CREATED, name));
         return fragmentFile;
     }
 
@@ -648,22 +701,34 @@ public final class AssetBrowserView {
 
     private void renderContextItems(AssetEntry entry) {
         Path path = Path.of(entry.assetPath());
-        if (entry.type() == AssetType.PREFAB && ImGui.menuItem("Instantiate")) {
+        if (entry.type() == AssetType.PREFAB
+                && ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_INSTANTIATE,
+                "asset-context-instantiate"))) {
             onInstantiatePrefab.accept(path);
         }
-        if (entry.type() == AssetType.SCENE && ImGui.menuItem("Open Scene")) {
+        if (entry.type() == AssetType.SCENE
+                && ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_OPEN_SCENE,
+                "asset-context-open-scene"))) {
             onOpenScene.accept(path);
         }
-        if (entry.type() == AssetType.SCRIPT && ImGui.menuItem("Attach to selected")) {
+        if (entry.type() == AssetType.SCRIPT
+                && ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_ATTACH_TO_SELECTED,
+                "asset-context-attach-to-selected"))) {
             onAttachScript.accept(path);
         }
-        if (entry.type() == AssetType.GRAPH && ImGui.menuItem("Open in Graph Editor")) {
+        if (entry.type() == AssetType.GRAPH
+                && ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_OPEN_IN_GRAPH_EDITOR,
+                "asset-context-open-in-graph-editor"))) {
             onOpenGraph.accept(path);
         }
-        if (isBakeable(entry) && ImGui.menuItem("Bake Mesh")) {
+        if (isBakeable(entry)
+                && ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_BAKE_MESH,
+                "asset-context-bake-mesh"))) {
             onBakeMesh.accept(path);
         }
-        if (isImportSource(path) && ImGui.menuItem("Reimport")) {
+        if (isImportSource(path)
+                && ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_REIMPORT,
+                "asset-context-reimport"))) {
             reimport(path);
         }
         if (entry.type() != AssetType.PRESET) {
@@ -672,19 +737,22 @@ public final class AssetBrowserView {
     }
 
     private void renderFileManagementItems(AssetEntry entry, Path path) {
-        if (ImGui.menuItem("Rename")) {
-            nameDialog.open("Rename " + path.getFileName(), path.getFileName().toString(),
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_RENAME, "asset-context-rename"))) {
+            nameDialog.open(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_RENAME_FILE,
+                            path.getFileName()),
+                    path.getFileName().toString(),
                     newName -> renameFile(path, newName));
         }
-        if (ImGui.menuItem("Duplicate")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_DUPLICATE, "asset-context-duplicate"))) {
             duplicateFile(path);
         }
-        if (ImGui.menuItem("Delete")) {
-            deleteConfirm.open(path.getFileName() + " will be permanently removed from disk.",
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_DELETE, "asset-context-delete"))) {
+            deleteConfirm.open(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_DELETE_FILE_MESSAGE,
+                            path.getFileName()),
                     () -> deleteFile(path));
         }
         ImGui.separator();
-        if (ImGui.menuItem("Show Path")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_ASSET_BROWSER_VIEW_SHOW_PATH, "asset-context-show-path"))) {
             notifier.show(entry.assetPath());
         }
     }
@@ -702,10 +770,12 @@ public final class AssetBrowserView {
         Optional<String> displayName = importPipeline.importerFor(source).map(AssetImporter::displayName);
         Optional<ImportOutcome> outcome = importPipeline.reimport(source);
         if (outcome.isEmpty()) {
-            notifier.show("Reimport failed: " + source.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_REIMPORT_FAILED,
+                    source.getFileName()));
             return;
         }
-        reportImport("Reimported", source, displayName, outcome.get());
+        reportImport(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_REIMPORTED),
+                source, displayName, outcome.get());
         refresh();
     }
 
@@ -713,14 +783,20 @@ public final class AssetBrowserView {
         Optional<String> displayName = importPipeline.importerFor(source).map(AssetImporter::displayName);
         Optional<ImportOutcome> outcome = importPipeline.ensureImported(source);
         if (outcome.isEmpty()) {
-            notifier.show("Import failed: " + source.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_IMPORT_FAILED,
+                    source.getFileName()));
             return;
         }
-        reportImport("Imported", source, displayName, outcome.get());
+        reportImport(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_IMPORTED),
+                source, displayName, outcome.get());
     }
 
     private void reportImport(String verb, Path source, Optional<String> displayName, ImportOutcome outcome) {
-        notifier.show(verb + " " + source.getFileName() + displayName.map(name -> " (" + name + ")").orElse(""));
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_IMPORT_REPORT,
+                verb, source.getFileName(), displayName
+                        .map(name -> I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_IMPORT_REPORT_IMPORTER,
+                                name))
+                        .orElse("")));
         outcome.warnings().forEach(notifier::show);
     }
 
@@ -739,7 +815,7 @@ public final class AssetBrowserView {
     private void renameFile(Path path, String newName) {
         String sanitized = sanitizeFileName(path, newName);
         if (sanitized.isEmpty()) {
-            notifier.show("Invalid file name: " + newName);
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_FILE_NAME, newName));
             return;
         }
         try {
@@ -749,7 +825,8 @@ public final class AssetBrowserView {
             renamePublicClassIfScript(target, sanitized);
             refresh();
         } catch (IOException error) {
-            notifier.show("Rename failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_RENAME_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -782,7 +859,7 @@ public final class AssetBrowserView {
                 "(public\\s+(?:final\\s+)?class\\s+)\\w+", "$1" + className);
         if (!renamed.equals(source)) {
             Files.writeString(target, renamed);
-            notifier.show("Class renamed to " + className);
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_CLASS_RENAMED, className));
         }
     }
 
@@ -790,13 +867,15 @@ public final class AssetBrowserView {
         int imported = 0;
         for (Path file : files) {
             if (Files.isDirectory(file)) {
-                notifier.show("Folders are not importable, drop files: " + file.getFileName());
+                notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_FOLDERS_NOT_IMPORTABLE,
+                        file.getFileName()));
                 continue;
             }
             imported += importSingleFile(file);
         }
         if (imported > 0) {
-            notifier.show("Imported " + imported + " file(s) into " + currentDirectory.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_IMPORTED_FILES,
+                    imported, currentDirectory.getFileName()));
             refresh();
         }
     }
@@ -817,7 +896,8 @@ public final class AssetBrowserView {
             }
             return copied;
         } catch (IOException error) {
-            notifier.show("Import failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_IMPORT_FAILED,
+                    error.getMessage()));
             return 0;
         }
     }
@@ -855,9 +935,11 @@ public final class AssetBrowserView {
             Path target = uniqueSibling(source);
             Files.copy(source, target);
             refresh();
-            notifier.show("Duplicated: " + target.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_DUPLICATED,
+                    target.getFileName()));
         } catch (IOException error) {
-            notifier.show("Duplicate failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_DUPLICATE_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -882,15 +964,17 @@ public final class AssetBrowserView {
         try {
             Path target = targetDirectory.resolve(source.getFileName());
             if (Files.exists(target)) {
-                notifier.show("Already exists there: " + source.getFileName());
+                notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_ALREADY_EXISTS_THERE,
+                        source.getFileName()));
                 return;
             }
             Files.move(source, target);
             AssetMetaFile.moveAlongside(source, target);
             refresh();
-            notifier.show("Moved: " + source.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_MOVED, source.getFileName()));
         } catch (IOException error) {
-            notifier.show("Move failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_MOVE_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -912,10 +996,11 @@ public final class AssetBrowserView {
         try {
             Files.deleteIfExists(path);
             AssetMetaFile.deleteAlongside(path);
-            notifier.show("Deleted: " + path.getFileName());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_DELETED, path.getFileName()));
             refresh();
         } catch (IOException error) {
-            notifier.show("Delete failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_DELETE_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -928,7 +1013,8 @@ public final class AssetBrowserView {
             Files.createDirectories(currentDirectory.resolve(name));
             refresh();
         } catch (IOException error) {
-            notifier.show("Create folder failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_CREATE_FOLDER_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -990,9 +1076,36 @@ public final class AssetBrowserView {
                     ? AssetScanner.searchRecursively(currentDirectory)
                     : AssetScanner.listDirectory(currentDirectory);
         } catch (IOException error) {
-            notifier.show("Could not list directory: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_COULD_NOT_LIST_DIRECTORY,
+                    error.getMessage()));
             return List.of();
         }
+    }
+
+    private static TextKey sortFieldKey(AssetQuery.SortField field) {
+        return switch (field) {
+            case NAME -> TextKey.EDITOR_ASSET_QUERY_SORT_NAME;
+            case TYPE -> TextKey.EDITOR_ASSET_QUERY_SORT_TYPE;
+            case SIZE -> TextKey.EDITOR_ASSET_QUERY_SORT_SIZE;
+            case MODIFIED -> TextKey.EDITOR_ASSET_QUERY_SORT_MODIFIED;
+        };
+    }
+
+    private static TextKey assetTypeKey(AssetType type) {
+        return switch (type) {
+            case PRESET -> TextKey.EDITOR_ASSET_TYPE_PRESETS;
+            case MESH -> TextKey.EDITOR_ASSET_TYPE_MESHES;
+            case TEXTURE -> TextKey.EDITOR_ASSET_TYPE_TEXTURES;
+            case AUDIO -> TextKey.EDITOR_ASSET_TYPE_AUDIO;
+            case SCRIPT -> TextKey.EDITOR_ASSET_TYPE_SCRIPTS;
+            case SHADER -> TextKey.EDITOR_ASSET_TYPE_SHADERS;
+            case PREFAB -> TextKey.EDITOR_ASSET_TYPE_PREFABS;
+            case SCENE -> TextKey.EDITOR_ASSET_TYPE_SCENES;
+            case GRAPH -> TextKey.EDITOR_ASSET_TYPE_GRAPHS;
+            case MATERIAL -> TextKey.EDITOR_ASSET_TYPE_MATERIALS;
+            case CLIP -> TextKey.EDITOR_ASSET_TYPE_CLIPS;
+            case OTHER -> TextKey.EDITOR_ASSET_TYPE_OTHER;
+        };
     }
 
     private static String mimeFor(AssetType type) {

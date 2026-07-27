@@ -19,6 +19,8 @@ import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
@@ -63,7 +65,9 @@ public final class HierarchyView {
     private final Consumer<GameObject> onFrameRequested;
     private final GameObjectFactory objectFactory;
     private final Supplier<Vector3f> spawnPoint;
-    private final ConfirmDialog deleteConfirm = new ConfirmDialog("Delete selected objects?", "Delete");
+    private final ConfirmDialog deleteConfirm = new ConfirmDialog(
+            I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_DELETE_SELECTED_TITLE),
+            I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_DELETE_SELECTED_CONFIRM));
     private final ImString renameInput = new ImString(RENAME_CAPACITY);
     private final ImString filterInput = new ImString(FILTER_CAPACITY);
     private final IconWidgets icons;
@@ -96,7 +100,7 @@ public final class HierarchyView {
     }
 
     public void render() {
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_TITLE, WINDOW_TITLE))) {
             ImGui.end();
             return;
         }
@@ -124,7 +128,8 @@ public final class HierarchyView {
         ImGui.endDisabled();
         ImGui.sameLine();
         ImGui.setNextItemWidth(-1.0f);
-        ImGui.inputTextWithHint("##hierarchy-filter", "Filter", filterInput);
+        ImGui.inputTextWithHint("##hierarchy-filter",
+                I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_FILTER), filterInput);
     }
 
     private boolean matchesFilter(GameObject gameObject) {
@@ -147,12 +152,12 @@ public final class HierarchyView {
 
     private void renderEmptyState() {
         if (isFiltering()) {
-            ImGui.textDisabled("No object matches the filter.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_NO_FILTER_MATCH));
             return;
         }
-        ImGui.textDisabled("The scene is empty.");
-        ImGui.textDisabled("Right-click here or use the GameObject");
-        ImGui.textDisabled("menu to create your first object.");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_HELP_1));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_HELP_2));
     }
 
     private void renderRow(Row row, int index) {
@@ -260,20 +265,25 @@ public final class HierarchyView {
     }
 
     private void renderContextMenuItems(GameObject target) {
-        if (ImGui.menuItem("Rename", "F2")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_RENAME,
+                "hierarchy-rename"), "F2")) {
             beginRename(target);
         }
-        if (ImGui.menuItem("Duplicate", "Ctrl+D")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_DUPLICATE,
+                "hierarchy-duplicate"), "Ctrl+D")) {
             duplicateSelected();
         }
-        if (hasParent(target) && ImGui.menuItem("Unparent")) {
+        if (hasParent(target) && ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_UNPARENT,
+                "hierarchy-unparent"))) {
             unparent(target);
         }
-        if (ImGui.menuItem("Save as Prefab")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_SAVE_AS_PREFAB,
+                "hierarchy-save-as-prefab"))) {
             onSaveAsPrefab.accept(target);
         }
         ImGui.separator();
-        if (ImGui.menuItem("Delete", "Del")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_DELETE,
+                "hierarchy-delete"), "Del")) {
             askDeleteSelected();
         }
     }
@@ -316,7 +326,8 @@ public final class HierarchyView {
         if (!ImGui.beginPopupContextItem("hierarchy-background-menu")) {
             return;
         }
-        if (ImGui.beginMenu("Create")) {
+        if (ImGui.beginMenu(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_CREATE,
+                "hierarchy-create"))) {
             renderCreateItems();
             ImGui.endMenu();
         }
@@ -324,13 +335,13 @@ public final class HierarchyView {
     }
 
     private void renderCreateItems() {
-        if (ImGui.menuItem("Cube")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_CUBE, "hierarchy-create-cube"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.CUBE, spawnPoint.get());
         }
-        if (ImGui.menuItem("Plane")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_PLANE, "hierarchy-create-plane"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.PLANE, spawnPoint.get());
         }
-        if (ImGui.menuItem("Capsule")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_CAPSULE, "hierarchy-create-capsule"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawnPoint.get());
         }
         ImGui.separator();
@@ -338,20 +349,24 @@ public final class HierarchyView {
     }
 
     private void renderCreateLightAndCameraItems() {
-        if (ImGui.menuItem("Point Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_POINT_LIGHT,
+                "hierarchy-create-point-light"))) {
             objectFactory.createPointLight(spawnPoint.get());
         }
-        if (ImGui.menuItem("Spot Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_SPOT_LIGHT,
+                "hierarchy-create-spot-light"))) {
             objectFactory.createSpotLight(spawnPoint.get());
         }
-        if (ImGui.menuItem("Directional Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_DIRECTIONAL_LIGHT,
+                "hierarchy-create-directional-light"))) {
             objectFactory.createDirectionalLight(spawnPoint.get());
         }
         ImGui.separator();
-        if (ImGui.menuItem("Camera")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_CAMERA, "hierarchy-create-camera"))) {
             objectFactory.createCamera(spawnPoint.get());
         }
-        if (ImGui.menuItem("Empty")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_OBJECT,
+                "hierarchy-create-empty"))) {
             objectFactory.createEmpty(spawnPoint.get());
         }
     }
@@ -403,7 +418,7 @@ public final class HierarchyView {
             return;
         }
         if (isDescendantOf(targetTransform.get(), droppedTransform.get())) {
-            notifier.show("Cannot parent an object to its own child");
+            notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_CANNOT_PARENT_TO_CHILD));
             return;
         }
         if (targetTransform.get() != droppedTransform.get().parent().orElse(null)) {
@@ -489,7 +504,7 @@ public final class HierarchyView {
             commands.add(new AddGameObjectCommand(buildCopy(source), targets.size() == 1));
         }
         history().execute(new CompositeCommand("Duplicate " + targets.size() + " object(s)", commands));
-        notifier.show("Duplicated " + targets.size() + " object(s)");
+        notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_DUPLICATED, targets.size()));
     }
 
     private GameObject buildCopy(GameObject source) {
@@ -592,7 +607,7 @@ public final class HierarchyView {
             commands.add(new RemoveGameObjectCommand(target));
         }
         history().execute(new CompositeCommand("Delete " + targets.size() + " object(s)", commands));
-        notifier.show("Deleted " + targets.size() + " object(s)");
+        notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_DELETED, targets.size()));
     }
 
     private record Row(GameObject gameObject, int depth) {

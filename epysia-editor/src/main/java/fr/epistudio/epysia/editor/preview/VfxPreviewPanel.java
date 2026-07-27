@@ -7,6 +7,8 @@ import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.gl.GlStateSnapshot;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.render.backend.RenderSurface;
 import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
@@ -164,23 +166,27 @@ public final class VfxPreviewPanel {
     }
 
     private void renderControls() {
-        if (ImGui.button(playing ? "Pause" : "Play")) {
+        TextKey playPauseKey = playing
+                ? TextKey.EDITOR_VFX_PREVIEW_PANEL_PAUSE
+                : TextKey.EDITOR_VFX_PREVIEW_PANEL_PLAY;
+        if (ImGui.button(I18n.label(playPauseKey, "vfx-preview-play-pause"))) {
             playing = !playing;
         }
         ImGui.sameLine();
-        if (ImGui.button("Restart")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_VFX_PREVIEW_PANEL_RESTART, "vfx-preview-restart"))) {
             restart();
         }
         ImGui.sameLine();
-        if (ImGui.button("Step")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_VFX_PREVIEW_PANEL_STEP, "vfx-preview-step"))) {
             stepRequested = true;
         }
         ImGui.sameLine();
-        if (ImGui.checkbox("Shapes", showShapes)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_VFX_PREVIEW_PANEL_SHAPES, "vfx-preview-shapes"), showShapes)) {
             showShapes = !showShapes;
         }
         ImGui.setNextItemWidth(-1.0f);
-        ImGui.sliderFloat("##vfx-speed", speed, MINIMUM_SPEED, MAXIMUM_SPEED, "speed %.2fx");
+        ImGui.sliderFloat("##vfx-speed", speed, MINIMUM_SPEED, MAXIMUM_SPEED,
+                I18n.translate(TextKey.EDITOR_VFX_PREVIEW_PANEL_SPEED, "%.2f"));
     }
 
     private void restart() {
@@ -192,10 +198,11 @@ public final class VfxPreviewPanel {
     private void renderStatistics() {
         int poolSize = effect.poolSize();
         int alive = vfxRenderSystem.aliveCountOf(effect).orElse(0);
-        ImGui.text("alive: " + alive + " / " + poolSize);
+        ImGui.text(I18n.translate(TextKey.EDITOR_VFX_PREVIEW_PANEL_ALIVE, alive, poolSize));
         ImGui.progressBar(alive / (float) poolSize, -1.0f, 0.0f, alive + " / " + poolSize);
         if (alive >= poolSize) {
-            ImGui.textColored(POOL_EXHAUSTED_COLOR, "pool exhausted");
+            ImGui.textColored(POOL_EXHAUSTED_COLOR,
+                    I18n.translate(TextKey.EDITOR_VFX_PREVIEW_PANEL_POOL_EXHAUSTED));
         }
     }
 

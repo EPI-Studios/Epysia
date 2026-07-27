@@ -3,6 +3,8 @@ package fr.epistudio.epysia.editor.ui;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
 import imgui.ImGui;
@@ -45,11 +47,12 @@ public final class NewProjectDialog {
 
     public void render() {
         if (openRequested) {
-            ImGui.openPopup(POPUP_TITLE);
+            ImGui.openPopup(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_TITLE, "new-project-dialog"));
             openRequested = false;
         }
         ImGui.setNextWindowSize(DIALOG_WIDTH, 0.0f, ImGuiCond.Appearing);
-        if (!ImGui.beginPopupModal(POPUP_TITLE, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_TITLE, "new-project-dialog"),
+                ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
         renderFields();
@@ -58,19 +61,22 @@ public final class NewProjectDialog {
     }
 
     private void renderFields() {
-        ImGui.inputText("Project name", nameInput);
-        ImGui.inputText("Parent folder", parentInput);
+        ImGui.inputText(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_PROJECT_NAME,
+                "new-project-name"), nameInput);
+        ImGui.inputText(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_PARENT_FOLDER,
+                "new-project-parent"), parentInput);
         ImGui.sameLine();
-        if (ImGui.button("Browse")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_BROWSE,
+                "new-project-browse"))) {
             browseParent();
         }
-        ImGui.textDisabled("Final path: " + previewPath());
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_FINAL_PATH, previewPath()));
     }
 
     private void browseParent() {
         Path start = currentParent().filter(Files::isDirectory)
                 .orElse(Path.of(System.getProperty("user.home")));
-        FileDialogs.pickFolder("Choose a parent folder", start)
+        FileDialogs.pickFolder(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_CHOOSE_PARENT_FOLDER), start)
                 .ifPresent(path -> parentInput.set(path.toString()));
     }
 
@@ -79,12 +85,14 @@ public final class NewProjectDialog {
         error.ifPresent(message -> ImGui.textColored(EditorStyle.COLOR_DANGER, message));
         ImGui.separator();
         ImGui.beginDisabled(error.isPresent());
-        if (ImGui.button("Create")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_CREATE,
+                "new-project-create"))) {
             attemptCreate();
         }
         ImGui.endDisabled();
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_CANCEL,
+                "new-project-cancel"))) {
             ImGui.closeCurrentPopup();
         }
     }
@@ -97,7 +105,8 @@ public final class NewProjectDialog {
             ImGui.closeCurrentPopup();
             onCreated.accept(project);
         } catch (IOException error) {
-            notifier.show("Creation failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_TOAST_CREATION_FAILED,
+                    error.getMessage()));
         }
     }
 
@@ -123,10 +132,10 @@ public final class NewProjectDialog {
     private Optional<String> validationError() {
         String name = nameInput.get().trim();
         if (name.isEmpty()) {
-            return Optional.of("A project name is required.");
+            return Optional.of(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_ERROR_NAME_REQUIRED));
         }
         if (name.chars().anyMatch(character -> INVALID_NAME_CHARS.indexOf(character) >= 0)) {
-            return Optional.of("Forbidden characters: / \\ : * ? \" < > |");
+            return Optional.of(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_ERROR_FORBIDDEN_CHARACTERS));
         }
         return parentValidationError(name);
     }
@@ -134,13 +143,13 @@ public final class NewProjectDialog {
     private Optional<String> parentValidationError(String name) {
         Optional<Path> parent = currentParent();
         if (parent.isEmpty()) {
-            return Optional.of("A parent folder is required.");
+            return Optional.of(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_ERROR_PARENT_REQUIRED));
         }
         if (!Files.isDirectory(parent.get())) {
-            return Optional.of("The parent folder must exist.");
+            return Optional.of(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_ERROR_PARENT_MUST_EXIST));
         }
         if (Files.exists(parent.get().resolve(name))) {
-            return Optional.of("A folder with this name already exists.");
+            return Optional.of(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_ERROR_FOLDER_EXISTS));
         }
         return Optional.empty();
     }

@@ -2,6 +2,8 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.render.postfx.PostEffect;
 import fr.epistudio.epysia.render.postfx.PostEffectInsertionPoint;
@@ -47,12 +49,13 @@ public final class PostEffectsSection {
     public void render(PostEffectStack stack, Runnable onChanged) {
         List<PostEffect> snapshot = new ArrayList<>(stack.effects());
         if (snapshot.isEmpty()) {
-            ImGui.textDisabled("No post effects in this stack.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_EMPTY));
         }
         for (int index = 0; index < snapshot.size(); index++) {
             renderEffect(stack, snapshot.get(index), index, snapshot.size(), onChanged);
         }
-        if (ImGui.button("Add Post Effect")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_ADD,
+                "post-effects-add"))) {
             filePicker.open(POST_EFFECT_EXTENSIONS, false, path -> addEffect(stack, path, onChanged));
         }
         filePicker.render();
@@ -105,17 +108,20 @@ public final class PostEffectsSection {
 
     private void renderOrderButtons(PostEffectStack stack, PostEffect effect, int index, int count,
                                     Runnable onChanged) {
-        if (ImGui.button("Up") && index > 0) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_UP,
+                "post-effects-up")) && index > 0) {
             stack.reorder(effect.name(), index - 1);
             onChanged.run();
         }
         ImGui.sameLine();
-        if (ImGui.button("Down") && index < count - 1) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_DOWN,
+                "post-effects-down")) && index < count - 1) {
             stack.reorder(effect.name(), index + 1);
             onChanged.run();
         }
         ImGui.sameLine();
-        if (ImGui.button("Remove")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_REMOVE,
+                "post-effects-remove"))) {
             stack.remove(effect.name());
             onChanged.run();
         }
@@ -127,11 +133,13 @@ public final class PostEffectsSection {
             renderDeclaredInsertion(declared.get());
             return;
         }
-        if (!ImGui.beginCombo("Insertion Point", effect.insertionPoint().displayName())) {
+        if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_INSERTION_POINT,
+                "post-effects-insertion-point"), I18n.translate(insertionPointKey(effect.insertionPoint())))) {
             return;
         }
         for (PostEffectInsertionPoint point : PostEffectInsertionPoint.values()) {
-            if (ImGui.selectable(point.displayName(), point == effect.insertionPoint())
+            if (ImGui.selectable(I18n.label(insertionPointKey(point),
+                    "post-effects-insertion-" + point.name()), point == effect.insertionPoint())
                     && point != effect.insertionPoint()) {
                 effect.setInsertionPoint(point);
                 onChanged.run();
@@ -142,15 +150,24 @@ public final class PostEffectsSection {
 
     private static void renderDeclaredInsertion(PostEffectInsertionPoint declared) {
         ImGui.beginDisabled(true);
-        ImGui.labelText("Insertion Point", declared.displayName());
+        ImGui.labelText(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_INSERTION_POINT,
+                "post-effects-declared-insertion-point"), I18n.translate(insertionPointKey(declared)));
         ImGui.endDisabled();
-        ImGui.textDisabled("Set by the shader: // @insertion " + declared.annotationToken());
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_SHADER_INSERTION,
+                declared.annotationToken()));
+    }
+
+    private static TextKey insertionPointKey(PostEffectInsertionPoint point) {
+        return switch (point) {
+            case BEFORE_TONEMAP -> TextKey.EDITOR_POST_EFFECTS_SECTION_INSERTION_BEFORE_TONEMAP;
+            case AFTER_TONEMAP -> TextKey.EDITOR_POST_EFFECTS_SECTION_INSERTION_AFTER_TONEMAP;
+        };
     }
 
     private void renderUniformRows(PostEffect effect, Runnable onChanged) {
         Optional<ParsedSource> parsed = parsedSourceFor(effect.shaderPath());
         if (parsed.isEmpty()) {
-            ImGui.textDisabled("Effect file could not be parsed.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_PARSE_ERROR));
             return;
         }
         for (ShaderUniformDeclaration declaration : parsed.get().declarations()) {
@@ -166,7 +183,8 @@ public final class PostEffectsSection {
             return;
         }
         if (declaration.isArray()) {
-            ImGui.textDisabled(declaration.name() + "[" + declaration.arraySize() + "] (script controlled)");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_ARRAY_SCRIPT_CONTROLLED,
+                    declaration.name(), declaration.arraySize()));
             return;
         }
         renderScalarRow(effect, declaration, onChanged);
@@ -178,7 +196,8 @@ public final class PostEffectsSection {
             case INT -> renderIntRow(effect, declaration, onChanged);
             case BOOL -> renderBoolRow(effect, declaration, onChanged);
             case VECTOR2, VECTOR3, VECTOR4 -> renderVectorRow(effect, declaration, onChanged);
-            case MATRIX4 -> ImGui.textDisabled(declaration.name() + " (script controlled)");
+            case MATRIX4 -> ImGui.textDisabled(I18n.translate(
+                    TextKey.EDITOR_POST_EFFECTS_SECTION_SCRIPT_CONTROLLED, declaration.name()));
             case SAMPLER2D -> {
             }
         }
@@ -286,7 +305,11 @@ public final class PostEffectsSection {
         OptionalInt thumbnail = currentPath.isEmpty() ? OptionalInt.empty() : thumbnails.get(currentPath);
         boolean clicked = thumbnail.isPresent()
                 ? ImGui.imageButton(thumbnail.getAsInt(), TEXTURE_WELL_SIZE, TEXTURE_WELL_SIZE)
-                : ImGui.button(currentPath.isEmpty() ? "None" : "…", TEXTURE_WELL_SIZE + 8.0f, TEXTURE_WELL_SIZE);
+                : ImGui.button(currentPath.isEmpty()
+                                ? I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_NONE,
+                                        "post-effects-texture-none-" + declaration.name())
+                                : "…",
+                        TEXTURE_WELL_SIZE + 8.0f, TEXTURE_WELL_SIZE);
         if (ImGui.isItemHovered() && !currentPath.isEmpty()) {
             ImGui.setTooltip(currentPath);
         }
@@ -319,7 +342,8 @@ public final class PostEffectsSection {
             return;
         }
         ImGui.sameLine();
-        if (ImGui.smallButton("X")) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_CLEAR,
+                "post-effects-clear-texture-" + declaration.name()))) {
             effect.setTexture(declaration.name(), "");
             onChanged.run();
         }

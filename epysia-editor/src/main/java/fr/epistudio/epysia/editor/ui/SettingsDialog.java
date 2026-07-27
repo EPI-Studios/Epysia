@@ -2,6 +2,8 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.gpu.GpuPreference;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.EditorSettings;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.render.environment.SkySettings;
@@ -157,11 +159,11 @@ public final class SettingsDialog {
 
     public void render() {
         if (openRequested) {
-            ImGui.openPopup(POPUP_TITLE);
+            ImGui.openPopup(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_TITLE, "settings-dialog"));
             openRequested = false;
         }
         ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT, ImGuiCond.Appearing);
-        if (!ImGui.beginPopupModal(POPUP_TITLE)) {
+        if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_TITLE, "settings-dialog"))) {
             return;
         }
         renderTabs();
@@ -181,7 +183,8 @@ public final class SettingsDialog {
     }
 
     private void renderCollisionTab() {
-        if (!ImGui.beginTabItem("Collision")) {
+        if (!ImGui.beginTabItem(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_TAB_COLLISION,
+                "settings-collision"))) {
             return;
         }
         ImGui.beginChild("##collision-grid", 0.0f, -ImGui.getFrameHeightWithSpacing());
@@ -223,19 +226,25 @@ public final class SettingsDialog {
     }
 
     private void renderEditorTab() {
-        if (!ImGui.beginTabItem("Editor")) {
+        if (!ImGui.beginTabItem(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_TAB_EDITOR,
+                "settings-editor"))) {
             return;
         }
-        ImGui.dragFloat("Camera speed", cameraSpeed, 0.1f, MIN_CAMERA_SPEED, MAX_CAMERA_SPEED);
-        ImGui.dragFloat("Camera boost multiplier", cameraBoost, 0.1f, MIN_CAMERA_BOOST, MAX_CAMERA_BOOST);
-        if (ImGui.checkbox("Detachable windows (multi-monitor, restart required)", detachableWindows)) {
+        ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_CAMERA_SPEED,
+                "settings-camera-speed"), cameraSpeed, 0.1f, MIN_CAMERA_SPEED, MAX_CAMERA_SPEED);
+        ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_CAMERA_BOOST,
+                "settings-camera-boost"), cameraBoost, 0.1f, MIN_CAMERA_BOOST, MAX_CAMERA_BOOST);
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_DETACHABLE_WINDOWS,
+                "settings-detachable-windows"), detachableWindows)) {
             detachableWindows = !detachableWindows;
         }
-        if (ImGui.checkbox("Autosave scenes", autosaveEnabled)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_AUTOSAVE_SCENES,
+                "settings-autosave"), autosaveEnabled)) {
             autosaveEnabled = !autosaveEnabled;
         }
         if (autosaveEnabled) {
-            ImGui.dragInt("Autosave interval (seconds)", autosaveInterval, 1.0f,
+            ImGui.dragInt(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_AUTOSAVE_INTERVAL,
+                            "settings-autosave-interval"), autosaveInterval, 1.0f,
                     MIN_AUTOSAVE_SECONDS, MAX_AUTOSAVE_SECONDS);
         }
         renderViewportSection();
@@ -245,25 +254,37 @@ public final class SettingsDialog {
 
     private void renderGpuSection() {
         ImGui.separator();
-        ImGui.text("Graphics");
+        ImGui.text(I18n.translate(TextKey.EDITOR_SETTINGS_DIALOG_GRAPHICS));
         ImGui.setNextItemWidth(220.0f);
-        if (ImGui.beginCombo("Preferred GPU", gpuPreferences[selectedGpuIndex].displayName())) {
+        if (ImGui.beginCombo(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_PREFERRED_GPU,
+                "settings-preferred-gpu"), I18n.translate(gpuPreferenceKey(gpuPreferences[selectedGpuIndex])))) {
             for (int index = 0; index < gpuPreferences.length; index++) {
-                if (ImGui.selectable(gpuPreferences[index].displayName(), index == selectedGpuIndex)) {
+                if (ImGui.selectable(I18n.label(gpuPreferenceKey(gpuPreferences[index]),
+                        "settings-gpu-" + gpuPreferences[index].name()), index == selectedGpuIndex)) {
                     selectedGpuIndex = index;
                 }
             }
             ImGui.endCombo();
         }
-        ImGui.textDisabled("Applies to launched and exported games now, and to the editor after a restart.");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_SETTINGS_DIALOG_GPU_HELP));
+    }
+
+    private static TextKey gpuPreferenceKey(GpuPreference preference) {
+        return switch (preference) {
+            case SYSTEM_DEFAULT -> TextKey.EDITOR_SETTINGS_DIALOG_GPU_SYSTEM_DEFAULT;
+            case HIGH_PERFORMANCE -> TextKey.EDITOR_SETTINGS_DIALOG_GPU_HIGH_PERFORMANCE;
+            case POWER_SAVING -> TextKey.EDITOR_SETTINGS_DIALOG_GPU_POWER_SAVING;
+        };
     }
 
     private void renderViewportSection() {
         ImGui.separator();
-        ImGui.text("Viewport");
-        boolean thicknessChanged = ImGui.sliderFloat("Overlay line thickness", overlayThickness,
+        ImGui.text(I18n.translate(TextKey.EDITOR_SETTINGS_DIALOG_VIEWPORT));
+        boolean thicknessChanged = ImGui.sliderFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_OVERLAY_LINE_THICKNESS,
+                        "settings-overlay-thickness"), overlayThickness,
                 EditorPreferences.MIN_OVERLAY_THICKNESS, EditorPreferences.MAX_OVERLAY_THICKNESS);
-        boolean fadeChanged = ImGui.sliderFloat("Grid fade distance", gridFadeDistance,
+        boolean fadeChanged = ImGui.sliderFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_GRID_FADE_DISTANCE,
+                        "settings-grid-fade"), gridFadeDistance,
                 EditorPreferences.MIN_GRID_FADE_DISTANCE, EditorPreferences.MAX_GRID_FADE_DISTANCE);
         if (thicknessChanged || fadeChanged) {
             viewportTuningListener.onViewportTuningChanged(overlayThickness[0], gridFadeDistance[0]);
@@ -271,11 +292,12 @@ public final class SettingsDialog {
     }
 
     private void renderRenderingTab() {
-        if (!ImGui.beginTabItem("Rendering")) {
+        if (!ImGui.beginTabItem(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_TAB_RENDERING,
+                "settings-rendering"))) {
             return;
         }
         if (postProcessSettings.isEmpty()) {
-            ImGui.textDisabled("Rendering settings become available once a scene viewport is open.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_SETTINGS_DIALOG_RENDERING_UNAVAILABLE));
         } else {
             renderRenderingControls();
         }
@@ -283,32 +305,45 @@ public final class SettingsDialog {
     }
 
     private void renderRenderingControls() {
-        ImGui.dragFloat("Sky intensity", skyIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
-        ImGui.dragFloat("Ambient intensity", ambientIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
-        ImGui.dragFloat("Exposure", exposure, 0.02f, MIN_EXPOSURE, MAX_EXPOSURE);
-        ImGui.dragFloat("Vignette", vignette, 0.01f, 0.0f, 1.0f);
-        ImGui.dragFloat("Shadow distance", shadowDistance, 1.0f, MIN_SHADOW_DISTANCE, MAX_SHADOW_DISTANCE);
-        if (ImGui.checkbox("GPU light culling", lightCullingEnabled)) {
+        ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_SKY_INTENSITY,
+                "settings-sky-intensity"), skyIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
+        ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_AMBIENT_INTENSITY,
+                "settings-ambient-intensity"), ambientIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
+        ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_EXPOSURE,
+                "settings-exposure"), exposure, 0.02f, MIN_EXPOSURE, MAX_EXPOSURE);
+        ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_VIGNETTE,
+                "settings-vignette"), vignette, 0.01f, 0.0f, 1.0f);
+        ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_SHADOW_DISTANCE,
+                "settings-shadow-distance"), shadowDistance, 1.0f, MIN_SHADOW_DISTANCE, MAX_SHADOW_DISTANCE);
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_GPU_LIGHT_CULLING,
+                "settings-gpu-light-culling"), lightCullingEnabled)) {
             lightCullingEnabled = !lightCullingEnabled;
         }
         renderToggleRows();
     }
 
     private void renderToggleRows() {
-        if (ImGui.checkbox("Bloom", bloomEnabled)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_BLOOM,
+                "settings-bloom"), bloomEnabled)) {
             bloomEnabled = !bloomEnabled;
         }
         if (bloomEnabled) {
-            ImGui.dragFloat("Bloom intensity", bloomIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
+            ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_BLOOM_INTENSITY,
+                    "settings-bloom-intensity"), bloomIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
         }
-        if (ImGui.checkbox("Ambient occlusion", ambientOcclusionEnabled)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_AMBIENT_OCCLUSION,
+                "settings-ambient-occlusion"), ambientOcclusionEnabled)) {
             ambientOcclusionEnabled = !ambientOcclusionEnabled;
         }
         if (ambientOcclusionEnabled) {
-            ImGui.dragFloat("Occlusion intensity", ambientOcclusionIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
-            ImGui.dragFloat("Occlusion radius", ambientOcclusionRadius, 0.02f, MIN_OCCLUSION_RADIUS, MAX_OCCLUSION_RADIUS);
+            ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_OCCLUSION_INTENSITY,
+                    "settings-occlusion-intensity"), ambientOcclusionIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY);
+            ImGui.dragFloat(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_OCCLUSION_RADIUS,
+                    "settings-occlusion-radius"), ambientOcclusionRadius, 0.02f,
+                    MIN_OCCLUSION_RADIUS, MAX_OCCLUSION_RADIUS);
         }
-        if (ImGui.checkbox("Anti-aliasing (FXAA)", antiAliasEnabled)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_ANTI_ALIASING,
+                "settings-anti-aliasing"), antiAliasEnabled)) {
             antiAliasEnabled = !antiAliasEnabled;
         }
         renderPostEffectsSection();
@@ -319,32 +354,37 @@ public final class SettingsDialog {
             return;
         }
         ImGui.separator();
-        ImGui.text("Post Effects");
-        ImGui.textDisabled("Scene-wide stack, applied live. Cameras can override it in the Inspector.");
+        ImGui.text(I18n.translate(TextKey.EDITOR_SETTINGS_DIALOG_POST_EFFECTS));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_SETTINGS_DIALOG_POST_EFFECTS_HELP));
         postEffectsSection.get().render(globalPostEffectStack.get().get(), onPostEffectsChanged);
     }
 
     private void renderProjectTab() {
-        if (!ImGui.beginTabItem("Project")) {
+        if (!ImGui.beginTabItem(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_TAB_PROJECT,
+                "settings-project"))) {
             return;
         }
         if (project != null) {
-            ImGui.labelText("Project name", project.name());
-            ImGui.labelText("Engine version", project.engineVersion());
-            ImGui.labelText("Root directory", project.rootDirectory().toString());
-            ImGui.labelText("Default scene", project.defaultScenePath().getFileName().toString());
+            ImGui.labelText(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_PROJECT_NAME,
+                    "settings-project-name"), project.name());
+            ImGui.labelText(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_ENGINE_VERSION,
+                    "settings-engine-version"), project.engineVersion());
+            ImGui.labelText(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_ROOT_DIRECTORY,
+                    "settings-root-directory"), project.rootDirectory().toString());
+            ImGui.labelText(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_DEFAULT_SCENE,
+                    "settings-default-scene"), project.defaultScenePath().getFileName().toString());
         }
         ImGui.endTabItem();
     }
 
     private void renderFooter() {
         ImGui.separator();
-        if (ImGui.button("Save")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_SAVE, "settings-save"))) {
             save();
             ImGui.closeCurrentPopup();
         }
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_SETTINGS_DIALOG_CANCEL, "settings-cancel"))) {
             ImGui.closeCurrentPopup();
         }
     }

@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 import imgui.flag.ImGuiInputTextFlags;
 import imgui.flag.ImGuiWindowFlags;
@@ -58,11 +60,11 @@ public final class NameDialog {
     }
 
     private void renderButtons() {
-        if (ImGui.button("OK")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_NAME_DIALOG_OK, "name-dialog-ok"))) {
             accept();
         }
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_NAME_DIALOG_CANCEL, "name-dialog-cancel"))) {
             ImGui.closeCurrentPopup();
         }
     }

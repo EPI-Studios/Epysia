@@ -24,6 +24,8 @@ import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import imgui.ImGui;
 import imgui.extension.imguizmo.ImGuizmo;
@@ -165,7 +167,7 @@ public final class ViewportView {
 
     public void render(float deltaSeconds) {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
-        boolean visible = ImGui.begin(WINDOW_TITLE, WINDOW_FLAGS);
+        boolean visible = ImGui.begin(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_TITLE, WINDOW_TITLE), WINDOW_FLAGS);
         ImGui.popStyleVar();
         if (!visible) {
             samplePlayInput(0.0f, 0.0f, false);
@@ -709,25 +711,26 @@ public final class ViewportView {
 
     private void renderViewModeButtons(float imageX, float imageY) {
         ImGui.setCursorScreenPos(imageX + AXIS_INDICATOR_MARGIN, imageY + AXIS_INDICATOR_MARGIN);
-        if (renderModeButton("Scene", viewMode == ViewMode.SCENE)) {
+        if (renderModeButton(TextKey.EDITOR_VIEWPORT_VIEW_SCENE, viewMode == ViewMode.SCENE)) {
             viewMode = ViewMode.SCENE;
         }
         ImGui.sameLine();
-        if (renderModeButton("Game", viewMode == ViewMode.GAME)) {
+        if (renderModeButton(TextKey.EDITOR_VIEWPORT_VIEW_GAME, viewMode == ViewMode.GAME)) {
             viewMode = ViewMode.GAME;
         }
     }
 
-    private boolean renderModeButton(String label, boolean active) {
+    private boolean renderModeButton(TextKey key, boolean active) {
         if (active) {
             ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
         }
-        boolean clicked = ImGui.button(label);
+        String label = I18n.translate(key);
+        boolean clicked = ImGui.button(I18n.label(key, "viewport-mode-" + key.name()));
         if (active) {
             ImGui.popStyleColor();
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(label + " view");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_VIEW_TOOLTIP, label));
         }
         return clicked;
     }
@@ -757,7 +760,8 @@ public final class ViewportView {
                 0.0f, 1.0f, 1.0f, 0.0f, 0xFFFFFFFF, PREVIEW_ROUNDING);
         drawList.addRect(x0, y0, x0 + previewWidth, y0 + previewHeight,
                 EditorStyle.COLOR_ACCENT, PREVIEW_ROUNDING, 0, 1.5f);
-        drawList.addText(x0 + 8.0f, y0 + 6.0f, EditorStyle.COLOR_TEXT, "Camera Preview");
+        drawList.addText(x0 + 8.0f, y0 + 6.0f, EditorStyle.COLOR_TEXT,
+                I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_CAMERA_PREVIEW));
     }
 
     private Optional<Camera3D> selectedCamera() {
@@ -776,7 +780,7 @@ public final class ViewportView {
             return;
         }
         Vector3f spawn = dropPointAtMouse(imageX, imageY, width, height);
-        if (ImGui.beginMenu("Create")) {
+        if (ImGui.beginMenu(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_CREATE, "viewport-context-create"))) {
             renderCreateMenuItems(spawn);
             ImGui.endMenu();
         }
@@ -793,30 +797,31 @@ public final class ViewportView {
     }
 
     private void renderCreateMenuItems(Vector3f spawn) {
-        if (ImGui.menuItem("Cube")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_CUBE, "viewport-context-cube"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.CUBE, spawn);
         }
-        if (ImGui.menuItem("Plane")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_PLANE, "viewport-context-plane"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.PLANE, spawn);
         }
-        if (ImGui.menuItem("Capsule")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_CAPSULE, "viewport-context-capsule"))) {
             objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawn);
         }
         ImGui.separator();
-        if (ImGui.menuItem("Point Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_POINT_LIGHT, "viewport-context-point-light"))) {
             objectFactory.createPointLight(spawn);
         }
-        if (ImGui.menuItem("Spot Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_SPOT_LIGHT, "viewport-context-spot-light"))) {
             objectFactory.createSpotLight(spawn);
         }
-        if (ImGui.menuItem("Directional Light")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_DIRECTIONAL_LIGHT,
+                "viewport-context-directional-light"))) {
             objectFactory.createDirectionalLight(spawn);
         }
         ImGui.separator();
-        if (ImGui.menuItem("Camera")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_CAMERA, "viewport-context-camera"))) {
             objectFactory.createCamera(spawn);
         }
-        if (ImGui.menuItem("Empty")) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_EMPTY, "viewport-context-empty"))) {
             objectFactory.createEmpty(spawn);
         }
     }

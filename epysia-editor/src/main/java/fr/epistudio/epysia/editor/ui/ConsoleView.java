@@ -4,6 +4,8 @@ import fr.epistudio.epysia.editor.log.EditorConsole;
 import fr.epistudio.epysia.editor.play.PlayController;
 import fr.epistudio.epysia.editor.play.PlayLogLine;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 import imgui.type.ImString;
 
@@ -55,7 +57,7 @@ public final class ConsoleView {
 
     public void render() {
         drainPendingLines();
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_CONSOLE_VIEW_TITLE, WINDOW_TITLE))) {
             ImGui.end();
             return;
         }
@@ -71,9 +73,10 @@ public final class ConsoleView {
             ImGui.sameLine();
         }
         ImGui.setNextItemWidth(180.0f);
-        ImGui.inputTextWithHint("##console-search", "Filter text", searchInput);
+        ImGui.inputTextWithHint("##console-search",
+                I18n.translate(TextKey.EDITOR_CONSOLE_VIEW_FILTER_TEXT), searchInput);
         ImGui.sameLine();
-        if (ImGui.smallButton("Clear")) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_CONSOLE_VIEW_CLEAR, "console-clear"))) {
             lines.clear();
             stickToBottom = true;
         }
@@ -84,13 +87,21 @@ public final class ConsoleView {
         if (active) {
             ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, EditorStyle.COLOR_WIDGET_ACTIVE);
         }
-        String label = candidate.name().charAt(0) + candidate.name().substring(1).toLowerCase(Locale.ROOT);
-        if (ImGui.smallButton(label)) {
+        if (ImGui.smallButton(I18n.label(filterKey(candidate), "console-filter-" + candidate.name()))) {
             filter = candidate;
         }
         if (active) {
             ImGui.popStyleColor();
         }
+    }
+
+    private static TextKey filterKey(Filter candidate) {
+        return switch (candidate) {
+            case ALL -> TextKey.EDITOR_CONSOLE_VIEW_FILTER_ALL;
+            case INFO -> TextKey.EDITOR_CONSOLE_VIEW_FILTER_INFO;
+            case WARN -> TextKey.EDITOR_CONSOLE_VIEW_FILTER_WARN;
+            case ERROR -> TextKey.EDITOR_CONSOLE_VIEW_FILTER_ERROR;
+        };
     }
 
     private void renderLines() {
