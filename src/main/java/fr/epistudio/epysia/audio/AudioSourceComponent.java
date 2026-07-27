@@ -2,19 +2,29 @@ package fr.epistudio.epysia.audio;
 
 import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.EpysiaComponent;
+import fr.epistudio.epysia.components.Export;
 
 @EpysiaComponent(name = "Audio Source", category = "Audio")
 public final class AudioSourceComponent extends Component {
 
     private AudioBuffer buffer;
+    @Export(label = "Gain", min = 0.0f, max = 4.0f, step = 0.01f)
     private float gain = 1.0f;
+    @Export(label = "Pitch", min = 0.1f, max = 4.0f, step = 0.01f)
     private float pitch = 1.0f;
+    @Export(label = "Looping")
     private boolean looping;
+    @Export(label = "Spatial")
     private boolean spatial = true;
+    @Export(label = "Play On Start")
     private boolean playOnStart;
+    @Export(label = "Bus")
     private AudioBus bus = AudioBus.AMBIENT;
+    @Export(label = "Reference Distance", min = 0.01f, max = 1000.0f, step = 0.1f)
     private float referenceDistance = 1.0f;
+    @Export(label = "Max Distance", min = 0.01f, max = 10000.0f, step = 0.5f)
     private float maxDistance = 25.0f;
+    @Export(label = "Rolloff", min = 0.0f, max = 10.0f, step = 0.05f)
     private float rolloffFactor = 1.0f;
     private AudioSource source;
     private boolean initialized;
