@@ -12,10 +12,18 @@ EDITOR_MODULES="${GAME_MODULES},java.compiler,jdk.compiler"
 JLINK="${JAVA_HOME}/bin/jlink"
 JPACKAGE="${JAVA_HOME}/bin/jpackage"
 DIST="$(pwd)/dist"
+CONSOLE_LAUNCHER="$(pwd)/build/package/console-launcher.properties"
 WORK="$(pwd)/build/package"
 
 rm -rf "$DIST" "$WORK"
 mkdir -p "$DIST" "$WORK"
+
+write_console_launcher_properties() {
+    cat > "$CONSOLE_LAUNCHER" <<'PROPERTIES'
+win-console=true
+PROPERTIES
+}
+write_console_launcher_properties
 
 jlink_runtime() {
     "$JLINK" --add-modules "$1" \
@@ -40,6 +48,7 @@ package_template() {
         --input "$input" --main-jar epysia-engine.jar \
         --main-class fr.epistudio.epysia.GameLauncher \
         --runtime-image "$WORK/template-runtime" --java-options "$NATIVE_ACCESS" \
+        --add-launcher "${LAUNCHER_NAME}-console=$CONSOLE_LAUNCHER" \
         --dest "$WORK/template"
     make_zip "$DIST/epysia-template-${TARGET}-${VERSION}.zip" "$WORK/template" "$LAUNCHER_NAME"
 }
@@ -49,6 +58,7 @@ package_editor_windows() {
         --input "$WORK/editor-input" --main-jar epysia-editor.jar \
         --main-class fr.epistudio.epysia.editor.EditorMain \
         --runtime-image "$WORK/editor-runtime" --java-options "$NATIVE_ACCESS" \
+        --add-launcher "Epysia-console=$CONSOLE_LAUNCHER" \
         --win-dir-chooser --win-menu --win-shortcut --dest "$WORK/editor"
     mv "$WORK"/editor/*.exe "$DIST/Epysia-${VERSION}-${TARGET}.exe"
 }
