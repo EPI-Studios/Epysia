@@ -20,6 +20,11 @@ repositories {
     mavenCentral()
 }
 
+if (rootProject == project) {
+    throw new GradleException("epysia-editor is a subproject of Epysia and cannot be built on its own. "
+            + "Open or build from the repository root, for example: gradlew :epysia-editor:run")
+}
+
 ext {
     lwjglVersion = rootProject.ext.lwjglVersion
     lwjglNatives = rootProject.ext.lwjglNatives
