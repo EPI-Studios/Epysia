@@ -3,7 +3,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 plugins {
     id 'java'
     id 'application'
-    id 'com.gradleup.shadow' version '8.3.5'
+    id 'com.gradleup.shadow' version '9.0.2'
 }
 
 group = 'fr.epistudio'
@@ -318,5 +318,13 @@ tasks.register('runRenderBenchmark', JavaExec) {
     description = 'Synthetic render benchmark: scales object count and reports CPU/GPU cost per frame.'
     classpath = sourceSets.example.runtimeClasspath
     mainClass = 'com.meekdev.psyhou.game.RenderBenchmark'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
+tasks.register('runWallContactCheck', JavaExec) {
+    group = 'verification'
+    description = 'Pushes a 2D controller into a wall and checks contacts are reported by direction.'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.game.WallContactCheck'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
