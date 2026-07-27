@@ -1,12 +1,14 @@
 package fr.epistudio.epysia.render.postfx;
 
 import fr.epistudio.epysia.components.Camera3D;
+import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.RenderPass;
 import fr.epistudio.epysia.render.RenderPasses;
+import fr.epistudio.epysia.render.SceneTexture;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.backend.Binding;
 import fr.epistudio.epysia.render.backend.BindingSetDescriptor;
@@ -63,6 +65,14 @@ public final class PostProcessSystem implements RenderSystem {
             Topology.TRIANGLES, DepthTest.DISABLED, BlendMode.OPAQUE, CullMode.NONE);
 
     private final ShaderLoader shaderLoader;
+    private final long startNanos = System.nanoTime();
+    private String appliedFogShaderPath = "";
+    private int appliedPixelBaseWidth;
+    private int[] presentRect;
+    private boolean stretchEnabled = true;
+    private String watchedFogShaderPath = "";
+    private boolean fogReloadRequested;
+    private Optional<ShaderWatcher> shaderWatcher = Optional.empty();
     private final RenderSurface window;
     private final Logger logger;
     private final String vertexPath;
@@ -80,6 +90,8 @@ public final class PostProcessSystem implements RenderSystem {
     private RenderBackend backend;
     private StageConfigurer stageConfigurer;
     private TextureHandle sceneColorTexture;
+    private TextureHandle opaqueColorTexture;
+    private TextureHandle opaqueDepthTexture;
     private TextureHandle sceneDepthTexture;
     private RenderTargetHandle sceneTarget;
     private TextureHandle ldrColorTexture;
@@ -122,6 +134,7 @@ public final class PostProcessSystem implements RenderSystem {
     }
 
     public void setShaderWatcher(ShaderWatcher watcher) {
+        shaderWatcher = Optional.of(watcher);
         effectChain.setShaderWatcher(watcher);
     }
 
@@ -137,7 +150,7 @@ public final class PostProcessSystem implements RenderSystem {
         quad.initialize(backend);
         createTargets(width, height);
         createPostUbo();
-        tonemapPipeline = backend.createPipeline(buildPipelineDescriptor(vertexPath, fragmentPath, tonemapLayout()));
+        tonemapPipeline = backend.createPipeline(buildTonemapDescriptor());
         antiAliasPipeline = backend.createPipeline(buildPipelineDescriptor(DEFAULT_VERTEX_PATH, FXAA_FRAGMENT_PATH, antiAliasLayout()));
         blitPipeline = backend.createPipeline(buildPipelineDescriptor(DEFAULT_VERTEX_PATH, BLIT_FRAGMENT_PATH, antiAliasLayout()));
         ssao.initialize(backend, sceneDepthTexture, width, height);
@@ -147,6 +160,8 @@ public final class PostProcessSystem implements RenderSystem {
         createBindings();
         bindStageTargets();
         configurer.bindStagePreparation(RenderPasses.POST, this::runPostPasses);
+        configurer.bindStagePreparation(RenderPasses.TRANSPARENT_3D, this::captureOpaqueScene);
+        publishSceneTextures();
     }
 
     @Override
@@ -181,8 +196,13 @@ public final class PostProcessSystem implements RenderSystem {
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         activeCamera = context.primaryCamera().orElse(null);
+        settings.copyFrom(scene.postProcess());
+        refreshFogShader();
         refreshSceneClearColor(scene);
         refreshPixelPerfectMode();
+        for (Camera3D camera : scene.componentsOf(Camera3D.class)) {
+            camera.setRenderHeightPixels(targetHeight);
+        }
         if (activeCamera != null) {
             activeCamera.setRenderHeightPixels(targetHeight);
         }
@@ -258,16 +278,78 @@ public final class PostProcessSystem implements RenderSystem {
         backend.endPass();
         effectChain.render(PostEffectInsertionPoint.AFTER_TONEMAP);
         backend.endProfileSection();
+        applyPresentViewport();
     }
 
     private void applyInternalSize() {
         appliedPixelPerfect = settings.pixelPerfectEnabled();
         appliedPixelBaseHeight = settings.pixelPerfectBaseHeight();
-        pixelScale = appliedPixelPerfect
-                ? Math.max(1, windowHeight / Math.max(1, appliedPixelBaseHeight))
-                : 1;
-        targetWidth = Math.max(1, windowWidth / pixelScale);
-        targetHeight = Math.max(1, windowHeight / pixelScale);
+        appliedPixelBaseWidth = settings.pixelPerfectBaseWidth();
+        if (!appliedPixelPerfect) {
+            pixelScale = 1;
+            targetWidth = Math.max(1, windowWidth);
+            targetHeight = Math.max(1, windowHeight);
+            presentRect = null;
+            return;
+        }
+        applyReferenceSize();
+    }
+
+    private void applyReferenceSize() {
+        int referenceWidth = Math.max(1, appliedPixelBaseWidth);
+        int referenceHeight = Math.max(1, appliedPixelBaseHeight);
+        float rawScale = Math.min(windowWidth / (float) referenceWidth, windowHeight / (float) referenceHeight);
+        float scale = settings.pixelPerfectIntegerScale() ? Math.max(1.0f, (float) Math.floor(rawScale))
+                : Math.max(0.01f, rawScale);
+        pixelScale = Math.max(1, Math.round(scale));
+        targetWidth = referenceWidth;
+        targetHeight = referenceHeight;
+        applyAspect(referenceWidth, referenceHeight, scale);
+    }
+
+    public void setStretchEnabled(boolean enabled) {
+        stretchEnabled = enabled;
+    }
+
+    private void applyAspect(int referenceWidth, int referenceHeight, float scale) {
+        if (!stretchEnabled) {
+            targetWidth = Math.max(1, Math.round(windowWidth / scale));
+            targetHeight = Math.max(1, Math.round(windowHeight / scale));
+            presentRect = null;
+            return;
+        }
+        switch (settings.pixelPerfectAspect()) {
+            case IGNORE -> presentRect = new int[] {0, 0, windowWidth, windowHeight};
+            case EXPAND -> {
+                targetWidth = Math.max(1, Math.round(windowWidth / scale));
+                targetHeight = Math.max(1, Math.round(windowHeight / scale));
+                presentRect = new int[] {0, 0, windowWidth, windowHeight};
+            }
+            case KEEP_WIDTH -> {
+                targetHeight = Math.max(1, Math.round(windowHeight / scale));
+                presentRect = centred(Math.round(referenceWidth * scale), windowHeight);
+            }
+            case KEEP_HEIGHT -> {
+                targetWidth = Math.max(1, Math.round(windowWidth / scale));
+                presentRect = centred(windowWidth, Math.round(referenceHeight * scale));
+            }
+            default -> presentRect = centred(Math.round(referenceWidth * scale),
+                    Math.round(referenceHeight * scale));
+        }
+    }
+
+    private int[] centred(int width, int height) {
+        int clampedWidth = Math.clamp(width, 1, Math.max(1, windowWidth));
+        int clampedHeight = Math.clamp(height, 1, Math.max(1, windowHeight));
+        return new int[] {(windowWidth - clampedWidth) / 2, (windowHeight - clampedHeight) / 2,
+                clampedWidth, clampedHeight};
+    }
+
+    private void applyPresentViewport() {
+        if (presentRect == null) {
+            return;
+        }
+        backend.setPassViewport(presentRect[0], presentRect[1], presentRect[2], presentRect[3]);
     }
 
     public int pixelScale() {
@@ -280,6 +362,7 @@ public final class PostProcessSystem implements RenderSystem {
 
     private void refreshPixelPerfectMode() {
         if (appliedPixelPerfect == settings.pixelPerfectEnabled()
+                && appliedPixelBaseWidth == settings.pixelPerfectBaseWidth()
                 && appliedPixelBaseHeight == settings.pixelPerfectBaseHeight()) {
             return;
         }
@@ -300,6 +383,24 @@ public final class PostProcessSystem implements RenderSystem {
                 TextureUsage.SAMPLED, upscaleFilter()));
         ldrTarget = backend.createRenderTarget(new RenderTargetDescriptor(
                 width, height, List.of(ldrColorTexture), Optional.empty()));
+        opaqueColorTexture = backend.createTexture(new TextureDescriptor(width, height, TextureFormat.RGBA16F,
+                TextureUsage.SAMPLED, upscaleFilter()));
+        opaqueDepthTexture = backend.createTexture(new TextureDescriptor(width, height,
+                TextureFormat.DEPTH32F, TextureUsage.SAMPLED_DEPTH_ATTACHMENT));
+        publishSceneTextures();
+    }
+
+    private void publishSceneTextures() {
+        if (stageConfigurer == null) {
+            return;
+        }
+        stageConfigurer.publishSceneTexture(SceneTexture.OPAQUE_COLOR, opaqueColorTexture);
+        stageConfigurer.publishSceneTexture(SceneTexture.OPAQUE_DEPTH, opaqueDepthTexture);
+    }
+
+    private void captureOpaqueScene() {
+        backend.copyTextureLayer(sceneColorTexture, 0, opaqueColorTexture, 0);
+        backend.copyTextureLayer(sceneDepthTexture, 0, opaqueDepthTexture, 0);
     }
 
     private void destroyTargets() {
@@ -308,6 +409,8 @@ public final class PostProcessSystem implements RenderSystem {
         backend.destroy(sceneDepthTexture);
         backend.destroy(ldrTarget);
         backend.destroy(ldrColorTexture);
+        backend.destroy(opaqueColorTexture);
+        backend.destroy(opaqueDepthTexture);
     }
 
     private BindingSetLayout tonemapLayout() {
@@ -347,6 +450,42 @@ public final class PostProcessSystem implements RenderSystem {
         )));
     }
 
+    private void watchFogShader(String path) {
+        if (path.isBlank() || path.equals(watchedFogShaderPath) || shaderWatcher.isEmpty()) {
+            return;
+        }
+        watchedFogShaderPath = path;
+        shaderWatcher.get().watch(List.of(path), () -> fogReloadRequested = true);
+    }
+
+    private PipelineDescriptor buildTonemapDescriptor() {
+        appliedFogShaderPath = settings.fogShaderPath();
+        String fragmentSource = shaderLoader.load(fragmentPath).source();
+        if (!appliedFogShaderPath.isBlank()) {
+            fragmentSource = FogShaderComposer.compose(fragmentSource,
+                    shaderLoader.load(appliedFogShaderPath).source());
+        }
+        ShaderSource source = new ShaderSource(shaderLoader.load(vertexPath).source(), fragmentSource);
+        return new PipelineDescriptor(source, FullscreenQuad.LAYOUT, PASS_STATE, tonemapLayout());
+    }
+
+    private void refreshFogShader() {
+        if (tonemapPipeline == null) {
+            return;
+        }
+        if (appliedFogShaderPath.equals(settings.fogShaderPath()) && !fogReloadRequested) {
+            return;
+        }
+        fogReloadRequested = false;
+        watchFogShader(settings.fogShaderPath());
+        try {
+            backend.updatePipelineShaders(tonemapPipeline, buildTonemapDescriptor().shaders());
+        } catch (EpysiaException failure) {
+            appliedFogShaderPath = settings.fogShaderPath();
+            logger.error("Fog shader '" + settings.fogShaderPath() + "' failed to compile", failure);
+        }
+    }
+
     private PipelineDescriptor buildPipelineDescriptor(String vertex, String fragment, BindingSetLayout layout) {
         ShaderSource source = new ShaderSource(
                 shaderLoader.load(vertex).source(),
@@ -363,6 +502,7 @@ public final class PostProcessSystem implements RenderSystem {
         PassClear sceneClear = PassClear.color(appliedClearColor.x, appliedClearColor.y, appliedClearColor.z);
         PassClear sceneNoClear = PassClear.none();
         stageConfigurer.bindStageTarget(RenderPasses.OPAQUE_3D, sceneTarget, sceneClear);
+        stageConfigurer.bindStageTarget(RenderPasses.VIEW_MODEL_3D, sceneTarget, PassClear.depthOnly());
         stageConfigurer.bindStageTarget(RenderPasses.TRANSPARENT_3D, sceneTarget, sceneNoClear);
         stageConfigurer.bindStageTarget(RenderPasses.WORLD_2D, sceneTarget, sceneNoClear);
         stageConfigurer.bindStageTarget(RenderPasses.POST, RenderTargetHandle.SCREEN, PassClear.color(0.0f, 0.0f, 0.0f));
@@ -383,7 +523,8 @@ public final class PostProcessSystem implements RenderSystem {
         float occlusionStrength = (settings.ambientOcclusionEnabled() && camera != null) ? 1.0f : 0.0f;
         float bloomIntensity = settings.bloomEnabled() ? settings.bloomIntensity() : 0.0f;
         float antiAlias = settings.antiAliasingEnabled() ? 1.0f : 0.0f;
-        uboScratch.putFloat(occlusionStrength).putFloat(bloomIntensity).putFloat(antiAlias).putFloat(0.0f);
+        float timeSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0f;
+        uboScratch.putFloat(occlusionStrength).putFloat(bloomIntensity).putFloat(antiAlias).putFloat(timeSeconds);
     }
 
     private void writeFogParameters(Camera3D camera, float alpha) {

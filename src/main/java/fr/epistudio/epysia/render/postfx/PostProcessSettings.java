@@ -25,7 +25,11 @@ public final class PostProcessSettings {
     private boolean ambientOcclusionFullResolution = false;
     private boolean pixelPerfectEnabled = false;
     private int pixelPerfectBaseHeight = 270;
+    private int pixelPerfectBaseWidth = 480;
+    private boolean pixelPerfectIntegerScale = true;
+    private StretchAspect pixelPerfectAspect = StretchAspect.KEEP;
     private boolean antiAliasingEnabled = true;
+    private String fogShaderPath = "";
 
     public boolean bloomEnabled() {
         return bloomEnabled;
@@ -70,7 +74,11 @@ public final class PostProcessSettings {
         copyAmbientOcclusion(other);
         pixelPerfectEnabled = other.pixelPerfectEnabled;
         pixelPerfectBaseHeight = other.pixelPerfectBaseHeight;
+        pixelPerfectBaseWidth = other.pixelPerfectBaseWidth;
+        pixelPerfectIntegerScale = other.pixelPerfectIntegerScale;
+        pixelPerfectAspect = other.pixelPerfectAspect;
         antiAliasingEnabled = other.antiAliasingEnabled;
+        fogShaderPath = other.fogShaderPath;
         return this;
     }
 
@@ -106,6 +114,33 @@ public final class PostProcessSettings {
         return this;
     }
 
+    public int pixelPerfectBaseWidth() {
+        return pixelPerfectBaseWidth;
+    }
+
+    public PostProcessSettings setPixelPerfectBaseWidth(int value) {
+        pixelPerfectBaseWidth = Math.clamp(value, 32, 7680);
+        return this;
+    }
+
+    public boolean pixelPerfectIntegerScale() {
+        return pixelPerfectIntegerScale;
+    }
+
+    public PostProcessSettings setPixelPerfectIntegerScale(boolean value) {
+        pixelPerfectIntegerScale = value;
+        return this;
+    }
+
+    public StretchAspect pixelPerfectAspect() {
+        return pixelPerfectAspect;
+    }
+
+    public PostProcessSettings setPixelPerfectAspect(StretchAspect value) {
+        pixelPerfectAspect = value == null ? StretchAspect.KEEP : value;
+        return this;
+    }
+
     public int pixelPerfectBaseHeight() {
         return pixelPerfectBaseHeight;
     }
@@ -117,6 +152,15 @@ public final class PostProcessSettings {
 
     public boolean ambientOcclusionFullResolution() {
         return ambientOcclusionFullResolution;
+    }
+
+    public String fogShaderPath() {
+        return fogShaderPath;
+    }
+
+    public PostProcessSettings setFogShaderPath(String value) {
+        fogShaderPath = value == null ? "" : value;
+        return this;
     }
 
     public boolean antiAliasingEnabled() {
