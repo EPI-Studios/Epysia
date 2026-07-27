@@ -19,11 +19,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import fr.epistudio.epysia.render.shader.ShaderSnippets;
 
 final class ShaderStagePass {
 
+    private static final String DITHER_FUNCTION_NAME = "graphDitherThreshold";
+    private static final String HASH_FUNCTION_NAME = "graphHash12";
+
     private static final String CUSTOM_FUNCTION_PREFIX = "graphCustomFunction";
     private static final String POST_SAMPLER_PREFIX = "graphTexture";
+    private static final String TRIPLANAR_FUNCTION_NAME = "graphTriplanar";
     private static final String[] COMPONENT_SUFFIXES = {".x", ".y", ".z", ".w"};
 
     private final GraphAsset asset;
@@ -141,6 +146,7 @@ final class ShaderStagePass {
     private void emitNode(GraphNode node) {
         String key = node.typeKey();
         if (emitConstant(node, key) || emitBuiltinInput(node, key) || emitTexture(node, key)
+                || emitScene(node, key) || emitTriplanar(node, key)
                 || emitVector(node, key) || emitMath(node, key) || emitEffect(node, key)
                 || emitParameter(node, key) || emitCustomCode(node, key)) {
             return;
@@ -193,6 +199,11 @@ final class ShaderStagePass {
                     PinType.VECTOR3, "cameraPosition"));
             case ShaderNodes.INPUT_RESOLUTION -> Optional.of(stageOnly(key, ShaderStage.POST,
                     PinType.VECTOR2, "resolution"));
+            case ShaderNodes.INPUT_SCREEN_PIXEL -> Optional.of(stageOnly(key, ShaderStage.POST,
+                    PinType.VECTOR2, "(uv * resolution)"));
+            case ShaderNodes.INPUT_SCREEN_UV -> Optional.of(fragmentOnly(key, PinType.VECTOR2, "screenUv()"));
+            case ShaderNodes.INPUT_VIEW_DIRECTION -> Optional.of(
+                    fragmentOnly(key, PinType.VECTOR3, "viewDirection"));
             default -> Optional.empty();
         };
     }
@@ -202,6 +213,58 @@ final class ShaderStagePass {
             throw new EpysiaException("'" + key + "' is only available in surface shader graphs");
         }
         return new ShaderExpression(type, code);
+    }
+
+    private ShaderExpression fragmentOnly(String key, PinType type, String code) {
+        if (stage != ShaderStage.SURFACE_FRAGMENT) {
+            throw new EpysiaException("'" + key + "' is only available in the surface color stage");
+        }
+        return new ShaderExpression(type, code);
+    }
+
+    private boolean emitScene(GraphNode node, String key) {
+        String call = sceneCallFor(key);
+        if (call.isEmpty()) {
+            return false;
+        }
+        if (stage != ShaderStage.SURFACE_FRAGMENT && stage != ShaderStage.POST) {
+            throw new EpysiaException("'" + key + "' is only available in the surface color and post stages");
+        }
+        ShaderExpression uv = inputExpression(node, new PinDefinition(ShaderNodes.UV_PIN, PinType.VECTOR2));
+        store(node, ShaderNodes.RESULT_PIN, sceneResultType(key), call + "(" + uv.code() + ")");
+        return true;
+    }
+
+    private static String sceneCallFor(String key) {
+        return switch (key) {
+            case ShaderNodes.SCENE_COLOR_AT -> "sceneColorAt";
+            case ShaderNodes.SCENE_DEPTH_BEHIND -> "sceneDepthBehind";
+            case ShaderNodes.SCENE_WORLD_POSITION_AT -> "sceneWorldPositionAt";
+            case ShaderNodes.SCENE_SURFACE_NORMAL_AT -> "sceneSurfaceNormalAt";
+            default -> "";
+        };
+    }
+
+    private static PinType sceneResultType(String key) {
+        return key.equals(ShaderNodes.SCENE_DEPTH_BEHIND) ? PinType.FLOAT : PinType.VECTOR3;
+    }
+
+    private boolean emitTriplanar(GraphNode node, String key) {
+        if (!key.equals(ShaderNodes.TRIPLANAR)) {
+            return false;
+        }
+        fragmentOnly(key, PinType.VECTOR3, "");
+        ShaderExpression position = inputExpression(node,
+                new PinDefinition(ShaderNodes.POSITION_PIN, PinType.VECTOR3));
+        ShaderExpression normal = inputExpression(node,
+                new PinDefinition(ShaderNodes.NORMAL_PIN, PinType.VECTOR3));
+        ShaderExpression scale = inputExpression(node,
+                new PinDefinition(ShaderNodes.SCALE_PIN, PinType.FLOAT));
+        shared.declare(TRIPLANAR_FUNCTION_NAME, ShaderSnippets.line("graph/triplanar.glsl"));
+        store(node, ShaderNodes.RESULT_PIN, PinType.VECTOR3, TRIPLANAR_FUNCTION_NAME + "("
+                + textureSamplerName(node) + ", " + position.code() + ", " + normal.code()
+                + ", " + scale.code() + ")");
+        return true;
     }
 
     private ShaderExpression stageOnly(String key, ShaderStage required, PinType type, String code) {
@@ -247,13 +310,14 @@ final class ShaderStagePass {
     }
 
     private String textureSamplerName(GraphNode node) {
-        if (stage == ShaderStage.POST) {
-            String samplerName = POST_SAMPLER_PREFIX + node.id();
-            shared.declare(samplerName, samplerDeclaration(samplerName, textureSettingPath(node)));
-            return samplerName;
-        }
         if (stage == ShaderStage.SURFACE_VERTEX) {
             throw new EpysiaException("Texture Sample is not available in the surface vertex stage");
+        }
+        String path = textureSettingPath(node);
+        if (stage == ShaderStage.POST || !path.isEmpty()) {
+            String samplerName = POST_SAMPLER_PREFIX + node.id();
+            shared.declare(samplerName, samplerDeclaration(samplerName, path));
+            return samplerName;
         }
         return materialSamplerName(node);
     }
@@ -351,6 +415,11 @@ final class ShaderStagePass {
             case ShaderNodes.MINIMUM -> emitCall(node, "min");
             case ShaderNodes.MAXIMUM -> emitCall(node, "max");
             case ShaderNodes.STEP -> emitCall(node, "step");
+            case ShaderNodes.BRANCH -> emitBranch(node);
+            case ShaderNodes.DITHER -> emitDither(node);
+            case ShaderNodes.QUANTIZE -> emitQuantize(node);
+            case ShaderNodes.HASH -> emitHash(node);
+            case ShaderNodes.RGB_OF -> emitRgb(node);
             case ShaderNodes.SMOOTHSTEP -> emitCall(node, "smoothstep");
             default -> emitSimpleMath(node, key);
         };
@@ -369,6 +438,51 @@ final class ShaderStagePass {
             case ShaderNodes.REMAP -> emitRemap(node);
             default -> false;
         };
+    }
+
+    private boolean emitBranch(GraphNode node) {
+        ShaderExpression condition = inputExpression(node,
+                new PinDefinition(ShaderNodes.CONDITION_PIN, PinType.FLOAT));
+        ShaderExpression whenTrue = inputExpression(node, new PinDefinition("True", PinType.NUMERIC));
+        ShaderExpression whenFalse = inputExpression(node, new PinDefinition("False", PinType.NUMERIC));
+        PinType unified = widen(widen(PinType.FLOAT, whenTrue.type()), whenFalse.type());
+        store(node, ShaderNodes.RESULT_PIN, unified, "(" + condition.code() + " >= 0.5 ? "
+                + whenTrue.promoteTo(unified).code() + " : " + whenFalse.promoteTo(unified).code() + ")");
+        return true;
+    }
+
+    private boolean emitDither(GraphNode node) {
+        ShaderExpression coordinate = inputExpression(node,
+                new PinDefinition(ShaderNodes.COORDINATE_PIN, PinType.VECTOR2));
+        shared.declare(DITHER_FUNCTION_NAME, ShaderSnippets.line("graph/dither_threshold.glsl"));
+        store(node, ShaderNodes.RESULT_PIN, PinType.FLOAT,
+                DITHER_FUNCTION_NAME + "(" + coordinate.code() + ")");
+        return true;
+    }
+
+    private boolean emitHash(GraphNode node) {
+        ShaderExpression value = inputExpression(node,
+                new PinDefinition(ShaderNodes.VALUE_PIN, PinType.VECTOR2));
+        shared.declare(HASH_FUNCTION_NAME, ShaderSnippets.line("graph/hash12.glsl"));
+        store(node, ShaderNodes.RESULT_PIN, PinType.FLOAT, HASH_FUNCTION_NAME + "(" + value.code() + ")");
+        return true;
+    }
+
+    private boolean emitQuantize(GraphNode node) {
+        ShaderExpression value = inputExpression(node, new PinDefinition(ShaderNodes.VALUE_PIN, PinType.NUMERIC));
+        ShaderExpression levels = inputExpression(node, new PinDefinition(ShaderNodes.LEVELS_PIN, PinType.FLOAT));
+        String steps = "max(" + levels.code() + ", 2.0)";
+        String quantizer = "(" + steps + " - 1.0)";
+        PinType type = widen(PinType.FLOAT, value.type());
+        store(node, ShaderNodes.RESULT_PIN, type,
+                "(floor(" + value.code() + " * " + quantizer + " + 0.5) / " + quantizer + ")");
+        return true;
+    }
+
+    private boolean emitRgb(GraphNode node) {
+        ShaderExpression value = inputExpression(node, new PinDefinition(ShaderNodes.VALUE_PIN, PinType.VECTOR4));
+        store(node, ShaderNodes.RESULT_PIN, PinType.VECTOR3, "(" + value.code() + ").rgb");
+        return true;
     }
 
     private List<ShaderExpression> unifiedInputs(GraphNode node) {
@@ -544,11 +658,20 @@ final class ShaderStagePass {
 
     private boolean emitParameter(GraphNode node, String key) {
         return switch (key) {
+            case ShaderNodes.PARAMETER_BOOL -> emitBoolParameter(node);
             case ShaderNodes.PARAMETER_FLOAT -> emitValueParameter(node, PinType.FLOAT);
             case ShaderNodes.PARAMETER_COLOR -> emitValueParameter(node, PinType.VECTOR4);
             case ShaderNodes.PARAMETER_TEXTURE -> emitTextureParameter(node);
             default -> false;
         };
+    }
+
+    private boolean emitBoolParameter(GraphNode node) {
+        String name = parameterName(node);
+        boolean enabled = GraphValues.asFloat(node.values().getOrDefault(ShaderNodes.VALUE_PIN, 1.0f)) != 0.0f;
+        shared.declare(name, "uniform bool " + name + "; // @default " + enabled);
+        remember(node, ShaderNodes.RESULT_PIN, new ShaderExpression(PinType.FLOAT, "(" + name + " ? 1.0 : 0.0)"));
+        return true;
     }
 
     private boolean emitValueParameter(GraphNode node, PinType type) {
@@ -629,7 +752,7 @@ final class ShaderStagePass {
             parameters.add(ShaderExpression.glslType(pin.type()) + " " + customParameterName(pin.name()));
         }
         return ShaderExpression.glslType(outputType) + " " + functionName
-                + "(" + String.join(", ", parameters) + ") {\n" + customBody(node) + "\n}";
+                + "(" + String.join(", ", parameters) + ") {\n" + customBody(node, outputType) + "\n}";
     }
 
     private static String customParameterName(String pinName) {
@@ -637,9 +760,19 @@ final class ShaderStagePass {
         return cleaned.isEmpty() || Character.isDigit(cleaned.charAt(0)) ? "input" + cleaned : cleaned;
     }
 
-    private static String customBody(GraphNode node) {
+    private static String customBody(GraphNode node, PinType outputType) {
         String code = GraphValues.asString(node.values().getOrDefault(ShaderNodes.CODE_SETTING, "")).strip();
-        String body = code.contains("return") ? code : "return (" + code + ");";
-        return "    " + body.replace("\n", "\n    ");
+        return "    " + statementBody(code, outputType).replace("\n", "\n    ");
+    }
+
+    private static String statementBody(String code, PinType outputType) {
+        if (code.contains("return")) {
+            return code;
+        }
+        if (!code.contains(";")) {
+            return "return (" + code + ");";
+        }
+        return ShaderExpression.glslType(outputType) + " result = "
+                + ShaderExpression.glslType(outputType) + "(0.0);\n" + code + "\nreturn result;";
     }
 }

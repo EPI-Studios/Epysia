@@ -12,6 +12,7 @@ import fr.epistudio.epysia.graph.PinType;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import fr.epistudio.epysia.render.shader.ShaderSnippets;
 
 public final class ShaderGraphCompiler {
 
@@ -24,17 +25,19 @@ public final class ShaderGraphCompiler {
     private static final String SURFACE_COLOR_SIGNATURE =
             "void surfaceColor(inout vec4 albedoColor, inout float metallic, inout float roughness, "
                     + "inout vec3 emissive, in vec2 uv, in vec3 worldPosition, in float time)";
+    private static final String SURFACE_SHADE_SIGNATURE =
+            "void surfaceShade(inout vec4 albedoColor, inout float metallic, inout float roughness, "
+                    + "inout vec3 emissive, in vec3 worldNormal, in vec3 viewDirection, in vec2 uv, "
+                    + "in vec3 worldPosition, in float time)";
+    private static final String SURFACE_NORMAL_SIGNATURE =
+            "void surfaceNormal(inout vec3 worldNormal, in vec3 viewDirection, in vec2 uv, "
+                    + "in vec3 worldPosition, in float time)";
     private static final String POST_SIGNATURE = "vec4 postEffect(vec4 sceneColor, vec2 uv)";
     private static final String UNLIT_COLOR_LOCAL = "graphUnlitColor";
     private static final String PREVIEW_VALUE_LOCAL = "graphPreviewValue";
     private static final String PREVIEW_RGB_LOCAL = "graphPreviewRgb";
     private static final String PREVIEW_CHECKER_NAME = "graphPreviewChecker";
-    private static final String PREVIEW_CHECKER_FUNCTION = """
-            vec3 graphPreviewChecker(vec2 previewUv) {
-                vec2 cell = floor(previewUv * 8.0);
-                float parity = mod(cell.x + cell.y, 2.0);
-                return mix(vec3(0.32, 0.32, 0.34), vec3(0.52, 0.52, 0.55), parity);
-            }""";
+    private static final String PREVIEW_REMAP_NAME = "graphPreviewRemap";
 
     private final GraphNodeRegistry registry = GraphNodeRegistry.withBuiltins();
 
@@ -62,7 +65,7 @@ public final class ShaderGraphCompiler {
         pass.appendStatement("albedoColor = vec4(0.0, 0.0, 0.0, 1.0);");
         pass.appendStatement("metallic = 1.0;");
         pass.appendStatement("roughness = 1.0;");
-        return assembleSurface(sourceName, shared, "", pass.body());
+        return assembleSurface(sourceName, shared, "", "", pass.body(), false);
     }
 
     private String compilePreviewPost(GraphAsset asset, int nodeId, String pinName, String sourceName) {
@@ -78,11 +81,12 @@ public final class ShaderGraphCompiler {
     private void emitPreviewValue(GraphAsset asset, ShaderStagePass pass, ShaderSharedDeclarations shared,
                                   int nodeId, String pinName) {
         requirePreviewNode(asset, nodeId);
-        shared.declare(PREVIEW_CHECKER_NAME, PREVIEW_CHECKER_FUNCTION);
+        shared.declare(PREVIEW_CHECKER_NAME, ShaderSnippets.line("graph/preview_checker.glsl"));
+        shared.declare(PREVIEW_REMAP_NAME, ShaderSnippets.line("graph/preview_remap.glsl"));
         ShaderExpression value = pass.outputExpression(nodeId, pinName);
         pass.appendStatement("vec4 " + PREVIEW_VALUE_LOCAL + " = " + previewVector4(value) + ";");
-        pass.appendStatement("vec3 " + PREVIEW_RGB_LOCAL + " = mix(" + PREVIEW_CHECKER_NAME + "(uv), "
-                + PREVIEW_VALUE_LOCAL + ".rgb, clamp(" + PREVIEW_VALUE_LOCAL + ".a, 0.0, 1.0));");
+        pass.appendStatement("vec3 " + PREVIEW_RGB_LOCAL + " = " + PREVIEW_REMAP_NAME
+                + "(" + PREVIEW_VALUE_LOCAL + ".rgb);");
     }
 
     private static void requirePreviewNode(GraphAsset asset, int nodeId) {
@@ -118,7 +122,10 @@ public final class ShaderGraphCompiler {
         emitSurfaceFragment(asset, output, fragmentPass);
         ShaderStagePass vertexPass = new ShaderStagePass(asset, registry, ShaderStage.SURFACE_VERTEX, shared);
         emitSurfaceVertex(asset, output, vertexPass);
-        return assembleSurface(sourceName, shared, vertexPass.body(), fragmentPass.body());
+        ShaderStagePass normalPass = new ShaderStagePass(asset, registry, ShaderStage.SURFACE_FRAGMENT, shared);
+        emitSurfaceNormal(asset, output, normalPass);
+        return assembleSurface(sourceName, shared, vertexPass.body(), normalPass.body(),
+                fragmentPass.body(), isUnlit(output));
     }
 
     private void emitSurfaceFragment(GraphAsset asset, GraphNode output, ShaderStagePass pass) {
@@ -147,6 +154,11 @@ public final class ShaderGraphCompiler {
     private static boolean isUnlit(GraphNode output) {
         return ShaderNodes.MASTER_UNLIT.equals(GraphValues.asString(
                 output.values().getOrDefault(ShaderNodes.MASTER_SETTING, ShaderNodes.MASTER_LIT)));
+    }
+
+    private void emitSurfaceNormal(GraphAsset asset, GraphNode output, ShaderStagePass pass) {
+        connectedExpression(asset, output, pass, ShaderNodes.NORMAL_PIN, PinType.VECTOR3)
+                .ifPresent(expression -> pass.appendStatement("worldNormal = normalize(" + expression + ");"));
     }
 
     private void emitSurfaceVertex(GraphAsset asset, GraphNode output, ShaderStagePass pass) {
@@ -183,10 +195,15 @@ public final class ShaderGraphCompiler {
     }
 
     private static String assembleSurface(String sourceName, ShaderSharedDeclarations shared,
-                                          String vertexBody, String fragmentBody) {
+                                          String vertexBody, String normalBody, String fragmentBody,
+                                          boolean unlit) {
         StringBuilder out = new StringBuilder(header(sourceName, shared));
         out.append(SURFACE_VERTEX_SIGNATURE).append(" {\n").append(vertexBody).append("}\n\n");
-        out.append(SURFACE_COLOR_SIGNATURE).append(" {\n").append(fragmentBody).append("}\n");
+        if (!normalBody.isEmpty()) {
+            out.append(SURFACE_NORMAL_SIGNATURE).append(" {\n").append(normalBody).append("}\n\n");
+        }
+        String signature = unlit ? SURFACE_COLOR_SIGNATURE : SURFACE_SHADE_SIGNATURE;
+        out.append(signature).append(" {\n").append(fragmentBody).append("}\n");
         return out.toString();
     }
 
