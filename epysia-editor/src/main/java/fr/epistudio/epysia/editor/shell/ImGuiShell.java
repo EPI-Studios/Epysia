@@ -29,6 +29,12 @@ import static org.lwjgl.opengl.GL11.glViewport;
 public final class ImGuiShell {
 
     private static final String WINDOW_TITLE = "Epysia Editor";
+    private static final long IDLE_GRACE_NANOS = 700_000_000L;
+
+    private long lastInputNanos = System.nanoTime();
+    private float lastMouseX;
+    private float lastMouseY;
+
     private static final int WINDOW_WIDTH = 1600;
     private static final int WINDOW_HEIGHT = 900;
     private static final int OPENGL_MAJOR = 4;
@@ -51,10 +57,19 @@ public final class ImGuiShell {
     private ImFont monospaceFont;
     private Consumer<List<Path>> fileDropHandler = paths -> { };
     private boolean viewportsEnabled = true;
+    private boolean frameRateCapEnabled = true;
     private boolean vsyncEnabled = true;
 
     public boolean isVsyncEnabled() {
         return vsyncEnabled;
+    }
+
+    public boolean isFrameRateCapEnabled() {
+        return frameRateCapEnabled;
+    }
+
+    public void setFrameRateCapEnabled(boolean enabled) {
+        frameRateCapEnabled = enabled;
     }
 
     public void setVsyncEnabled(boolean enabled) {
@@ -162,6 +177,25 @@ public final class ImGuiShell {
         return windowHandle;
     }
 
+    public boolean isFocused() {
+        return GLFW.glfwGetWindowAttrib(windowHandle, GLFW.GLFW_FOCUSED) == GLFW.GLFW_TRUE;
+    }
+
+    public boolean isInteracting() {
+        return System.nanoTime() - lastInputNanos < IDLE_GRACE_NANOS;
+    }
+
+    private void refreshInputActivity() {
+        float mouseX = ImGui.getMousePosX();
+        float mouseY = ImGui.getMousePosY();
+        boolean moved = mouseX != lastMouseX || mouseY != lastMouseY;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        if (moved || ImGui.isAnyMouseDown() || ImGui.getIO().getWantCaptureKeyboard()) {
+            lastInputNanos = System.nanoTime();
+        }
+    }
+
     public boolean shouldClose() {
         return GLFW.glfwWindowShouldClose(windowHandle);
     }
@@ -176,6 +210,7 @@ public final class ImGuiShell {
         imGuiGl3.newFrame();
         imGuiGlfw.newFrame();
         ImGui.newFrame();
+        refreshInputActivity();
         ImGuizmo.beginFrame();
         pollNanos = System.nanoTime() - pollStart;
     }

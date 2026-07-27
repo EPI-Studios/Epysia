@@ -8,6 +8,7 @@ import fr.epistudio.epysia.assets.loaders.ClipAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
+import fr.epistudio.epysia.assets.loaders.InstancesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteAtlasAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteTilemapAssetLoader;
@@ -25,6 +26,8 @@ import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.backend.TextureUsage;
 import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
+import fr.epistudio.epysia.render.lighting.ProbeRefreshSystem;
+import fr.epistudio.epysia.render.mesh.SilhouettePass;
 import fr.epistudio.epysia.render.environment.SkySettings;
 import fr.epistudio.epysia.render.opengl.OpenGlRenderBackend;
 import fr.epistudio.epysia.render.postfx.PostProcessSettings;
@@ -37,7 +40,9 @@ import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
+import fr.epistudio.epysia.render.text.TextRenderSystem;
 import fr.epistudio.epysia.window.Window;
+import org.joml.Vector3f;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,6 +53,9 @@ import java.util.ServiceLoader;
 
 public final class EditorScene3DHost {
 
+    private SamplerFilter appliedColorFilter = SamplerFilter.LINEAR;
+
+    private static final long NANOS_PER_MILLISECOND = 1_000_000L;
     private static final PassClear SCENE_CLEAR = PassClear.color(0.10f, 0.11f, 0.13f);
 
     private final Window window;
@@ -68,11 +76,18 @@ public final class EditorScene3DHost {
     private SpriteRenderSystem spriteRenderSystem;
     private TilemapRenderSystem tilemapRenderSystem;
     private PostProcessSystem postProcessSystem;
+    private TextRenderSystem textRenderSystem;
     private ShaderLoader shaderLoader;
     private ShaderWatcher shaderWatcher;
     private int currentWidth;
     private int currentHeight;
     private boolean initialized;
+    private final long[] frameStepNanos = new long[5];
+    private final ViewportRedrawTracker redrawTracker = new ViewportRedrawTracker();
+    private final ViewportRedrawTracker previewRedrawTracker = new ViewportRedrawTracker();
+    private int lastViewportTexture;
+    private int lastPreviewTexture;
+    private long skippedFrames;
 
     public EditorScene3DHost(Window window, Scene scene) {
         this.window = window;
@@ -90,10 +105,32 @@ public final class EditorScene3DHost {
 
     public void setActiveScene(Scene scene) {
         engine.setActiveScene(scene);
+        warmUpPipelines(scene);
+    }
+
+    private void warmUpPipelines(Scene scene) {
+        if (meshRenderSystem == null) {
+            return;
+        }
+        long start = System.nanoTime();
+        long compiledBefore = backend.shaderCompileNanos();
+        int warmed = meshRenderSystem.warmUpPipelines(scene);
+        long compileMillis = (backend.shaderCompileNanos() - compiledBefore) / NANOS_PER_MILLISECOND;
+        if (compileMillis > 0L) {
+            engine.logger().info("Pipeline warm-up: " + warmed + " renderers, "
+                    + (System.nanoTime() - start) / NANOS_PER_MILLISECOND + " ms, of which "
+                    + compileMillis + " ms compiling shaders.");
+        }
     }
 
     public void closeScene(Scene scene) {
         engine.removeScene(scene);
+    }
+
+    public SilhouettePass.JointPaletteSource jointPalettes() {
+        return meshRenderSystem == null
+                ? SilhouettePass.JointPaletteSource.NONE
+                : meshRenderSystem::jointPaletteBinding;
     }
 
     public OpenGlRenderBackend backend() {
@@ -124,11 +161,13 @@ public final class EditorScene3DHost {
         vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
         spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
         tilemapRenderSystem = new TilemapRenderSystem(spriteRenderSystem, engine.logger());
+        textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(vfxRenderSystem);
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(tilemapRenderSystem);
         engine.addRenderSystem(postProcessSystem);
+        engine.addRenderSystem(textRenderSystem);
         engine.initialize();
         BuiltinMeshes builtins = BuiltinMeshes.uploadAll(backend);
         engine.assets().register(new MeshAssetLoader(builtins));
@@ -137,6 +176,7 @@ public final class EditorScene3DHost {
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
+        engine.assets().register(new InstancesAssetLoader());
         engine.assets().register(new SpriteAtlasAssetLoader());
         engine.assets().register(new SpriteTilemapAssetLoader());
         currentWidth = renderSurface.framebufferWidth();
@@ -168,7 +208,8 @@ public final class EditorScene3DHost {
         List<RenderSystem> current = engine.renderSystems();
         for (RenderSystem system : current) {
             if (system != meshRenderSystem && system != vfxRenderSystem && system != spriteRenderSystem
-                    && system != tilemapRenderSystem && system != postProcessSystem) {
+                    && system != tilemapRenderSystem && system != postProcessSystem
+                    && system != textRenderSystem) {
                 engine.removeRenderSystem(system);
             }
         }
@@ -192,6 +233,10 @@ public final class EditorScene3DHost {
             postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());
             postProcessSystem.setShaderWatcher(shaderWatcher);
             engine.addRenderSystem(postProcessSystem);
+        }
+        if (!current.contains(textRenderSystem)) {
+            textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());
+            engine.addRenderSystem(textRenderSystem);
         }
     }
 
@@ -221,7 +266,36 @@ public final class EditorScene3DHost {
         int width = Math.max(1, desiredWidth);
         int height = Math.max(1, desiredHeight);
         editorCamera.setAspectRatio((float) width / (float) height);
-        return renderWithCamera(editorCamera.camera(), width, height, alpha);
+        postProcessSystem.setStretchEnabled(false);
+        if (!redrawTracker.shouldRedraw(editorCamera.camera(), scene, width, height, engine.isPlaying())) {
+            skippedFrames++;
+            return lastViewportTexture;
+        }
+        long probeStart = System.nanoTime();
+        refreshProbesWhileEditing(editorCamera.camera().position(new Vector3f()));
+        frameStepNanos[4] = System.nanoTime() - probeStart;
+        lastViewportTexture = renderWithCamera(editorCamera.camera(), width, height, alpha);
+        return lastViewportTexture;
+    }
+
+    private void refreshProbesWhileEditing(Vector3f viewerPosition) {
+        if (engine.isPlaying()) {
+            return;
+        }
+        engine.gameSystem(ProbeRefreshSystem.class)
+                .ifPresent(system -> refreshProbes(system, viewerPosition));
+    }
+
+    private void refreshProbes(ProbeRefreshSystem system, Vector3f viewerPosition) {
+        if (!system.hasWork(engine.scene())) {
+            return;
+        }
+        GlStateSnapshot snapshot = GlStateSnapshot.capture();
+        try {
+            system.refresh(engine.scene(), viewerPosition);
+        } finally {
+            snapshot.restore();
+        }
     }
 
     public int renderFrameFrom(Camera3D camera, int desiredWidth, int desiredHeight) {
@@ -235,18 +309,49 @@ public final class EditorScene3DHost {
         int width = Math.max(1, desiredWidth);
         int height = Math.max(1, desiredHeight);
         camera.setAspectRatio((float) width / (float) height);
+        postProcessSystem.setStretchEnabled(true);
         return renderWithCamera(camera, width, height, alpha);
     }
 
     private int renderWithCamera(Camera3D camera, int width, int height, float alpha) {
+        long resizeStart = System.nanoTime();
         ensureTargetSize(width, height);
+        long captureStart = System.nanoTime();
         GlStateSnapshot snapshot = GlStateSnapshot.capture();
+        long renderStart = System.nanoTime();
         try {
             engine.render(List.of(camera), renderTarget, alpha);
             return backend.glTextureName(colorTexture);
         } finally {
+            long restoreStart = System.nanoTime();
             snapshot.restore();
+            recordFrameSteps(resizeStart, captureStart, renderStart, restoreStart);
         }
+    }
+
+    private void recordFrameSteps(long resizeStart, long captureStart, long renderStart,
+                                  long restoreStart) {
+        frameStepNanos[0] = captureStart - resizeStart;
+        frameStepNanos[1] = renderStart - captureStart;
+        frameStepNanos[2] = restoreStart - renderStart;
+        frameStepNanos[3] = System.nanoTime() - restoreStart;
+    }
+
+    public void requestViewportRedraw() {
+        redrawTracker.requestRedraw();
+        previewRedrawTracker.requestRedraw();
+    }
+
+    public long skippedFrames() {
+        return skippedFrames;
+    }
+
+    public int shaderWatcherListenerCount() {
+        return shaderWatcher == null ? 0 : shaderWatcher.listenerCount();
+    }
+
+    public long[] frameStepNanos() {
+        return frameStepNanos.clone();
     }
 
     public int renderPreviewFrom(Camera3D camera, int desiredWidth, int desiredHeight) {
@@ -256,11 +361,15 @@ public final class EditorScene3DHost {
         int width = Math.max(1, desiredWidth);
         int height = Math.max(1, desiredHeight);
         camera.setAspectRatio((float) width / (float) height);
+        if (!previewRedrawTracker.shouldRedraw(camera, scene, width, height, engine.isPlaying())) {
+            return lastPreviewTexture;
+        }
         ensurePreviewTargetSize(width, height);
         GlStateSnapshot snapshot = GlStateSnapshot.capture();
         try {
             engine.render(List.of(camera), previewTarget, Camera3D.CURRENT_STATE_ALPHA);
-            return backend.glTextureName(previewColorTexture);
+            lastPreviewTexture = backend.glTextureName(previewColorTexture);
+            return lastPreviewTexture;
         } finally {
             snapshot.restore();
         }
@@ -321,6 +430,7 @@ public final class EditorScene3DHost {
 
     private void ensureTargetSize(int width, int height) {
         if (width == currentWidth && height == currentHeight && renderTarget != null) {
+            refreshColorFilter();
             return;
         }
         renderSurface.setSize(width, height);
@@ -331,9 +441,23 @@ public final class EditorScene3DHost {
         createRenderTarget(width, height);
     }
 
+    private void refreshColorFilter() {
+        SamplerFilter desired = desiredColorFilter();
+        if (colorTexture == null || desired == appliedColorFilter) {
+            return;
+        }
+        appliedColorFilter = desired;
+        backend.updateTextureFilter(colorTexture, desired);
+    }
+
+    private SamplerFilter desiredColorFilter() {
+        return postProcessSettings().pixelPerfectEnabled() ? SamplerFilter.NEAREST : SamplerFilter.LINEAR;
+    }
+
     private void createRenderTarget(int width, int height) {
+        appliedColorFilter = desiredColorFilter();
         colorTexture = backend.createTexture(new TextureDescriptor(width, height,
-                TextureFormat.RGBA8, TextureUsage.SAMPLED, SamplerFilter.LINEAR));
+                TextureFormat.RGBA8, TextureUsage.SAMPLED, appliedColorFilter));
         depthTexture = backend.createTexture(new TextureDescriptor(width, height,
                 TextureFormat.DEPTH32F, TextureUsage.SAMPLED_DEPTH_ATTACHMENT, SamplerFilter.LINEAR));
         renderTarget = backend.createRenderTarget(new RenderTargetDescriptor(width, height,

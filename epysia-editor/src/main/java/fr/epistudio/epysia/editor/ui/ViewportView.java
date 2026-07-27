@@ -122,6 +122,7 @@ public final class ViewportView {
 
     private final float[] snapArray = new float[3];
     private final GizmoFollowers followers = new GizmoFollowers();
+    private final PanelTimings timings = new PanelTimings();
     private final LightDirectionOverlay lightDirectionOverlay = new LightDirectionOverlay();
     private List<SmartSnap.Guide> smartSnapGuides = List.of();
     private final Vector3f dragStartPosition = new Vector3f();
@@ -244,6 +245,7 @@ public final class ViewportView {
             return;
         }
         viewportFocusedThisFrame = ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
+        timings.beginFrame();
         renderContent(deltaSeconds);
         ImGui.end();
     }
@@ -255,12 +257,12 @@ public final class ViewportView {
         float imageY = ImGui.getCursorScreenPosY();
         boolean gameView = playSession.isActive() && viewMode == ViewMode.GAME;
         billboardClickConsumed = false;
-        drawSceneImage(width, height, gameView);
+        timings.measure("scene image", () -> drawSceneImage(width, height, gameView));
         viewportHoveredThisFrame = ImGui.isItemHovered();
         acceptAssetDrops(imageX, imageY, width, height);
         renderSceneModeContent(deltaSeconds, imageX, imageY, width, height, gameView);
         renderPlayDecorations(imageX, imageY, width, height);
-        renderCameraPreview(imageX, imageY, width, height);
+        timings.measure("camera preview", () -> renderCameraPreview(imageX, imageY, width, height));
         renderContextMenu(imageX, imageY, width, height);
         samplePlayInput(imageX, imageY, gameView || viewportHoveredThisFrame);
     }
@@ -270,15 +272,15 @@ public final class ViewportView {
         if (gameView) {
             return;
         }
-        drawOverlays(imageX, imageY, width, height);
+        timings.measure("overlays", () -> drawOverlays(imageX, imageY, width, height));
         Optional<TilemapRenderer> paintTarget = activePaintTarget();
         paintingActiveThisFrame = paintTarget.isPresent();
         boolean gizmoBusy = renderGizmoUnlessPainting(paintTarget, imageX, imageY, width, height);
         if (!editorCamera.twoDimensional()) {
-            renderAxisIndicator(imageX, imageY, width);
+            timings.measure("axis indicator", () -> renderAxisIndicator(imageX, imageY, width));
         }
-        renderBillboards(imageX, imageY, width, height);
-        renderLightDirections(imageX, imageY, width, height);
+        timings.measure("billboards", () -> renderBillboards(imageX, imageY, width, height));
+        timings.measure("light gizmos", () -> renderLightDirections(imageX, imageY, width, height));
         drawSmartSnapGuides(imageX, imageY, width, height);
         paintTarget.ifPresentOrElse(
                 renderer -> handleTilemapPaint(renderer, imageX, imageY, width, height),
@@ -297,13 +299,20 @@ public final class ViewportView {
     }
 
     private void drawSceneImage(int width, int height, boolean gameView) {
-        int renderWidth = width * supersampleFactor;
-        int renderHeight = height * supersampleFactor;
+        int[] textureId = new int[1];
+        timings.measure("  render frame", () -> textureId[0] = sceneTexture(width, height, gameView));
+        timings.measure("  imgui image",
+                () -> ImGui.image(textureId[0], width, height, 0.0f, 1.0f, 1.0f, 0.0f));
+    }
+
+    private int sceneTexture(int width, int height, boolean gameView) {
+        int factor = sceneHost.postProcessSettings().pixelPerfectEnabled() ? 1 : supersampleFactor;
+        int renderWidth = width * factor;
+        int renderHeight = height * factor;
         float alpha = renderAlpha();
-        int textureId = gameView
+        return gameView
                 ? renderGameViewTexture(renderWidth, renderHeight, alpha)
                 : sceneHost.renderFrame(editorCamera, renderWidth, renderHeight, alpha);
-        ImGui.image(textureId, width, height, 0.0f, 1.0f, 1.0f, 0.0f);
     }
 
     private float renderAlpha() {
@@ -320,6 +329,10 @@ public final class ViewportView {
             }
         }
         return sceneHost.renderFrame(editorCamera, renderWidth, renderHeight, alpha);
+    }
+
+    public PanelTimings timings() {
+        return timings;
     }
 
     private void drawOverlays(float imageX, float imageY, int width, int height) {
@@ -430,7 +443,7 @@ public final class ViewportView {
         int pixelHeight = height * supersampleFactor;
         boolean ready = selectionSilhouette.render(activeDocument.get().selection().all(),
                 editorCamera.camera().viewProjection(), pixelWidth, pixelHeight,
-                overlayThicknessScale(), sceneHost.backend());
+                overlayThicknessScale(), sceneHost.jointPalettes(), sceneHost.backend());
         selectionOverlay.render(activeDocument.get().selection().all(),
                 editorCamera.camera().viewProjection(),
                 editorCamera.camera().position(new Vector3f()),

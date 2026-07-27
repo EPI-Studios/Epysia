@@ -12,6 +12,7 @@ import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.ui.ProjectSelectorView;
 import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.project.ProjectQualityProperties;
 import fr.epistudio.epysia.project.ProjectStore;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ComponentScanner;
@@ -54,6 +55,12 @@ public final class EditorMain {
         shutdown();
     }
 
+    private static final long NANOS_PER_MILLISECOND = 1_000_000L;
+    private static final long UNFOCUSED_FRAME_NANOS = 100L * NANOS_PER_MILLISECOND;
+    private static final int DEFAULT_FOCUSED_FRAMERATE = 144;
+
+    private long focusedFrameNanos = 1_000_000_000L / DEFAULT_FOCUSED_FRAMERATE;
+
     private void loop() {
         lastFrameSeconds = GLFW.glfwGetTime();
         EditorFrameProfiler frameProfiler = new EditorFrameProfiler();
@@ -70,6 +77,24 @@ public final class EditorMain {
             shell.recordUiBuildNanos(viewEnd - pollEnd);
             shell.endFrame();
             frameProfiler.record(frameStart, pollEnd, viewEnd, shell);
+            throttle(frameStart);
+        }
+    }
+
+    private void throttle(long frameStart) {
+        boolean active = shell.isFocused() || shell.isInteracting();
+        if (active && !shell.isFrameRateCapEnabled()) {
+            return;
+        }
+        long target = active ? focusedFrameNanos : UNFOCUSED_FRAME_NANOS;
+        long remaining = target - (System.nanoTime() - frameStart);
+        if (remaining <= 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(remaining / NANOS_PER_MILLISECOND, (int) (remaining % NANOS_PER_MILLISECOND));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -88,6 +113,7 @@ public final class EditorMain {
     }
 
     private void openProject(Project project) {
+        ProjectQualityProperties.apply(projectStore.readQuality(project));
         Window embeddedWindow = new Window("(editor-embedded)",
                 shell.framebufferWidth(), shell.framebufferHeight());
         EditorScene3DHost sceneHost = new EditorScene3DHost(embeddedWindow, new Scene(project.name()));
