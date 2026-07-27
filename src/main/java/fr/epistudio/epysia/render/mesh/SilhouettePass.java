@@ -26,6 +26,7 @@ import fr.epistudio.epysia.render.backend.RenderTargetHandle;
 import fr.epistudio.epysia.render.backend.SampledTextureBinding;
 import fr.epistudio.epysia.render.backend.SamplerFilter;
 import fr.epistudio.epysia.render.backend.ShaderSource;
+import fr.epistudio.epysia.render.backend.StorageBufferBinding;
 import fr.epistudio.epysia.render.backend.TextureDescriptor;
 import fr.epistudio.epysia.render.backend.TextureFormat;
 import fr.epistudio.epysia.render.backend.TextureHandle;
@@ -38,11 +39,14 @@ import fr.epistudio.epysia.render.backend.VertexLayout;
 import fr.epistudio.epysia.render.environment.FullscreenQuad;
 import fr.epistudio.epysia.render.shader.LoadedShader;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
+import fr.epistudio.epysia.render.shader.SurfaceShaderComposer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,11 +75,11 @@ public final class SilhouettePass {
     private final ByteBuffer scratchMaskUbo = BufferUtils.createByteBuffer(MeshShaderBindings.PICKING_UBO_SIZE);
     private final ByteBuffer scratchOutlineUbo = BufferUtils.createByteBuffer(OUTLINE_UBO_SIZE);
     private final Map<MeshRenderer, PerRenderer> resourcesByRenderer = new IdentityHashMap<>();
+    private final Map<Variant, PipelineHandle> pipelinesByVariant = new HashMap<>();
 
     private RenderBackend backend;
     private BindingSetLayout maskLayout;
     private BindingSetLayout outlineLayout;
-    private PipelineHandle maskPipeline;
     private PipelineHandle outlinePipeline;
     private BufferHandle frameUbo;
     private BufferHandle maskUbo;
@@ -95,47 +99,87 @@ public final class SilhouettePass {
 
     public Optional<TextureHandle> render(List<GameObject> gameObjects, Matrix4f viewProjection,
                                           int width, int height, float outlineRadiusPixels,
-                                          Vector3f color, float fillAlpha, RenderBackend renderBackend) {
+                                          Vector3f color, float fillAlpha, JointPaletteSource palettes,
+                                          RenderBackend renderBackend) {
         if (width <= 0 || height <= 0) {
             return Optional.empty();
         }
         lazyInitialize(renderBackend);
         ensureTargetSize(width, height);
         writeFrameUbo(viewProjection);
-        drawMask(gameObjects);
+        drawMask(gameObjects, palettes);
         drawOutline(outlineRadiusPixels, color, fillAlpha);
         return Optional.of(outlineTexture);
     }
 
-    private void drawMask(List<GameObject> gameObjects) {
-        backend.beginPass(maskTarget, PassClear.color(0.0f, 0.0f, 0.0f));
+    private void drawMask(List<GameObject> gameObjects, JointPaletteSource palettes) {
+        backend.beginPass(maskTarget, PassClear.transparent());
         writeMaskColor();
         for (GameObject gameObject : gameObjects) {
-            drawGameObjectMask(gameObject);
+            drawGameObjectMask(gameObject, palettes);
         }
         backend.endPass();
     }
 
-    private void drawGameObjectMask(GameObject gameObject) {
+    private void drawGameObjectMask(GameObject gameObject, JointPaletteSource palettes) {
         Optional<MeshRenderer> renderer = gameObject.getComponent(MeshRenderer.class);
         Optional<Transform3D> transform = gameObject.getComponent(Transform3D.class);
         if (renderer.isEmpty() || transform.isEmpty()) {
             return;
         }
         Optional<UploadedMesh> mesh = renderer.get().mesh();
-        if (mesh.isEmpty() || mesh.get().skinned() || mesh.get().vertexColored()) {
+        if (mesh.isEmpty()) {
             return;
         }
-        PerRenderer resources = resourcesByRenderer.computeIfAbsent(renderer.get(), this::createPerRenderer);
-        writeObjectUbo(resources.modelUbo(), transform.get().worldMatrix());
-        for (UploadedSubmesh submesh : mesh.get().submeshes()) {
-            backend.execute(new DrawCommand(maskPipeline, submesh.handle(), resources.bindings(), 0L, 1));
+        Optional<StorageBufferBinding> palette = mesh.get().skinned()
+                ? palettes.paletteFor(renderer.get())
+                : Optional.empty();
+        if (mesh.get().skinned() && palette.isEmpty()) {
+            return;
         }
+        Variant variant = new Variant(mesh.get().skinned(), mesh.get().vertexColored());
+        if (!allSubmeshesAlive(mesh.get())) {
+            return;
+        }
+        PerRenderer resources = resourcesFor(renderer.get(), variant, palette);
+        writeObjectUbo(resources.modelUbo(), transform.get().worldMatrix());
+        PipelineHandle pipeline = pipelineFor(variant);
+        for (UploadedSubmesh submesh : mesh.get().submeshes()) {
+            backend.execute(new DrawCommand(pipeline, submesh.handle(), resources.bindings(), 0L, 1));
+        }
+    }
+
+    private boolean allSubmeshesAlive(UploadedMesh mesh) {
+        for (UploadedSubmesh submesh : mesh.submeshes()) {
+            if (!backend.isAlive(submesh.handle())) {
+                return false;
+            }
+        }
+        return !mesh.submeshes().isEmpty();
+    }
+
+    private PerRenderer resourcesFor(MeshRenderer renderer, Variant variant,
+                                     Optional<StorageBufferBinding> palette) {
+        PerRenderer existing = resourcesByRenderer.get(renderer);
+        if (existing != null && existing.matches(variant, palette)) {
+            return existing;
+        }
+        if (existing != null) {
+            backend.destroy(existing.bindings());
+            backend.destroy(existing.modelUbo());
+        }
+        PerRenderer created = createPerRenderer(variant, palette);
+        resourcesByRenderer.put(renderer, created);
+        return created;
+    }
+
+    private PipelineHandle pipelineFor(Variant variant) {
+        return pipelinesByVariant.computeIfAbsent(variant, this::buildMaskPipeline);
     }
 
     private void drawOutline(float outlineRadiusPixels, Vector3f color, float fillAlpha) {
         writeOutlineUbo(outlineRadiusPixels, color, fillAlpha);
-        backend.beginPass(outlineTarget, PassClear.color(0.0f, 0.0f, 0.0f));
+        backend.beginPass(outlineTarget, PassClear.transparent());
         backend.execute(DrawCommand.of(outlinePipeline, quad.mesh(), outlineBindings));
         backend.endPass();
     }
@@ -156,10 +200,6 @@ public final class SilhouettePass {
                 new BindingSlot(MeshShaderBindings.FRAME_UBO_BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(MeshShaderBindings.OBJECT_UBO_BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(MeshShaderBindings.PICKING_UBO_BINDING, BindingType.UNIFORM_BUFFER)));
-        VertexLayout layout = new VertexLayout(
-                List.of(new VertexAttribute(0, VertexFormat.FLOAT3, 0)), MeshShaderBindings.VERTEX_STRIDE);
-        maskPipeline = backend.createPipeline(new PipelineDescriptor(
-                sourceOf(MASK_VERTEX_PATH, MASK_FRAGMENT_PATH), layout, MASK_STATE, maskLayout));
         frameUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(MeshShaderBindings.FRAME_UBO_SIZE)));
         maskUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
@@ -183,17 +223,56 @@ public final class SilhouettePass {
         return new ShaderSource(vertex.source(), fragment.source());
     }
 
-    private PerRenderer createPerRenderer(MeshRenderer ignored) {
+    private PerRenderer createPerRenderer(Variant variant, Optional<StorageBufferBinding> palette) {
         BufferHandle modelUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(MeshShaderBindings.OBJECT_UBO_SIZE)));
-        BindingSetHandle bindings = backend.createBindingSet(new BindingSetDescriptor(maskLayout, List.of(
+        List<Binding> bindings = new ArrayList<>(List.of(
                 new Binding(MeshShaderBindings.FRAME_UBO_BINDING,
                         UniformBufferBinding.whole(frameUbo, MeshShaderBindings.FRAME_UBO_SIZE)),
                 new Binding(MeshShaderBindings.OBJECT_UBO_BINDING,
                         UniformBufferBinding.whole(modelUbo, MeshShaderBindings.OBJECT_UBO_SIZE)),
                 new Binding(MeshShaderBindings.PICKING_UBO_BINDING,
-                        UniformBufferBinding.whole(maskUbo, MeshShaderBindings.PICKING_UBO_SIZE)))));
-        return new PerRenderer(modelUbo, bindings);
+                        UniformBufferBinding.whole(maskUbo, MeshShaderBindings.PICKING_UBO_SIZE))));
+        palette.ifPresent(binding ->
+                bindings.add(new Binding(MeshShaderBindings.JOINT_PALETTE_SSBO_BINDING, binding)));
+        BindingSetHandle handle = backend.createBindingSet(
+                new BindingSetDescriptor(maskLayoutFor(variant), bindings));
+        return new PerRenderer(modelUbo, handle, variant, palette.orElse(null));
+    }
+
+    private BindingSetLayout maskLayoutFor(Variant variant) {
+        if (!variant.skinned()) {
+            return maskLayout;
+        }
+        List<BindingSlot> slots = new ArrayList<>(maskLayout.slots());
+        slots.add(new BindingSlot(MeshShaderBindings.JOINT_PALETTE_SSBO_BINDING, BindingType.STORAGE_BUFFER));
+        return new BindingSetLayout(slots);
+    }
+
+    private PipelineHandle buildMaskPipeline(Variant variant) {
+        LoadedShader vertex = shaderLoader.load(MASK_VERTEX_PATH);
+        if (variant.skinned()) {
+            vertex = SurfaceShaderComposer.injectSkinningDefine(vertex);
+        }
+        ShaderSource source = new ShaderSource(vertex.source(),
+                shaderLoader.load(MASK_FRAGMENT_PATH).source());
+        return backend.createPipeline(new PipelineDescriptor(source, vertexLayoutFor(variant),
+                MASK_STATE, maskLayoutFor(variant)));
+    }
+
+    private static VertexLayout vertexLayoutFor(Variant variant) {
+        List<VertexAttribute> attributes = new ArrayList<>(
+                List.of(new VertexAttribute(0, VertexFormat.FLOAT3, 0)));
+        int skinOffset = MeshShaderBindings.VERTEX_STRIDE;
+        if (variant.colored()) {
+            skinOffset += MeshShaderBindings.VERTEX_COLOR_BYTES;
+        }
+        if (variant.skinned()) {
+            attributes.add(new VertexAttribute(4, VertexFormat.UINT16X4, skinOffset));
+            attributes.add(new VertexAttribute(5, VertexFormat.FLOAT4, skinOffset + 8));
+        }
+        return new VertexLayout(attributes,
+                MeshShaderBindings.vertexStride(variant.skinned(), variant.colored()));
     }
 
     private void ensureTargetSize(int width, int height) {
@@ -287,7 +366,8 @@ public final class SilhouettePass {
             outlineBindings = null;
         }
         destroyTargets();
-        backend.destroy(maskPipeline);
+        pipelinesByVariant.values().forEach(backend::destroy);
+        pipelinesByVariant.clear();
         backend.destroy(outlinePipeline);
         backend.destroy(frameUbo);
         backend.destroy(maskUbo);
@@ -296,6 +376,21 @@ public final class SilhouettePass {
         initialized = false;
     }
 
-    private record PerRenderer(BufferHandle modelUbo, BindingSetHandle bindings) {
+    public interface JointPaletteSource {
+
+        JointPaletteSource NONE = renderer -> Optional.empty();
+
+        Optional<StorageBufferBinding> paletteFor(MeshRenderer renderer);
+    }
+
+    private record Variant(boolean skinned, boolean colored) {
+    }
+
+    private record PerRenderer(BufferHandle modelUbo, BindingSetHandle bindings, Variant variant,
+                               StorageBufferBinding palette) {
+
+        private boolean matches(Variant other, Optional<StorageBufferBinding> otherPalette) {
+            return variant.equals(other) && Optional.ofNullable(palette).equals(otherPalette);
+        }
     }
 }

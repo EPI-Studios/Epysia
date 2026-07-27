@@ -1,7 +1,6 @@
 package fr.epistudio.epysia.editor.gizmo;
 
 import fr.epistudio.epysia.components.Camera3D;
-import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.gl.OverlayShader;
 import fr.epistudio.epysia.editor.gl.OverlayTarget;
@@ -51,7 +50,6 @@ public final class SelectionOutlineOverlay implements AutoCloseable {
     private static final float OUTLINE_HALF_WIDTH_PIXELS = 1.25f;
     private static final float FRUSTUM_HALF_WIDTH_PIXELS = 1.0f;
     private static final float OUTLINE_ALPHA = 1.0f;
-    private static final float MESH_HALF_EXTENT = 0.5f;
     private static final float ICON_HALF_EXTENT = 0.25f;
     private static final float FRUSTUM_DISPLAY_FAR = 12.0f;
 
@@ -115,15 +113,16 @@ public final class SelectionOutlineOverlay implements AutoCloseable {
         if (transform.isEmpty()) {
             return;
         }
+        if (SelectionHierarchy.hasMeshInHierarchy(gameObject)) {
+            return;
+        }
         Optional<Camera3D> camera = gameObject.getComponent(Camera3D.class);
         if (camera.isPresent()) {
             writer.writeCorners(frustumCorners(camera.get()), FRUSTUM_HALF_WIDTH_PIXELS);
             return;
         }
-        float halfExtent = gameObject.getComponent(MeshRenderer.class).isPresent()
-                ? MESH_HALF_EXTENT
-                : ICON_HALF_EXTENT;
-        writer.writeBox(new Matrix4f(transform.get().worldMatrix()), halfExtent, OUTLINE_HALF_WIDTH_PIXELS);
+        writer.writeBox(new Matrix4f(transform.get().worldMatrix()), ICON_HALF_EXTENT,
+                OUTLINE_HALF_WIDTH_PIXELS);
     }
 
     private static Vector3f[] frustumCorners(Camera3D camera) {

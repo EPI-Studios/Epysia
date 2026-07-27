@@ -12,6 +12,7 @@ public final class RenderPasses {
 
     public static final int PRE_3D_ORDER = 100;
     public static final int OPAQUE_3D_ORDER = 200;
+    public static final int VIEW_MODEL_3D_ORDER = 250;
     public static final int TRANSPARENT_3D_ORDER = 300;
     public static final int WORLD_2D_ORDER = 400;
     public static final int POST_ORDER = 500;
@@ -24,6 +25,7 @@ public final class RenderPasses {
 
     public static final RenderPass PRE_3D = register("PRE_3D", PRE_3D_ORDER);
     public static final RenderPass OPAQUE_3D = register("OPAQUE_3D", OPAQUE_3D_ORDER);
+    public static final RenderPass VIEW_MODEL_3D = register("VIEW_MODEL_3D", VIEW_MODEL_3D_ORDER);
     public static final RenderPass TRANSPARENT_3D = register("TRANSPARENT_3D", TRANSPARENT_3D_ORDER);
     public static final RenderPass WORLD_2D = register("WORLD_2D", WORLD_2D_ORDER);
     public static final RenderPass POST = register("POST", POST_ORDER);
