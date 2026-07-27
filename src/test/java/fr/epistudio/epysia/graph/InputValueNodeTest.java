@@ -108,6 +108,11 @@ class InputValueNodeTest {
         public Scheduler scheduler() { throw new UnsupportedOperationException(); }
 
         @Override
+        public fr.epistudio.epysia.input.action.InputActions inputActions() {
+            return fr.epistudio.epysia.input.action.InputActions.defaults();
+        }
+
+        @Override
         public Hud hud() { throw new UnsupportedOperationException(); }
 
         @Override

@@ -31,6 +31,13 @@ public final class ShaderNodes {
     public static final String INPUT_WORLD_NORMAL = "shader.input.worldNormal";
     public static final String INPUT_LOCAL_POSITION = "shader.input.localPosition";
     public static final String INPUT_SCENE_COLOR = "shader.input.sceneColor";
+    public static final String INPUT_SCREEN_UV = "shader.input.screenUv";
+    public static final String INPUT_VIEW_DIRECTION = "shader.input.viewDirection";
+    public static final String SCENE_COLOR_AT = "shader.scene.colorAt";
+    public static final String SCENE_DEPTH_BEHIND = "shader.scene.depthBehind";
+    public static final String SCENE_WORLD_POSITION_AT = "shader.scene.worldPositionAt";
+    public static final String SCENE_SURFACE_NORMAL_AT = "shader.scene.surfaceNormalAt";
+    public static final String TRIPLANAR = "shader.effect.triplanar";
     public static final String INPUT_SCENE_DEPTH = "shader.input.sceneDepth";
     public static final String INPUT_SCENE_VIEW_DEPTH = "shader.input.sceneViewDepth";
     public static final String INPUT_SCENE_WORLD_POSITION = "shader.input.sceneWorldPosition";
@@ -63,6 +70,12 @@ public final class ShaderNodes {
     public static final String STEP = "shader.math.step";
     public static final String SMOOTHSTEP = "shader.math.smoothstep";
     public static final String REMAP = "shader.math.remap";
+    public static final String BRANCH = "shader.math.branch";
+    public static final String DITHER = "shader.math.dither";
+    public static final String QUANTIZE = "shader.math.quantize";
+    public static final String HASH = "shader.math.hash";
+    public static final String RGB_OF = "shader.vector.rgb";
+    public static final String INPUT_SCREEN_PIXEL = "shader.input.screenPixel";
     public static final String DOT = "shader.vector.dot";
     public static final String CROSS = "shader.vector.cross";
     public static final String NORMALIZE = "shader.vector.normalize";
@@ -78,11 +91,15 @@ public final class ShaderNodes {
     public static final String PARAMETER_FLOAT = "shader.parameter.float";
     public static final String PARAMETER_COLOR = "shader.parameter.color";
     public static final String PARAMETER_TEXTURE = "shader.parameter.texture";
+    public static final String PARAMETER_BOOL = "shader.parameter.bool";
     public static final String CUSTOM_CODE = "shader.custom.code";
     public static final String OUTPUT_SURFACE = "shader.output.surface";
     public static final String OUTPUT_POST = "shader.output.post";
 
     public static final String VALUE_PIN = "Value";
+    public static final String CONDITION_PIN = "Condition";
+    public static final String COORDINATE_PIN = "Coordinate";
+    public static final String LEVELS_PIN = "Levels";
     public static final String RESULT_PIN = "Result";
     public static final String UV_PIN = "UV";
     public static final String ALBEDO_PIN = "Albedo";
@@ -94,6 +111,9 @@ public final class ShaderNodes {
     public static final String RGBA_PIN = "RGBA";
     public static final String ALPHA_PIN = "Alpha";
     public static final String EDGE_EMISSIVE_PIN = "Edge Emissive";
+    public static final String NORMAL_PIN = "Normal";
+    public static final String POSITION_PIN = "Position";
+    public static final String SCALE_PIN = "Scale";
 
     public static final String NAME_SETTING = "parameterName";
     public static final String PATH_SETTING = "path";
@@ -170,8 +190,8 @@ public final class ShaderNodes {
 
     public static boolean isPostOnly(String typeKey) {
         return typeKey.equals(INPUT_SCENE_COLOR) || typeKey.equals(INPUT_SCENE_DEPTH)
-                || typeKey.equals(INPUT_RESOLUTION) || typeKey.equals(PARAMETER_TEXTURE)
-                || typeKey.equals(OUTPUT_POST);
+                || typeKey.equals(INPUT_RESOLUTION) || typeKey.equals(OUTPUT_POST)
+                || typeKey.equals(INPUT_SCREEN_PIXEL);
     }
 
     public static boolean isOutput(String typeKey) {
@@ -187,6 +207,7 @@ public final class ShaderNodes {
         registerEffects(registry);
         registerParameters(registry);
         registerCustom(registry);
+        registerScene(registry);
         registerOutputs(registry);
     }
 
@@ -212,6 +233,29 @@ public final class ShaderNodes {
         registry.register(input(INPUT_SCENE_IS_SKY, "Scene Is Sky", PinType.FLOAT));
         registry.register(input(INPUT_CAMERA_POSITION, "Camera Position", PinType.VECTOR3));
         registry.register(input(INPUT_RESOLUTION, "Resolution", PinType.VECTOR2));
+        registry.register(input(INPUT_SCREEN_PIXEL, "Screen Pixel", PinType.VECTOR2));
+        registry.register(input(INPUT_SCREEN_UV, "Screen UV", PinType.VECTOR2));
+        registry.register(input(INPUT_VIEW_DIRECTION, "View Direction", PinType.VECTOR3));
+    }
+
+    private static void registerScene(GraphNodeRegistry registry) {
+        registry.register(sceneSample(SCENE_COLOR_AT, "Scene Color At", PinType.VECTOR3));
+        registry.register(sceneSample(SCENE_DEPTH_BEHIND, "Depth Behind Surface", PinType.FLOAT));
+        registry.register(sceneSample(SCENE_WORLD_POSITION_AT, "Scene World Position At", PinType.VECTOR3));
+        registry.register(sceneSample(SCENE_SURFACE_NORMAL_AT, "Scene Normal At", PinType.VECTOR3));
+        registry.register(node(TRIPLANAR, "Triplanar Sample", CATEGORY_TEXTURE,
+                List.of(new PinDefinition(POSITION_PIN, PinType.VECTOR3),
+                        new PinDefinition(NORMAL_PIN, PinType.VECTOR3),
+                        new PinDefinition(SCALE_PIN, PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.VECTOR3)),
+                List.of(new NodeSetting(PATH_SETTING, SettingKind.ASSET_PATH, ""),
+                        new NodeSetting(MATERIAL_SAMPLER_SETTING, SettingKind.TEXT, MATERIAL_SAMPLERS.get(0)))));
+    }
+
+    private static NodeDefinition sceneSample(String typeKey, String displayName, PinType result) {
+        return node(typeKey, displayName, CATEGORY_INPUT,
+                List.of(new PinDefinition(UV_PIN, PinType.VECTOR2)),
+                List.of(new PinDefinition(RESULT_PIN, result)), List.of());
     }
 
     private static void registerTexture(GraphNodeRegistry registry) {
@@ -239,6 +283,9 @@ public final class ShaderNodes {
                 List.of(new PinDefinition(RESULT_PIN, PinType.VECTOR3)), List.of()));
         registry.register(numeric(NORMALIZE, "Normalize", CATEGORY_VECTOR, List.of(VALUE_PIN), PinType.NUMERIC));
         registry.register(numeric(LENGTH, "Length", CATEGORY_VECTOR, List.of(VALUE_PIN), PinType.FLOAT));
+        registry.register(node(RGB_OF, "RGB", CATEGORY_VECTOR,
+                List.of(new PinDefinition(VALUE_PIN, PinType.VECTOR4)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.VECTOR3)), List.of()));
         registry.register(numeric(DISTANCE, "Distance", CATEGORY_VECTOR, List.of("A", "B"), PinType.FLOAT));
     }
 
@@ -265,6 +312,20 @@ public final class ShaderNodes {
         registry.register(numeric(FLOOR, "Floor", CATEGORY_MATH, List.of(VALUE_PIN), PinType.NUMERIC));
         registry.register(numeric(MODULO, "Modulo", CATEGORY_MATH, List.of(VALUE_PIN, "Divisor"), PinType.NUMERIC));
         registry.register(numeric(STEP, "Step", CATEGORY_MATH, List.of("Edge", VALUE_PIN), PinType.NUMERIC));
+        registry.register(node(BRANCH, "Branch", CATEGORY_MATH,
+                List.of(new PinDefinition(CONDITION_PIN, PinType.FLOAT),
+                        new PinDefinition("True", PinType.NUMERIC), new PinDefinition("False", PinType.NUMERIC)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.NUMERIC)), List.of()));
+        registry.register(node(DITHER, "Dither Threshold", CATEGORY_MATH,
+                List.of(new PinDefinition(COORDINATE_PIN, PinType.VECTOR2)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)), List.of()));
+        registry.register(node(QUANTIZE, "Quantize", CATEGORY_MATH,
+                List.of(new PinDefinition(VALUE_PIN, PinType.NUMERIC),
+                        new PinDefinition(LEVELS_PIN, PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.NUMERIC)), List.of()));
+        registry.register(node(HASH, "Hash", CATEGORY_MATH,
+                List.of(new PinDefinition(VALUE_PIN, PinType.VECTOR2)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)), List.of()));
         registry.register(numeric(SMOOTHSTEP, "Smoothstep", CATEGORY_MATH,
                 List.of("Edge Start", "Edge End", VALUE_PIN), PinType.NUMERIC));
         registry.register(numeric(REMAP, "Remap", CATEGORY_MATH,
@@ -314,6 +375,10 @@ public final class ShaderNodes {
                 List.of(new PinDefinition(VALUE_PIN, PinType.VECTOR4)),
                 List.of(new PinDefinition(RESULT_PIN, PinType.VECTOR4)),
                 List.of(new NodeSetting(NAME_SETTING, SettingKind.TEXT, "myColor"))));
+        registry.register(node(PARAMETER_BOOL, "Bool Parameter", CATEGORY_PARAMETER,
+                List.of(new PinDefinition(VALUE_PIN, PinType.FLOAT)),
+                List.of(new PinDefinition(RESULT_PIN, PinType.FLOAT)),
+                List.of(new NodeSetting(NAME_SETTING, SettingKind.TEXT, "myToggle"))));
         registry.register(node(PARAMETER_TEXTURE, "Texture Parameter", CATEGORY_PARAMETER,
                 List.of(new PinDefinition(UV_PIN, PinType.VECTOR2)),
                 List.of(new PinDefinition(RGBA_PIN, PinType.VECTOR4)),
@@ -380,6 +445,7 @@ public final class ShaderNodes {
                         new PinDefinition(METALLIC_PIN, PinType.FLOAT),
                         new PinDefinition(ROUGHNESS_PIN, PinType.FLOAT),
                         new PinDefinition(EMISSIVE_PIN, PinType.VECTOR3),
+                        new PinDefinition(NORMAL_PIN, PinType.VECTOR3),
                         new PinDefinition(WORLD_POSITION_OFFSET_PIN, PinType.VECTOR3)),
                 List.of(),
                 List.of(new NodeSetting(MASTER_SETTING, SettingKind.TEXT, MASTER_LIT))));

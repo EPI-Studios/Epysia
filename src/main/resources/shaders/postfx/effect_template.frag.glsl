@@ -14,6 +14,12 @@ layout(std140, binding = 2) uniform PostEffectFrame {
     mat4 inverseViewProjection;
 };
 
+// POST_EFFECT_UNIFORMS
+
+vec3 sceneColorAt(vec2 uv) {
+    return texture(postEffectInputColor, uv).rgb;
+}
+
 float sceneRawDepth(vec2 uv) {
     return texture(sceneDepth, uv).r;
 }
@@ -36,6 +42,8 @@ vec3 sceneWorldPosition(vec2 uv) {
 float sceneCameraDistance(vec2 uv) {
     return length(sceneWorldPosition(uv) - cameraPosition);
 }
+
+// POST_EFFECT_FUNCTIONS
 
 void main() {
     outColor = postEffect(texture(postEffectInputColor, vertexUv), vertexUv);
