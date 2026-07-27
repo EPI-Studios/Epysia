@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 import imgui.ImGuiStyle;
 import imgui.extension.imnodes.ImNodes;
@@ -56,7 +58,8 @@ final class GraphCanvasNavigation {
         renderFramingButtons();
         ImGui.sameLine();
         minimapToggle.set(minimapVisible);
-        if (ImGui.checkbox("Minimap", minimapToggle)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_GRAPH_CANVAS_NAVIGATION_MINIMAP,
+                "graph-minimap"), minimapToggle)) {
             minimapVisible = minimapToggle.get();
         }
     }
@@ -72,20 +75,23 @@ final class GraphCanvasNavigation {
             stepFromCenter(BUTTON_STEP);
         }
         ImGui.sameLine();
-        if (ImGui.smallButton("100%##graph-zoom-reset") && !zoom.atDefault()) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_GRAPH_CANVAS_NAVIGATION_ZOOM_RESET,
+                "graph-zoom-reset")) && !zoom.atDefault()) {
             resetFromCenter();
         }
     }
 
     private void renderFramingButtons() {
-        if (ImGui.smallButton("Fit")) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_GRAPH_CANVAS_NAVIGATION_FIT,
+                "graph-fit"))) {
             framing = Framing.ALL;
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Wheel zooms, middle-click drag pans, F frames the selection");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_GRAPH_CANVAS_NAVIGATION_TOOLTIP));
         }
         ImGui.sameLine();
-        if (ImGui.smallButton("Frame Selection")) {
+        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_GRAPH_CANVAS_NAVIGATION_FRAME_SELECTION,
+                "graph-frame-selection"))) {
             framing = Framing.SELECTION;
         }
     }

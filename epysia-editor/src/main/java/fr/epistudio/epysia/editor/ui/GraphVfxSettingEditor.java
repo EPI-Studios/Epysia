@@ -4,6 +4,8 @@ import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.ui.widgets.CurveEditorWidget;
 import fr.epistudio.epysia.editor.ui.widgets.GradientEditorWidget;
 import fr.epistudio.epysia.graph.NodeSetting;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.vfx.lut.VfxCurve;
 import fr.epistudio.epysia.vfx.lut.VfxGradient;
 import imgui.ImDrawList;
@@ -34,7 +36,6 @@ final class GraphVfxSettingEditor {
     private static final int COLOR_BORDER = EditorStyle.rgba(255, 255, 255, 50);
     private static final int COLOR_CURVE = EditorStyle.rgb(120, 200, 255);
     private static final String WINDOW_SUFFIX = "##vfx-setting-editor";
-    private static final String LIFE_AXIS_LABEL = "time";
 
     private final Map<String, CurveSlot> curveSlots = new HashMap<>();
     private final Map<String, GradientSlot> gradientSlots = new HashMap<>();
@@ -94,7 +95,7 @@ final class GraphVfxSettingEditor {
         if (!ImGui.isItemHovered()) {
             return;
         }
-        ImGui.setTooltip("Click to edit " + label);
+        ImGui.setTooltip(I18n.translate(TextKey.EDITOR_GRAPH_VFX_SETTING_EDITOR_CLICK_TO_EDIT, label));
         if (ImGui.isItemClicked()) {
             openIdentifier = identifier;
             openLabel = label;
@@ -227,7 +228,8 @@ final class GraphVfxSettingEditor {
         String encoded = "";
 
         CurveSlot(String verticalAxisLabel) {
-            this.widget = new CurveEditorWidget().setAxisLabels(LIFE_AXIS_LABEL, verticalAxisLabel);
+            this.widget = new CurveEditorWidget().setAxisLabels(
+                    I18n.translate(TextKey.EDITOR_GRAPH_VFX_SETTING_EDITOR_LIFE_AXIS), verticalAxisLabel);
         }
     }
 

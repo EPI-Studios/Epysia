@@ -5,6 +5,8 @@ import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.profiling.FrameProfiler;
 import fr.epistudio.epysia.render.backend.DrawStatistics;
 import fr.epistudio.epysia.render.mesh.ShadowStatistics;
@@ -65,7 +67,7 @@ public final class ProfilerView {
             return;
         }
         applyWindowPlacement();
-        if (!ImGui.begin(WINDOW_TITLE)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_PROFILER_VIEW_TITLE, WINDOW_TITLE))) {
             ImGui.end();
             return;
         }
@@ -145,10 +147,14 @@ public final class ProfilerView {
     }
 
     private void renderFrameSummary() {
-        ImGui.text(String.format("%.0f fps", ImGui.getIO().getFramerate()));
-        ImGui.text(String.format("Frame %.3f ms  (min %.3f  avg %.3f  max %.3f over %d frames)",
-                frameHistory.latest(), frameHistory.minimum(), frameHistory.average(),
-                frameHistory.maximum(), frameHistory.length()));
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_FPS,
+                String.format("%.0f", ImGui.getIO().getFramerate())));
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_FRAME_SUMMARY,
+                String.format("%.3f", frameHistory.latest()),
+                String.format("%.3f", frameHistory.minimum()),
+                String.format("%.3f", frameHistory.average()),
+                String.format("%.3f", frameHistory.maximum()),
+                frameHistory.length()));
         ImGui.plotLines("##frame-history", frameHistory.samples(), frameHistory.length(),
                 frameHistory.cursor(), "", 0.0f, frameHistory.maximum() * PLOT_HEADROOM,
                 0.0f, PLOT_HEIGHT);
@@ -156,37 +162,42 @@ public final class ProfilerView {
 
     private void renderToggles() {
         boolean vsync = shell.isVsyncEnabled();
-        if (ImGui.checkbox("Vertical sync", vsync)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_PROFILER_VIEW_VERTICAL_SYNC,
+                "profiler-vsync"), vsync)) {
             shell.setVsyncEnabled(!vsync);
         }
         boolean supersampled = viewportView.supersampleFactor() > 1;
-        if (ImGui.checkbox("Viewport supersampling (2x)", supersampled)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_PROFILER_VIEW_VIEWPORT_SUPERSAMPLING,
+                "profiler-supersampling"), supersampled)) {
             viewportView.setSupersampleFactor(supersampled ? 1 : 2);
         }
         boolean shadowCaching = sceneHost.meshRenderSystem().shadowCachingEnabled();
-        if (ImGui.checkbox("Shadow map caching", shadowCaching)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_PROFILER_VIEW_SHADOW_MAP_CACHING,
+                "profiler-shadow-caching"), shadowCaching)) {
             sceneHost.meshRenderSystem().setShadowCachingEnabled(!shadowCaching);
         }
         boolean shadowSplit = sceneHost.meshRenderSystem().shadowSplitEnabled();
-        if (ImGui.checkbox("Static/dynamic shadow caster split", shadowSplit)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_PROFILER_VIEW_SHADOW_SPLIT,
+                "profiler-shadow-split"), shadowSplit)) {
             sceneHost.meshRenderSystem().setShadowSplitEnabled(!shadowSplit);
         }
         boolean instancing = sceneHost.meshRenderSystem().instancingEnabled();
-        if (ImGui.checkbox("Automatic GPU instancing", instancing)) {
+        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_PROFILER_VIEW_GPU_INSTANCING,
+                "profiler-gpu-instancing"), instancing)) {
             sceneHost.meshRenderSystem().setInstancingEnabled(!instancing);
         }
         if (vsync) {
-            ImGui.textDisabled("Frame rate is capped to the monitor refresh rate. Disable to measure.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_VSYNC_HELP));
         }
-        ImGui.textDisabled(String.format("Rendering %d x %d",
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_RENDERING_SIZE,
                 sceneHost.currentWidth(), sceneHost.currentHeight()));
     }
 
     private void renderGpuTable() {
-        ImGui.text("GPU passes");
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_GPU_PASSES));
         Map<String, Long> timings = gpuTimings();
         if (timings.isEmpty()) {
-            ImGui.textDisabled("No samples yet.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_NO_SAMPLES));
             return;
         }
         float totalMilliseconds = totalMilliseconds(timings);
@@ -199,14 +210,15 @@ public final class ProfilerView {
                     percentOf(milliseconds, totalMilliseconds));
         }
         ImGui.endTable();
-        ImGui.text(String.format("GPU total %.3f ms", totalMilliseconds));
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_GPU_TOTAL,
+                String.format("%.3f", totalMilliseconds)));
     }
 
     private void renderCpuTable() {
-        ImGui.text("CPU sections");
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_CPU_SECTIONS));
         Map<String, Long> timings = cpuTimings();
         if (timings.isEmpty()) {
-            ImGui.textDisabled("No samples yet.");
+            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_NO_SAMPLES));
             return;
         }
         float engineMilliseconds = milliseconds(timings, FrameProfiler.RENDER_SECTION)
@@ -220,31 +232,33 @@ public final class ProfilerView {
                     percentOf(value, engineMilliseconds));
         }
         ImGui.endTable();
-        ImGui.text(String.format("Engine CPU %.3f ms", engineMilliseconds));
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_ENGINE_CPU,
+                String.format("%.3f", engineMilliseconds)));
         renderEditorShellTimings();
     }
 
     private void renderEditorShellTimings() {
-        ImGui.text("Editor shell (CPU, main thread)");
-        appendShellTimingRow("poll and new frame", shell.pollNanos());
-        appendShellTimingRow("ui build", shell.uiBuildNanos());
-        appendShellTimingRow("ui draw", shell.drawDataNanos());
-        appendShellTimingRow("detached viewports", shell.viewportsNanos());
-        appendShellTimingRow("present (includes vsync wait)", shell.swapNanos());
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_EDITOR_SHELL));
+        appendShellTimingRow(TextKey.EDITOR_PROFILER_VIEW_SHELL_POLL, shell.pollNanos());
+        appendShellTimingRow(TextKey.EDITOR_PROFILER_VIEW_SHELL_UI_BUILD, shell.uiBuildNanos());
+        appendShellTimingRow(TextKey.EDITOR_PROFILER_VIEW_SHELL_UI_DRAW, shell.drawDataNanos());
+        appendShellTimingRow(TextKey.EDITOR_PROFILER_VIEW_SHELL_DETACHED_VIEWPORTS, shell.viewportsNanos());
+        appendShellTimingRow(TextKey.EDITOR_PROFILER_VIEW_SHELL_PRESENT, shell.swapNanos());
     }
 
-    private static void appendShellTimingRow(String label, long nanos) {
-        ImGui.textDisabled(String.format("%s  %.3f ms", label, nanos / NANOS_PER_MILLISECOND));
+    private static void appendShellTimingRow(TextKey labelKey, long nanos) {
+        ImGui.textDisabled(String.format("%s  %.3f ms",
+                I18n.translate(labelKey), nanos / NANOS_PER_MILLISECOND));
     }
 
     private static boolean beginTimingTable(String identifier) {
         if (!ImGui.beginTable(identifier, 4, TABLE_FLAGS)) {
             return false;
         }
-        ImGui.tableSetupColumn("Section");
-        ImGui.tableSetupColumn("ms");
-        ImGui.tableSetupColumn("avg ms");
-        ImGui.tableSetupColumn("%");
+        ImGui.tableSetupColumn(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_TABLE_SECTION));
+        ImGui.tableSetupColumn(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_TABLE_MS));
+        ImGui.tableSetupColumn(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_TABLE_AVG_MS));
+        ImGui.tableSetupColumn(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_TABLE_PERCENT));
         ImGui.tableHeadersRow();
         return true;
     }
@@ -263,40 +277,48 @@ public final class ProfilerView {
 
     private void renderDrawStatistics() {
         DrawStatistics statistics = sceneHost.backend().drawStatistics();
-        ImGui.text("Draw statistics");
-        ImGui.textDisabled("Draw calls: " + statistics.drawCalls()
-                + " (instanced " + statistics.instancedDrawCalls() + ")");
-        ImGui.textDisabled("Instance batches: " + sceneHost.meshRenderSystem().batchCount()
-                + " — collapsed: " + sceneHost.meshRenderSystem().instancedBatchCount()
-                + " — instances drawn: " + statistics.instances());
-        ImGui.textDisabled("Triangles: " + statistics.triangles());
-        ImGui.textDisabled("Render passes: " + statistics.passes());
-        ImGui.textDisabled("Pipeline switches: " + statistics.pipelineSwitches());
-        ImGui.textDisabled("Binding set switches: " + statistics.bindingSetSwitches());
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_DRAW_STATISTICS));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_DRAW_CALLS,
+                statistics.drawCalls(), statistics.instancedDrawCalls()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_INSTANCE_BATCHES,
+                sceneHost.meshRenderSystem().batchCount(),
+                sceneHost.meshRenderSystem().instancedBatchCount(), statistics.instances()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_TRIANGLES, statistics.triangles()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_RENDER_PASSES, statistics.passes()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_PIPELINE_SWITCHES,
+                statistics.pipelineSwitches()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_BINDING_SET_SWITCHES,
+                statistics.bindingSetSwitches()));
     }
-
     private void renderShadowStatistics() {
         ShadowStatistics statistics = sceneHost.meshRenderSystem().shadowStatistics();
-        ImGui.text("Shadows");
-        ImGui.textDisabled("Targets rendered: " + statistics.targetsRendered()
-                + " — skipped: " + statistics.targetsSkipped());
-        ImGui.textDisabled("Casters submitted: " + statistics.castersSubmitted());
-        ImGui.textDisabled("Time animated casters: " + statistics.animatedCasters());
-        ImGui.textDisabled("Static layers rebuilt: " + statistics.staticLayersRebuilt());
-        ImGui.textDisabled("Dynamic casters drawn: " + statistics.dynamicCastersDrawn());
-        ImGui.textDisabled("Depth copies: " + statistics.depthCopies());
-        ImGui.textDisabled(String.format("Cached static depth: %.1f MiB",
-                sceneHost.meshRenderSystem().shadowStaticVideoMemoryBytes() / (1024.0 * 1024.0)));
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_SHADOWS));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_TARGETS_RENDERED,
+                statistics.targetsRendered(), statistics.targetsSkipped()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_CASTERS_SUBMITTED,
+                statistics.castersSubmitted()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_TIME_ANIMATED_CASTERS,
+                statistics.animatedCasters()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_STATIC_LAYERS_REBUILT,
+                statistics.staticLayersRebuilt()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_DYNAMIC_CASTERS_DRAWN,
+                statistics.dynamicCastersDrawn()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_DEPTH_COPIES,
+                statistics.depthCopies()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_CACHED_STATIC_DEPTH,
+                String.format("%.1f", sceneHost.meshRenderSystem().shadowStaticVideoMemoryBytes()
+                        / (1024.0 * 1024.0))));
     }
-
     private void renderSceneStatistics() {
-        ImGui.text("Scene");
-        ImGui.textDisabled("Objects: " + activeDocument.get().scene().gameObjects().size());
-        ImGui.textDisabled("Meshes submitted: " + sceneHost.meshRenderSystem().submittedMeshCount());
-        ImGui.textDisabled("Meshes culled: " + sceneHost.meshRenderSystem().culledMeshCount());
-        ImGui.textDisabled("Lights: " + countLights());
+        ImGui.text(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_SCENE));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_OBJECTS,
+                activeDocument.get().scene().gameObjects().size()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_MESHES_SUBMITTED,
+                sceneHost.meshRenderSystem().submittedMeshCount()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_MESHES_CULLED,
+                sceneHost.meshRenderSystem().culledMeshCount()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_LIGHTS, countLights()));
     }
-
     private int countLights() {
         int lights = 0;
         for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {

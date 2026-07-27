@@ -9,6 +9,8 @@ import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.Scene;
@@ -89,7 +91,8 @@ public final class SceneWorkspace {
         try {
             serializer.load(scene, path, host.engine());
         } catch (IOException error) {
-            notifier.show("Failed to load: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_SCENE_WORKSPACE_TOAST_FAILED_TO_LOAD,
+                    error.getMessage()));
             return active();
         }
         ensureDefaultLight(scene);
@@ -126,21 +129,22 @@ public final class SceneWorkspace {
             Files.createDirectories(document.filePath().getParent());
             serializer.save(document.scene(), document.filePath(), gameObject -> true);
             document.markClean();
-            notifier.show("Scene saved");
+            notifier.show(I18n.translate(TextKey.EDITOR_SCENE_WORKSPACE_TOAST_SCENE_SAVED));
         } catch (IOException error) {
-            notifier.show("Save failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_SCENE_WORKSPACE_TOAST_SAVE_FAILED,
+                    error.getMessage()));
         }
     }
 
     public boolean rename(SceneDocument document, String newName) {
         String trimmed = newName == null ? "" : newName.trim();
         if (trimmed.isEmpty() || trimmed.contains("/") || trimmed.contains("\\")) {
-            notifier.show("Invalid name");
+            notifier.show(I18n.translate(TextKey.EDITOR_SCENE_WORKSPACE_TOAST_INVALID_NAME));
             return false;
         }
         Path target = project.scenesDirectory().resolve(trimmed + Project.SCENE_EXTENSION);
         if (nameTaken(target, document)) {
-            notifier.show("A scene with this name already exists");
+            notifier.show(I18n.translate(TextKey.EDITOR_SCENE_WORKSPACE_TOAST_SCENE_EXISTS));
             return false;
         }
         try {
@@ -151,7 +155,8 @@ public final class SceneWorkspace {
             document.renameTo(target, trimmed);
             return true;
         } catch (IOException error) {
-            notifier.show("Rename failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_SCENE_WORKSPACE_TOAST_RENAME_FAILED,
+                    error.getMessage()));
             return false;
         }
     }

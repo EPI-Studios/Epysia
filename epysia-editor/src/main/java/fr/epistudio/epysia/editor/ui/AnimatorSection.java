@@ -8,6 +8,8 @@ import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.editor.assets.ClipCatalog;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.render.mesh.UploadedMesh;
 import imgui.ImGui;
@@ -20,7 +22,6 @@ import java.util.function.Supplier;
 
 public final class AnimatorSection {
 
-    private static final String NONE_LABEL = "(none)";
     private static final long CACHE_TTL_NANOS = 500_000_000L;
     private static final long NO_SKELETON_KEY = Long.MIN_VALUE;
 
@@ -38,7 +39,8 @@ public final class AnimatorSection {
     public void render(GameObject gameObject, Animator animator) {
         OptionalLong skeletonChecksum = skeletonChecksum(gameObject);
         List<ClipCatalog.ClipEntry> entries = entriesFor(skeletonChecksum);
-        if (!ImGui.beginCombo("Animation", previewLabel(animator, entries))) {
+        if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_ANIMATOR_SECTION_ANIMATION, "animator-animation"),
+                previewLabel(animator, entries))) {
             return;
         }
         renderNoneOption(animator);
@@ -49,7 +51,8 @@ public final class AnimatorSection {
     }
 
     private void renderNoneOption(Animator animator) {
-        if (ImGui.selectable(NONE_LABEL, animator.clipPath().isEmpty()) && !animator.clipPath().isEmpty()) {
+        if (ImGui.selectable(I18n.label(TextKey.EDITOR_ANIMATOR_SECTION_NONE, "animator-animation-none"),
+                animator.clipPath().isEmpty()) && !animator.clipPath().isEmpty()) {
             animator.setClipPath("");
             activeDocument.get().markDirty();
         }
@@ -84,7 +87,7 @@ public final class AnimatorSection {
 
     private static String previewLabel(Animator animator, List<ClipCatalog.ClipEntry> entries) {
         if (animator.clipPath().isEmpty()) {
-            return NONE_LABEL;
+            return I18n.translate(TextKey.EDITOR_ANIMATOR_SECTION_NONE);
         }
         for (ClipCatalog.ClipEntry entry : entries) {
             if (entry.path().toString().equals(animator.clipPath())) {

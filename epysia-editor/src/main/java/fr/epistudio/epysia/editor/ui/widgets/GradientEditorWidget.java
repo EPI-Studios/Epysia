@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.editor.ui.widgets;
 
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.vfx.lut.VfxGradient;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
@@ -347,7 +349,7 @@ public final class GradientEditorWidget {
     }
 
     private static boolean renderEmptySelectionHint() {
-        ImGui.textDisabled("double click to add a stop, right click to remove");
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_INSTRUCTIONS));
         return false;
     }
 
@@ -365,7 +367,8 @@ public final class GradientEditorWidget {
         VfxGradient.ColorStop stop = gradient.colorStops().get(selectedIndex);
         float[] components = {stop.red(), stop.green(), stop.blue()};
         ImGui.setNextItemWidth(EDITOR_ITEM_WIDTH);
-        if (!ImGui.colorEdit3("Color", components)) {
+        if (!ImGui.colorEdit3(I18n.label(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_COLOR,
+                "gradient-color"), components)) {
             return false;
         }
         return applyColorComponents(gradient, stop, components);
@@ -378,7 +381,8 @@ public final class GradientEditorWidget {
         VfxGradient.ColorStop stop = gradient.colorStops().get(selectedIndex);
         float[] time = {stop.time()};
         ImGui.setNextItemWidth(TIME_ITEM_WIDTH);
-        if (!ImGui.dragFloat("Time", time, TIME_DRAG_STEP, 0.0f, 1.0f, "%.3f") || time[0] == stop.time()) {
+        if (!ImGui.dragFloat(I18n.label(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_TIME,
+                "gradient-color-time"), time, TIME_DRAG_STEP, 0.0f, 1.0f, "%.3f") || time[0] == stop.time()) {
             return false;
         }
         return applyColorTime(gradient, stop, time[0]);
@@ -418,7 +422,8 @@ public final class GradientEditorWidget {
         VfxGradient.AlphaStop stop = gradient.alphaStops().get(selectedIndex);
         float[] alpha = {stop.alpha()};
         ImGui.setNextItemWidth(EDITOR_ITEM_WIDTH);
-        if (!ImGui.sliderFloat("Alpha", alpha, 0.0f, 1.0f)) {
+        if (!ImGui.sliderFloat(I18n.label(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_ALPHA,
+                "gradient-alpha"), alpha, 0.0f, 1.0f)) {
             return false;
         }
         return applyAlphaValue(gradient, stop, alpha[0]);
@@ -431,7 +436,8 @@ public final class GradientEditorWidget {
         VfxGradient.AlphaStop stop = gradient.alphaStops().get(selectedIndex);
         float[] time = {stop.time()};
         ImGui.setNextItemWidth(TIME_ITEM_WIDTH);
-        if (!ImGui.dragFloat("Time", time, TIME_DRAG_STEP, 0.0f, 1.0f, "%.3f") || time[0] == stop.time()) {
+        if (!ImGui.dragFloat(I18n.label(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_TIME,
+                "gradient-alpha-time"), time, TIME_DRAG_STEP, 0.0f, 1.0f, "%.3f") || time[0] == stop.time()) {
             return false;
         }
         return applyAlphaTime(gradient, stop, time[0]);
@@ -467,7 +473,8 @@ public final class GradientEditorWidget {
         }
         VfxGradient.ColorStop stop = stops.get(selectedIndex);
         float[] components = {stop.red(), stop.green(), stop.blue()};
-        ImGui.textDisabled(String.format(Locale.ROOT, "color stop at %.3f", stop.time()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_COLOR_STOP,
+                String.format(Locale.ROOT, "%.3f", stop.time())));
         if (!ImGui.colorPicker3("##gradient-color-picker", components)) {
             return false;
         }
@@ -481,7 +488,8 @@ public final class GradientEditorWidget {
         }
         VfxGradient.AlphaStop stop = stops.get(selectedIndex);
         float[] alpha = {stop.alpha()};
-        ImGui.textDisabled(String.format(Locale.ROOT, "alpha stop at %.3f", stop.time()));
+        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_ALPHA_STOP,
+                String.format(Locale.ROOT, "%.3f", stop.time())));
         ImGui.setNextItemWidth(EDITOR_ITEM_WIDTH);
         if (!ImGui.sliderFloat("##gradient-alpha-picker", alpha, 0.0f, 1.0f)) {
             return false;

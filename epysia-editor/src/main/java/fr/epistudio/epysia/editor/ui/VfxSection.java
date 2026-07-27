@@ -2,6 +2,8 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.vfx.ParticleBurst;
 import fr.epistudio.epysia.vfx.ParticleEffect;
@@ -18,7 +20,6 @@ import java.util.stream.Stream;
 
 public final class VfxSection {
 
-    private static final String NONE_LABEL = "(none)";
     private static final String GRAPH_EXTENSION = ".epygraph";
     private static final String VFX_KIND_MARKER = "\"kind\": \"VFX\"";
     private static final long CACHE_TTL_NANOS = 2_000_000_000L;
@@ -37,7 +38,8 @@ public final class VfxSection {
     public void render(ParticleEffect effect) {
         renderBurstFit(effect);
         List<Path> graphs = projectGraphs();
-        if (!ImGui.beginCombo("Effect Graph", previewLabel(effect))) {
+        if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_VFX_SECTION_EFFECT_GRAPH, "vfx-effect-graph"),
+                previewLabel(effect))) {
             return;
         }
         renderNoneOption(effect);
@@ -51,7 +53,7 @@ public final class VfxSection {
         float duration = effect.durationSeconds();
         for (ParticleBurst burst : effect.burstsExceedingDuration()) {
             ImGui.textColored(EditorStyle.COLOR_WARNING, String.format(Locale.ROOT,
-                    "Burst at %.2fs fires %d of %d cycles: the train needs a duration of %.2fs, not %.2fs.",
+                    I18n.translate(TextKey.EDITOR_VFX_SECTION_BURST_WARNING, "%.2f", "%d", "%d", "%.2f", "%.2f"),
                     burst.timeSeconds(), burst.repeatsWithin(duration), burst.repeatCount(),
                     burst.requiredDurationSeconds(), duration));
         }
@@ -59,13 +61,14 @@ public final class VfxSection {
 
     private String previewLabel(ParticleEffect effect) {
         if (effect.graphPath().isEmpty()) {
-            return NONE_LABEL;
+            return I18n.translate(TextKey.EDITOR_VFX_SECTION_NONE);
         }
         return stemOf(Path.of(effect.graphPath()));
     }
 
     private void renderNoneOption(ParticleEffect effect) {
-        if (ImGui.selectable(NONE_LABEL, effect.graphPath().isEmpty()) && !effect.graphPath().isEmpty()) {
+        if (ImGui.selectable(I18n.label(TextKey.EDITOR_VFX_SECTION_NONE, "vfx-effect-none"),
+                effect.graphPath().isEmpty()) && !effect.graphPath().isEmpty()) {
             effect.setGraphPath("");
             activeDocument.get().markDirty();
         }
