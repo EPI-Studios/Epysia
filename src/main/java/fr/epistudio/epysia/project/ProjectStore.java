@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.project;
 
+import fr.epistudio.epysia.input.action.InputAction;
+import fr.epistudio.epysia.input.action.InputActions;
+import fr.epistudio.epysia.input.action.InputActionsJsonCodec;
 import fr.epistudio.epysia.scene.serialization.JsonReader;
 import fr.epistudio.epysia.scene.serialization.JsonWriter;
 
@@ -13,6 +16,11 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class ProjectStore {
+
+    private List<InputAction> pendingInputActions;
+
+    private static final java.util.Set<String> MARKER_KEYS =
+            java.util.Set.of("name", "engineVersion", "layerNames", "collisionMatrix", "quality", "inputActions");
 
     public static final String CURRENT_ENGINE_VERSION = "0.1";
     private static final String RECENTS_FILENAME = "recents.json";
@@ -126,12 +134,69 @@ public final class ProjectStore {
     }
 
     private void writeMarker(Project project, EditorSettings settings) throws IOException {
+        writeMarker(project, settings, readQuality(project));
+    }
+
+    private void writeMarker(Project project, EditorSettings settings, ProjectQuality quality) throws IOException {
         JsonWriter writer = new JsonWriter().beginObject()
                 .key("name").valueString(project.name())
                 .key("engineVersion").valueString(project.engineVersion());
         writeSettingsKeys(writer, settings);
+        writeQualityKeys(writer, quality);
+        writer.key("inputActions");
+        new InputActionsJsonCodec().write(writer,
+                pendingInputActions == null ? readInputActions(project) : pendingInputActions);
+        writeForeignKeys(writer, readMarkerRoot(project));
         writer.endObject();
         Files.writeString(project.markerFile(), writer.toString());
+    }
+
+    private Map<String, Object> readMarkerRoot(Project project) {
+        Path marker = project.markerFile();
+        if (!Files.isRegularFile(marker)) {
+            return Map.of();
+        }
+        try {
+            return new JsonReader(Files.readString(marker)).readRootObject();
+        } catch (IOException | RuntimeException exception) {
+            return Map.of();
+        }
+    }
+
+    private void writeForeignKeys(JsonWriter writer, Map<String, Object> root) {
+        for (Map.Entry<String, Object> entry : root.entrySet()) {
+            if (MARKER_KEYS.contains(entry.getKey())) {
+                continue;
+            }
+            writer.key(entry.getKey());
+            writeValue(writer, entry.getValue());
+        }
+    }
+
+    private void writeValue(JsonWriter writer, Object value) {
+        switch (value) {
+            case null -> writer.valueNull();
+            case String text -> writer.valueString(text);
+            case Boolean flag -> writer.valueBoolean(flag);
+            case Number number -> writer.valueNumber(number.doubleValue() == Math.rint(number.doubleValue())
+                    ? number.longValue() : number.floatValue());
+            case List<?> items -> {
+                writer.beginArray();
+                for (Object item : items) {
+                    writeValue(writer, item);
+                }
+                writer.endArray();
+            }
+            case Map<?, ?> members -> {
+                writer.beginObject();
+                for (Map.Entry<?, ?> member : members.entrySet()) {
+                    writer.key(String.valueOf(member.getKey()));
+                    writeValue(writer, member.getValue());
+                }
+                writer.endObject();
+            }
+            default -> writer.valueString(String.valueOf(value));
+        }
     }
 
     private void writeSettingsKeys(JsonWriter writer, EditorSettings settings) {
@@ -145,6 +210,85 @@ public final class ProjectStore {
             writer.valueNumber(row);
         }
         writer.endArray();
+    }
+
+    private void writeQualityKeys(JsonWriter writer, ProjectQuality quality) {
+        writer.key("quality").beginObject()
+                .key("gravity").beginArray()
+                .valueNumber(quality.gravityX()).valueNumber(quality.gravityY()).valueNumber(quality.gravityZ())
+                .endArray()
+                .key("fixedTimestepHertz").valueNumber(quality.fixedTimestepHertz())
+                .key("shadowMapSize").valueNumber(quality.shadowMapSize())
+                .key("cascadeCount").valueNumber(quality.cascadeCount())
+                .key("windowTitle").valueString(quality.windowTitle())
+                .key("windowWidth").valueNumber(quality.windowWidth())
+                .key("windowHeight").valueNumber(quality.windowHeight())
+                .key("verticalSync").valueBoolean(quality.verticalSync())
+                .key("maximumFrameRate").valueNumber(quality.maximumFrameRate())
+                .key("nearestTextureFilter").valueBoolean(quality.nearestTextureFilter())
+                .key("depthPrepass").valueBoolean(quality.depthPrepass())
+                .key("shadowFilterSamples").valueNumber(quality.shadowFilterSamples())
+                .key("filteredCascades").valueNumber(quality.filteredCascades())
+                .endObject();
+    }
+
+    public List<InputAction> readInputActions(Project project) {
+        Object raw = readMarkerRoot(project).get("inputActions");
+        return raw instanceof List<?> entries
+                ? new InputActionsJsonCodec().read(entries)
+                : InputActions.defaultActions();
+    }
+
+    public void writeInputActions(Project project, List<InputAction> actions) throws IOException {
+        pendingInputActions = List.copyOf(actions);
+        try {
+            writeMarker(project, readSettings(project), readQuality(project));
+        } finally {
+            pendingInputActions = null;
+        }
+    }
+
+    public ProjectQuality readQuality(Project project) {
+        Map<String, Object> root = readMarkerRoot(project);
+        if (!(root.get("quality") instanceof Map<?, ?> quality)) {
+            return ProjectQuality.defaults();
+        }
+        ProjectQuality defaults = ProjectQuality.defaults();
+        float x = defaults.gravityX();
+        float y = defaults.gravityY();
+        float z = defaults.gravityZ();
+        if (quality.get("gravity") instanceof List<?> gravity && gravity.size() >= 3) {
+            x = numberAt(gravity, 0, x);
+            y = numberAt(gravity, 1, y);
+            z = numberAt(gravity, 2, z);
+        }
+        return new ProjectQuality(x, y, z,
+                intMember(quality, "fixedTimestepHertz", defaults.fixedTimestepHertz()),
+                intMember(quality, "shadowMapSize", defaults.shadowMapSize()),
+                intMember(quality, "cascadeCount", defaults.cascadeCount()),
+                quality.get("windowTitle") instanceof String title ? title : defaults.windowTitle(),
+                intMember(quality, "windowWidth", defaults.windowWidth()),
+                intMember(quality, "windowHeight", defaults.windowHeight()),
+                quality.get("verticalSync") instanceof Boolean sync ? sync : defaults.verticalSync(),
+                intMember(quality, "maximumFrameRate", defaults.maximumFrameRate()),
+                quality.get("nearestTextureFilter") instanceof Boolean nearest
+                        ? nearest : defaults.nearestTextureFilter(),
+                quality.get("depthPrepass") instanceof Boolean prepass
+                        ? prepass : defaults.depthPrepass(),
+                intMember(quality, "shadowFilterSamples", defaults.shadowFilterSamples()),
+                intMember(quality, "filteredCascades", defaults.filteredCascades())).clamped();
+    }
+
+    public void writeQuality(Project project, ProjectQuality quality) throws IOException {
+        writeMarker(project, readSettings(project), quality.clamped());
+    }
+
+    private static float numberAt(List<?> values, int index, float fallback) {
+        return values.get(index) instanceof Number number ? number.floatValue() : fallback;
+    }
+
+    private static int intMember(Map<?, ?> members, String key, int fallback) {
+        return members.get(key) instanceof Number number ? number.intValue() : fallback;
     }
 
     public EditorSettings readSettings(Project project) {
