@@ -21,6 +21,7 @@ import fr.epistudio.epysia.render.backend.PipelineDescriptor;
 import fr.epistudio.epysia.render.backend.PipelineHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.RenderState;
+import fr.epistudio.epysia.render.backend.SampledTextureBinding;
 import fr.epistudio.epysia.render.backend.ShaderSource;
 import fr.epistudio.epysia.render.backend.Topology;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
@@ -30,6 +31,7 @@ import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 
 final class SkyPass {
@@ -56,15 +58,45 @@ final class SkyPass {
 
     void initialize(RenderBackend backend) {
         this.backend = backend;
-        BindingSetLayout layout = new BindingSetLayout(List.of(new BindingSlot(0, BindingType.UNIFORM_BUFFER)));
-        ShaderSource source = new ShaderSource(
-                shaderLoader.load("sky.vert.glsl").source(),
-                shaderLoader.load("sky.frag.glsl").source());
-        pipeline = backend.createPipeline(new PipelineDescriptor(source, FullscreenQuad.LAYOUT, SKY_STATE, layout));
         skyUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(SKY_UBO_SIZE)));
-        bindings = backend.createBindingSet(new BindingSetDescriptor(layout,
-                List.of(new Binding(0, UniformBufferBinding.whole(skyUbo, SKY_UBO_SIZE)))));
+        rebuild(SkySource.PROCEDURAL);
+    }
+
+    void rebuild(SkySource source) {
+        destroyPipeline();
+        BindingSetLayout layout = layoutFor(source);
+        ShaderSource shaders = new ShaderSource(
+                shaderLoader.load("sky.vert.glsl").source(),
+                SkyShaderComposer.compose(shaderLoader, "sky.frag.glsl", source).source());
+        pipeline = backend.createPipeline(new PipelineDescriptor(shaders, FullscreenQuad.LAYOUT, SKY_STATE, layout));
+        bindings = backend.createBindingSet(new BindingSetDescriptor(layout, bindingsFor(source)));
+    }
+
+    private static BindingSetLayout layoutFor(SkySource source) {
+        List<BindingSlot> slots = new ArrayList<>(List.of(new BindingSlot(0, BindingType.UNIFORM_BUFFER)));
+        if (source.needsTexture()) {
+            slots.add(new BindingSlot(1, BindingType.SAMPLED_TEXTURE_2D));
+        }
+        return new BindingSetLayout(slots);
+    }
+
+    private List<Binding> bindingsFor(SkySource source) {
+        List<Binding> list = new ArrayList<>(
+                List.of(new Binding(0, UniformBufferBinding.whole(skyUbo, SKY_UBO_SIZE))));
+        source.texture().ifPresent(texture -> list.add(new Binding(1, new SampledTextureBinding(texture))));
+        return list;
+    }
+
+    private void destroyPipeline() {
+        if (bindings != null) {
+            backend.destroy(bindings);
+            bindings = null;
+        }
+        if (pipeline != null) {
+            backend.destroy(pipeline);
+            pipeline = null;
+        }
     }
 
     void collect(Camera3D camera, Vector3f sunDirection, float skyIntensity, FrameBuilder frame, float alpha) {
@@ -90,9 +122,8 @@ final class SkyPass {
         if (backend == null) {
             return;
         }
-        backend.destroy(bindings);
+        destroyPipeline();
         backend.destroy(skyUbo);
-        backend.destroy(pipeline);
         backend = null;
     }
 }

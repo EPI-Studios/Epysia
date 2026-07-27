@@ -1,5 +1,5 @@
 #version 430 core
-#include "lib/sky.glsl"
+// SKY_BODY
 
 in vec2 vertexUv;
 

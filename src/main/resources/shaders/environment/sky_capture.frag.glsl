@@ -1,6 +1,6 @@
 #version 430 core
 #include "environment/capture_common.glsl"
-#include "lib/sky.glsl"
+// SKY_BODY
 
 in vec2 vertexUv;
 out vec4 outColor;

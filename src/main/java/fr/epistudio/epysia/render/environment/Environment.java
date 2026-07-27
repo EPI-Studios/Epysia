@@ -18,6 +18,8 @@ public final class Environment {
     private final Vector3f defaultSunDirection = new Vector3f(0.35f, 0.8f, 0.45f).normalize();
     private final Vector3f lastSunDirection = new Vector3f(Float.NaN);
     private float lastSkyIntensity = Float.NaN;
+    private SkySource source = SkySource.PROCEDURAL;
+    private boolean sourceDirty;
 
     public Environment(ShaderLoader shaderLoader) {
         this.maps = new EnvironmentMaps(shaderLoader, quad);
@@ -38,7 +40,25 @@ public final class Environment {
         skyPass.initialize(backend);
     }
 
+    public SkySource source() {
+        return source;
+    }
+
+    public void setSource(SkySource newSource) {
+        if (newSource == null || newSource.sameAs(source)) {
+            return;
+        }
+        source = newSource;
+        sourceDirty = true;
+    }
+
     public void prepareFrame(Vector3f sunDirection) {
+        if (sourceDirty) {
+            skyPass.rebuild(source);
+            maps.rebuildSkyCapture(source);
+            sourceDirty = false;
+            lastSkyIntensity = Float.NaN;
+        }
         boolean sunMoved = !(lastSunDirection.dot(sunDirection) > REBAKE_DOT_THRESHOLD);
         boolean intensityChanged = lastSkyIntensity != settings.skyIntensity();
         if (sunMoved || intensityChanged) {

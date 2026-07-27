@@ -63,6 +63,7 @@ final class EnvironmentMaps {
     private PipelineHandle prefilterPipeline;
     private PipelineHandle brdfPipeline;
     private BindingSetHandle uboOnlyBindings;
+    private BindingSetHandle skyCaptureBindings;
     private BindingSetHandle environmentSamplerBindings;
     private RenderTargetHandle[] environmentTargets;
     private RenderTargetHandle[] irradianceTargets;
@@ -100,7 +101,7 @@ final class EnvironmentMaps {
     void bake(Vector3f sunDirection, float skyIntensity) {
         for (int face = 0; face < FACE_COUNT; face++) {
             writeCaptureUbo(face, sunDirection, skyIntensity, 0.0f);
-            runCapturePass(environmentTargets[face], skyCapturePipeline, uboOnlyBindings);
+            runCapturePass(environmentTargets[face], skyCapturePipeline, skyCaptureBindings);
         }
         for (int face = 0; face < FACE_COUNT; face++) {
             writeCaptureUbo(face, sunDirection, skyIntensity, 0.0f);
@@ -156,10 +157,49 @@ final class EnvironmentMaps {
         BindingSetLayout withEnvironment = new BindingSetLayout(List.of(
                 new BindingSlot(0, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(1, BindingType.SAMPLED_TEXTURE_CUBE)));
-        skyCapturePipeline = createCapturePipeline("environment/sky_capture.frag.glsl", uboOnly);
         irradiancePipeline = createCapturePipeline("environment/irradiance_convolve.frag.glsl", withEnvironment);
         prefilterPipeline = createCapturePipeline("environment/specular_prefilter.frag.glsl", withEnvironment);
         brdfPipeline = createCapturePipeline("environment/brdf_lut.frag.glsl", uboOnly);
+        rebuildSkyCapture(SkySource.PROCEDURAL);
+    }
+
+    void rebuildSkyCapture(SkySource source) {
+        destroySkyCapture();
+        BindingSetLayout layout = skyCaptureLayout(source);
+        ShaderSource shaders = new ShaderSource(
+                shaderLoader.load("post.vert.glsl").source(),
+                SkyShaderComposer.compose(shaderLoader, "environment/sky_capture.frag.glsl", source).source());
+        skyCapturePipeline = backend.createPipeline(
+                new PipelineDescriptor(shaders, FullscreenQuad.LAYOUT, CAPTURE_STATE, layout));
+        skyCaptureBindings = backend.createBindingSet(
+                new BindingSetDescriptor(layout, skyCaptureBindings(source)));
+    }
+
+    private static BindingSetLayout skyCaptureLayout(SkySource source) {
+        List<BindingSlot> slots = new java.util.ArrayList<>(
+                List.of(new BindingSlot(0, BindingType.UNIFORM_BUFFER)));
+        if (source.needsTexture()) {
+            slots.add(new BindingSlot(1, BindingType.SAMPLED_TEXTURE_2D));
+        }
+        return new BindingSetLayout(slots);
+    }
+
+    private List<Binding> skyCaptureBindings(SkySource source) {
+        List<Binding> list = new java.util.ArrayList<>(
+                List.of(new Binding(0, UniformBufferBinding.whole(captureUbo, CAPTURE_UBO_SIZE))));
+        source.texture().ifPresent(texture -> list.add(new Binding(1, new SampledTextureBinding(texture))));
+        return list;
+    }
+
+    private void destroySkyCapture() {
+        if (skyCaptureBindings != null) {
+            backend.destroy(skyCaptureBindings);
+            skyCaptureBindings = null;
+        }
+        if (skyCapturePipeline != null) {
+            backend.destroy(skyCapturePipeline);
+            skyCapturePipeline = null;
+        }
     }
 
     private PipelineHandle createCapturePipeline(String fragmentPath, BindingSetLayout layout) {
@@ -206,9 +246,9 @@ final class EnvironmentMaps {
             return;
         }
         destroyTargets();
+        destroySkyCapture();
         backend.destroy(uboOnlyBindings);
         backend.destroy(environmentSamplerBindings);
-        backend.destroy(skyCapturePipeline);
         backend.destroy(irradiancePipeline);
         backend.destroy(prefilterPipeline);
         backend.destroy(brdfPipeline);
