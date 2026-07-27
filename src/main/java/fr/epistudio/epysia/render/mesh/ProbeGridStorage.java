@@ -42,6 +42,18 @@ final class ProbeGridStorage {
         return true;
     }
 
+    void writeProbe(int probeIndex, float[] coefficients) {
+        long byteOffset = (long) probeIndex * SphericalHarmonics.FLOAT_COUNT * Float.BYTES;
+        if (backend == null || handle == null || byteOffset + coefficients.length * Float.BYTES > capacityBytes) {
+            return;
+        }
+        ByteBuffer data = BufferUtils.createByteBuffer(coefficients.length * Float.BYTES);
+        for (float value : coefficients) {
+            data.putFloat(value);
+        }
+        backend.writeBuffer(handle, data.flip(), byteOffset);
+    }
+
     private static ByteBuffer packCoefficients(BakedProbes baked) {
         float[] coefficients = baked.coefficients();
         ByteBuffer data = BufferUtils.createByteBuffer(coefficients.length * Float.BYTES);

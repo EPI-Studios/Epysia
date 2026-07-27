@@ -22,6 +22,7 @@ import fr.epistudio.epysia.render.backend.BufferUsage;
 import fr.epistudio.epysia.render.backend.ComputeBarrier;
 import fr.epistudio.epysia.render.backend.ComputeDispatch;
 import fr.epistudio.epysia.render.backend.ComputePipelineDescriptor;
+import fr.epistudio.epysia.render.lighting.ProbeFaceCopyShader;
 import fr.epistudio.epysia.render.backend.PassClear;
 import fr.epistudio.epysia.render.backend.PipelineHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
@@ -51,18 +52,7 @@ public final class ProbeBaker implements LightBaker {
     private static final int FACE_SIZE = 64;
     private static final int SOURCE_FACE_BINDING = 0;
     private static final int FACE_TEXELS_BINDING = 1;
-    private static final String COPY_COMPUTE_SOURCE = """
-            #version 430 core
-            layout(local_size_x = 8, local_size_y = 8) in;
-            layout(binding = 0) uniform sampler2D sourceFace;
-            layout(std430, binding = 1) writeonly buffer FaceTexels {
-                vec4 texels[];
-            };
-            void main() {
-                ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
-                texels[texel.y * 64 + texel.x] = texelFetch(sourceFace, texel, 0);
-            }
-            """;
+    private static final int WORKGROUP_SIZE = 8;
 
     private Optional<BakeContext> context = Optional.empty();
     private Optional<Path> writtenFile = Optional.empty();
@@ -233,7 +223,7 @@ public final class ProbeBaker implements LightBaker {
             orientCamera(face);
             engine.render(cameraList, RenderTargetHandle.SCREEN, 1.0f);
             backend.dispatchCompute(new ComputeDispatch(capture.copyPipeline(), capture.copyBindings(),
-                    FACE_SIZE / 8, FACE_SIZE / 8, 1));
+                    FACE_SIZE / WORKGROUP_SIZE, FACE_SIZE / WORKGROUP_SIZE, 1));
             backend.computeBarrier(ComputeBarrier.STORAGE_BUFFER);
             readback.clear();
             backend.readBuffer(capture.faceTexels(), readback, 0L);
@@ -328,7 +318,8 @@ public final class ProbeBaker implements LightBaker {
                     new BindingSlot(SOURCE_FACE_BINDING, BindingType.SAMPLED_TEXTURE_2D),
                     new BindingSlot(FACE_TEXELS_BINDING, BindingType.STORAGE_BUFFER)));
             PipelineHandle copyPipeline = backend.createComputePipeline(
-                    new ComputePipelineDescriptor(COPY_COMPUTE_SOURCE, copyLayout));
+                    new ComputePipelineDescriptor(
+                            ProbeFaceCopyShader.source(FACE_SIZE, WORKGROUP_SIZE), copyLayout));
             BufferHandle faceTexels = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE,
                     BufferUtils.createByteBuffer((int) FACE_BYTES)));
             BindingSetHandle copyBindings = backend.createBindingSet(new BindingSetDescriptor(copyLayout, List.of(
