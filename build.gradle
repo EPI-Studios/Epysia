@@ -307,7 +307,10 @@ tasks.register('psyhouJar', ShadowJar) {
 }
 
 tasks.withType(JavaExec).configureEach {
-    systemProperties System.getProperties().findAll { it.key.toString().startsWith('epysia.') }
+    systemProperties System.getProperties().findAll {
+        String key = it.key.toString()
+        key.startsWith('epysia.') || key.startsWith('bkun.')
+    }
     if (name.endsWith('Check')) {
         systemProperty 'epysia.offscreen', 'true'
     }
