@@ -11,6 +11,7 @@ import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphSystem;
 import fr.epistudio.epysia.physics.PhysicsSystem;
+import fr.epistudio.epysia.project.ProjectQuality;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
@@ -28,7 +29,7 @@ public final class EmbeddedPlaySession {
 
     public enum State { STOPPED, PLAYING, PAUSED }
 
-    private static final double FIXED_TIMESTEP_SECONDS = 1.0 / 60.0;
+    private double fixedTimestepSeconds = 1.0 / 60.0;
     private static final double MAX_FRAME_SECONDS = 0.25;
 
     private final EditorScene3DHost sceneHost;
@@ -76,7 +77,7 @@ public final class EmbeddedPlaySession {
     }
 
     public float interpolationAlpha() {
-        return (float) (accumulator / FIXED_TIMESTEP_SECONDS);
+        return (float) (accumulator / fixedTimestepSeconds);
     }
 
     public PlayInputSampler inputSampler() {
@@ -144,8 +145,8 @@ public final class EmbeddedPlaySession {
             return;
         }
         accumulator = Math.min(accumulator + deltaSeconds, MAX_FRAME_SECONDS);
-        int pending = (int) (accumulator / FIXED_TIMESTEP_SECONDS);
-        accumulator -= pending * FIXED_TIMESTEP_SECONDS;
+        int pending = (int) (accumulator / fixedTimestepSeconds);
+        accumulator -= pending * fixedTimestepSeconds;
         runTicks(pending);
     }
 
@@ -165,7 +166,7 @@ public final class EmbeddedPlaySession {
     private void runTicks(int count) {
         try {
             for (int index = 0; index < count; index++) {
-                engine().tick(inputSampler.inputState(), (float) FIXED_TIMESTEP_SECONDS);
+                engine().tick(inputSampler.inputState(), (float) fixedTimestepSeconds);
                 inputSampler.inputState().advanceFrame();
                 tickCount++;
             }
@@ -212,6 +213,15 @@ public final class EmbeddedPlaySession {
     private void applyCollisionLayers() {
         Optional.ofNullable(engine().systems().get(PhysicsSystem.class)).ifPresent(physics ->
                 physics.setCollisionLayers(CollisionLayers.from(projectStore.readSettings(project).collisionMatrix())));
+        applyProjectQuality();
+    }
+
+    private void applyProjectQuality() {
+        ProjectQuality quality = projectStore.readQuality(project);
+        fixedTimestepSeconds = quality.fixedTimestepSeconds();
+        Optional.ofNullable(engine().systems().get(PhysicsSystem.class)).ifPresent(physics ->
+                physics.setGravity(quality.gravityX(), quality.gravityY(), quality.gravityZ()));
+        engine().inputActions().replaceAll(projectStore.readInputActions(project));
     }
 
     private void warnIfNoActiveCamera() {
