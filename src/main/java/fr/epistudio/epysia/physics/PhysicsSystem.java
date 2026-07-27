@@ -554,12 +554,27 @@ public final class PhysicsSystem implements IPhysicsSystem {
         float vertical = verticalVelocityFor2D(controller, deltaTimeSeconds);
         scratchDisplacement.set(horizontal * deltaTimeSeconds, vertical * deltaTimeSeconds, 0.0f);
         boolean snap = controller.snapToGround() && vertical <= 0.0f;
+        controller.nativeController().setBodyFilter(
+                bodyKey -> !passesThroughOneWay(bodyKey, horizontal, vertical));
         Box3dCharacterController.MoveResult result = controller.nativeController()
                 .move(controller.bodyHandle(), scratchDisplacement, controller.stepHeight(), snap);
         applyControllerDisplacement2D(controller, transform, result);
         controller.setGrounded(result.grounded());
         controller.setContacts(result.contacts());
         controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
+    }
+
+    private boolean passesThroughOneWay(long bodyKey, float horizontal, float vertical) {
+        GameObject owner = bodyOwners.get(bodyKey);
+        if (owner == null) {
+            return false;
+        }
+        for (Collider2D collider : colliders2DOf(owner)) {
+            if (collider.passableAlong(horizontal, vertical)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void applyControllerDisplacement2D(CharacterController2D controller, Transform2D transform,

@@ -26,7 +26,35 @@ public abstract class Collider2D extends Component {
     @Export(label = "Layer", min = 0, max = 15, step = 1)
     private int collisionLayer = 0;
 
+    @Export(label = "One Way")
+    private boolean oneWay = false;
+
+    @Export(label = "One Way Normal X", min = -1.0f, max = 1.0f, step = 0.05f)
+    private float oneWayNormalX = 0.0f;
+
+    @Export(label = "One Way Normal Y", min = -1.0f, max = 1.0f, step = 0.05f)
+    private float oneWayNormalY = 1.0f;
+
     private boolean registered;
+
+    public boolean oneWay() {
+        return oneWay;
+    }
+
+    public Collider2D setOneWay(boolean value) {
+        this.oneWay = value;
+        return this;
+    }
+
+    public Collider2D setOneWayNormal(float x, float y) {
+        this.oneWayNormalX = x;
+        this.oneWayNormalY = y;
+        return this;
+    }
+
+    public boolean passableAlong(float deltaX, float deltaY) {
+        return oneWay && deltaX * oneWayNormalX + deltaY * oneWayNormalY > 0.0f;
+    }
 
     public abstract ShapeDescriptor shape();
 

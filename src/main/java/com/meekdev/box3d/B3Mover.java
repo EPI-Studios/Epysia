@@ -16,6 +16,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongPredicate;
 
 /** kinematic capsule character controller
 
@@ -44,6 +45,9 @@ public final class B3Mover implements AutoCloseable {
     private final float radius;
     private final float bottomCenterY;
     private int planeCount;
+    private static final LongPredicate ACCEPT_EVERY_BODY = bodyKey -> true;
+
+    private LongPredicate bodyFilter = ACCEPT_EVERY_BODY;
     private long excludedBody;
 
     public record Contact(B3Body body, Vec3 point, Vec3 normal) {}
@@ -85,7 +89,7 @@ public final class B3Mover implements AutoCloseable {
 
         // one upcall stub each for the mover's lifetime, never allocated per move
         this.planeCallback = b3PlaneResultFcn.allocate((shapeId, results, count, ctx) -> {
-            if (excludedBody != 0 && world.shapeBodyKey(shapeId) == excludedBody) {
+            if (!accepts(world.shapeBodyKey(shapeId))) {
                 return true;
             }
             for (int i = 0; i < count && planeCount < PLANE_CAPACITY; i++) {
@@ -107,7 +111,16 @@ public final class B3Mover implements AutoCloseable {
         }, arena);
 
         this.castFilterCallback = b3MoverFilterFcn.allocate((shapeId, ctx) ->
-                excludedBody == 0 || world.shapeBodyKey(shapeId) != excludedBody, arena);
+                accepts(world.shapeBodyKey(shapeId)), arena);
+    }
+
+    private boolean accepts(long bodyKey) {
+        return (excludedBody == 0 || bodyKey != excludedBody) && bodyFilter.test(bodyKey);
+    }
+
+    // reject bodies the caller wants the mover to pass through, one-way platforms for instance
+    public void setBodyFilter(LongPredicate filter) {
+        this.bodyFilter = filter == null ? ACCEPT_EVERY_BODY : filter;
     }
 
     // ignore this body in every query, use it for the mover's own mirrored capsule

@@ -10,6 +10,7 @@ import org.joml.Vector3fc;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongPredicate;
 
 public final class Box3dCharacterController implements AutoCloseable {
 
@@ -24,6 +25,10 @@ public final class Box3dCharacterController implements AutoCloseable {
         this.mover = new B3Mover(physicsWorld.nativeWorld(), capsuleRadius,
                 capsuleHalfHeight + capsuleRadius, maxSlopeDegrees);
         this.centerToFeet = capsuleHalfHeight + capsuleRadius;
+    }
+
+    public void setBodyFilter(LongPredicate filter) {
+        mover.setBodyFilter(filter);
     }
 
     public MoveResult move(BodyHandle body, Vector3fc desiredDisplacement, float stepHeight,
