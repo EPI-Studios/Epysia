@@ -257,13 +257,11 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     private void dispatchActivations(Scene scene) {
-        List<GameObject> activated = scene.drainRecentlyActivated();
-        if (!playing) {
-            return;
-        }
-        for (GameObject gameObject : activated) {
+        for (GameObject gameObject : scene.drainRecentlyActivated()) {
             invokeLifecycle(gameObject, component -> component.onLoad(this), "onLoad");
-            invokeLifecycle(gameObject, component -> component.onPlayStart(this), "onPlayStart");
+            if (playing) {
+                invokeLifecycle(gameObject, component -> component.onPlayStart(this), "onPlayStart");
+            }
         }
     }
 

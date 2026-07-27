@@ -34,6 +34,8 @@ public final class TilemapSceneSpawner extends Component {
         return this;
     }
 
+    private transient SpriteTilemap spawnedFrom;
+
     public Optional<SpriteTilemap> tilemapValue() {
         return tilemap.direct();
     }
@@ -41,7 +43,15 @@ public final class TilemapSceneSpawner extends Component {
     @Override
     public void onLoad(EngineServices services) {
         tilemap.resolve(services.assets());
-        tilemap.direct().ifPresent(map -> spawnAll(services, map));
+        tilemap.direct().ifPresent(map -> spawnOnce(services, map));
+    }
+
+    private void spawnOnce(EngineServices services, SpriteTilemap map) {
+        if (map == spawnedFrom) {
+            return;
+        }
+        spawnedFrom = map;
+        spawnAll(services, map);
     }
 
     private void spawnAll(EngineServices services, SpriteTilemap map) {
