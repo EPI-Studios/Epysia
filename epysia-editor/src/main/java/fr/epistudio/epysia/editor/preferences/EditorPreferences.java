@@ -14,7 +14,9 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                                 boolean gridVisible, boolean snapEnabled,
                                 float overlayThickness, float gridFadeDistance,
                                 GpuPreference gpuPreference, boolean detachableWindows,
-                                boolean shaderNodePreviewsEnabled, boolean viewport2DMode) {
+                                boolean shaderNodePreviewsEnabled, boolean viewport2DMode,
+                                float sceneNear, float sceneFar, float sceneFieldOfView,
+                                float lookSensitivity, boolean invertLookY) {
 
     public static final float MIN_OVERLAY_THICKNESS = 0.5f;
     public static final float MAX_OVERLAY_THICKNESS = 3.0f;
@@ -34,12 +36,26 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
     private static final float MAX_CAMERA_BOOST = 20.0f;
     private static final int MIN_AUTOSAVE_INTERVAL_SECONDS = 10;
     private static final int MAX_AUTOSAVE_INTERVAL_SECONDS = 3600;
+    private static final float DEFAULT_SCENE_NEAR = 0.05f;
+    private static final float DEFAULT_SCENE_FAR = 500.0f;
+    private static final float DEFAULT_SCENE_FIELD_OF_VIEW = 60.0f;
+    private static final float DEFAULT_LOOK_SENSITIVITY = 0.0035f;
+
+    public static final float MIN_SCENE_NEAR = 0.001f;
+    public static final float MAX_SCENE_NEAR = 10.0f;
+    public static final float MIN_SCENE_FAR = 1.0f;
+    public static final float MAX_SCENE_FAR = 100000.0f;
+    public static final float MIN_SCENE_FIELD_OF_VIEW = 10.0f;
+    public static final float MAX_SCENE_FIELD_OF_VIEW = 170.0f;
+    public static final float MIN_LOOK_SENSITIVITY = 0.0005f;
+    public static final float MAX_LOOK_SENSITIVITY = 0.02f;
 
     public static EditorPreferences defaults() {
         return new EditorPreferences(DEFAULT_CAMERA_SPEED, DEFAULT_CAMERA_BOOST,
                 false, DEFAULT_AUTOSAVE_INTERVAL_SECONDS, true, false,
                 DEFAULT_OVERLAY_THICKNESS, DEFAULT_GRID_FADE_DISTANCE, GpuPreference.SYSTEM_DEFAULT, true, true,
-                false);
+                false, DEFAULT_SCENE_NEAR, DEFAULT_SCENE_FAR, DEFAULT_SCENE_FIELD_OF_VIEW,
+                DEFAULT_LOOK_SENSITIVITY, false);
     }
 
     public static Path defaultFile() {
@@ -75,7 +91,14 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                 GpuPreference.fromId(stringOr(root, "gpuPreference", base.gpuPreference().id())),
                 boolOr(root, "detachableWindows", base.detachableWindows()),
                 boolOr(root, "shaderNodePreviewsEnabled", base.shaderNodePreviewsEnabled()),
-                boolOr(root, "viewport2DMode", base.viewport2DMode()));
+                boolOr(root, "viewport2DMode", base.viewport2DMode()),
+                clamp(floatOr(root, "sceneNear", base.sceneNear()), MIN_SCENE_NEAR, MAX_SCENE_NEAR),
+                clamp(floatOr(root, "sceneFar", base.sceneFar()), MIN_SCENE_FAR, MAX_SCENE_FAR),
+                clamp(floatOr(root, "sceneFieldOfView", base.sceneFieldOfView()),
+                        MIN_SCENE_FIELD_OF_VIEW, MAX_SCENE_FIELD_OF_VIEW),
+                clamp(floatOr(root, "lookSensitivity", base.lookSensitivity()),
+                        MIN_LOOK_SENSITIVITY, MAX_LOOK_SENSITIVITY),
+                boolOr(root, "invertLookY", base.invertLookY()));
     }
 
     public void save(Path file) throws IOException {
@@ -93,6 +116,11 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                 .key("detachableWindows").valueBoolean(detachableWindows)
                 .key("shaderNodePreviewsEnabled").valueBoolean(shaderNodePreviewsEnabled)
                 .key("viewport2DMode").valueBoolean(viewport2DMode)
+                .key("sceneNear").valueNumber(sceneNear)
+                .key("sceneFar").valueNumber(sceneFar)
+                .key("sceneFieldOfView").valueNumber(sceneFieldOfView)
+                .key("lookSensitivity").valueNumber(lookSensitivity)
+                .key("invertLookY").valueBoolean(invertLookY)
                 .endObject();
         Files.writeString(file, writer.toString());
     }
@@ -100,31 +128,36 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
     public EditorPreferences withGridVisible(boolean visible) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 visible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
-                shaderNodePreviewsEnabled, viewport2DMode);
+                shaderNodePreviewsEnabled, viewport2DMode,
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
     }
 
     public EditorPreferences withSnapEnabled(boolean enabled) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, enabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
-                shaderNodePreviewsEnabled, viewport2DMode);
+                shaderNodePreviewsEnabled, viewport2DMode,
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
     }
 
     public EditorPreferences withGpuPreference(GpuPreference preference) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, snapEnabled, overlayThickness, gridFadeDistance, preference, detachableWindows,
-                shaderNodePreviewsEnabled, viewport2DMode);
+                shaderNodePreviewsEnabled, viewport2DMode,
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
     }
 
     public EditorPreferences withShaderNodePreviewsEnabled(boolean enabled) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
-                enabled, viewport2DMode);
+                enabled, viewport2DMode,
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
     }
 
     public EditorPreferences withViewport2DMode(boolean enabled) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
-                shaderNodePreviewsEnabled, enabled);
+                shaderNodePreviewsEnabled, enabled,
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
     }
 
     private static float floatOr(Map<String, Object> root, String key, float fallback) {

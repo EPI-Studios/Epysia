@@ -9,7 +9,7 @@ import org.joml.Vector3f;
 
 public final class EditorCamera {
 
-    private static final float LOOK_SENSITIVITY = 0.0035f;
+    private static final float DEFAULT_LOOK_SENSITIVITY = 0.0035f;
     private static final float MOVE_SPEED = 6.0f;
     private static final float BOOST_MULTIPLIER = 3.0f;
     private static final float MAX_PITCH_RADIANS = (float) Math.toRadians(89.0);
@@ -34,6 +34,8 @@ public final class EditorCamera {
     private final Vector3f scratchMovement = new Vector3f();
     private float moveSpeed = MOVE_SPEED;
     private float boostMultiplier = BOOST_MULTIPLIER;
+    private float lookSensitivity = DEFAULT_LOOK_SENSITIVITY;
+    private boolean invertLookY;
     private float yawRadians = (float) Math.toRadians(35.0);
     private float pitchRadians = (float) Math.toRadians(-25.0);
     private float lastMouseX = Float.NaN;
@@ -175,8 +177,8 @@ public final class EditorCamera {
             lastMouseY = mouseY;
             return;
         }
-        yawRadians -= (mouseX - lastMouseX) * LOOK_SENSITIVITY;
-        pitchRadians = clamp(pitchRadians - (mouseY - lastMouseY) * LOOK_SENSITIVITY,
+        yawRadians -= (mouseX - lastMouseX) * lookSensitivity;
+        pitchRadians = clamp(pitchRadians - (mouseY - lastMouseY) * lookSensitivity * (invertLookY ? -1.0f : 1.0f),
                 -MAX_PITCH_RADIANS, MAX_PITCH_RADIANS);
         lastMouseX = mouseX;
         lastMouseY = mouseY;
@@ -203,6 +205,22 @@ public final class EditorCamera {
         float speed = boost ? moveSpeed * boostMultiplier : moveSpeed;
         scratchMovement.normalize().mul(speed * deltaTimeSeconds);
         transform.translate(scratchMovement.x, scratchMovement.y, scratchMovement.z);
+    }
+
+    public void setLookSensitivity(float sensitivity) {
+        this.lookSensitivity = sensitivity;
+    }
+
+    public void setInvertLookY(boolean invert) {
+        this.invertLookY = invert;
+    }
+
+    public void setClipPlanes(float near, float far) {
+        camera.setNearFar(near, far);
+    }
+
+    public void setFieldOfViewDegrees(float degrees) {
+        camera.setFieldOfViewDegrees(degrees);
     }
 
     public void setMoveSpeed(float moveSpeed) {
@@ -279,8 +297,9 @@ public final class EditorCamera {
             beginOrbit(mouseX, mouseY);
             return;
         }
-        yawRadians -= (mouseX - orbitLastMouseX) * LOOK_SENSITIVITY;
-        pitchRadians = clamp(pitchRadians - (mouseY - orbitLastMouseY) * LOOK_SENSITIVITY,
+        yawRadians -= (mouseX - orbitLastMouseX) * lookSensitivity;
+        pitchRadians = clamp(pitchRadians
+                - (mouseY - orbitLastMouseY) * lookSensitivity * (invertLookY ? -1.0f : 1.0f),
                 -MAX_PITCH_RADIANS, MAX_PITCH_RADIANS);
         orbitLastMouseX = mouseX;
         orbitLastMouseY = mouseY;
