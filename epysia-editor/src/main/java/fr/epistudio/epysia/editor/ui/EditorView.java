@@ -145,6 +145,7 @@ public final class EditorView implements FrameView {
     private final ConsoleView consoleView;
     private final AssetBrowserView assetBrowserView;
     private final ScriptEditorView scriptEditorView;
+    private final PanelTimings panelTimings = new PanelTimings();
     private final ProfilerView profilerView;
     private final LightingView lightingView;
     private final SpriteEditorWindow spriteEditorWindow;
@@ -231,7 +232,7 @@ public final class EditorView implements FrameView {
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onViewportTuningChanged);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
-        this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView);
+        this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView, panelTimings);
         this.lightingView = new LightingView(sceneHost, active, project.rootDirectory());
         this.exportGameDialog = new ExportGameDialog(project, toasts);
         shell.setFileDropHandler(assetBrowserView::importExternalFiles);
@@ -266,6 +267,10 @@ public final class EditorView implements FrameView {
     private void applyPreferences() {
         editorCamera.setMoveSpeed(preferences.cameraSpeed());
         editorCamera.setBoostMultiplier(preferences.cameraBoost());
+        editorCamera.setLookSensitivity(preferences.lookSensitivity());
+        editorCamera.setInvertLookY(preferences.invertLookY());
+        editorCamera.setClipPlanes(preferences.sceneNear(), preferences.sceneFar());
+        editorCamera.setFieldOfViewDegrees(preferences.sceneFieldOfView());
         editorCamera.setTwoDimensional(preferences.viewport2DMode());
         viewportView.setShowGrid(preferences.gridVisible());
         gizmoState.setSnapEnabled(preferences.snapEnabled());
@@ -279,6 +284,7 @@ public final class EditorView implements FrameView {
 
     @Override
     public void render(float deltaSeconds) {
+        requestRedrawOnInteraction();
         pollBackgroundState(deltaSeconds);
         renderMainMenuBar();
         renderHostWindow();
@@ -286,6 +292,19 @@ public final class EditorView implements FrameView {
         renderDialogs();
         handleGlobalShortcuts();
         playSession.frame(deltaSeconds);
+    }
+
+    private void requestRedrawOnInteraction() {
+        if (pointerMoved() || ImGui.isAnyMouseDown() || ImGui.isAnyItemActive()
+                || ImGui.getIO().getMouseWheel() != 0.0f
+                || ImGui.getIO().getMouseWheelH() != 0.0f
+                || ImGui.getIO().getWantCaptureKeyboard()) {
+            sceneHost.requestViewportRedraw();
+        }
+    }
+
+    private boolean pointerMoved() {
+        return ImGui.getIO().getMouseDeltaX() != 0.0f || ImGui.getIO().getMouseDeltaY() != 0.0f;
     }
 
     private void pollBackgroundState(float deltaSeconds) {
@@ -343,19 +362,20 @@ public final class EditorView implements FrameView {
 
     private void renderPanels(float deltaSeconds) {
         boolean editingBlocked = playSession.isActive();
+        panelTimings.beginFrame();
         ImGui.beginDisabled(editingBlocked);
-        hierarchyView.render();
-        inspectorView.render();
+        panelTimings.measure("Hierarchy", hierarchyView::render);
+        panelTimings.measure("Inspector", inspectorView::render);
         ImGui.endDisabled();
-        viewportView.render(deltaSeconds);
-        consoleView.render();
-        assetBrowserView.render();
-        scriptEditorView.render();
-        graphEditorView.render();
-        profilerView.render();
-        lightingView.render();
-        spriteEditorWindow.render();
-        tilemapDockView.render();
+        panelTimings.measure("Viewport", () -> viewportView.render(deltaSeconds));
+        panelTimings.measure("Console", consoleView::render);
+        panelTimings.measure("Assets", assetBrowserView::render);
+        panelTimings.measure("Scripts", scriptEditorView::render);
+        panelTimings.measure("Graphs", graphEditorView::render);
+        panelTimings.measure("Profiler", profilerView::render);
+        panelTimings.measure("Lighting", lightingView::render);
+        panelTimings.measure("Sprites", spriteEditorWindow::render);
+        panelTimings.measure("Tilemap", tilemapDockView::render);
     }
 
     private void renderDialogs() {
@@ -599,11 +619,11 @@ public final class EditorView implements FrameView {
     private void renderGizmoToolButtons() {
         renderToolButton("tool-select", EditorIcon.TOOL_SELECT, GizmoState.Tool.SELECT, "Select (Q)");
         ImGui.sameLine();
-        renderToolButton("tool-move", EditorIcon.TOOL_MOVE, GizmoState.Tool.TRANSLATE, "Move (W)");
+        renderToolButton("tool-move", EditorIcon.TOOL_MOVE, GizmoState.Tool.TRANSLATE, "Move (W), Space switches to Scale");
         ImGui.sameLine();
-        renderToolButton("tool-rotate", EditorIcon.TOOL_ROTATE, GizmoState.Tool.ROTATE, "Rotate (E)");
+        renderToolButton("tool-rotate", EditorIcon.TOOL_ROTATE, GizmoState.Tool.ROTATE, "Rotate (R), Space toggles world/local pivot");
         ImGui.sameLine();
-        renderToolButton("tool-scale", EditorIcon.TOOL_SCALE, GizmoState.Tool.SCALE, "Scale (R)");
+        renderToolButton("tool-scale", EditorIcon.TOOL_SCALE, GizmoState.Tool.SCALE, "Scale (S), Space switches back to Move");
         ImGui.sameLine();
         if (ImGui.button(gizmoState.worldSpace() ? "World" : "Local")) {
             gizmoState.toggleSpace();
@@ -904,16 +924,19 @@ public final class EditorView implements FrameView {
     }
 
     private void handleGlobalShortcuts() {
-        if (ImGui.getIO().getWantTextInput()) {
-            return;
-        }
-        if (rightMouseHeld()) {
+        if (rightMouseHeld() || ImGui.isAnyItemActive()) {
             return;
         }
         if (ImGui.getIO().getKeyCtrl()) {
-            handleControlShortcuts();
-        } else {
+            handleControlShortcutsUnlessScriptEditorOwnsThem();
+        } else if (!ImGui.getIO().getWantTextInput() && viewportView.acceptsToolHotkeys()) {
             handleToolHotkeys();
+        }
+    }
+
+    private void handleControlShortcutsUnlessScriptEditorOwnsThem() {
+        if (!scriptEditorView.isFocused()) {
+            handleControlShortcuts();
         }
     }
 
@@ -955,20 +978,23 @@ public final class EditorView implements FrameView {
     }
 
     private void handleToolHotkeys() {
-        if (ImGui.isKeyPressed(ImGuiKey.Q)) {
+        if (ImGui.isKeyPressed(ImGuiKey.Q, false)) {
             gizmoState.setTool(GizmoState.Tool.SELECT);
         }
-        if (ImGui.isKeyPressed(ImGuiKey.W)) {
+        if (ImGui.isKeyPressed(ImGuiKey.W, false)) {
             gizmoState.setTool(GizmoState.Tool.TRANSLATE);
         }
-        if (ImGui.isKeyPressed(ImGuiKey.E)) {
+        if (ImGui.isKeyPressed(ImGuiKey.R, false)) {
             gizmoState.setTool(GizmoState.Tool.ROTATE);
         }
-        if (ImGui.isKeyPressed(ImGuiKey.R)) {
+        if (ImGui.isKeyPressed(ImGuiKey.S, false)) {
             gizmoState.setTool(GizmoState.Tool.SCALE);
         }
-        if (ImGui.isKeyPressed(ImGuiKey.X)) {
+        if (ImGui.isKeyPressed(ImGuiKey.X, false)) {
             gizmoState.toggleSpace();
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.Space, false)) {
+            gizmoState.toggleAlternateTool();
         }
     }
 
@@ -1219,18 +1245,22 @@ public final class EditorView implements FrameView {
 
     private void openSettings() {
         if (sceneHost.isInitialized()) {
-            settingsDialog.attachRenderTuning(sceneHost.postProcessSettings(), sceneHost.skySettings(),
+            settingsDialog.attachRenderTuning(workspace.active().scene().postProcess(), sceneHost.skySettings(),
                     sceneHost.meshRenderSystem());
         }
         settingsDialog.attachPostEffects(settingsPostEffectsSection,
                 () -> workspace.active().scene().postEffects(),
                 () -> workspace.active().markDirty());
-        settingsDialog.openFor(projectStore.readSettings(project), preferences, project);
+        settingsDialog.openFor(projectStore.readSettings(project), preferences, project,
+                projectStore.readQuality(project), projectStore.readInputActions(project));
     }
 
     private void onSettingsSaved(EditorSettings settings) {
         try {
             projectStore.writeSettings(project, settings);
+            projectStore.writeQuality(project, settingsDialog.buildQuality());
+            projectStore.writeInputActions(project, settingsDialog.buildInputActions());
+            workspace.active().markDirty();
             toasts.show("Settings saved");
         } catch (IOException error) {
             toasts.show("Settings save failed: " + error.getMessage());

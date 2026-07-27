@@ -25,6 +25,15 @@ public final class GizmoState {
         this.tool = tool;
     }
 
+    public void toggleAlternateTool() {
+        switch (tool) {
+            case TRANSLATE -> tool = Tool.SCALE;
+            case SCALE -> tool = Tool.TRANSLATE;
+            case ROTATE -> toggleSpace();
+            case SELECT -> tool = Tool.TRANSLATE;
+        }
+    }
+
     public boolean worldSpace() {
         return worldSpace;
     }

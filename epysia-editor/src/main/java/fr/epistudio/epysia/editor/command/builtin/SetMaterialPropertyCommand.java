@@ -4,6 +4,7 @@ import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.material.LitMaterial;
+import fr.epistudio.epysia.render.shader.ShaderUniformValue;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialFields;
 import org.joml.Vector3f;
@@ -18,7 +19,9 @@ public final class SetMaterialPropertyCommand implements EditorCommand {
         TRANSPARENT,
         DOUBLE_SIDED,
         ANIMATED_SHADOW,
-        SURFACE_SHADER
+        RECEIVE_SHADOWS,
+        SURFACE_SHADER,
+        SURFACE_UNIFORM
     }
 
     private final Material material;
@@ -44,7 +47,9 @@ public final class SetMaterialPropertyCommand implements EditorCommand {
             case TRANSPARENT -> material.setTransparent((Boolean) afterValue);
             case DOUBLE_SIDED -> material.setDoubleSided((Boolean) afterValue);
             case ANIMATED_SHADOW -> applyAnimatedShadow();
+            case RECEIVE_SHADOWS -> applyReceiveShadows();
             case SURFACE_SHADER -> applySurfaceShader();
+            case SURFACE_UNIFORM -> applySurfaceUniform();
         }
     }
 
@@ -54,9 +59,21 @@ public final class SetMaterialPropertyCommand implements EditorCommand {
         }
     }
 
+    private void applyReceiveShadows() {
+        if (material instanceof LitMaterial lit) {
+            lit.setReceiveShadows((Boolean) afterValue);
+        }
+    }
+
     private void applySurfaceShader() {
         if (material instanceof LitMaterial lit) {
             lit.setSurfaceShaderPath((String) afterValue);
+        }
+    }
+
+    private void applySurfaceUniform() {
+        if (afterValue instanceof ShaderUniformValue value) {
+            material.surfaceUniforms().set(fieldName, value);
         }
     }
 

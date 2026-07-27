@@ -4,6 +4,7 @@ import fr.epistudio.epysia.components.Animator;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.EditorSelection;
@@ -59,6 +60,7 @@ public final class InspectorView {
     private final ConfirmDialog removeConfirm = new ConfirmDialog("Remove this component?", "Remove");
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final MaterialsSection materialsSection;
+    private final PopulateSection populateSection;
     private final AnimatorSection animatorSection;
     private final VfxSection vfxSection;
     private final PostEffectsSection postEffectsSection;
@@ -87,6 +89,7 @@ public final class InspectorView {
         this.assetPicker = assetPicker;
         this.propertyRows = new PropertyRows(activeDocument, assetPicker);
         this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project);
+        this.populateSection = new PopulateSection(activeDocument, notifier, project);
         this.animatorSection = new AnimatorSection(activeDocument, project);
         this.vfxSection = new VfxSection(activeDocument, project);
         this.postEffectsSection = new PostEffectsSection(project, thumbnails);
@@ -214,6 +217,10 @@ public final class InspectorView {
         }
         if (component instanceof MeshRenderer renderer) {
             materialsSection.render(renderer);
+        }
+        if (component instanceof MultiMeshRenderer multiMesh) {
+            materialsSection.render(multiMesh);
+            populateSection.render(multiMesh);
         }
         if (component instanceof Animator animator) {
             animatorSection.render(gameObject, animator);

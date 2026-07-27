@@ -9,6 +9,7 @@ import fr.epistudio.epysia.render.shader.ShaderUniformParser;
 import fr.epistudio.epysia.render.shader.ShaderUniformParser.ParsedSource;
 import fr.epistudio.epysia.render.postfx.PostEffectStack;
 import fr.epistudio.epysia.render.shader.ShaderUniformDeclaration;
+import fr.epistudio.epysia.render.shader.ShaderUniformDefaults;
 import fr.epistudio.epysia.render.shader.ShaderUniformKind;
 import fr.epistudio.epysia.render.shader.ShaderUniformValue;
 import imgui.ImGui;
@@ -184,8 +185,13 @@ public final class PostEffectsSection {
         }
     }
 
+    private static Optional<ShaderUniformValue> effectiveValue(PostEffect effect,
+                                                              ShaderUniformDeclaration declaration) {
+        return effect.uniformValue(declaration.name()).or(() -> ShaderUniformDefaults.of(declaration));
+    }
+
     private void renderFloatRow(PostEffect effect, ShaderUniformDeclaration declaration, Runnable onChanged) {
-        float current = effect.uniformValue(declaration.name())
+        float current = effectiveValue(effect, declaration)
                 .map(value -> value instanceof ShaderUniformValue.FloatValue number ? number.value() : 0.0f)
                 .orElse(0.0f);
         float[] holder = {current};
@@ -197,7 +203,7 @@ public final class PostEffectsSection {
     }
 
     private void renderIntRow(PostEffect effect, ShaderUniformDeclaration declaration, Runnable onChanged) {
-        int current = effect.uniformValue(declaration.name())
+        int current = effectiveValue(effect, declaration)
                 .map(value -> value instanceof ShaderUniformValue.IntValue number ? number.value() : 0)
                 .orElse(0);
         int[] holder = {current};
@@ -208,7 +214,7 @@ public final class PostEffectsSection {
     }
 
     private void renderBoolRow(PostEffect effect, ShaderUniformDeclaration declaration, Runnable onChanged) {
-        boolean current = effect.uniformValue(declaration.name())
+        boolean current = effectiveValue(effect, declaration)
                 .map(value -> value instanceof ShaderUniformValue.BoolValue flag && flag.value())
                 .orElse(false);
         if (ImGui.checkbox(declaration.name(), current)) {
@@ -249,7 +255,7 @@ public final class PostEffectsSection {
             default -> 4;
         };
         float[] components = new float[componentCount];
-        effect.uniformValue(declaration.name()).ifPresent(value -> fillComponents(components, value));
+        effectiveValue(effect, declaration).ifPresent(value -> fillComponents(components, value));
         return components;
     }
 

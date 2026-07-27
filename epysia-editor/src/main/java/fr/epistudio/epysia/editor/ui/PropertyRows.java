@@ -7,9 +7,11 @@ import fr.epistudio.epysia.editor.command.builtin.SetPropertyCommand;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.inspector.EulerCache;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
+import fr.epistudio.epysia.components.RenderLayers;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import imgui.ImGui;
+import imgui.flag.ImGuiColorEditFlags;
 import imgui.type.ImString;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
@@ -24,6 +26,11 @@ import java.util.function.Supplier;
 public final class PropertyRows {
 
     private static final float DRAG_STEP_FALLBACK = 0.05f;
+    private static final float COLOR_DRAG_STEP = 0.01f;
+    private static final int LAYER_MASK_VISIBLE_LAYERS = 16;
+    private static final int LAYER_MASK_COLUMNS = 8;
+    private static final int COLOR_EDIT_FLAGS = ImGuiColorEditFlags.NoInputs
+            | ImGuiColorEditFlags.NoLabel | ImGuiColorEditFlags.HDR | ImGuiColorEditFlags.Float;
     private static final float NUMERIC_RANGE_FALLBACK = 1_000_000.0f;
     private static final int STRING_CAPACITY = 512;
     private static final String NONE_LABEL = "None";
@@ -82,10 +89,38 @@ public final class PropertyRows {
 
     private void renderInt(IComponent owner, ExportedProperty property) {
         int current = ((Number) property.read()).intValue();
+        if (property.isLayerMask()) {
+            renderLayerMask(owner, property, current);
+            return;
+        }
         int[] value = {current};
         if (ImGui.dragInt(property.label(), value, 1.0f, (int) boundedMin(property), (int) boundedMax(property))
                 && value[0] != current) {
             history().execute(new SetPropertyCommand(owner, property, current, value[0]));
+        }
+    }
+
+    private void renderLayerMask(IComponent owner, ExportedProperty property, int current) {
+        ImGui.text(property.label());
+        int updated = current;
+        for (int layer = 0; layer < LAYER_MASK_VISIBLE_LAYERS; layer++) {
+            if (layer % LAYER_MASK_COLUMNS != 0) {
+                ImGui.sameLine();
+            }
+            boolean enabled = RenderLayers.hasLayer(current, layer);
+            if (ImGui.checkbox("##" + property.label() + "-layer" + layer, enabled)) {
+                updated = enabled
+                        ? RenderLayers.withoutLayer(updated, layer)
+                        : RenderLayers.withLayer(updated, layer);
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Layer " + layer);
+            }
+        }
+        ImGui.sameLine();
+        ImGui.textDisabled(String.format("0x%08X", current));
+        if (updated != current) {
+            history().execute(new SetPropertyCommand(owner, property, current, updated));
         }
     }
 
@@ -130,14 +165,35 @@ public final class PropertyRows {
     }
 
     private void renderVector3(IComponent owner, ExportedProperty property) {
+        if (property.isColor()) {
+            renderColor(owner, property);
+            return;
+        }
         Vector3f vector = (Vector3f) property.read();
         float[] values = {vector.x, vector.y, vector.z};
         if (ImGui.dragFloat3(property.label(), values, DRAG_STEP_FALLBACK)
                 && (vector.x != values[0] || vector.y != values[1] || vector.z != values[2])) {
-            Vector3f before = new Vector3f(vector);
-            Vector3f after = new Vector3f(values[0], values[1], values[2]);
-            history().execute(new SetPropertyCommand(owner, property, before, after));
+            commitVector3(owner, property, vector, values);
         }
+    }
+
+    private void renderColor(IComponent owner, ExportedProperty property) {
+        Vector3f vector = (Vector3f) property.read();
+        float[] values = {vector.x, vector.y, vector.z};
+        boolean picked = ImGui.colorEdit3("##swatch", values, COLOR_EDIT_FLAGS);
+        ImGui.sameLine();
+        ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+        boolean dragged = ImGui.dragFloat3(property.label(), values, COLOR_DRAG_STEP);
+        if ((picked || dragged) && (vector.x != values[0] || vector.y != values[1] || vector.z != values[2])) {
+            commitVector3(owner, property, vector, values);
+        }
+    }
+
+    private void commitVector3(IComponent owner, ExportedProperty property, Vector3f current,
+                               float[] values) {
+        Vector3f before = new Vector3f(current);
+        Vector3f after = new Vector3f(values[0], values[1], values[2]);
+        history().execute(new SetPropertyCommand(owner, property, before, after));
     }
 
     private void renderQuaternion(IComponent owner, ExportedProperty property, String key) {

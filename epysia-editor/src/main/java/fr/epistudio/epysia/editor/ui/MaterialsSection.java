@@ -1,17 +1,21 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.components.MeshRenderer;
+import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.AddMaterialCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetMaterialPropertyCommand;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.command.builtin.SetMaterialsCommand;
+import fr.epistudio.epysia.editor.command.builtin.SetMultiMeshMaterialCommand;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
 import fr.epistudio.epysia.render.material.LitMaterial;
+import fr.epistudio.epysia.render.shader.ShaderLoader;
+import fr.epistudio.epysia.render.shader.ShaderUniformValue;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialClassMetadata;
 import fr.epistudio.epysia.render.material.MaterialFields;
@@ -54,6 +58,14 @@ public final class MaterialsSection {
             Only affects materials with a time animated surface shader.
             On: the shadow follows the animation, so it cannot be cached and is redrawn every frame.
             Off: the shadow is frozen at time 0 while the lit mesh keeps animating, so it can be cached.""";
+    private static final String ALPHA_SCISSOR_TOOLTIP = """
+            An alpha cutoff above zero discards fragments instead of blending them.
+            The material stays in the opaque queue, keeps writing depth, can be
+            instanced and can cast shadows. Blending is only used when the cutoff is zero.""";
+    private static final String RECEIVE_SHADOWS_TOOLTIP = """
+            Off: the material never samples a shadow map, so the whole shadow lookup
+            disappears from the fragment shader. On dense foliage this is one of the
+            biggest fragment savings available.""";
     private static final String LIT_TYPE_LABEL = "Lit";
     private static final String CUSTOM_TYPE_LABEL = "Custom Shader";
     private static final String DEFAULT_CUSTOM_VERTEX = "custom_default.vert.glsl";
@@ -64,6 +76,7 @@ public final class MaterialsSection {
     private final Supplier<SceneDocument> activeDocument;
     private final ThumbnailCache thumbnails;
     private final AssetFilePicker filePicker;
+    private final SurfaceUniformRows surfaceUniformRows;
     private String samplerCachePath = "";
     private Map<String, Integer> samplerCache = Map.of();
     private final MaterialJsonCodec materialCodec = new MaterialJsonCodec();
@@ -74,6 +87,7 @@ public final class MaterialsSection {
         this.activeDocument = activeDocument;
         this.thumbnails = thumbnails;
         this.filePicker = new AssetFilePicker(project, thumbnails);
+        this.surfaceUniformRows = new SurfaceUniformRows(ShaderLoader.autoDetect(), this::history, filePicker);
     }
 
     private EditorHistory history() {
@@ -123,22 +137,55 @@ public final class MaterialsSection {
             }
             return;
         }
-        renderAssetRow(renderer, slot, material.get());
-        renderTypeCombo(renderer, slot, material.get());
-        if (material.get() instanceof ShaderMaterial shaderMaterial) {
-            renderShaderMaterialEditor(renderer, slot, shaderMaterial);
-        } else {
-            renderMaterialEditor(material.get());
-        }
-        saveAssetMaterialIfChanged(material.get());
+        Consumer<Material> replace = replacement -> replaceSlot(renderer, slot, replacement);
+        renderAssetRow(material.get(), replace);
+        renderMaterialBody(material.get(), replace);
     }
 
-    private void renderAssetRow(MeshRenderer renderer, int slot, Material material) {
+    private void renderMaterialBody(Material material, Consumer<Material> replace) {
+        renderTypeCombo(material, replace);
+        if (material instanceof ShaderMaterial shaderMaterial) {
+            renderShaderMaterialEditor(shaderMaterial, replace);
+        } else {
+            renderMaterialEditor(material);
+        }
+        saveAssetMaterialIfChanged(material);
+    }
+
+    public void render(MultiMeshRenderer renderer) {
+        ImGui.spacing();
+        ImGui.textDisabled("Material");
+        ImGui.separator();
+        renderMultiMeshMaterial(renderer);
+        filePicker.render();
+    }
+
+    private void renderMultiMeshMaterial(MultiMeshRenderer renderer) {
+        Material material = renderer.materialOrNull();
+        if (material == null) {
+            ImGui.textDisabled("No material resolved yet.");
+            return;
+        }
+        if (material.assetPath().isEmpty()) {
+            ImGui.textWrapped("Pick a .epymaterial in the Material field above to edit it here."
+                    + " A material that is not an asset is not saved with the scene.");
+            return;
+        }
+        renderMaterialBody(material, replacement -> replaceMultiMeshMaterial(renderer, material, replacement));
+    }
+
+    private void replaceMultiMeshMaterial(MultiMeshRenderer renderer, Material current, Material replacement) {
+        replacement.setAssetPath(current.assetPath());
+        assetMaterials.put(current.assetPath(), replacement);
+        history().execute(new SetMultiMeshMaterialCommand(renderer, replacement));
+    }
+
+    private void renderAssetRow(Material material, Consumer<Material> replace) {
         ImGui.pushID("material-asset");
         String label = material.assetPath().isEmpty()
                 ? "inline" : Path.of(material.assetPath()).getFileName().toString();
         if (ImGui.button(label, SHADER_PATH_BUTTON_WIDTH, 0.0f)) {
-            filePicker.open(MATERIAL_EXTENSIONS, false, path -> assignAssetMaterial(renderer, slot, path));
+            filePicker.open(MATERIAL_EXTENSIONS, false, path -> assignAssetMaterial(path, replace));
         }
         if (ImGui.isItemHovered() && !material.assetPath().isEmpty()) {
             ImGui.setTooltip(material.assetPath());
@@ -148,17 +195,17 @@ public final class MaterialsSection {
         if (!material.assetPath().isEmpty()) {
             ImGui.sameLine();
             if (ImGui.smallButton("Detach")) {
-                detachAssetMaterial(renderer, slot, material);
+                detachAssetMaterial(material, replace);
             }
         }
         ImGui.popID();
     }
 
-    private void assignAssetMaterial(MeshRenderer renderer, int slot, String path) {
+    private void assignAssetMaterial(String path, Consumer<Material> replace) {
         if (path.isEmpty()) {
             return;
         }
-        replaceSlot(renderer, slot, assetMaterials.computeIfAbsent(path, this::readAssetMaterial));
+        replace.accept(assetMaterials.computeIfAbsent(path, this::readAssetMaterial));
     }
 
     private Material readAssetMaterial(String path) {
@@ -173,11 +220,11 @@ public final class MaterialsSection {
         }
     }
 
-    private void detachAssetMaterial(MeshRenderer renderer, int slot, Material material) {
+    private void detachAssetMaterial(Material material, Consumer<Material> replace) {
         Material copy = materialCodec.readSingle(materialCodec.writeSingle(material))
                 .orElseGet(LitMaterial::new);
         copy.setAssetPath("");
-        replaceSlot(renderer, slot, copy);
+        replace.accept(copy);
     }
 
     private void saveAssetMaterialIfChanged(Material material) {
@@ -201,16 +248,16 @@ public final class MaterialsSection {
         }
     }
 
-    private void renderTypeCombo(MeshRenderer renderer, int slot, Material material) {
+    private void renderTypeCombo(Material material, Consumer<Material> replace) {
         boolean custom = material instanceof ShaderMaterial;
         if (!ImGui.beginCombo("Type", custom ? CUSTOM_TYPE_LABEL : LIT_TYPE_LABEL)) {
             return;
         }
         if (ImGui.selectable(LIT_TYPE_LABEL, !custom) && custom) {
-            replaceSlot(renderer, slot, new LitMaterial());
+            replace.accept(new LitMaterial());
         }
         if (ImGui.selectable(CUSTOM_TYPE_LABEL, custom) && !custom) {
-            replaceSlot(renderer, slot, new ShaderMaterial(DEFAULT_CUSTOM_VERTEX, DEFAULT_CUSTOM_FRAGMENT));
+            replace.accept(new ShaderMaterial(DEFAULT_CUSTOM_VERTEX, DEFAULT_CUSTOM_FRAGMENT));
         }
         ImGui.endCombo();
     }
@@ -224,22 +271,28 @@ public final class MaterialsSection {
         history().execute(new SetMaterialsCommand(renderer, materials));
     }
 
-    private void renderShaderMaterialEditor(MeshRenderer renderer, int slot, ShaderMaterial material) {
+    private void renderShaderMaterialEditor(ShaderMaterial material, Consumer<Material> replace) {
         renderShaderPathRow("Vertex Shader", material.vertexShaderPath(),
-                path -> replaceSlot(renderer, slot, copyWithPaths(material, path, material.fragmentShaderPath())));
+                path -> replace.accept(copyWithPaths(material, path, material.fragmentShaderPath())));
         renderShaderPathRow("Fragment Shader", material.fragmentShaderPath(),
-                path -> replaceSlot(renderer, slot, copyWithPaths(material, material.vertexShaderPath(), path)));
+                path -> replace.accept(copyWithPaths(material, material.vertexShaderPath(), path)));
         renderSamplerRows(material);
         renderTransparentRow(material);
         renderDoubleSidedRow(material);
+        surfaceUniformRows.render(material,
+                List.of(material.vertexShaderPath(), material.fragmentShaderPath()));
     }
 
     private static ShaderMaterial copyWithPaths(ShaderMaterial source, String vertexPath, String fragmentPath) {
         ShaderMaterial copy = new ShaderMaterial(vertexPath, fragmentPath);
         copy.setTransparent(source.transparent());
         copy.setDoubleSided(source.doubleSided());
+        copy.setAssetPath(source.assetPath());
         for (Map.Entry<String, String> entry : source.texturePaths().entrySet()) {
             copy.setTexturePath(entry.getKey(), entry.getValue());
+        }
+        for (Map.Entry<String, ShaderUniformValue> entry : source.surfaceUniforms().all().entrySet()) {
+            copy.surfaceUniforms().set(entry.getKey(), entry.getValue());
         }
         return copy;
     }
@@ -316,7 +369,20 @@ public final class MaterialsSection {
         renderTransparentRow(material);
         renderDoubleSidedRow(material);
         if (material instanceof LitMaterial lit) {
+            renderReceiveShadowsRow(lit);
             renderAnimatedShadowRow(lit);
+            surfaceUniformRows.render(lit, List.of(lit.surfaceShaderPath()));
+        }
+    }
+
+    private void renderReceiveShadowsRow(LitMaterial material) {
+        boolean current = material.receiveShadows();
+        if (ImGui.checkbox("Receive shadows", current)) {
+            history().execute(new SetMaterialPropertyCommand(material,
+                    SetMaterialPropertyCommand.Target.RECEIVE_SHADOWS, "", current, !current));
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(RECEIVE_SHADOWS_TOOLTIP);
         }
     }
 
@@ -486,6 +552,13 @@ public final class MaterialsSection {
         if (ImGui.checkbox("Transparent", current)) {
             history().execute(new SetMaterialPropertyCommand(material,
                     SetMaterialPropertyCommand.Target.TRANSPARENT, "", current, !current));
+        }
+        if (material.alphaScissor()) {
+            ImGui.sameLine();
+            ImGui.textDisabled("(alpha cutoff wins: drawn opaque)");
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip(ALPHA_SCISSOR_TOOLTIP);
+            }
         }
     }
 

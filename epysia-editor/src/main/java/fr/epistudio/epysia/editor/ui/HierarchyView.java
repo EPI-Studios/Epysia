@@ -17,6 +17,7 @@ import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
+import fr.epistudio.epysia.editor.ui.LabelFitCache.LabelFit;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
@@ -25,7 +26,6 @@ import fr.epistudio.epysia.reflection.Reflection;
 import imgui.ImGui;
 import imgui.ImGuiListClipper;
 import imgui.callback.ImListClipperCallback;
-import imgui.flag.ImGuiInputTextFlags;
 import imgui.flag.ImGuiKey;
 import imgui.flag.ImGuiMouseButton;
 import imgui.flag.ImGuiSelectableFlags;
@@ -36,6 +36,8 @@ import org.joml.Vector3f;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Locale;
 import java.util.List;
 import java.util.Optional;
@@ -54,11 +56,14 @@ public final class HierarchyView {
     private static final int RENAME_CAPACITY = 256;
     private static final int FILTER_CAPACITY = 128;
     private static final String ELLIPSIS = "...";
+    private static final int MAXIMUM_CACHED_WIDGET_IDS = 8192;
     private static final float INDENT_GUIDE_OFFSET = 6.0f;
     private static final int INDENT_GUIDE_COLOR = EditorStyle.rgba(255, 255, 255, 26);
 
     private final Supplier<SceneDocument> activeDocument;
     private final ComponentRegistry componentRegistry;
+    private final LabelFitCache labelFits = new LabelFitCache();
+    private final Map<GameObject, String> widgetIds = new IdentityHashMap<>();
     private final Notifier notifier;
     private final Consumer<GameObject> onSaveAsPrefab;
     private final Consumer<GameObject> onFrameRequested;
@@ -157,7 +162,7 @@ public final class HierarchyView {
     }
 
     private void renderRow(Row row, int index) {
-        ImGui.pushID(row.gameObject().id().toString());
+        ImGui.pushID(widgetIdOf(row.gameObject()));
         drawIndentGuides(row.depth());
         ImGui.indent(row.depth() * EditorStyle.INDENT_SPACING + 1.0f);
         icons.drawInline(ComponentIcons.forGameObject(row.gameObject()), EditorStyle.ICON_SIZE_SMALL);
@@ -170,15 +175,23 @@ public final class HierarchyView {
         ImGui.popID();
     }
 
+    private String widgetIdOf(GameObject gameObject) {
+        if (widgetIds.size() >= MAXIMUM_CACHED_WIDGET_IDS) {
+            widgetIds.clear();
+        }
+        return widgetIds.computeIfAbsent(gameObject, target -> target.id().toString());
+    }
+
     private void renderSelectable(Row row, int index) {
         boolean selected = selection().isSelected(row.gameObject());
         String name = row.gameObject().name();
-        if (ImGui.selectable(elide(name, ImGui.getContentRegionAvailX()), selected,
-                ImGuiSelectableFlags.AllowDoubleClick)) {
+        float availableWidth = ImGui.getContentRegionAvailX();
+        LabelFit fit = labelFits.fitFor(name, availableWidth);
+        if (ImGui.selectable(fit.label(), selected, ImGuiSelectableFlags.AllowDoubleClick)) {
             handleRowClick(row, index);
         }
-        if (ImGui.isItemHovered()) {
-            showFullNameTooltip(name);
+        if (fit.truncated() && ImGui.isItemHovered()) {
+            ImGui.setTooltip(name);
         }
         if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
             onFrameRequested.accept(row.gameObject());
@@ -199,24 +212,6 @@ public final class HierarchyView {
             float x = startX + level * EditorStyle.INDENT_SPACING + INDENT_GUIDE_OFFSET;
             ImGui.getWindowDrawList().addLine(x, startY, x, startY + height, INDENT_GUIDE_COLOR);
         }
-    }
-
-    private static void showFullNameTooltip(String name) {
-        if (ImGui.calcTextSize(name).x > ImGui.getContentRegionAvailX()) {
-            ImGui.setTooltip(name);
-        }
-    }
-
-    private static String elide(String name, float availableWidth) {
-        if (ImGui.calcTextSize(name).x <= availableWidth) {
-            return name;
-        }
-        String ellipsis = ELLIPSIS;
-        int length = name.length();
-        while (length > 1 && ImGui.calcTextSize(name.substring(0, length) + ellipsis).x > availableWidth) {
-            length--;
-        }
-        return name.substring(0, length) + ellipsis;
     }
 
     private void handleRowClick(Row row, int index) {
@@ -285,7 +280,7 @@ public final class HierarchyView {
             renameFocusRequested = false;
         }
         ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
-        if (ImGui.inputText("##rename", renameInput, ImGuiInputTextFlags.EnterReturnsTrue)) {
+        if (TextFields.inputSubmitted("##rename", renameInput)) {
             commitRename();
         }
         if (ImGui.isKeyPressed(ImGuiKey.Escape)) {
@@ -509,6 +504,7 @@ public final class HierarchyView {
         }
         IComponent fresh = factory.get().get();
         copyExportedProperties(source, fresh);
+        fresh.copyStateFrom(source);
         target.addComponent(fresh);
     }
 
