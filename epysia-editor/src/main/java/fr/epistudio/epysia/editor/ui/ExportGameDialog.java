@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.export.ExportRequest;
+import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.export.GameExporter;
 import fr.epistudio.epysia.editor.export.TargetPlatform;
 import fr.epistudio.epysia.editor.notify.Notifier;
@@ -139,7 +140,8 @@ public final class ExportGameDialog {
 
     private void runExport() {
         ExportRequest request = new ExportRequest(outputDirectory, titleInput.get().trim(),
-                sceneFileNames.get(selectedSceneIndex), platforms[selectedPlatformIndex]);
+                sceneFileNames.get(selectedSceneIndex), platforms[selectedPlatformIndex],
+                EditorPreferences.load(EditorPreferences.defaultFile()).gpuPreference());
         try {
             Path destination = new GameExporter(project).export(request);
             notifier.show("Game exported to " + destination);

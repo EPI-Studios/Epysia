@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.export;
 
+import fr.epistudio.epysia.gpu.GpuPreference;
+import fr.epistudio.epysia.project.ProjectQuality;
 import fr.epistudio.epysia.project.Project;
 
 import java.io.IOException;
@@ -19,7 +21,7 @@ public final class LauncherConfiguration {
         this.arguments = arguments;
     }
 
-    public static LauncherConfiguration forGame(String sceneFileName, String title) {
+    public static LauncherConfiguration forGame(String sceneFileName, ProjectQuality quality, GpuPreference gpu) {
         List<String> arguments = new ArrayList<>();
         arguments.add("--scene");
         arguments.add(CONTENT_DIRECTORY + "/" + Project.SCENES_DIRECTORY_NAME + "/" + sceneFileName);
@@ -28,9 +30,17 @@ public final class LauncherConfiguration {
         arguments.add("--precompiled-scripts");
         arguments.add(SCRIPTS_DIRECTORY);
         arguments.add("--gpu");
-        arguments.add("high");
+        arguments.add(gpu.id());
         arguments.add("--title");
-        arguments.add(title);
+        arguments.add(quality.windowTitle());
+        arguments.add("--width");
+        arguments.add(Integer.toString(quality.windowWidth()));
+        arguments.add("--height");
+        arguments.add(Integer.toString(quality.windowHeight()));
+        arguments.add("--vsync");
+        arguments.add(Boolean.toString(quality.verticalSync()));
+        arguments.add("--max-fps");
+        arguments.add(Integer.toString(quality.maximumFrameRate()));
         return new LauncherConfiguration(arguments);
     }
 

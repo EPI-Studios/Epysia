@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor.export;
 
 import fr.epistudio.epysia.editor.BuildInfo;
 import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.project.ProjectStore;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -92,7 +93,9 @@ public final class GameExporter {
 
     private void finalizeLauncher(ExportRequest request, TemplateLayout layout, String name) throws IOException {
         Path targetConfig = layout.config().resolveSibling(name + ".cfg");
-        LauncherConfiguration.forGame(request.sceneFileName(), request.title()).writeTo(layout.config(), targetConfig);
+        LauncherConfiguration.forGame(request.sceneFileName(), new ProjectStore().readQuality(project),
+                        request.gpuPreference())
+                .writeTo(layout.config(), targetConfig);
         Path targetLauncher = layout.launcher().resolveSibling(name + request.platform().launcherExtension());
         Files.move(layout.launcher(), targetLauncher, StandardCopyOption.REPLACE_EXISTING);
         if (request.platform() == TargetPlatform.LINUX) {

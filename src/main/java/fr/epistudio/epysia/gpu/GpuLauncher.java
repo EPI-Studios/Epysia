@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.gpu;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -61,12 +63,28 @@ public final class GpuLauncher {
 
     private static Optional<List<String>> currentCommandLine() {
         ProcessHandle.Info info = ProcessHandle.current().info();
-        if (info.command().isEmpty()) {
-            return Optional.empty();
+        String[] arguments = info.arguments().orElse(new String[0]);
+        if (info.command().isEmpty() || arguments.length == 0) {
+            return rebuiltCommandLine();
         }
         List<String> argv = new ArrayList<>();
         argv.add(info.command().get());
-        info.arguments().ifPresent(arguments -> argv.addAll(List.of(arguments)));
+        argv.addAll(List.of(arguments));
+        return Optional.of(argv);
+    }
+
+    private static Optional<List<String>> rebuiltCommandLine() {
+        String entryPoint = System.getProperty("sun.java.command", "");
+        String classPath = System.getProperty("java.class.path", "");
+        if (entryPoint.isBlank() || classPath.isBlank()) {
+            return Optional.empty();
+        }
+        List<String> argv = new ArrayList<>();
+        argv.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        argv.addAll(ManagementFactory.getRuntimeMXBean().getInputArguments());
+        argv.add("-cp");
+        argv.add(classPath);
+        argv.addAll(List.of(entryPoint.split(" ")));
         return Optional.of(argv);
     }
 
