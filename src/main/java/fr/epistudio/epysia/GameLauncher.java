@@ -11,6 +11,8 @@ import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
 import fr.epistudio.epysia.project.EditorSettings;
+import fr.epistudio.epysia.project.ProjectQuality;
+import fr.epistudio.epysia.project.ProjectQualityProperties;
 import fr.epistudio.epysia.project.ProjectStore;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ComponentScanner;
@@ -42,10 +44,13 @@ public final class GameLauncher {
         GpuLauncher.enforce(GpuPreference.fromId(parseStringOr(args, "--gpu", "system")));
         Path scenePath = parseRequiredPath(args, "--scene");
         Optional<Path> projectRoot = parseOptionalPath(args, "--project");
+        projectRoot.ifPresent(GameLauncher::applyProjectQuality);
         Optional<Path> precompiledScripts = parseOptionalPath(args, "--precompiled-scripts");
         String title = parseStringOr(args, "--title", DEFAULT_TITLE);
         int width = parseIntOr(args, "--width", DEFAULT_WIDTH);
         int height = parseIntOr(args, "--height", DEFAULT_HEIGHT);
+        System.setProperty("epysia.vsync", parseStringOr(args, "--vsync", "true"));
+        StandaloneRunner.setMaximumFrameRate(parseIntOr(args, "--max-fps", 0));
         boolean stdioChannel = hasFlag(args, "--runtime-channel=stdio");
         RuntimeChannel channel = stdioChannel ? new StdioRuntimeChannel() : new NullRuntimeChannel();
         Logger localFallback = new ConsoleLogger(System.err);
@@ -107,11 +112,23 @@ public final class GameLauncher {
         ProjectStore store = new ProjectStore();
         store.readProjectFromDisk(projectRoot, 0L).ifPresent(project -> {
             EditorSettings settings = store.readSettings(project);
+            ProjectQuality quality = store.readQuality(project);
             PhysicsSystem physics = services.systems().get(PhysicsSystem.class);
             if (physics != null) {
                 physics.setCollisionLayers(CollisionLayers.from(settings.collisionMatrix()));
-                logger.info("[physics] applied collision layer matrix");
+                physics.setGravity(quality.gravityX(), quality.gravityY(), quality.gravityZ());
+                logger.info("[physics] applied collision layer matrix and gravity");
             }
+            services.inputActions().replaceAll(store.readInputActions(project));
+        });
+    }
+
+    private static void applyProjectQuality(Path projectRoot) {
+        ProjectStore store = new ProjectStore();
+        store.readProjectFromDisk(projectRoot, 0L).ifPresent(project -> {
+            ProjectQuality quality = store.readQuality(project);
+            StandaloneRunner.setFixedTimestepSeconds(quality.fixedTimestepSeconds());
+            ProjectQualityProperties.apply(quality);
         });
     }
 

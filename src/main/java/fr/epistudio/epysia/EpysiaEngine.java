@@ -14,13 +14,16 @@ import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.RenderPass;
 import fr.epistudio.epysia.render.RenderPasses;
+import fr.epistudio.epysia.render.SceneTexture;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.mesh.PickingPass;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.backend.DrawCommand;
+import fr.epistudio.epysia.input.action.InputActions;
 import fr.epistudio.epysia.render.backend.PassClear;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
+import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.profiling.FrameProfiler;
 import fr.epistudio.epysia.render.postfx.PostEffects;
 import fr.epistudio.epysia.render.postfx.PostProcessSettings;
@@ -37,6 +40,7 @@ import fr.epistudio.epysia.scripting.Scheduler;
 import fr.epistudio.epysia.window.Window;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.Optional;
 import java.util.HashMap;
 import java.util.List;
@@ -46,6 +50,7 @@ import java.util.function.Consumer;
 public final class EpysiaEngine implements StageConfigurer, EngineServices {
 
     private PassClear defaultClear = PassClear.color(0.10f, 0.12f, 0.18f);
+    private final InputActions inputActions = InputActions.defaults();
 
     private final Window window;
     private final RenderBackend renderBackend;
@@ -59,6 +64,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     private final Map<RenderPass, StageBinding> stageBindings = defaultStageBindings();
     private final Map<RenderPass, List<Runnable>> stagePreparations = new HashMap<>();
     private final Map<RenderPass, RenderPass> stageFollowers = new HashMap<>();
+    private final Map<SceneTexture, TextureHandle> sceneTextures = new EnumMap<>(SceneTexture.class);
     private final AssetRegistry assetRegistry = new AssetRegistry(this);
     private final long[] cpuTimingsNanosArray = new long[CpuTimings.values().length];
     private final FrameProfiler profiler = new FrameProfiler();
@@ -213,6 +219,19 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         profiler.record(FrameProfiler.TICK_SECTION, System.nanoTime() - tickStart);
     }
 
+    public boolean isPlaying() {
+        return playing;
+    }
+
+    public <T extends GameSystem> Optional<T> gameSystem(Class<T> type) {
+        for (GameSystem system : gameSystems) {
+            if (type.isInstance(system)) {
+                return Optional.of(type.cast(system));
+            }
+        }
+        return Optional.empty();
+    }
+
     public void beginPlay() {
         playing = true;
         if (activeScene == null) {
@@ -278,9 +297,8 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     private void captureTransformInterpolationSnapshots(Scene scene) {
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(Transform3D.class)
-                    .ifPresent(Transform3D::captureInterpolationSnapshot);
+        for (Transform3D transform : scene.componentsOf(Transform3D.class)) {
+            transform.captureInterpolationSnapshot();
         }
     }
 
@@ -363,8 +381,23 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     @Override
+    public void publishSceneTexture(SceneTexture slot, TextureHandle texture) {
+        sceneTextures.put(slot, texture);
+    }
+
+    @Override
+    public Optional<TextureHandle> sceneTexture(SceneTexture slot) {
+        return Optional.ofNullable(sceneTextures.get(slot));
+    }
+
+    @Override
     public void bindStagePreparation(RenderPass pass, Runnable preparation) {
         stagePreparations.computeIfAbsent(pass, ignored -> new ArrayList<>()).add(preparation);
+    }
+
+    @Override
+    public InputActions inputActions() {
+        return inputActions;
     }
 
     @Override
@@ -512,6 +545,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         StageBinding screenNoClear = new StageBinding(RenderTargetHandle.SCREEN, PassClear.none());
         bindings.put(RenderPasses.PRE_3D, screenWithClear);
         bindings.put(RenderPasses.OPAQUE_3D, screenWithClear);
+        bindings.put(RenderPasses.VIEW_MODEL_3D, new StageBinding(RenderTargetHandle.SCREEN, PassClear.depthOnly()));
         bindings.put(RenderPasses.TRANSPARENT_3D, screenNoClear);
         bindings.put(RenderPasses.WORLD_2D, screenNoClear);
         bindings.put(RenderPasses.OVERLAY_2D, screenNoClear);

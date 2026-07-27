@@ -4,6 +4,7 @@ import fr.epistudio.epysia.assets.loaders.ClipAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
+import fr.epistudio.epysia.assets.loaders.InstancesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteAtlasAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteTilemapAssetLoader;
@@ -44,7 +45,9 @@ public final class StandaloneRunner {
 
     private static final long PROFILE_REPORT_INTERVAL_NANOS = 1_000_000_000L;
     private static final double NANOS_PER_MILLI = 1_000_000.0;
-    private static final double FIXED_TIMESTEP_SECONDS = 1.0 / 60.0;
+    private static double fixedTimestepSeconds = 1.0 / 60.0;
+    private static long minimumFrameNanos;
+    private static long frameStartNanos;
     private static final double MAX_FRAME_SECONDS = 0.25;
     private static final double NANOS_PER_SECOND = 1_000_000_000.0;
 
@@ -54,6 +57,30 @@ public final class StandaloneRunner {
     }
 
     private StandaloneRunner() {
+    }
+
+    public static void setFixedTimestepSeconds(double seconds) {
+        fixedTimestepSeconds = seconds;
+    }
+
+    public static void setMaximumFrameRate(int framesPerSecond) {
+        minimumFrameNanos = framesPerSecond <= 0 ? 0L : (long) (NANOS_PER_SECOND / framesPerSecond);
+    }
+
+    private static void throttle(long frameEndNanos) {
+        if (minimumFrameNanos <= 0L) {
+            return;
+        }
+        long remaining = minimumFrameNanos - (System.nanoTime() - frameEndNanos);
+        while (remaining > 0L) {
+            try {
+                Thread.sleep(remaining / 1_000_000L, (int) (remaining % 1_000_000L));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            remaining = minimumFrameNanos - (System.nanoTime() - frameEndNanos);
+        }
     }
 
     public static void runStandalone(String windowTitle, int width, int height, ScenePopulator populator) {
@@ -87,6 +114,7 @@ public final class StandaloneRunner {
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
+        engine.assets().register(new InstancesAssetLoader());
         engine.assets().register(new SpriteAtlasAssetLoader());
         engine.assets().register(new SpriteTilemapAssetLoader());
         runPopulator(engine, populator);
@@ -169,6 +197,7 @@ public final class StandaloneRunner {
         double accumulator = 0.0;
         while (!window.shouldClose() && !engine.isShutdownRequested()) {
             long pollStart = System.nanoTime();
+            frameStartNanos = pollStart;
             window.pollEvents();
             handleResizeIfNeeded(window, engine);
             long pollEnd = System.nanoTime();
@@ -179,7 +208,7 @@ public final class StandaloneRunner {
             long updateStart = System.nanoTime();
             accumulator = drainFixedSteps(engine, inputState, accumulator + frameSeconds);
             long updateEnd = System.nanoTime();
-            float interpolationAlpha = (float) (accumulator / FIXED_TIMESTEP_SECONDS);
+            float interpolationAlpha = (float) (accumulator / fixedTimestepSeconds);
             List<Camera3D> activeCameras = collectActiveCameras(engine.scene());
             updateCameraAspect(activeCameras, window.framebufferWidth(), window.framebufferHeight());
             long renderStart = System.nanoTime();
@@ -192,6 +221,7 @@ public final class StandaloneRunner {
             engine.setCpuTimingNanos(CpuTimings.UPDATE, updateEnd - updateStart);
             engine.setCpuTimingNanos(CpuTimings.RENDER, renderEnd - renderStart);
             engine.setCpuTimingNanos(CpuTimings.SWAP_BUFFERS, swapEnd - swapStart);
+            throttle(frameStartNanos);
             framesSinceReport++;
             if (swapEnd - lastProfileReportNanos >= PROFILE_REPORT_INTERVAL_NANOS) {
                 reportProfile(engine, framesSinceReport, swapEnd - lastProfileReportNanos);
@@ -222,12 +252,12 @@ public final class StandaloneRunner {
     }
 
     private static double drainFixedSteps(EpysiaEngine engine, MutableInputState input, double accumulator) {
-        float step = (float) FIXED_TIMESTEP_SECONDS;
+        float step = (float) fixedTimestepSeconds;
         double remaining = accumulator;
-        while (remaining >= FIXED_TIMESTEP_SECONDS) {
+        while (remaining >= fixedTimestepSeconds) {
             engine.tick(input, step);
             input.advanceFrame();
-            remaining -= FIXED_TIMESTEP_SECONDS;
+            remaining -= fixedTimestepSeconds;
         }
         return remaining;
     }
