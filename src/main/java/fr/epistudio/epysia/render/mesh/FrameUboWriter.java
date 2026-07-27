@@ -26,6 +26,7 @@ final class FrameUboWriter {
     private final ByteBuffer scratch = BufferUtils.createByteBuffer(MeshShaderBindings.FRAME_UBO_SIZE);
     private final Vector3f scratchCameraPosition = new Vector3f();
     private final Vector3f scratchProbeVector = new Vector3f();
+    private final Matrix4f scratchInverseViewProjection = new Matrix4f();
     private final Vector3f whiteAmbient = new Vector3f(1.0f, 1.0f, 1.0f);
     private final Matrix4f scratchIdentity = new Matrix4f();
     private RenderBackend backend;
@@ -68,9 +69,16 @@ final class FrameUboWriter {
         writePointShadows(pointShadows);
         writeClusterParams(camera, clusters, clusteringEnabled);
         writeProbeGrid(probes);
+        writeInverseViewProjection(camera, alpha);
         scratch.position(MeshShaderBindings.FRAME_UBO_SIZE);
         scratch.flip();
         backend.writeBuffer(handle, scratch, 0L);
+    }
+
+    private void writeInverseViewProjection(Camera3D camera, float alpha) {
+        scratch.position(MeshShaderBindings.INVERSE_VIEW_PROJECTION_OFFSET);
+        camera.viewProjection(alpha).invert(scratchInverseViewProjection).get(
+                MeshShaderBindings.INVERSE_VIEW_PROJECTION_OFFSET, scratch);
     }
 
     private void writeProbeGrid(Optional<BakedProbes> probes) {

@@ -24,7 +24,9 @@ import fr.epistudio.epysia.render.backend.VertexLayout;
 import fr.epistudio.epysia.render.shader.LoadedShader;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
@@ -56,6 +58,12 @@ final class SpotShadowAtlas {
     private RenderTargetHandle[] targets;
     private PipelineHandle pipeline;
     private int activeCount;
+    private final float[] lightCenters = new float[MeshShaderBindings.MAX_SHADOW_SPOTS * 3];
+    private final float[] lightRadii = new float[MeshShaderBindings.MAX_SHADOW_SPOTS];
+    private final Vector3f scratchLightPosition = new Vector3f();
+    private final Vector3f scratchCasterMin = new Vector3f();
+    private final Vector3f scratchCasterMax = new Vector3f();
+    private final FrustumIntersection layerFrustum = new FrustumIntersection();
 
     private final SurfaceShadowVariants surfaceVariants;
 
@@ -66,6 +74,7 @@ final class SpotShadowAtlas {
         this.logger = logger;
         this.statistics = statistics;
         this.splitRenderer = new ShadowSplitRenderer(statistics, SHADOW_SIZE, MeshShaderBindings.MAX_SHADOW_SPOTS);
+        this.splitRenderer.setLayerFilter(this::casterVisibleInLayer);
         this.surfaceVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
                 VERTEX_PATH, FRAGMENT_PATH, RenderState.OPAQUE_3D, pipelineInvalidation);
     }
@@ -120,6 +129,11 @@ final class SpotShadowAtlas {
             return -1;
         }
         int layer = activeCount++;
+        spot.position(scratchLightPosition);
+        lightCenters[(layer) * 3] = scratchLightPosition.x;
+        lightCenters[(layer) * 3 + 1] = scratchLightPosition.y;
+        lightCenters[(layer) * 3 + 2] = scratchLightPosition.z;
+        lightRadii[layer] = spot.range();
         matrices[layer].set(viewProjection);
         layerBySpot.put(spot, layer);
         return layer;
@@ -153,6 +167,26 @@ final class SpotShadowAtlas {
         casters.submit(command, casterIdentity, casterSignature, casterTimeAnimated);
     }
 
+    void submitCaster(DrawCommand command, long casterIdentity, long casterSignature, boolean casterTimeAnimated,
+                      Vector3f worldMin, Vector3f worldMax) {
+        if (!lit(worldMin, worldMax)) {
+            return;
+        }
+        casters.submit(command, casterIdentity, casterSignature, casterTimeAnimated, worldMin, worldMax);
+    }
+
+    private boolean lit(Vector3f worldMin, Vector3f worldMax) {
+        for (int light = 0; light < activeCount; light++) {
+            float dx = Math.max(worldMin.x - lightCenters[light * 3], Math.max(0.0f, lightCenters[light * 3] - worldMax.x));
+            float dy = Math.max(worldMin.y - lightCenters[light * 3 + 1], Math.max(0.0f, lightCenters[light * 3 + 1] - worldMax.y));
+            float dz = Math.max(worldMin.z - lightCenters[light * 3 + 2], Math.max(0.0f, lightCenters[light * 3 + 2] - worldMax.z));
+            if (dx * dx + dy * dy + dz * dz <= lightRadii[light] * lightRadii[light]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void render() {
         if (activeCount == 0 || casters.isEmpty()) {
             return;
@@ -170,6 +204,16 @@ final class SpotShadowAtlas {
     private long layerViewSignature(int layer) {
         long signature = ShadowSignatures.mix(ShadowSignatures.seed(), sceneModificationCount);
         return ShadowSignatures.mixMatrix(signature, matrices[layer]);
+    }
+
+    private boolean casterVisibleInLayer(int layer, ShadowCaster caster) {
+        if (!caster.bounded()) {
+            return true;
+        }
+        layerFrustum.set(matrices[layer]);
+        scratchCasterMin.set(caster.minX(), caster.minY(), caster.minZ());
+        scratchCasterMax.set(caster.maxX(), caster.maxY(), caster.maxZ());
+        return layerFrustum.testAab(scratchCasterMin, scratchCasterMax);
     }
 
     private void writeIndex(int layer) {

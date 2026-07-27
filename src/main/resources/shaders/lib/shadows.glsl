@@ -11,8 +11,15 @@ int selectShadowCascade(float viewDepth, int cascadeCount) {
     return -1;
 }
 
-const int CASCADE_PCF_SAMPLES = 4;
-const float CASCADE_PCF_SPREAD = 2.0;
+#ifndef CASCADE_PCF_SAMPLES
+#define CASCADE_PCF_SAMPLES 4
+#endif
+#ifndef CASCADE_PCF_FILTERED_CASCADES
+#define CASCADE_PCF_FILTERED_CASCADES 2
+#endif
+#ifndef CASCADE_PCF_SPREAD
+#define CASCADE_PCF_SPREAD 2.0
+#endif
 const float GOLDEN_ANGLE = 2.4;
 const float TWO_PI = 6.2831853;
 
@@ -27,7 +34,10 @@ vec2 vogelDiskOffset(int index, int sampleCount, float rotation) {
     return vec2(cos(theta), sin(theta)) * radius;
 }
 
-float samplePcf5x5(vec2 baseUv, int cascade, float reference) {
+float sampleCascadePcf(vec2 baseUv, int cascade, float reference) {
+    if (cascade >= CASCADE_PCF_FILTERED_CASCADES) {
+        return texture(shadowCascades, vec4(baseUv, float(cascade), reference));
+    }
     vec2 texelSize = 1.0 / vec2(textureSize(shadowCascades, 0).xy);
     float rotation = interleavedGradientNoise(gl_FragCoord.xy) * TWO_PI;
     float sum = 0.0;
@@ -57,7 +67,7 @@ float sampleShadowFactor(vec3 worldPosition, vec3 worldNormal, vec3 toLight, flo
     }
     float slopeScale = clamp(1.0 - normalDotLight, 0.0, 1.0);
     float bias = 0.0006 + 0.0022 * slopeScale;
-    return samplePcf5x5(projected.xy, cascade, projected.z - bias);
+    return sampleCascadePcf(projected.xy, cascade, projected.z - bias);
 }
 
 float samplePcfSpot(vec2 baseUv, int layer, float reference) {

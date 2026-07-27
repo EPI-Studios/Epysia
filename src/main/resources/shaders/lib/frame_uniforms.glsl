@@ -30,6 +30,7 @@ layout(std140, binding = 0) uniform FrameUbo {
     vec4 probeGridOrigin;          // .xyz = world position of probe (0,0,0)
     vec4 probeGridSpacing;         // .xyz = world distance between neighboring probes
     ivec4 probeGridResolution;     // .xyz = probe counts per axis
+    mat4 cameraInverseViewProjection;
 } frame;
 
 float frameTime() { return frame.cameraPosition.w; }

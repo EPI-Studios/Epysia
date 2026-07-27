@@ -23,6 +23,8 @@ public final class MeshShaderBindings {
     public static final int BRDF_LUT_BINDING = 11;
     public static final int SPOT_SHADOW_ATLAS_BINDING = 12;
     public static final int POINT_SHADOW_ATLAS_BINDING = 13;
+    public static final int OPAQUE_COLOR_BINDING = 14;
+    public static final int OPAQUE_DEPTH_BINDING = 15;
 
     public static final int OBJECT_UBO_SIZE = 128;
     public static final int INSTANCE_TRANSFORM_BYTES = 128;
@@ -46,7 +48,8 @@ public final class MeshShaderBindings {
     public static final int CLUSTER_PARAMS_OFFSET = CLUSTER_GRID_OFFSET + 16;
     public static final int CLUSTER_SLICE_OFFSET = CLUSTER_PARAMS_OFFSET + 16;
     public static final int PROBE_GRID_OFFSET = CLUSTER_SLICE_OFFSET + 16;
-    public static final int FRAME_UBO_SIZE = PROBE_GRID_OFFSET + 48;
+    public static final int INVERSE_VIEW_PROJECTION_OFFSET = PROBE_GRID_OFFSET + 48;
+    public static final int FRAME_UBO_SIZE = INVERSE_VIEW_PROJECTION_OFFSET + 64;
     public static final int PICKING_UBO_SIZE = 16;
     public static final int CASCADE_UBO_SIZE = 16;
 

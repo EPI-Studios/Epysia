@@ -76,6 +76,16 @@ float sceneDepthBehind(vec2 uv) {
     return max(sceneViewDepthAt(uv) - vertexViewDepth, 0.0);
 }
 
+vec3 sceneSurfaceNormalAt(vec2 uv);
+
+vec3 sceneWorldPositionAt(vec2 uv) {
+    vec2 clamped = clamp(uv, vec2(0.0), vec2(1.0));
+    float deviceDepth = texture(opaqueSceneDepth, clamped).r;
+    vec4 clip = vec4(clamped * 2.0 - 1.0, deviceDepth * 2.0 - 1.0, 1.0);
+    vec4 world = frame.cameraInverseViewProjection * clip;
+    return world.xyz / world.w;
+}
+
 const float MAX_REFLECTION_LOD = 4.0;
 
 out vec4 outColor;
@@ -154,6 +164,11 @@ vec3 computeWorldNormal() {
 #endif
 }
 
+vec3 sceneSurfaceNormalAt(vec2 uv) {
+    vec3 position = sceneWorldPositionAt(uv);
+    return normalize(cross(dFdx(position), dFdy(position)) + vec3(0.0, 1.0e-4, 0.0));
+}
+
 int computeClusterIndex() {
     vec4 clip = frame.cameraViewProjection * vec4(vertexWorldPosition, 1.0);
     vec2 ndc = clip.xy / clip.w;
@@ -178,8 +193,12 @@ vec3 shadeLight(int lightIndex, int shadowIndex, vec3 worldNormal, vec3 viewDire
     float lightDistance;
     unpackLight(light, vertexWorldPosition, toLight, lightRadiance, attenuation,
             sourceRadius, lightDistance);
+    if (attenuation <= 0.0) {
+        return vec3(0.0);
+    }
     int lightType = int(light.positionAndType.w);
     float shadow = 1.0;
+#ifndef MATERIAL_NO_SHADOWS
     if (lightIndex == shadowIndex) {
         shadow = sampleShadowFactor(vertexWorldPosition, worldNormal, toLight, vertexViewDepth);
     } else if (lightType == LIGHT_TYPE_SPOT) {
@@ -193,6 +212,7 @@ vec3 shadeLight(int lightIndex, int shadowIndex, vec3 worldNormal, vec3 viewDire
             shadow = samplePointShadow(vertexWorldPosition, light.positionAndType.xyz, worldNormal, pointIndex);
         }
     }
+#endif
     vec3 radiance = lightRadiance * attenuation * shadow;
 #ifdef SURFACE_LIGHT_ENABLED
     vec3 shaded = vec3(0.0);
