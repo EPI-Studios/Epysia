@@ -49,6 +49,14 @@ public interface RenderBackend {
 
     void destroy(MeshHandle handle);
 
+    default boolean isAlive(MeshHandle handle) {
+        return true;
+    }
+
+    default boolean isAlive(PipelineHandle handle) {
+        return true;
+    }
+
     void destroy(BufferHandle handle);
 
     void destroy(TextureHandle handle);
@@ -70,6 +78,9 @@ public interface RenderBackend {
     DrawStatistics drawStatistics();
 
     void beginPass(RenderTargetHandle target, PassClear clear);
+
+    default void setPassViewport(int x, int y, int width, int height) {
+    }
 
     void execute(DrawCommand command);
 

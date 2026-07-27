@@ -75,7 +75,12 @@ public final class Texture2D {
                 .flatMap(Texture2D::readFilterName)
                 .filter(Texture2D::isPointFilterName)
                 .map(name -> SamplerFilter.NEAREST)
-                .orElse(SamplerFilter.LINEAR);
+                .orElse(projectDefaultFilter());
+    }
+
+    private static SamplerFilter projectDefaultFilter() {
+        return "nearest".equalsIgnoreCase(System.getProperty("epysia.texture.filter", "linear"))
+                ? SamplerFilter.NEAREST : SamplerFilter.LINEAR;
     }
 
     private static Optional<String> readFilterName(AssetSource source) {

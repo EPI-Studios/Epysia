@@ -1,18 +1,27 @@
 package fr.epistudio.epysia.render.backend;
 
 public record RenderState(Topology topology, DepthTest depthTest, BlendMode blendMode, CullMode cullMode,
-                          boolean depthWrite, boolean depthClamp) {
+                          boolean depthWrite, boolean depthClamp, boolean colorWrite) {
 
     public RenderState(Topology topology, DepthTest depthTest, BlendMode blendMode, CullMode cullMode) {
-        this(topology, depthTest, blendMode, cullMode, true, false);
+        this(topology, depthTest, blendMode, cullMode, true, false, true);
     }
 
     public RenderState(Topology topology, DepthTest depthTest, BlendMode blendMode, CullMode cullMode, boolean depthWrite) {
-        this(topology, depthTest, blendMode, cullMode, depthWrite, false);
+        this(topology, depthTest, blendMode, cullMode, depthWrite, false, true);
+    }
+
+    public RenderState(Topology topology, DepthTest depthTest, BlendMode blendMode, CullMode cullMode,
+                       boolean depthWrite, boolean depthClamp) {
+        this(topology, depthTest, blendMode, cullMode, depthWrite, depthClamp, true);
     }
 
     public RenderState withDepthClamp() {
-        return new RenderState(topology, depthTest, blendMode, cullMode, depthWrite, true);
+        return new RenderState(topology, depthTest, blendMode, cullMode, depthWrite, true, colorWrite);
+    }
+
+    public RenderState withoutColorWrite() {
+        return new RenderState(topology, depthTest, blendMode, cullMode, depthWrite, depthClamp, false);
     }
 
     public static final RenderState OPAQUE_3D = new RenderState(

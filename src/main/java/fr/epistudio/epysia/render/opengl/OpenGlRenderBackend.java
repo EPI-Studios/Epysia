@@ -154,10 +154,17 @@ import static org.lwjgl.opengl.GL31.glDrawElementsInstanced;
 
 public final class OpenGlRenderBackend implements RenderBackend {
 
+    private int[] pendingViewport;
+
     private static final int VERTEX_BINDING_INDEX = 0;
     private static final int INSTANCE_BINDING_INDEX = 1;
 
     private final AtomicLong nextId = new AtomicLong(1);
+    private long shaderCompileNanos;
+    private int shaderCompileCount;
+    private long frameShaderCompileNanos;
+    private long worstFrameShaderCompileNanos;
+    private long worstProgramShaderCompileNanos;
     private final Map<Long, PipelineResource> pipelines = new HashMap<>();
     private final Map<Long, MeshResource> meshes = new HashMap<>();
     private final Map<Long, BufferResource> buffers = new HashMap<>();
@@ -424,6 +431,40 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private int compileProgram(ShaderSource source) {
+        long start = System.nanoTime();
+        try {
+            return compileProgramUntimed(source);
+        } finally {
+            long elapsed = System.nanoTime() - start;
+            shaderCompileNanos += elapsed;
+            frameShaderCompileNanos += elapsed;
+            worstFrameShaderCompileNanos = Math.max(worstFrameShaderCompileNanos, frameShaderCompileNanos);
+            worstProgramShaderCompileNanos = Math.max(worstProgramShaderCompileNanos, elapsed);
+            shaderCompileCount++;
+        }
+    }
+
+    public long worstFrameShaderCompileNanos() {
+        return worstFrameShaderCompileNanos;
+    }
+
+    public long worstProgramShaderCompileNanos() {
+        return worstProgramShaderCompileNanos;
+    }
+
+    public long shaderCompileNanos() {
+        return shaderCompileNanos;
+    }
+
+    public int shaderCompileCount() {
+        return shaderCompileCount;
+    }
+
+    public long frameShaderCompileNanos() {
+        return frameShaderCompileNanos;
+    }
+
+    private int compileProgramUntimed(ShaderSource source) {
         int vertex = compileShader(GL_VERTEX_SHADER, source.vertexSource());
         int fragment = compileShader(GL_FRAGMENT_SHADER, source.fragmentSource());
         int program = glCreateProgram();
@@ -766,6 +807,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public void beginFrame() {
         drainProfileQueries();
+        frameShaderCompileNanos = 0L;
         currentProfileSection = 0;
         suppressedSectionDepth = 0;
         drawStatistics.reset();
@@ -860,25 +902,37 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     @Override
+    public void setPassViewport(int x, int y, int width, int height) {
+        pendingViewport = width <= 0 || height <= 0 ? null : new int[] {x, y, width, height};
+    }
+
+    private void applyPassViewport(int targetWidth, int targetHeight) {
+        if (pendingViewport == null) {
+            glViewport(0, 0, targetWidth, targetHeight);
+            return;
+        }
+        glViewport(pendingViewport[0], pendingViewport[1], pendingViewport[2], pendingViewport[3]);
+        pendingViewport = null;
+    }
+
+    @Override
     public void beginPass(RenderTargetHandle target, PassClear clear) {
         if (target.id() == 0L) {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glViewport(0, 0, screenWidth, screenHeight);
+            applyPassViewport(screenWidth, screenHeight);
         } else {
             RenderTargetResource resource = requireRenderTarget(target);
             glBindFramebuffer(GL_FRAMEBUFFER, resource.fboId());
-            glViewport(0, 0, resource.width(), resource.height());
+            applyPassViewport(resource.width(), resource.height());
         }
         currentPipeline = null;
+        appliedRenderState = null;
         currentBindingSetId = 0L;
         currentVertexBufferId = 0;
         currentIndexBufferId = 0;
         drawStatistics.recordPass();
         org.lwjgl.opengl.GL11.glDepthMask(true);
-        if (appliedRenderState != null && !appliedRenderState.depthWrite()) {
-            appliedRenderState = new RenderState(appliedRenderState.topology(), appliedRenderState.depthTest(),
-                    appliedRenderState.blendMode(), appliedRenderState.cullMode(), true, appliedRenderState.depthClamp());
-        }
+        org.lwjgl.opengl.GL11.glColorMask(true, true, true, true);
         applyClear(clear);
     }
 
@@ -1029,6 +1083,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
         if (appliedRenderState == null || appliedRenderState.cullMode() != state.cullMode()) {
             applyCullMode(state.cullMode());
         }
+        if (appliedRenderState == null || appliedRenderState.colorWrite() != state.colorWrite()) {
+            boolean write = state.colorWrite();
+            org.lwjgl.opengl.GL11.glColorMask(write, write, write, write);
+        }
         if (appliedRenderState == null || appliedRenderState.depthWrite() != state.depthWrite()) {
             org.lwjgl.opengl.GL11.glDepthMask(state.depthWrite());
         }
@@ -1169,12 +1227,22 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return resource;
     }
 
+    @Override
+    public boolean isAlive(MeshHandle handle) {
+        return meshes.containsKey(handle.id());
+    }
+
     private MeshResource requireMesh(MeshHandle handle) {
         MeshResource resource = meshes.get(handle.id());
         if (resource == null) {
             throw new EpysiaException("Unknown mesh handle: " + handle.id());
         }
         return resource;
+    }
+
+    @Override
+    public boolean isAlive(PipelineHandle handle) {
+        return pipelines.containsKey(handle.id());
     }
 
     private PipelineResource requirePipeline(PipelineHandle handle) {

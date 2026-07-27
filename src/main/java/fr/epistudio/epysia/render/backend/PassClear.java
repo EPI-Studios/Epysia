@@ -14,6 +14,10 @@ public record PassClear(
         return new PassClear(true, true, red, green, blue, 1.0f, 1.0f);
     }
 
+    public static PassClear transparent() {
+        return new PassClear(true, false, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+
     public static PassClear depthOnly() {
         return new PassClear(false, true, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
     }
