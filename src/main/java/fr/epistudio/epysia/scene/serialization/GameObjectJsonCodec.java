@@ -298,14 +298,15 @@ public final class GameObjectJsonCodec {
             }
             entryLookup.ifPresent(entry -> {
                 IComponent component = entry.factory().get();
-                if (gameObject.getComponentOrNull(component.getClass()) != null) {
-                    return;
+                IComponent existing = gameObject.getComponentOrNull(component.getClass());
+                IComponent target = existing != null ? existing : component;
+                fieldsCodec.applyFields(target, fields, this);
+                applyMaterialsIfPresent(target, componentJson);
+                applyPostEffectsIfPresent(target, componentJson);
+                applyGraphOverridesIfPresent(target, componentJson);
+                if (existing == null) {
+                    attachTolerant(gameObject, component);
                 }
-                fieldsCodec.applyFields(component, fields, this);
-                applyMaterialsIfPresent(component, componentJson);
-                applyPostEffectsIfPresent(component, componentJson);
-                applyGraphOverridesIfPresent(component, componentJson);
-                attachTolerant(gameObject, component);
             });
         }
 
