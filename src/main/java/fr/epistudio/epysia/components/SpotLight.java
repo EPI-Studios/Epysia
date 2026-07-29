@@ -11,8 +11,11 @@ public final class SpotLight extends Light {
     private static final Vector3f LOCAL_FORWARD = new Vector3f(0.0f, 0.0f, -1.0f);
 
     private final Quaternionf scratchWorldRotation = new Quaternionf();
+    @Export(label = "Range", min = 0.0f, max = 200.0f, step = 0.1f)
     private float range = 10.0f;
+    @Export(label = "Inner Cone Radians", min = 0.0f, max = 3.14159f, step = 0.01f)
     private float innerConeRadians = (float) Math.toRadians(15.0);
+    @Export(label = "Outer Cone Radians", min = 0.0f, max = 3.14159f, step = 0.01f)
     private float outerConeRadians = (float) Math.toRadians(25.0);
 
     @Override
