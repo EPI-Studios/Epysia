@@ -1,7 +1,8 @@
 package fr.epistudio.epysia.render.texture;
 
 import fr.epistudio.epysia.assets.AssetMetaFile;
-import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
+import fr.epistudio.epysia.assets.AssetVariant;
+import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
 import fr.epistudio.epysia.assets.source.AssetResolvers;
 import fr.epistudio.epysia.assets.source.AssetSource;
 import fr.epistudio.epysia.assets.source.FilesystemAssetSource;
@@ -25,10 +26,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Locale;
-import java.util.Optional;
+import java.util.Map;
 
 public final class Texture2D {
 
@@ -57,49 +59,49 @@ public final class Texture2D {
     }
 
     public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap) {
-        AssetSource source = AssetResolvers.forPath(path, "").source()
-                .orElseThrow(() -> new EpysiaException("Texture resource not found: " + path));
-        return loadFrom(backend, source, format, wrap, metaFilter(path));
+        return load(backend, path, format, wrap, importSettings(path).filter());
     }
 
     public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap,
             SamplerFilter filter) {
         AssetSource source = AssetResolvers.forPath(path, "").source()
                 .orElseThrow(() -> new EpysiaException("Texture resource not found: " + path));
+        if (HighDynamicRangeImage.isHighDynamicRange(path)) {
+            return uploadHighDynamicRange(backend, decodeHighDynamicRange(path, source), wrap, filter);
+        }
         return loadFrom(backend, source, format, wrap, filter);
     }
 
-    public static SamplerFilter metaFilter(String path) {
-        String metaPath = TexturePathPrefixes.stripPrefixes(path) + AssetMetaFile.SUFFIX;
-        return AssetResolvers.forPath(metaPath, "").source()
-                .flatMap(Texture2D::readFilterName)
-                .filter(Texture2D::isPointFilterName)
-                .map(name -> SamplerFilter.NEAREST)
-                .orElse(projectDefaultFilter());
-    }
-
-    private static SamplerFilter projectDefaultFilter() {
-        return "nearest".equalsIgnoreCase(System.getProperty("epysia.texture.filter", "linear"))
-                ? SamplerFilter.NEAREST : SamplerFilter.LINEAR;
-    }
-
-    private static Optional<String> readFilterName(AssetSource source) {
-        Optional<InputStream> opened = source.open();
-        if (opened.isEmpty()) {
-            return Optional.empty();
+    private static HighDynamicRangeImage decodeHighDynamicRange(String path, AssetSource source) {
+        if (path.toLowerCase(Locale.ROOT).endsWith(".exr")) {
+            return HighDynamicRangeImage.decodeOpenExr(source.path());
         }
-        try (InputStream stream = opened.get()) {
-            String text = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-            Object filter = new JsonReader(text).readRootObject().get(AssetMetaFile.FILTER_KEY);
-            return filter instanceof String name ? Optional.of(name) : Optional.empty();
-        } catch (IOException | RuntimeException unreadable) {
-            return Optional.empty();
+        return HighDynamicRangeImage.decodeRadiance(copyToDirectBuffer(readBytes(source)));
+    }
+
+    private static TextureHandle uploadHighDynamicRange(RenderBackend backend, HighDynamicRangeImage image,
+            TextureWrap wrap, SamplerFilter filter) {
+        try {
+            TextureHandle handle = backend.createTexture(new TextureDescriptor(image.width(), image.height(),
+                    TextureFormat.RGBA16F, TextureUsage.SAMPLED, filter, TextureKind.TEXTURE_2D, 1, 1, wrap));
+            backend.writeTexture(handle, image.pixels());
+            return handle;
+        } finally {
+            image.free();
         }
     }
 
-    private static boolean isPointFilterName(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        return lower.equals("point") || lower.equals("nearest");
+    public static TextureImportSettings importSettings(String path) {
+        return TextureImportSettings.from(metaOf(path), AssetVariant.none());
+    }
+
+    private static Map<String, Object> metaOf(String path) {
+        try {
+            Path file = Path.of(path);
+            return Files.isRegularFile(file) ? AssetMetaFile.settingsOf(file) : Map.of();
+        } catch (InvalidPathException malformed) {
+            return Map.of();
+        }
     }
 
     public static TextureHandle loadFromFile(RenderBackend backend, Path imagePath) {
@@ -132,6 +134,27 @@ public final class Texture2D {
         ByteBuffer pixel = BufferUtils.createByteBuffer(4);
         pixel.put((byte) 0xFF).put((byte) 0xFF).put((byte) 0xFF).put((byte) 0xFF).flip();
         return upload(backend, 1, 1, pixel, TextureFormat.RGBA8);
+    }
+
+    public static TextureHandle solidColor(RenderBackend backend, int red, int green, int blue) {
+        ByteBuffer pixel = BufferUtils.createByteBuffer(4);
+        pixel.put((byte) red).put((byte) green).put((byte) blue).put((byte) 0xFF).flip();
+        return upload(backend, 1, 1, pixel, TextureFormat.RGBA8);
+    }
+
+    public static TextureHandle fromPixels(RenderBackend backend, int width, int height, ByteBuffer rgbaPixels) {
+        return upload(backend, width, height, rgbaPixels, TextureFormat.RGBA8);
+    }
+
+    public static TextureHandle fromTilingPixels(RenderBackend backend, int width, int height,
+                                                 ByteBuffer rgbaPixels, TextureFormat format) {
+        int mipLevels = 32 - Integer.numberOfLeadingZeros(Math.max(1, Math.max(width, height)));
+        TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height, format,
+                TextureUsage.SAMPLED, SamplerFilter.LINEAR, TextureKind.TEXTURE_2D, 1, mipLevels,
+                TextureWrap.REPEAT));
+        backend.writeTexture(handle, rgbaPixels);
+        backend.generateMipmaps(handle);
+        return handle;
     }
 
     public static TextureHandle valueNoise(RenderBackend backend, int size, long seed) {

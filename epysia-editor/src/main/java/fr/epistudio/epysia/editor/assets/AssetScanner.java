@@ -142,7 +142,8 @@ public final class AssetScanner {
             return AssetType.MESH;
         }
         if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
-                || lower.endsWith(".tga") || lower.endsWith(".bmp")) {
+                || lower.endsWith(".tga") || lower.endsWith(".bmp")
+                || lower.endsWith(".hdr") || lower.endsWith(".exr")) {
             return AssetType.TEXTURE;
         }
         if (lower.endsWith(".wav") || lower.endsWith(".ogg") || lower.endsWith(".mp3") || lower.endsWith(".flac")) {
