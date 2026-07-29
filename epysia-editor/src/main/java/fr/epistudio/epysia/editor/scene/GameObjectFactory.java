@@ -9,6 +9,10 @@ import fr.epistudio.epysia.components.PointLight;
 import fr.epistudio.epysia.components.SpotLight;
 import fr.epistudio.epysia.components.SpriteRenderer;
 import fr.epistudio.epysia.components.TilemapRenderer;
+import fr.epistudio.epysia.components.GlobalLight2D;
+import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.components.PointLight2D;
+import fr.epistudio.epysia.components.SpotLight2D;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.builtin.AddGameObjectCommand;
@@ -83,6 +87,29 @@ public final class GameObjectFactory {
         gameObject.addComponent(new Transform2D().setPosition(position.x, position.y));
         gameObject.addComponent(new TilemapRenderer());
         gameObject.addComponent(new TilemapCollider2D());
+        commit(gameObject);
+        return gameObject;
+    }
+
+    public GameObject createPointLight2D(Vector3f position) {
+        return createLight2D("Point Light 2D", new PointLight2D(), position);
+    }
+
+    public GameObject createSpotLight2D(Vector3f position) {
+        return createLight2D("Spot Light 2D", new SpotLight2D(), position);
+    }
+
+    public GameObject createGlobalLight2D(Vector3f position) {
+        GameObject gameObject = new GameObject(uniqueName("Global Light 2D"));
+        gameObject.addComponent(new GlobalLight2D());
+        commit(gameObject);
+        return gameObject;
+    }
+
+    private GameObject createLight2D(String name, IComponent light, Vector3f position) {
+        GameObject gameObject = new GameObject(uniqueName(name));
+        gameObject.addComponent(new Transform2D().setPosition(position.x, position.y));
+        gameObject.addComponent(light);
         commit(gameObject);
         return gameObject;
     }

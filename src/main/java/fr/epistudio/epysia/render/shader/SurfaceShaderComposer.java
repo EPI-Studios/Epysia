@@ -26,6 +26,7 @@ public final class SurfaceShaderComposer {
     private static final String COLOR_CALL_MARKER = "// SURFACE_COLOR_CALL";
     private static final String NORMAL_CALL_MARKER = "// SURFACE_NORMAL_CALL";
     private static final String SHADE_CALL_MARKER = "// SURFACE_SHADE_CALL";
+    private static final String SPRITE_CALL_MARKER = "// SPRITE_SURFACE_CALL";
     private static final Pattern VERTEX_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceVertex\\s*\\(");
     private static final Pattern COLOR_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceColor\\s*\\(");
     private static final Pattern LIGHT_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceLight\\s*\\(");
@@ -146,6 +147,25 @@ public final class SurfaceShaderComposer {
         return new LoadedShader(source, composed.dependencyPaths());
     }
 
+    public static LoadedShader composeSpriteFragment(LoadedShader base, LoadedShader surface) {
+        ParsedSource parsed = ShaderUniformParser.parse(surface.source());
+        String functions = uniformsBlock(parsed) + parsed.body() + spriteDefaultIfMissing(parsed.body());
+        String source = replaceMarker(base.source(), FUNCTIONS_MARKER, functions);
+        source = replaceMarker(source, SPRITE_CALL_MARKER, spriteCall());
+        Set<String> dependencies = new LinkedHashSet<>(base.dependencyPaths());
+        dependencies.addAll(surface.dependencyPaths());
+        return new LoadedShader(source, List.copyOf(dependencies));
+    }
+
+    private static String spriteDefaultIfMissing(String body) {
+        return SPRITE_FUNCTION_PATTERN.matcher(ShaderComments.mask(body)).find()
+                ? "" : ShaderSnippets.block("surface/default_sprite.glsl");
+    }
+
+    private static String spriteCall() {
+        return ShaderSnippets.line("surface/sprite_call.glsl");
+    }
+
     public static boolean declaresUnshaded(LoadedShader surface) {
         return UNSHADED_MODE_PATTERN.matcher(ShaderComments.mask(surface.source())).find();
     }
@@ -166,6 +186,8 @@ public final class SurfaceShaderComposer {
 
     private static final String VERTEX_MODEL_EXPRESSION = "OBJECT_MODEL";
     private static final String FRAGMENT_MODEL_EXPRESSION = "instanceTransforms[surfaceInstanceIndex].model";
+    private static final java.util.regex.Pattern SPRITE_FUNCTION_PATTERN =
+            java.util.regex.Pattern.compile("\\bvoid\\s+spriteSurface\\s*\\(");
 
     private static String objectHelpers(String modelExpression) {
         return "mat4 objectToWorld() { return " + modelExpression + "; }\n"

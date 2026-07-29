@@ -18,6 +18,8 @@ import fr.epistudio.epysia.render.backend.BufferDescriptor;
 import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.BufferUsage;
 import fr.epistudio.epysia.render.backend.DrawCommand;
+import fr.epistudio.epysia.render.backend.BindingSetHandle;
+import fr.epistudio.epysia.render.backend.PipelineHandle;
 import fr.epistudio.epysia.render.backend.IndexFormat;
 import fr.epistudio.epysia.render.backend.MeshDescriptor;
 import fr.epistudio.epysia.render.backend.MeshHandle;
@@ -38,6 +40,7 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -61,6 +64,7 @@ public final class TilemapRenderSystem implements RenderSystem {
         private long builtVersion;
         private long builtTextureId;
         private float builtOpacity;
+        private int builtSurfaceHash;
     }
 
     private final SpriteRenderSystem spriteRenderSystem;
@@ -138,12 +142,26 @@ public final class TilemapRenderSystem implements RenderSystem {
         if (requiresRebuild(geometry, transform, renderer, tilemap, texture)) {
             rebuildGeometry(geometry, transform, renderer, tilemap, atlas, texture);
         }
+        boolean lit = renderer.lit();
+        PipelineHandle pipeline = lit
+                ? spriteRenderSystem.sharedLitPipeline() : spriteRenderSystem.sharedPipeline();
+        BindingSetHandle bindings = lit
+                ? spriteRenderSystem.sharedLitBindings(texture,
+                        renderer.normalMapRef().directOrNull(),
+                        renderer.metallicRoughnessMapRef().directOrNull(),
+                        renderer.emissiveMapRef().directOrNull())
+                : spriteRenderSystem.bindingsFor(texture);
         for (ChunkMesh chunk : geometry.chunks) {
             long sortKey = SpriteSortKeys.compose(renderer.sortingLayer(), renderer.orderInLayer(),
                     SpriteSortKeys.KIND_TILEMAP, submitSequence++);
-            frame.submit(RenderPasses.OVERLAY_2D, new DrawCommand(spriteRenderSystem.sharedPipeline(),
-                    chunk.mesh(), spriteRenderSystem.bindingsFor(texture), sortKey, 1));
+            frame.submit(RenderPasses.OVERLAY_2D,
+                    new DrawCommand(pipeline, chunk.mesh(), bindings, sortKey, 1));
         }
+    }
+
+    private static int surfaceHashOf(TilemapRenderer renderer) {
+        return Objects.hash(renderer.metallic(), renderer.roughness(),
+                renderer.normalStrength(), renderer.emissiveStrength(), renderer.lightLayers());
     }
 
     private static boolean requiresRebuild(RendererGeometry geometry, Transform2D transform,
@@ -152,6 +170,7 @@ public final class TilemapRenderSystem implements RenderSystem {
                 || geometry.builtVersion != tilemap.version()
                 || geometry.builtTextureId != texture.id()
                 || geometry.builtOpacity != renderer.opacity()
+                || geometry.builtSurfaceHash != surfaceHashOf(renderer)
                 || !geometry.builtTint.equals(renderer.tint())
                 || !geometry.builtMatrix.equals(transform.localMatrix());
     }
@@ -164,6 +183,7 @@ public final class TilemapRenderSystem implements RenderSystem {
         geometry.builtVersion = tilemap.version();
         geometry.builtTextureId = texture.id();
         geometry.builtOpacity = renderer.opacity();
+        geometry.builtSurfaceHash = surfaceHashOf(renderer);
         geometry.builtTint.set(renderer.tint());
         geometry.builtMatrix.set(transform.localMatrix());
         logger.info("[TilemapRenderSystem] rebuilt " + geometry.chunks.size() + " chunk(s) for tilemap version "
@@ -308,6 +328,15 @@ public final class TilemapRenderSystem implements RenderSystem {
                 .putFloat(tint.y * scratchModulate.y)
                 .putFloat(tint.z * scratchModulate.z)
                 .putFloat(renderer.opacity() * scratchModulate.w);
+        vertices.putFloat(renderer.metallic()).putFloat(renderer.roughness())
+                .putFloat(renderer.normalStrength()).putFloat(renderer.emissiveStrength());
+        vertices.putFloat(1.0f).putFloat(1.0f).putFloat(renderer.lightLayers()).putFloat(0.0f);
+        putVector4(vertices, renderer.shaderParams0());
+        putVector4(vertices, renderer.shaderParams1());
+    }
+
+    private static void putVector4(ByteBuffer vertices, org.joml.Vector4f value) {
+        vertices.putFloat(value.x).putFloat(value.y).putFloat(value.z).putFloat(value.w);
     }
 
     private void releaseUnseenGeometry() {

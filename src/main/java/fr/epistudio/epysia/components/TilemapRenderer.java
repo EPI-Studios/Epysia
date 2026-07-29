@@ -5,10 +5,10 @@ import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
-import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import java.util.Optional;
 
@@ -16,15 +16,8 @@ import java.util.Optional;
 @RequiresComponent(Transform2D.class)
 public final class TilemapRenderer extends Component {
 
-    public enum Filter {
-        POINT,
-        LINEAR
-    }
-
     @Export(label = "Tilemap")
     private final AssetRef<SpriteTilemap> tilemap = new AssetRef<>(SpriteTilemap.class);
-    @Export(label = "Filter")
-    private Filter filter = Filter.POINT;
     @Export(label = "Tint")
     private final Vector3f tint = new Vector3f(1.0f, 1.0f, 1.0f);
     @Export(label = "Opacity", min = 0.0f, max = 1.0f, step = 0.01f)
@@ -33,10 +26,91 @@ public final class TilemapRenderer extends Component {
     private int sortingLayer;
     @Export(label = "Order In Layer", step = 1.0f)
     private int orderInLayer;
+    @Export(label = "Lit")
+    private boolean lit;
+    @Export(label = "Normal Map")
+    private final AssetRef<TextureHandle> normalMap = new AssetRef<>(TextureHandle.class);
+    @Export(label = "Metallic Roughness Map")
+    private final AssetRef<TextureHandle> metallicRoughnessMap = new AssetRef<>(TextureHandle.class);
+    @Export(label = "Emissive Map")
+    private final AssetRef<TextureHandle> emissiveMap = new AssetRef<>(TextureHandle.class);
+    @Export(label = "Metallic", min = 0.0f, max = 1.0f, step = 0.01f)
+    private float metallic;
+    @Export(label = "Roughness", min = 0.0f, max = 1.0f, step = 0.01f)
+    private float roughness = 0.8f;
+    @Export(label = "Normal Strength", min = 0.0f, max = 4.0f, step = 0.01f)
+    private float normalStrength = 1.0f;
+    @Export(label = "Emissive Strength", min = 0.0f, max = 20.0f, step = 0.05f)
+    private float emissiveStrength = 1.0f;
+    @Export(label = "Shader Params 0", step = 0.01f)
+    private final Vector4f shaderParams0 = new Vector4f();
+    @Export(label = "Shader Params 1", step = 0.01f)
+    private final Vector4f shaderParams1 = new Vector4f();
+    @Export(label = "Light Layers", step = 1.0f)
+    private int lightLayers = Light2D.ALL_LIGHT_LAYERS;
 
     private final transient AssetRef<SpriteAtlas> atlas = new AssetRef<>(SpriteAtlas.class);
     private final transient AssetRef<TextureHandle> texture = new AssetRef<>(TextureHandle.class);
     private transient String appliedAtlasPath = "";
+
+    public boolean lit() {
+        return lit;
+    }
+
+    public TilemapRenderer setLit(boolean lit) {
+        this.lit = lit;
+        return this;
+    }
+
+    public AssetRef<TextureHandle> normalMapRef() {
+        return normalMap;
+    }
+
+    public AssetRef<TextureHandle> metallicRoughnessMapRef() {
+        return metallicRoughnessMap;
+    }
+
+    public AssetRef<TextureHandle> emissiveMapRef() {
+        return emissiveMap;
+    }
+
+    public float metallic() {
+        return metallic;
+    }
+
+    public float roughness() {
+        return roughness;
+    }
+
+    public float normalStrength() {
+        return normalStrength;
+    }
+
+    public float emissiveStrength() {
+        return emissiveStrength;
+    }
+
+    public Vector4f shaderParams0() {
+        return shaderParams0;
+    }
+
+    public Vector4f shaderParams1() {
+        return shaderParams1;
+    }
+
+    public TilemapRenderer setShaderParams0(float x, float y, float z, float w) {
+        shaderParams0.set(x, y, z, w);
+        return this;
+    }
+
+    public TilemapRenderer setShaderParams1(float x, float y, float z, float w) {
+        shaderParams1.set(x, y, z, w);
+        return this;
+    }
+
+    public int lightLayers() {
+        return lightLayers;
+    }
 
     public AssetRef<SpriteTilemap> tilemapRef() {
         return tilemap;
@@ -131,29 +205,22 @@ public final class TilemapRenderer extends Component {
         return this;
     }
 
-    public Filter filter() {
-        return filter;
-    }
-
-    public TilemapRenderer setFilter(Filter value) {
-        filter = value;
-        return this;
-    }
-
-    private String withFilterPrefix(String path) {
-        if (filter != Filter.POINT || path.isEmpty() || path.startsWith(TexturePathPrefixes.POINT_PREFIX)) {
-            return path;
-        }
-        return TexturePathPrefixes.POINT_PREFIX + path;
-    }
-
     @Override
     public void onLoad(EngineServices services) {
         refresh(services);
     }
 
     public void refresh(EngineServices services) {
+        resolveIfNeeded(services, normalMap);
+        resolveIfNeeded(services, metallicRoughnessMap);
+        resolveIfNeeded(services, emissiveMap);
         tilemap.resolve(services.assets()).ifPresent(loaded -> refreshAtlas(services, loaded));
+    }
+
+    private static void resolveIfNeeded(EngineServices services, AssetRef<TextureHandle> reference) {
+        if (reference.direct().isEmpty() && !reference.isEmpty()) {
+            reference.resolve(services.assets());
+        }
     }
 
     private void refreshAtlas(EngineServices services, SpriteTilemap loaded) {
@@ -169,7 +236,7 @@ public final class TilemapRenderer extends Component {
         if (loadedAtlas.texturePath().isEmpty()) {
             return;
         }
-        texture.setPath(withFilterPrefix(loadedAtlas.texturePath()));
+        texture.setPath(loadedAtlas.texturePath());
         texture.resolve(services.assets());
     }
 }

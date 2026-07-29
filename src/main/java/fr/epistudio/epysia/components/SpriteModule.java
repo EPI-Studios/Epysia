@@ -13,5 +13,6 @@ public final class SpriteModule implements EngineModule {
     @Override
     public void registerSystems(SystemRegistry registry) {
         registry.add(new FlipbookSystem());
+        registry.add(new FollowTransformSystem());
     }
 }

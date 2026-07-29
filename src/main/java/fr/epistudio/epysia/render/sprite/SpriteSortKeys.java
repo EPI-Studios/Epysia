@@ -13,7 +13,16 @@ public final class SpriteSortKeys {
     private static final int ORDER_SHIFT = 32;
     private static final int KIND_SHIFT = 31;
 
+    private static final float Y_SORT_PRECISION = 16.0f;
+    private static final int ORDER_MINIMUM = -32768;
+    private static final int ORDER_MAXIMUM = 32767;
+
     private SpriteSortKeys() {
+    }
+
+    public static int orderFromWorldY(float worldY) {
+        long scaled = Math.round(-worldY * Y_SORT_PRECISION);
+        return (int) Math.clamp(scaled, ORDER_MINIMUM, ORDER_MAXIMUM);
     }
 
     public static long compose(int sortingLayer, int orderInLayer, long kind, long sequence) {
