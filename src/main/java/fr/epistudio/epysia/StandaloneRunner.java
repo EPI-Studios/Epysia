@@ -94,11 +94,14 @@ public final class StandaloneRunner {
         engine.addScene(scene);
         loadModulesInto(engine);
         ShaderLoader shaderLoader = ShaderLoader.autoDetect();
+        shaderLoader.useProject(() -> engine.assets().locator());
         ShaderWatcher shaderWatcher = new ShaderWatcher(shaderLoader.filesystemRoot());
         MeshRenderSystem meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
         engine.addRenderSystem(meshRenderSystem);
-        engine.addRenderSystem(new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger()));
-        SpriteRenderSystem spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+        VfxRenderSystem vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+        vfxRenderSystem.useProject(() -> engine.assets().locator());
+        engine.addRenderSystem(vfxRenderSystem);
+        SpriteRenderSystem spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(new TilemapRenderSystem(spriteRenderSystem, engine.logger()));
         engine.addRenderSystem(new TextRenderSystem(shaderLoader, window, engine, engine.logger()));
@@ -297,10 +300,10 @@ public final class StandaloneRunner {
 
     private static List<Camera3D> collectActiveCameras(Scene scene) {
         List<Camera3D> cameras = new ArrayList<>();
-        for (GameObject gameObject : scene.gameObjects()) {
-            gameObject.getComponent(Camera3D.class)
-                    .filter(Camera3D::active)
-                    .ifPresent(cameras::add);
+        for (Camera3D camera : scene.componentsOf(Camera3D.class)) {
+            if (camera.active()) {
+                cameras.add(camera);
+            }
         }
         return cameras;
     }

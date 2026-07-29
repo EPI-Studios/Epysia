@@ -456,6 +456,10 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     private PostProcessSettings resolvePostProcessSettings() {
+        Scene scene = activeScene;
+        if (scene != null) {
+            return scene.postProcess();
+        }
         for (RenderSystem system : renderSystems) {
             if (system instanceof PostProcessSystem postProcess) {
                 return postProcess.settings();
@@ -526,12 +530,20 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     private StageBinding resolveFollowedBinding(RenderPass pass) {
-        StageBinding configured = stageBindings.get(pass);
+        StageBinding configured = bindingOrDefault(pass);
         RenderPass followed = stageFollowers.get(pass);
         if (followed == null) {
             return configured;
         }
-        return new StageBinding(stageBindings.get(followed).target(), configured.clear());
+        return new StageBinding(bindingOrDefault(followed).target(), configured.clear());
+    }
+
+    private StageBinding bindingOrDefault(RenderPass pass) {
+        StageBinding configured = stageBindings.get(pass);
+        if (configured != null) {
+            return configured;
+        }
+        return new StageBinding(RenderTargetHandle.SCREEN, PassClear.none());
     }
 
     @Override
