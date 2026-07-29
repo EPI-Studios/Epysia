@@ -164,7 +164,8 @@ public final class AudioSystem implements GameSystem {
 
     private void updateListener(Scene scene) {
         AudioListenerComponent listener = findListener(scene);
-        AL10.alListenerf(AL10.AL_GAIN, mixer.busGain(AudioBus.MASTER));
+        float listenerGain = listener == null ? 1.0f : listener.gain();
+        AL10.alListenerf(AL10.AL_GAIN, mixer.busGain(AudioBus.MASTER) * listenerGain);
         if (listener == null) {
             return;
         }
