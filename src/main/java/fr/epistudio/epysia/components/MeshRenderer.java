@@ -33,9 +33,63 @@ public final class MeshRenderer extends Component implements MeshRenderSource {
     @Export(label = "Visible Until", min = 0.0f, max = 100000.0f, step = 0.5f)
     private float visibilityRangeEnd;
     private final List<Material> materials = new ArrayList<>();
+    private final List<LevelOfDetail> levelsOfDetail = new ArrayList<>();
+    private int activeLevelOfDetail;
+
+    private record LevelOfDetail(AssetRef<UploadedMesh> mesh, float switchDistance) {
+    }
+
+    private static final float LEVEL_OF_DETAIL_HYSTERESIS = 0.92f;
 
     public AssetRef<UploadedMesh> meshRef() {
         return mesh;
+    }
+
+    public MeshRenderer addLevelOfDetail(UploadedMesh levelMesh, float switchDistance) {
+        AssetRef<UploadedMesh> reference = new AssetRef<>(UploadedMesh.class);
+        reference.setDirect(levelMesh);
+        levelsOfDetail.add(new LevelOfDetail(reference, switchDistance));
+        return this;
+    }
+
+    public MeshRenderer addLevelOfDetailPath(String path, float switchDistance) {
+        AssetRef<UploadedMesh> reference = new AssetRef<>(UploadedMesh.class);
+        reference.setPath(path);
+        levelsOfDetail.add(new LevelOfDetail(reference, switchDistance));
+        return this;
+    }
+
+    public int levelOfDetailCount() {
+        return levelsOfDetail.size();
+    }
+
+    public int activeLevelOfDetail() {
+        return activeLevelOfDetail;
+    }
+
+    public UploadedMesh meshForDistance(float distance) {
+        UploadedMesh base = mesh.directOrNull();
+        if (levelsOfDetail.isEmpty()) {
+            return base;
+        }
+        activeLevelOfDetail = selectLevelOfDetail(distance);
+        if (activeLevelOfDetail == 0) {
+            return base;
+        }
+        UploadedMesh selected = levelsOfDetail.get(activeLevelOfDetail - 1).mesh().directOrNull();
+        return selected == null ? base : selected;
+    }
+
+    private int selectLevelOfDetail(float distance) {
+        int level = Math.min(activeLevelOfDetail, levelsOfDetail.size());
+        while (level < levelsOfDetail.size() && distance >= levelsOfDetail.get(level).switchDistance()) {
+            level++;
+        }
+        while (level > 0
+                && distance < levelsOfDetail.get(level - 1).switchDistance() * LEVEL_OF_DETAIL_HYSTERESIS) {
+            level--;
+        }
+        return level;
     }
 
     public boolean viewModel() {
@@ -146,7 +200,16 @@ public final class MeshRenderer extends Component implements MeshRenderSource {
         if (mesh.direct().isPresent() && materials.isEmpty()) {
             attachDefaultMaterial(services);
         }
+        resolveLevelsOfDetail(services);
         resolveMaterialTextures(services);
+    }
+
+    private void resolveLevelsOfDetail(EngineServices services) {
+        for (LevelOfDetail level : levelsOfDetail) {
+            if (level.mesh().direct().isEmpty() && !level.mesh().isEmpty()) {
+                level.mesh().resolve(services.assets());
+            }
+        }
     }
 
     private void resolveMaterialTextures(EngineServices services) {
