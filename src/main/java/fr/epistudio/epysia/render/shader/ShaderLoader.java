@@ -5,7 +5,12 @@ import fr.epistudio.epysia.exceptions.EpysiaException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.AssetScheme;
+import fr.epistudio.epysia.assets.AssetUri;
+
 import java.nio.file.Files;
+import java.util.function.Supplier;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -18,6 +23,7 @@ public final class ShaderLoader {
     private static final String CLASSPATH_ROOT = "shaders/";
 
     private final Optional<Path> filesystemRoot;
+    private Supplier<AssetLocator> locatorSource = () -> null;
     private final Map<String, String> virtualSources = new ConcurrentHashMap<>();
 
     public ShaderLoader(Optional<Path> filesystemRoot) {
@@ -39,6 +45,10 @@ public final class ShaderLoader {
     public static ShaderLoader autoDetect() {
         Path candidate = Path.of("src/main/resources/shaders");
         return new ShaderLoader(Optional.of(candidate));
+    }
+
+    public void useProject(Supplier<AssetLocator> projectLocator) {
+        this.locatorSource = projectLocator == null ? () -> null : projectLocator;
     }
 
     public boolean canHotReload() {
@@ -83,10 +93,20 @@ public final class ShaderLoader {
         return Files.isRegularFile(sibling) ? sibling.toString() : includePath;
     }
 
+    private Optional<String> resolveProjectPath(String shaderPath) {
+        return AssetUri.parse(shaderPath)
+                .filter(uri -> uri.scheme() == AssetScheme.PROJECT)
+                .flatMap(uri -> Optional.ofNullable(locatorSource.get()).map(active -> active.resolvedPath(uri)));
+    }
+
     private String readSource(String shaderPath) {
         String virtual = virtualSources.get(shaderPath);
         if (virtual != null) {
             return virtual;
+        }
+        Optional<String> projectPath = resolveProjectPath(shaderPath);
+        if (projectPath.isPresent()) {
+            return readAbsoluteFile(Path.of(projectPath.get()));
         }
         Path candidate = Path.of(shaderPath);
         if (candidate.isAbsolute()) {

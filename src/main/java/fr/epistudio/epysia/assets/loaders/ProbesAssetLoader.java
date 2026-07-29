@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.assets.loaders;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AssetLoadRequest;
 import fr.epistudio.epysia.assets.AssetLoader;
 import fr.epistudio.epysia.assets.epyprobes.BakedProbes;
 import fr.epistudio.epysia.assets.epyprobes.EpyProbesFormat;
@@ -20,7 +21,8 @@ public final class ProbesAssetLoader implements AssetLoader<BakedProbes> {
     }
 
     @Override
-    public BakedProbes load(EngineServices services, String path) {
+    public BakedProbes load(EngineServices services, AssetLoadRequest request) {
+        String path = services.assets().locator().resolvedPath(request.uri());
         if (!path.endsWith(EpyProbesFormat.EXTENSION)) {
             throw new EpysiaException("Unsupported probes asset extension: " + path);
         }

@@ -73,7 +73,7 @@ public final class GameLauncher {
             SceneSerializer serializer = new SceneSerializer(registry);
             serializer.load(services.scene(), scenePath, services);
             ensureCameraExists(services.scene());
-            projectRoot.ifPresent(root -> applyCollisionLayers(services, root, logger));
+            projectRoot.ifPresent(root -> applyCollisionLayers(engine, services, root, logger));
             logger.info("Loaded scene " + scenePath
                     + (projectRoot.isPresent() ? " (project " + projectRoot.get() + ")" : ""));
         });
@@ -101,24 +101,24 @@ public final class GameLauncher {
 
     private static void attachAssetDatabase(EngineServices services, Path projectRoot, Logger logger) {
         try {
-            services.assets().setDatabase(AssetDatabase.open(projectRoot));
+            services.assets().attachProject(projectRoot);
             logger.info("[assets] opened asset database for " + projectRoot);
         } catch (UncheckedIOException error) {
             logger.error("[assets] failed to open asset database for " + projectRoot, error);
         }
     }
 
-    private static void applyCollisionLayers(EngineServices services, Path projectRoot, Logger logger) {
+    private static void applyCollisionLayers(EpysiaEngine engine, EngineServices services,
+                                             Path projectRoot, Logger logger) {
         ProjectStore store = new ProjectStore();
         store.readProjectFromDisk(projectRoot, 0L).ifPresent(project -> {
             EditorSettings settings = store.readSettings(project);
             ProjectQuality quality = store.readQuality(project);
-            PhysicsSystem physics = services.systems().get(PhysicsSystem.class);
-            if (physics != null) {
+            engine.gameSystem(PhysicsSystem.class).ifPresent(physics -> {
                 physics.setCollisionLayers(CollisionLayers.from(settings.collisionMatrix()));
                 physics.setGravity(quality.gravityX(), quality.gravityY(), quality.gravityZ());
                 logger.info("[physics] applied collision layer matrix and gravity");
-            }
+            });
             services.inputActions().replaceAll(store.readInputActions(project));
         });
     }

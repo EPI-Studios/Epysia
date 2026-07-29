@@ -8,7 +8,7 @@ public interface AssetLoader<T> {
 
     String[] supportedExtensions();
 
-    T load(EngineServices services, String path);
+    T load(EngineServices services, AssetLoadRequest request);
 
     default void dispose(EngineServices services, T value) {
     }

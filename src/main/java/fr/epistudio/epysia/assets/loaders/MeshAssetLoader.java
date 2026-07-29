@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.assets.loaders;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AssetLoadRequest;
 import fr.epistudio.epysia.assets.AssetLoader;
 import fr.epistudio.epysia.assets.epymesh.EpyMesh;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshFormat;
@@ -33,7 +34,8 @@ public final class MeshAssetLoader implements AssetLoader<UploadedMesh> {
     }
 
     @Override
-    public UploadedMesh load(EngineServices services, String path) {
+    public UploadedMesh load(EngineServices services, AssetLoadRequest request) {
+        String path = services.assets().locator().resolvedPath(request.uri());
         if (path.startsWith(PRESET_PREFIX)) {
             return builtinMeshes.get(path.substring(PRESET_PREFIX.length()));
         }

@@ -1,18 +1,19 @@
 package fr.epistudio.epysia.assets.loaders;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AssetLoadRequest;
 import fr.epistudio.epysia.assets.AssetLoader;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.AssetUri;
+import fr.epistudio.epysia.assets.NestedAssetPaths;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemapJsonCodec;
-import fr.epistudio.epysia.assets.source.AssetResolvers;
 import fr.epistudio.epysia.assets.source.AssetSource;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -20,8 +21,6 @@ import java.util.Optional;
 public final class SpriteTilemapAssetLoader implements AssetLoader<SpriteTilemap> {
 
     public static final String EXTENSION = ".epytilemap";
-
-    private static final String CLASSPATH_ROOT = "tilemaps/";
 
     private final SpriteTilemapJsonCodec codec = new SpriteTilemapJsonCodec();
     private final Map<String, SpriteTilemap> loadedByPath = new HashMap<>();
@@ -37,13 +36,14 @@ public final class SpriteTilemapAssetLoader implements AssetLoader<SpriteTilemap
     }
 
     @Override
-    public SpriteTilemap load(EngineServices services, String path) {
-        return loadedByPath.computeIfAbsent(path, key -> readOrPlaceholder(services, key));
+    public SpriteTilemap load(EngineServices services, AssetLoadRequest request) {
+        return loadedByPath.computeIfAbsent(request.uri().toString(),
+                ignored -> readOrPlaceholder(services, request.uri()));
     }
 
-    private SpriteTilemap readOrPlaceholder(EngineServices services, String path) {
+    private SpriteTilemap readOrPlaceholder(EngineServices services, AssetUri uri) {
         try {
-            return readResolved(path);
+            return readResolved(services.assets().locator(), uri);
         } catch (EpysiaException failure) {
             services.logger().warn("Tilemap unavailable, using an empty placeholder: " + failure.getMessage());
             return new SpriteTilemap(0, 0);
@@ -60,28 +60,11 @@ public final class SpriteTilemapAssetLoader implements AssetLoader<SpriteTilemap
         loadedByPath.clear();
     }
 
-    private SpriteTilemap readResolved(String path) {
-        String assetPath = TexturePathPrefixes.stripPrefixes(path);
-        AssetResolvers.ResolvedLocation location = AssetResolvers.forPath(assetPath, CLASSPATH_ROOT);
-        AssetSource source = location.source().orElseThrow(() ->
-                new EpysiaException("Tilemap not found on filesystem or classpath: " + assetPath));
-        return rebaseAtlasPath(codec.read(readText(source)), assetPath);
-    }
-
-    private static SpriteTilemap rebaseAtlasPath(SpriteTilemap tilemap, String origin) {
-        Path originPath = Path.of(origin);
-        if (tilemap.atlasPath().isEmpty() || !Files.isRegularFile(originPath)) {
-            return tilemap;
-        }
-        String storedPath = tilemap.atlasPath();
-        String unprefixedPath = TexturePathPrefixes.stripPrefixes(storedPath);
-        String prefix = storedPath.substring(0, storedPath.length() - unprefixedPath.length());
-        Path atlasPath = Path.of(unprefixedPath);
-        if (atlasPath.isAbsolute()) {
-            return tilemap;
-        }
-        Path baseDirectory = originPath.toAbsolutePath().getParent();
-        return tilemap.setAtlasPath(prefix + baseDirectory.resolve(atlasPath).normalize());
+    private SpriteTilemap readResolved(AssetLocator locator, AssetUri uri) {
+        AssetSource source = locator.open(uri).orElseThrow(() ->
+                new EpysiaException("Tilemap not found: " + uri));
+        SpriteTilemap tilemap = codec.read(readText(source));
+        return tilemap.setAtlasPath(NestedAssetPaths.rebase(uri, tilemap.atlasPath()));
     }
 
     private static String readText(AssetSource source) {

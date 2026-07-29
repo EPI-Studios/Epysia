@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.assets.loaders;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AssetLoadRequest;
 import fr.epistudio.epysia.assets.AssetLoader;
 import fr.epistudio.epysia.assets.source.AssetResolvers;
 import fr.epistudio.epysia.assets.source.AssetSource;
@@ -30,7 +31,8 @@ public final class PhysicsMaterialLoader implements AssetLoader<PhysicsMaterial>
     }
 
     @Override
-    public PhysicsMaterial load(EngineServices services, String path) {
+    public PhysicsMaterial load(EngineServices services, AssetLoadRequest request) {
+        String path = services.assets().locator().resolvedPath(request.uri());
         Map<String, Object> fields = readFields(path);
         return new PhysicsMaterial(
                 floatField(fields, "dynamicFriction", PhysicsMaterial.DEFAULT.dynamicFriction()),

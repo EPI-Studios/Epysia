@@ -1,8 +1,11 @@
 package fr.epistudio.epysia.assets.loaders;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AssetLoadRequest;
 import fr.epistudio.epysia.assets.AssetLoader;
-import fr.epistudio.epysia.assets.source.AssetResolvers;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.AssetUri;
+import fr.epistudio.epysia.assets.NestedAssetPaths;
 import fr.epistudio.epysia.assets.source.AssetSource;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.material.Material;
@@ -21,8 +24,6 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
 
     public static final String EXTENSION = ".epymaterial";
 
-    private static final String CLASSPATH_ROOT = "materials/";
-
     private final MaterialJsonCodec codec = new MaterialJsonCodec();
     private final Map<String, Material> loadedByPath = new HashMap<>();
 
@@ -37,8 +38,10 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
     }
 
     @Override
-    public Material load(EngineServices services, String path) {
-        return loadedByPath.computeIfAbsent(path, this::readResolved);
+    public Material load(EngineServices services, AssetLoadRequest request) {
+        AssetLocator locator = services.assets().locator();
+        return loadedByPath.computeIfAbsent(request.uri().toString(),
+                ignored -> readResolved(locator, request.uri()));
     }
 
     @Override
@@ -46,45 +49,30 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
         loadedByPath.clear();
     }
 
-    Material loadFromFile(Path file) {
-        String key = file.toAbsolutePath().normalize().toString();
-        return loadedByPath.computeIfAbsent(key, ignored -> decode(readFileText(file), key));
+    Material loadFromFile(AssetLocator locator, Path file) {
+        AssetUri uri = locator.fromFile(file);
+        return loadedByPath.computeIfAbsent(uri.toString(),
+                ignored -> decode(readFileText(file), uri));
     }
 
-    private Material readResolved(String path) {
-        AssetResolvers.ResolvedLocation location = AssetResolvers.forPath(path, CLASSPATH_ROOT);
-        AssetSource source = location.source().orElseThrow(() ->
-                new EpysiaException("Material asset not found on filesystem or classpath: " + path));
-        return decode(readText(source), path);
+    private Material readResolved(AssetLocator locator, AssetUri uri) {
+        AssetSource source = locator.open(uri).orElseThrow(() ->
+                new EpysiaException("Material asset not found: " + uri));
+        return decode(readText(source), uri);
     }
 
-    private Material decode(String json, String origin) {
+    private Material decode(String json, AssetUri origin) {
         Material material = codec.readSingle(json)
                 .orElseThrow(() -> new EpysiaException("Not a material document: " + origin));
-        material.setAssetPath(origin);
+        material.setAssetPath(origin.toString());
         rebaseRelativeTexturePaths(material, origin);
         return material;
     }
 
-    private static void rebaseRelativeTexturePaths(Material material, String origin) {
-        Path originPath = Path.of(origin);
-        if (!Files.isRegularFile(originPath)) {
-            return;
-        }
-        Path baseDirectory = originPath.toAbsolutePath().getParent();
+    private static void rebaseRelativeTexturePaths(Material material, AssetUri origin) {
         for (Map.Entry<String, String> entry : Map.copyOf(material.texturePaths()).entrySet()) {
-            material.setTexturePath(entry.getKey(), rebaseTexturePath(entry.getValue(), baseDirectory));
+            material.setTexturePath(entry.getKey(), NestedAssetPaths.rebase(origin, entry.getValue()));
         }
-    }
-
-    private static String rebaseTexturePath(String storedPath, Path baseDirectory) {
-        String unprefixedPath = TexturePathPrefixes.stripPrefixes(storedPath);
-        String prefix = storedPath.substring(0, storedPath.length() - unprefixedPath.length());
-        Path texturePath = Path.of(unprefixedPath);
-        if (texturePath.isAbsolute()) {
-            return storedPath;
-        }
-        return prefix + baseDirectory.resolve(texturePath).normalize();
     }
 
     private static String readFileText(Path file) {

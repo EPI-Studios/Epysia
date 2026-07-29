@@ -9,7 +9,9 @@ public final class AssetRef<T> {
     private String guid;
     private transient T cached;
     private transient AssetRegistry acquiredFrom;
-    private transient String acquiredPath;
+    private transient AssetUri acquiredUri = AssetUri.empty();
+    private transient AssetUri resolvedUri = AssetUri.empty();
+    private transient AssetVariant variant = AssetVariant.none();
 
     public AssetRef(Class<T> type) {
         this(type, "");
@@ -49,6 +51,30 @@ public final class AssetRef<T> {
         this.path = next;
     }
 
+    public void setUri(AssetUri uri) {
+        setPath(uri.toString());
+    }
+
+    public void setReference(AssetUri uri, String guid) {
+        setPath(uri.toString());
+        setGuid(guid);
+    }
+
+    public AssetUri resolvedUri() {
+        return resolvedUri;
+    }
+
+    public AssetVariant variant() {
+        return variant;
+    }
+
+    public void setVariant(AssetVariant variant) {
+        if (!this.variant.equals(variant)) {
+            releaseHeld();
+        }
+        this.variant = variant;
+    }
+
     public void clearCache() {
         releaseHeld();
     }
@@ -64,37 +90,38 @@ public final class AssetRef<T> {
         if (isEmpty() || registry == null) {
             return Optional.empty();
         }
-        resolvePathFromGuid(registry);
-        if (path.isEmpty()) {
-            return Optional.empty();
-        }
-        Optional<T> loaded = registry.acquire(type, path);
-        loaded.ifPresent(value -> holdAcquired(registry, value));
+        AssetUri effective = effectiveUri(registry);
+        resolvedUri = effective;
+        Optional<T> loaded = registry.acquire(type, effective, variant);
+        loaded.ifPresent(value -> holdAcquired(registry, effective, value));
         return loaded;
     }
 
-    private void holdAcquired(AssetRegistry registry, T value) {
+    private AssetUri effectiveUri(AssetRegistry registry) {
+        AssetUri interpreted = LegacyAssetReferences.interpret(path, registry);
+        return databasePath(registry).map(AssetUri::project).orElse(interpreted);
+    }
+
+    private Optional<String> databasePath(AssetRegistry registry) {
+        if (guid.isEmpty()) {
+            return Optional.empty();
+        }
+        return registry.database().flatMap(database -> database.pathForGuid(guid));
+    }
+
+    private void holdAcquired(AssetRegistry registry, AssetUri uri, T value) {
         cached = value;
         acquiredFrom = registry;
-        acquiredPath = path;
+        acquiredUri = uri;
     }
 
     private void releaseHeld() {
         if (acquiredFrom != null) {
-            acquiredFrom.release(type, acquiredPath);
+            acquiredFrom.release(type, acquiredUri, variant);
             acquiredFrom = null;
-            acquiredPath = null;
+            acquiredUri = AssetUri.empty();
         }
         cached = null;
-    }
-
-    private void resolvePathFromGuid(AssetRegistry registry) {
-        if (guid.isEmpty()) {
-            return;
-        }
-        registry.database()
-                .flatMap(database -> database.pathForGuid(guid))
-                .ifPresent(this::setPath);
     }
 
     public Optional<T> direct() {

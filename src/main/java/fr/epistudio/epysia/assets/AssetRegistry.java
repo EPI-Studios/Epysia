@@ -1,7 +1,9 @@
 package fr.epistudio.epysia.assets;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.logging.Logger;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -18,9 +20,23 @@ public final class AssetRegistry {
     private final Map<String, Entry> cache = new HashMap<>();
     private final EngineServices services;
     private Optional<AssetDatabase> database = Optional.empty();
+    private AssetLocator locator = AssetLocator.withoutProject();
 
     public AssetRegistry(EngineServices services) {
         this.services = services;
+    }
+
+    public void attachProject(Path projectRoot) {
+        locator = AssetLocator.forProject(projectRoot);
+        setDatabase(AssetDatabase.open(projectRoot));
+    }
+
+    public AssetLocator locator() {
+        return locator;
+    }
+
+    public Logger logger() {
+        return services.logger();
     }
 
     public void setDatabase(AssetDatabase database) {
@@ -52,30 +68,51 @@ public final class AssetRegistry {
         return out;
     }
 
-    public <T> Optional<T> resolve(Class<T> type, String path) {
-        return lookup(type, path, false);
+    public <T> Optional<T> resolve(Class<T> type, String storedPath) {
+        return resolve(type, LegacyAssetReferences.interpret(storedPath, this), AssetVariant.none());
     }
 
-    public <T> Optional<T> acquire(Class<T> type, String path) {
-        return lookup(type, path, true);
+    public <T> Optional<T> acquire(Class<T> type, String storedPath) {
+        return acquire(type, LegacyAssetReferences.interpret(storedPath, this), AssetVariant.none());
     }
 
-    public void release(Class<?> type, String path) {
-        if (path == null || path.isEmpty()) {
+    public <T> Optional<T> resolve(Class<T> type, AssetUri uri, AssetVariant variant) {
+        return lookup(type, uri, variant, false);
+    }
+
+    public <T> Optional<T> acquire(Class<T> type, AssetUri uri, AssetVariant variant) {
+        return lookup(type, uri, variant, true);
+    }
+
+    public void release(Class<?> type, AssetUri uri, AssetVariant variant) {
+        if (uri.isEmpty()) {
             return;
         }
-        Entry entry = cache.get(cacheKey(type, path));
+        Entry entry = cache.get(cacheKey(type, uri, variant));
         if (entry != null && entry.refCount > 0) {
             entry.refCount--;
         }
     }
 
+    public void invalidate(AssetUri uri) {
+        String marker = "::" + uri + "|";
+        Iterator<Map.Entry<String, Entry>> entries = cache.entrySet().iterator();
+        while (entries.hasNext()) {
+            Map.Entry<String, Entry> mapEntry = entries.next();
+            if (mapEntry.getKey().contains(marker)) {
+                dispose(mapEntry.getValue());
+                entries.remove();
+            }
+        }
+    }
+
     @SuppressWarnings("unchecked")
-    private <T> Optional<T> lookup(Class<T> type, String path, boolean owning) {
-        if (path == null || path.isEmpty()) {
+    private <T> Optional<T> lookup(Class<T> type, AssetUri uri, AssetVariant variant, boolean owning) {
+        if (uri.isEmpty()) {
             return Optional.empty();
         }
-        Entry entry = cache.computeIfAbsent(cacheKey(type, path), ignored -> loadEntry(type, path));
+        Entry entry = cache.computeIfAbsent(cacheKey(type, uri, variant),
+                ignored -> loadEntry(type, new AssetLoadRequest(uri, variant)));
         if (entry == null) {
             return Optional.empty();
         }
@@ -86,12 +123,12 @@ public final class AssetRegistry {
         return Optional.of((T) entry.value);
     }
 
-    private <T> Entry loadEntry(Class<T> type, String path) {
+    private <T> Entry loadEntry(Class<T> type, AssetLoadRequest request) {
         Optional<AssetLoader<T>> loader = loaderFor(type);
         if (loader.isEmpty()) {
             return null;
         }
-        T value = loader.get().load(services, path);
+        T value = loader.get().load(services, request);
         if (value == null) {
             return null;
         }
@@ -99,25 +136,25 @@ public final class AssetRegistry {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> T resolveOrCompute(Class<T> type, String path, Supplier<T> producer) {
-        Entry entry = cache.get(cacheKey(type, path));
+    public <T> T resolveOrCompute(Class<T> type, String key, Supplier<T> producer) {
+        String computedKey = type.getName() + "::" + key;
+        Entry entry = cache.get(computedKey);
         if (entry != null) {
             return (T) entry.value;
         }
         T produced = producer.get();
         if (produced != null) {
-            cache.put(cacheKey(type, path), new Entry(produced, null));
+            cache.put(computedKey, new Entry(produced, null));
         }
         return produced;
     }
 
     @SuppressWarnings("unchecked")
-    public <T> List<T> loadedMatching(Class<T> type, Predicate<String> pathFilter) {
-        String prefix = type.getName() + "::";
+    public <T> List<T> loaded(Class<T> type, AssetUri uri) {
+        String marker = type.getName() + "::" + uri + "|";
         List<T> matches = new ArrayList<>();
         for (Map.Entry<String, Entry> entry : cache.entrySet()) {
-            if (entry.getKey().startsWith(prefix)
-                    && pathFilter.test(entry.getKey().substring(prefix.length()))) {
+            if (entry.getKey().startsWith(marker)) {
                 matches.add((T) entry.getValue().value);
             }
         }
@@ -130,21 +167,6 @@ public final class AssetRegistry {
             Entry entry = entries.next();
             if (entry.counted && entry.refCount <= 0) {
                 dispose(entry);
-                entries.remove();
-            }
-        }
-    }
-
-    public void unload(String path) {
-        if (path == null || path.isEmpty()) {
-            return;
-        }
-        String suffix = "::" + path.trim();
-        Iterator<Map.Entry<String, Entry>> entries = cache.entrySet().iterator();
-        while (entries.hasNext()) {
-            Map.Entry<String, Entry> mapEntry = entries.next();
-            if (mapEntry.getKey().endsWith(suffix)) {
-                dispose(mapEntry.getValue());
                 entries.remove();
             }
         }
@@ -171,8 +193,8 @@ public final class AssetRegistry {
         loader.dispose(services, (T) value);
     }
 
-    private static String cacheKey(Class<?> type, String path) {
-        return type.getName() + "::" + path.trim();
+    private static String cacheKey(Class<?> type, AssetUri uri, AssetVariant variant) {
+        return type.getName() + "::" + uri + "|" + variant.fingerprint();
     }
 
     private static final class Entry {

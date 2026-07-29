@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.project;
 
+import fr.epistudio.epysia.assets.AssetLocator;
+
 import java.nio.file.Path;
 
 public record Project(String name, Path rootDirectory, String engineVersion, long lastOpenedMillis) {
@@ -9,6 +11,10 @@ public record Project(String name, Path rootDirectory, String engineVersion, lon
     public static final String SCRIPTS_DIRECTORY_NAME = "scripts";
     public static final String DEFAULT_SCENE_NAME = "main";
     public static final String SCENE_EXTENSION = ".epyscene";
+
+    public AssetLocator locator() {
+        return AssetLocator.forProject(rootDirectory);
+    }
 
     public Path markerFile() {
         return rootDirectory.resolve(MARKER_FILENAME);

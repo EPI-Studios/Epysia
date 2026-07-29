@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.assets.loaders;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AssetLoadRequest;
 import fr.epistudio.epysia.assets.AssetLoader;
 import fr.epistudio.epysia.assets.epyinstances.EpyInstancesFormat;
 import fr.epistudio.epysia.assets.epyinstances.EpyInstancesSource;
@@ -20,7 +21,8 @@ public final class InstancesAssetLoader implements AssetLoader<InstanceTransform
     }
 
     @Override
-    public InstanceTransforms load(EngineServices services, String path) {
+    public InstanceTransforms load(EngineServices services, AssetLoadRequest request) {
+        String path = services.assets().locator().resolvedPath(request.uri());
         if (!path.endsWith(EpyInstancesFormat.EXTENSION)) {
             throw new EpysiaException("Unsupported instances asset extension: " + path);
         }

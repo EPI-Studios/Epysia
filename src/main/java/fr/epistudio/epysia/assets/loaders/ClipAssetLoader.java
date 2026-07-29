@@ -2,6 +2,7 @@ package fr.epistudio.epysia.assets.loaders;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.animation.Clip;
+import fr.epistudio.epysia.assets.AssetLoadRequest;
 import fr.epistudio.epysia.assets.AssetLoader;
 import fr.epistudio.epysia.assets.epyclip.EpyClipReader;
 import fr.epistudio.epysia.assets.source.AssetResolvers;
@@ -33,7 +34,8 @@ public final class ClipAssetLoader implements AssetLoader<Clip> {
     }
 
     @Override
-    public Clip load(EngineServices services, String path) {
+    public Clip load(EngineServices services, AssetLoadRequest request) {
+        String path = services.assets().locator().resolvedPath(request.uri());
         return loadedByPath.computeIfAbsent(path, this::readResolved);
     }
 
