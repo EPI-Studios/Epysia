@@ -5,7 +5,8 @@ import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasGrid;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasJsonCodec;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasRegion;
-import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.LegacyAssetReferences;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import imgui.ImDrawList;
@@ -80,6 +81,7 @@ public final class SpriteEditorWindow {
 
     private final SpriteAtlasJsonCodec codec = new SpriteAtlasJsonCodec();
     private final ImagePreviewTexture preview;
+    private final AssetLocator locator;
     private final Consumer<Path> onAtlasSaved;
     private final ConfirmDialog discardConfirm = new ConfirmDialog("Unsaved sprite changes", "Discard");
     private final ImInt editCellWidth = new ImInt(32);
@@ -110,8 +112,9 @@ public final class SpriteEditorWindow {
     private boolean previewPlaying = true;
     private float previewTimeSeconds;
 
-    public SpriteEditorWindow(ImagePreviewTexture preview, Consumer<Path> onAtlasSaved) {
+    public SpriteEditorWindow(ImagePreviewTexture preview, AssetLocator locator, Consumer<Path> onAtlasSaved) {
         this.preview = preview;
+        this.locator = locator;
         this.onAtlasSaved = onAtlasSaved;
     }
 
@@ -297,15 +300,13 @@ public final class SpriteEditorWindow {
         if (storedTexturePath.isEmpty() || atlasPath.isEmpty()) {
             return Optional.empty();
         }
-        String stripped = TexturePathPrefixes.stripPrefixes(storedTexturePath);
-        Path texture = Path.of(stripped);
-        if (!texture.isAbsolute()) {
-            texture = atlasPath.get().toAbsolutePath().getParent().resolve(stripped).normalize();
-        }
-        if (!Files.isRegularFile(texture)) {
+        Optional<Path> texture = locator
+                .file(LegacyAssetReferences.interpretWithoutMigration(storedTexturePath, locator))
+                .filter(Files::isRegularFile);
+        if (texture.isEmpty()) {
             return Optional.empty();
         }
-        Optional<ImagePreviewTexture.PreviewImage> image = preview.get(texture);
+        Optional<ImagePreviewTexture.PreviewImage> image = preview.get(texture.get());
         image.ifPresent(this::rememberTextureSize);
         return image;
     }

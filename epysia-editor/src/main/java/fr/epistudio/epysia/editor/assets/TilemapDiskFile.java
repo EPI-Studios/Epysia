@@ -1,11 +1,13 @@
 package fr.epistudio.epysia.editor.assets;
 
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.LegacyAssetReferences;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemapJsonCodec;
-import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 
 public final class TilemapDiskFile {
@@ -15,17 +17,17 @@ public final class TilemapDiskFile {
     private TilemapDiskFile() {
     }
 
-    public static String serialize(SpriteTilemap tilemap, Path tilemapFile) {
-        return CODEC.write(copyWithAtlasPath(tilemap, relativizedAtlasPath(tilemap.atlasPath(), tilemapFile)));
+    public static String serialize(SpriteTilemap tilemap, AssetLocator locator) {
+        return CODEC.write(copyWithAtlasPath(tilemap, projectAtlasPath(tilemap.atlasPath(), locator)));
     }
 
-    public static void write(SpriteTilemap tilemap, Path tilemapFile) throws IOException {
-        Files.writeString(tilemapFile, serialize(tilemap, tilemapFile));
+    public static void write(SpriteTilemap tilemap, Path tilemapFile, AssetLocator locator) throws IOException {
+        Files.writeString(tilemapFile, serialize(tilemap, locator));
     }
 
-    public static boolean matchesDisk(SpriteTilemap tilemap, Path tilemapFile) {
+    public static boolean matchesDisk(SpriteTilemap tilemap, Path tilemapFile, AssetLocator locator) {
         try {
-            return Files.readString(tilemapFile).equals(serialize(tilemap, tilemapFile));
+            return Files.readString(tilemapFile).equals(serialize(tilemap, locator));
         } catch (IOException unreadable) {
             return false;
         }
@@ -43,24 +45,15 @@ public final class TilemapDiskFile {
         return copy;
     }
 
-    private static String relativizedAtlasPath(String atlasPath, Path tilemapFile) {
+    private static String projectAtlasPath(String atlasPath, AssetLocator locator) {
         if (atlasPath.isEmpty()) {
             return atlasPath;
         }
-        String stripped = TexturePathPrefixes.stripPrefixes(atlasPath);
-        String prefix = atlasPath.substring(0, atlasPath.length() - stripped.length());
-        Path absolute = Path.of(stripped);
-        if (!absolute.isAbsolute()) {
-            return atlasPath;
-        }
-        return relativeOrOriginal(atlasPath, prefix, absolute, tilemapFile);
-    }
-
-    private static String relativeOrOriginal(String atlasPath, String prefix, Path absolute, Path tilemapFile) {
+        String stripped = LegacyAssetReferences.stripPrefixes(atlasPath);
         try {
-            Path base = tilemapFile.toAbsolutePath().getParent();
-            return prefix + base.relativize(absolute.normalize()).toString().replace('\\', '/');
-        } catch (IllegalArgumentException unrelated) {
+            Path candidate = Path.of(stripped);
+            return candidate.isAbsolute() ? locator.fromFile(candidate).toString() : atlasPath;
+        } catch (InvalidPathException malformed) {
             return atlasPath;
         }
     }
