@@ -3,6 +3,9 @@ package fr.epistudio.epysia.editor.ui;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
+import fr.epistudio.epysia.assets.AssetScheme;
+import fr.epistudio.epysia.assets.AssetUri;
+import fr.epistudio.epysia.assets.LegacyAssetReferences;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
@@ -56,7 +59,7 @@ public final class AssetFilePicker {
             return walk.filter(Files::isRegularFile)
                     .filter(path -> !isExcluded(path))
                     .filter(path -> matchesExtension(path, extensions))
-                    .map(path -> path.toAbsolutePath().toString())
+                    .map(path -> project.locator().fromFile(path).toString())
                     .sorted()
                     .toList();
         } catch (IOException error) {
@@ -149,10 +152,7 @@ public final class AssetFilePicker {
     }
 
     private String displayNameFor(String candidate) {
-        Path path = Path.of(candidate);
-        if (path.startsWith(project.rootDirectory())) {
-            return project.rootDirectory().relativize(path).toString();
-        }
-        return candidate;
+        AssetUri uri = LegacyAssetReferences.interpretWithoutMigration(candidate, project.locator());
+        return uri.scheme() == AssetScheme.PROJECT ? uri.path() : candidate;
     }
 }

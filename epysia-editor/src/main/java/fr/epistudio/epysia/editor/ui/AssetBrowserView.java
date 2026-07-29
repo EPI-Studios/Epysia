@@ -3,6 +3,7 @@ package fr.epistudio.epysia.editor.ui;
 import fr.epistudio.epysia.assets.AssetMetaFile;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.editor.assets.AssetEntry;
+import fr.epistudio.epysia.editor.assets.FileManagerReveal;
 import fr.epistudio.epysia.editor.assets.AssetFileNames;
 import fr.epistudio.epysia.editor.assets.AssetQuery;
 import fr.epistudio.epysia.editor.assets.AssetScanner;
@@ -12,6 +13,7 @@ import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.SpriteAtlasFactory;
 import fr.epistudio.epysia.editor.assets.SpriteTilemapFactory;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.editor.icons.AssetTypeIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.importer.AssetImportPipeline;
@@ -729,7 +731,7 @@ public final class AssetBrowserView {
             return;
         }
         ImGui.setDragDropPayload(mimeType, entry.assetPath());
-        icons.drawInline(iconFor(entry.type()), EditorStyle.ICON_SIZE_SMALL);
+        icons.drawInline(AssetTypeIcons.iconFor(entry.type()), EditorStyle.ICON_SIZE_SMALL);
         ImGui.textUnformatted(entry.displayName());
         ImGui.endDragDropSource();
     }
@@ -785,7 +787,25 @@ public final class AssetBrowserView {
             reimport(path);
         }
         if (entry.type() != AssetType.PRESET) {
+            ImGui.separator();
+            renderCopyItems(path);
             renderFileManagementItems(entry, path);
+        }
+    }
+
+    private void renderCopyItems(Path path) {
+        if (ImGui.menuItem("Copy Path")) {
+            ImGui.setClipboardText(project.locator().fromFile(path).toString());
+        }
+        if (ImGui.menuItem("Copy System Path")) {
+            ImGui.setClipboardText(path.toAbsolutePath().toString());
+        }
+        if (ImGui.menuItem("Copy GUID")) {
+            ImGui.setClipboardText(AssetMetaFile.readGuid(AssetMetaFile.pathFor(path)).orElse(""));
+        }
+        if (ImGui.menuItem("Reveal in File Manager")) {
+            FileManagerReveal.reveal(path)
+                    .ifPresent(failure -> notifier.show("Could not reveal the file: " + failure));
         }
     }
 
@@ -1198,19 +1218,6 @@ public final class AssetBrowserView {
             case CLIP -> AssetMimeTypes.CLIP;
             case ATLAS -> AssetMimeTypes.ATLAS;
             case SCENE, SCRIPT, OTHER -> AssetMimeTypes.NONE;
-        };
-    }
-
-    private static EditorIcon iconFor(AssetType type) {
-        return switch (type) {
-            case MESH, PRESET -> EditorIcon.MESH;
-            case SCRIPT, SHADER -> EditorIcon.SCRIPT;
-            case PREFAB -> EditorIcon.NODE_3D;
-            case GRAPH, ATLAS -> EditorIcon.GRID;
-            case MATERIAL -> EditorIcon.MESH;
-            case SCENE -> EditorIcon.LOAD;
-            case AUDIO, CLIP -> EditorIcon.ANIMATION_PLAYER;
-            case TEXTURE, OTHER -> EditorIcon.FILE;
         };
     }
 

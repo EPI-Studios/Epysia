@@ -51,6 +51,13 @@ public final class AssetPicker {
         openRequested = true;
     }
 
+    public void open(Set<String> extensions, Consumer<String> pickedHandler) {
+        onPicked = pickedHandler;
+        candidates = scanProject(extensions);
+        filterInput.set("");
+        openRequested = true;
+    }
+
     private List<String> collectCandidates(Class<?> assetType) {
         String mimeType = AssetMimeTypes.forAssetType(assetType);
         List<String> result = new ArrayList<>();
@@ -88,7 +95,7 @@ public final class AssetPicker {
             return walk.filter(Files::isRegularFile)
                     .filter(path -> !isExcluded(path))
                     .filter(path -> matchesExtension(path, extensions))
-                    .map(path -> path.toAbsolutePath().toString())
+                    .map(path -> project.locator().fromFile(path).toString())
                     .sorted()
                     .toList();
         } catch (IOException error) {

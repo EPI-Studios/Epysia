@@ -4,6 +4,7 @@ import fr.epistudio.epysia.editor.assets.AssetEntry;
 import fr.epistudio.epysia.editor.assets.AssetType;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.editor.icons.AssetTypeIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
@@ -216,7 +217,7 @@ public final class AssetEntryGrid {
     private void drawThumbnail(AssetEntry entry, float size) {
         OptionalInt texture = thumbnailFor(entry);
         if (texture.isEmpty()) {
-            icons.draw(iconFor(entry.type()), size);
+            icons.draw(AssetTypeIcons.iconFor(entry.type()), size);
             return;
         }
         if (entry.type() == AssetType.TEXTURE) {
@@ -240,17 +241,6 @@ public final class AssetEntryGrid {
     private static boolean isImportSource(String assetPath) {
         String lowerCasePath = assetPath.toLowerCase(Locale.ROOT);
         return lowerCasePath.endsWith(".gltf") || lowerCasePath.endsWith(".glb");
-    }
-
-    public static EditorIcon iconFor(AssetType type) {
-        return switch (type) {
-            case MESH, PRESET -> EditorIcon.MESH;
-            case SCRIPT -> EditorIcon.SCRIPT;
-            case SCENE -> EditorIcon.GRID;
-            case PREFAB -> EditorIcon.DUPLICATE;
-            case GRAPH -> EditorIcon.ANIMATION_PLAYER;
-            default -> EditorIcon.FILE;
-        };
     }
 
     private static String elide(String name, float availableWidth) {
