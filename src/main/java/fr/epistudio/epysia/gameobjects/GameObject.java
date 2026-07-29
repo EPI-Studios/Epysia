@@ -24,6 +24,7 @@ public final class GameObject implements IGameObject {
     private String tag = "";
     private boolean active = true;
     private final Map<Class<?>, IComponent> componentsByType = new HashMap<>();
+    private Transform3D cachedTransform3D;
     private final List<IComponent> attachedComponents = new ArrayList<>();
     private final List<Object> unloadableComponentPayloads = new ArrayList<>();
     private Runnable structuralChangeListener = NO_LISTENER;
@@ -87,6 +88,10 @@ public final class GameObject implements IGameObject {
     @SuppressWarnings("unchecked")
     public <T extends IComponent> Optional<T> getComponent(Class<T> componentClass) {
         return Optional.ofNullable((T) componentsByType.get(componentClass));
+    }
+
+    public Transform3D transform3DOrNull() {
+        return cachedTransform3D;
     }
 
     @Override
@@ -164,6 +169,9 @@ public final class GameObject implements IGameObject {
         Class<?> currentClass = component.getClass();
         while (currentClass != null && IComponent.class.isAssignableFrom(currentClass)) {
             componentsByType.putIfAbsent(currentClass, component);
+            if (currentClass == Transform3D.class) {
+                cachedTransform3D = (Transform3D) componentsByType.get(Transform3D.class);
+            }
             currentClass = currentClass.getSuperclass();
         }
     }
@@ -186,6 +194,9 @@ public final class GameObject implements IGameObject {
         while (currentClass != null && IComponent.class.isAssignableFrom(currentClass)) {
             if (componentsByType.get(currentClass) == component) {
                 componentsByType.remove(currentClass);
+                if (currentClass == Transform3D.class) {
+                    cachedTransform3D = null;
+                }
             }
             currentClass = currentClass.getSuperclass();
         }

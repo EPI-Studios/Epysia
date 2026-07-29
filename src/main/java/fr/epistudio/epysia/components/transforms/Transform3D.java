@@ -31,11 +31,20 @@ public final class Transform3D extends Component {
     private final Matrix4f blendedWorldMatrix = new Matrix4f();
     private final List<Transform3D> children = new ArrayList<>();
     private Transform3D parent;
+    @Export(label = "Render Layer", step = 1.0f)
     private int renderLayer;
+    @Export(label = "Visible")
     private boolean visible = true;
     private boolean localDirty = true;
     private boolean worldDirty = true;
     private boolean blendDirty = true;
+    private boolean localIdle;
+    private static boolean idleFlagEnabled =
+            Boolean.parseBoolean(System.getProperty("epysia.transform.idleFlag", "true"));
+
+    public static void setIdleFlagEnabled(boolean value) {
+        idleFlagEnabled = value;
+    }
     private float blendedAlpha = Float.NaN;
     private boolean previousStateCaptured;
     private long worldVersion;
@@ -102,6 +111,7 @@ public final class Transform3D extends Component {
     }
 
     private void markWorldDirty() {
+        localIdle = false;
         boolean alreadyPropagated = worldDirty && blendDirty;
         blendDirty = true;
         worldVersion++;
@@ -208,10 +218,14 @@ public final class Transform3D extends Component {
     }
 
     public void captureInterpolationSnapshot() {
+        if (previousStateCaptured && unchangedSincePreviousState()) {
+            return;
+        }
         previousPosition.set(position);
         previousRotation.set(rotation);
         previousScale.set(scale);
         previousStateCaptured = true;
+        localIdle = true;
         blendDirty = true;
     }
 
@@ -240,10 +254,16 @@ public final class Transform3D extends Component {
     }
 
     private boolean localInterpolationIdle() {
-        return !previousStateCaptured
-                || (previousPosition.equals(position)
-                        && previousRotation.equals(rotation)
-                        && previousScale.equals(scale));
+        return !previousStateCaptured || unchangedSincePreviousState();
+    }
+
+    private boolean unchangedSincePreviousState() {
+        if (idleFlagEnabled) {
+            return localIdle;
+        }
+        return previousPosition.equals(position)
+                && previousRotation.equals(rotation)
+                && previousScale.equals(scale);
     }
 
     private void blendLocalInto(Matrix4f destination, float alpha) {
