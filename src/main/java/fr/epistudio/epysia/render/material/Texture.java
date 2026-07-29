@@ -9,5 +9,5 @@ import java.lang.annotation.Target;
 @Target(ElementType.FIELD)
 public @interface Texture {
 
-    boolean srgb() default false;
+    ColorSpace colorSpace() default ColorSpace.INHERIT;
 }

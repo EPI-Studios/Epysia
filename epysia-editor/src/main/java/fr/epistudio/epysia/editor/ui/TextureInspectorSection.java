@@ -1,11 +1,17 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.assets.AssetMetaFile;
+import fr.epistudio.epysia.assets.AssetVariant;
+import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
+import fr.epistudio.epysia.render.backend.SamplerFilter;
+import fr.epistudio.epysia.render.backend.TextureFormat;
+import fr.epistudio.epysia.render.backend.TextureWrap;
 import imgui.ImGui;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -14,16 +20,14 @@ import java.util.function.Consumer;
 public final class TextureInspectorSection {
 
     private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg");
-    private static final String FILTER_LINEAR = "linear";
-    private static final String FILTER_POINT = "point";
     private static final float PREVIEW_MAX_HEIGHT = 220.0f;
 
     private final ImagePreviewTexture preview;
-    private final Consumer<Path> onFilterChanged;
+    private final Consumer<Path> onImportSettingsChanged;
 
-    public TextureInspectorSection(ImagePreviewTexture preview, Consumer<Path> onFilterChanged) {
+    public TextureInspectorSection(ImagePreviewTexture preview, Consumer<Path> onImportSettingsChanged) {
         this.preview = preview;
-        this.onFilterChanged = onFilterChanged;
+        this.onImportSettingsChanged = onImportSettingsChanged;
     }
 
     public boolean render(Optional<Path> selectedAsset) {
@@ -35,7 +39,7 @@ public final class TextureInspectorSection {
         ImGui.textUnformatted(path.getFileName().toString());
         ImGui.separator();
         renderPreview(path);
-        renderFilterCombo(path);
+        renderImportSettings(path);
         return true;
     }
 
@@ -60,29 +64,66 @@ public final class TextureInspectorSection {
         ImGui.image(image.get().textureId(), width, height);
     }
 
-    private void renderFilterCombo(Path path) {
-        boolean point = isPointFiltered(path);
+    private void renderImportSettings(Path path) {
+        TextureImportSettings settings = settingsOf(path);
+        renderFilterCombo(path, settings);
+        renderWrapCombo(path, settings);
+        renderColorSpaceCheckbox(path, settings);
+    }
+
+    private static TextureImportSettings settingsOf(Path path) {
+        return TextureImportSettings.from(AssetMetaFile.settingsOf(path), AssetVariant.none());
+    }
+
+    private void renderFilterCombo(Path path, TextureImportSettings settings) {
+        boolean point = settings.filter() == SamplerFilter.NEAREST;
         if (!ImGui.beginCombo("Filter", point ? "Point" : "Linear")) {
             return;
         }
         if (ImGui.selectable("Linear", !point) && point) {
-            applyFilter(path, FILTER_LINEAR);
+            apply(path, TextureImportSettings.FILTER_KEY, TextureImportSettings.FILTER_LINEAR);
         }
         if (ImGui.selectable("Point", point) && !point) {
-            applyFilter(path, FILTER_POINT);
+            apply(path, TextureImportSettings.FILTER_KEY, TextureImportSettings.FILTER_POINT);
         }
         ImGui.endCombo();
     }
 
-    private static boolean isPointFiltered(Path path) {
-        return AssetMetaFile.readString(AssetMetaFile.pathFor(path), AssetMetaFile.FILTER_KEY)
-                .map(name -> name.toLowerCase(Locale.ROOT))
-                .map(name -> name.equals(FILTER_POINT) || name.equals("nearest"))
-                .orElse(false);
+    private void renderWrapCombo(Path path, TextureImportSettings settings) {
+        String current = wrapName(settings.wrap());
+        if (!ImGui.beginCombo("Wrap", current)) {
+            return;
+        }
+        for (String candidate : List.of(TextureImportSettings.WRAP_REPEAT,
+                TextureImportSettings.WRAP_CLAMP, TextureImportSettings.WRAP_MIRROR)) {
+            if (ImGui.selectable(candidate, candidate.equals(current)) && !candidate.equals(current)) {
+                apply(path, TextureImportSettings.WRAP_KEY, candidate);
+            }
+        }
+        ImGui.endCombo();
     }
 
-    private void applyFilter(Path path, String filterName) {
-        AssetMetaFile.writeString(AssetMetaFile.pathFor(path), AssetMetaFile.FILTER_KEY, filterName);
-        onFilterChanged.accept(path);
+    private static String wrapName(TextureWrap wrap) {
+        return switch (wrap) {
+            case CLAMP_TO_EDGE -> TextureImportSettings.WRAP_CLAMP;
+            case MIRRORED_REPEAT -> TextureImportSettings.WRAP_MIRROR;
+            case REPEAT -> TextureImportSettings.WRAP_REPEAT;
+        };
+    }
+
+    private void renderColorSpaceCheckbox(Path path, TextureImportSettings settings) {
+        boolean srgb = settings.format() == TextureFormat.SRGB8_ALPHA8;
+        if (ImGui.checkbox("sRGB", srgb)) {
+            apply(path, TextureImportSettings.COLOR_SPACE_KEY, srgb
+                    ? TextureImportSettings.COLOR_SPACE_LINEAR : TextureImportSettings.COLOR_SPACE_SRGB);
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Colour space is applied when the texture is uploaded. Reopen the scene to see it.");
+        }
+    }
+
+    private void apply(Path path, String key, String value) {
+        AssetMetaFile.writeString(AssetMetaFile.pathFor(path), key, value);
+        onImportSettingsChanged.accept(path);
     }
 }

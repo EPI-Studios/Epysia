@@ -1,7 +1,9 @@
 package fr.epistudio.epysia.render.material;
 
 import fr.epistudio.epysia.assets.AssetRegistry;
-import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
+import fr.epistudio.epysia.assets.AssetVariant;
+import fr.epistudio.epysia.assets.LegacyAssetReferences;
+import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 
@@ -62,17 +64,24 @@ public final class MaterialFields {
             if (path.isEmpty() || read(material, field) != null) {
                 continue;
             }
-            assets.resolve(TextureHandle.class, resolvePath(field, path.get()))
+            assets.resolve(TextureHandle.class, LegacyAssetReferences.interpret(path.get(), assets),
+                            variantFor(field))
                     .ifPresent(handle -> write(material, field, handle));
         }
     }
 
-    private static String resolvePath(Field field, String path) {
+    public static AssetVariant variantFor(Field field) {
         Texture annotation = field.getAnnotation(Texture.class);
-        if (annotation != null && annotation.srgb() && !path.startsWith(TextureAssetLoader.SRGB_PREFIX)) {
-            return TextureAssetLoader.SRGB_PREFIX + path;
+        if (annotation == null) {
+            return AssetVariant.none();
         }
-        return path;
+        return switch (annotation.colorSpace()) {
+            case INHERIT -> AssetVariant.none();
+            case SRGB -> AssetVariant.of(TextureImportSettings.COLOR_SPACE_KEY,
+                    TextureImportSettings.COLOR_SPACE_SRGB);
+            case LINEAR -> AssetVariant.of(TextureImportSettings.COLOR_SPACE_KEY,
+                    TextureImportSettings.COLOR_SPACE_LINEAR);
+        };
     }
 
     private static List<Field> annotatedFields(Class<? extends Material> materialClass,
