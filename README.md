@@ -2,126 +2,196 @@
 
 # Epysia
 
-**A 3D game engine written in Java**
+<img src="https://img.shields.io/badge/JDK-25-orange?style=for-the-badge&logo=openjdk&logoColor=white" alt="JDK 25" />
+<img src="https://img.shields.io/badge/OpenGL-4.3-blue?style=for-the-badge&logo=opengl&logoColor=white" alt="OpenGL 4.3" />
+<img src="https://img.shields.io/badge/Physics-Box3D-red?style=for-the-badge" alt="Box3D" />
+<img src="https://img.shields.io/badge/license-MIT-lightgrey?style=for-the-badge" alt="MIT" />
 
-Build a game as a tree of GameObjects with components, script behaviour in
-plain Java, and export a native executable that carries its own trimmed
-runtime. Players never install or see a JVM.
-
-[![JDK](https://img.shields.io/badge/JDK-25-orange?style=flat-square)](#requirements)
-[![OpenGL](https://img.shields.io/badge/OpenGL-4.3-blue?style=flat-square)](#highlights)
-[![Physics](https://img.shields.io/badge/Physics-Box3D-red?style=flat-square)](#highlights)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)](#third-party)
+A 3D and 2D game engine, written in Java
 
 </div>
 
----
+Epysia builds games as a tree of GameObjects and components, lets you script
+behaviour in plain Java, and exports a native executable with its own trimmed
+runtime baked in. Nobody playing your game needs to know or care that a JVM is
+involved.
 
-## Highlights
+## Installing
 
-- A GameObject and Component runtime with a fixed 60 Hz simulation, frame pacing
-  and render interpolation.
-- A PBR renderer on OpenGL 4.3: metallic and roughness materials, cascaded
-  shadow maps, point and spot lights, image based lighting, and post processing
-  (bloom, ambient occlusion, FXAA, tone mapping).
-- Native rigid body physics through Box3D, with box, sphere, capsule and mesh
-  colliders, triggers, joints, a character controller, raycasts, and a 16 layer
-  collision matrix.
-- Java scripting that compiles and hot reloads while the editor is running.
-- OpenAL audio with a bus mixer, spatial sources and reverb.
-- A Dear ImGui editor that takes a project from an empty scene to a standalone
-  build without leaving the tool.
+Epysia is an app, not a library. It isn't published to Maven, so don't go
+looking for it there.
 
-## Requirements
+**If you're a player or a designer:** grab an installer from the releases
+page. Everything's bundled with a runtime trimmed down by `jpackage`, so you
+don't need a JDK on your machine. Windows gets an `.exe`, Linux gets a `.deb`
+and a portable `.tar.gz`.
 
-- JDK 25
-- An OpenGL 4.3 capable GPU
-
-## Running the editor
+**If you want to build from source:** you'll need JDK 25 and a GPU that can
+do OpenGL 4.3.
 
 ```sh
+git clone https://github.com/Meekiavelique/Epysia
+cd Epysia
 ./gradlew :epysia-editor:run
 ```
-## Writing a script
 
-Scripts are `Behaviour` subclasses. The editor compiles and reloads them when
-you save. They reach the engine through `EngineServices`.
+To run a scene without opening the editor:
+
+```sh
+./gradlew runGame -Pscene=/path/to/main.epyscene -PprojectRoot=/path/to/project
+```
+
+Don't forget `-PprojectRoot`. Without it the runtime has nothing to load
+from: no asset database, no compiled scripts, no collision matrix, no input
+map.
+
+## What's in it
+
+**Scene runtime.** GameObjects and components on a fixed-step simulation.
+60 Hz by default, but you can push it anywhere from 10 to 480 Hz, with frame
+pacing and interpolated rendering between simulation steps.
+
+**Rendering.** Forward PBR on OpenGL 4.3. Metallic-roughness materials,
+clustered lights, cascaded sun shadows, spot and point shadow atlases,
+image-based lighting, GPU and CPU culling, hardware instancing, and LOD.
 
 ```java
-@EpysiaComponent(name = "Spinner")
-public final class Spinner extends Behaviour {
+LitMaterial material = new LitMaterial();
+material.setBaseColor(0.85f, 0.82f, 0.78f).setRoughness(0.35f);
 
-    @Export
-    private float degreesPerSecond = 90.0f;
+MeshRenderer renderer = object.addComponent(new MeshRenderer());
+renderer.setMeshPath("res://models/rock.epymesh")
+        .setMaterial(material)
+        .addLevelOfDetailPath("res://models/rock_lod1.epymesh", 25.0f);
+```
 
-    @Override
-    public void onUpdate(float deltaTimeSeconds) {
-        transform().rotateY(degreesPerSecond * deltaTimeSeconds);
+**Materials and shaders.** Material uniforms come straight from annotated
+Java fields, packed into std140 by reflection so you never hand-write the
+layout. Surface shaders hook into five stages of the standard lit shader, so
+you override the one you care about and keep shadows, lights, and fog for
+free. They hot reload while the editor's running, too.
+
+```glsl
+uniform float waveSpeed = 0.4;
+
+void surfaceVertex(inout vec3 worldPosition, in vec3 localPosition,
+                   in vec3 worldNormal, in vec2 uv, in float time) {
+    worldPosition.y += sin(worldPosition.x * 2.0 + time * waveSpeed) * 0.1;
+}
+```
+
+**Post-processing.** SSAO, bloom, tonemapping, fog, vignette, FXAA, and room
+for your own effect stacks at two points in the pipeline (before or after
+tonemap). There's also a pixel-perfect mode that renders at a fixed internal
+resolution with integer scaling and letterboxing, for anyone doing pixel art.
+
+**2D.** Sprites all batched into a single dynamic vertex buffer, atlases and
+flipbooks, layered tilemaps with autotiling and per-tile collision, 2D
+lights, and physics that stays locked to a plane.
+
+**Physics.** Native rigid bodies via Box3D. Box, sphere, capsule, and mesh
+colliders, triggers, joints, 3D and 2D character controllers, raycasts and
+shape casts, plus a 16-layer collision matrix.
+
+```java
+@Override
+public void onUpdate(InputState input, float deltaTimeSeconds) {
+    float forward = actions.value(InputActions.MOVE_FORWARD, input);
+    float right = actions.value(InputActions.MOVE_RIGHT, input);
+    controller.move(new Vector3f(right, 0.0f, -forward).mul(speed));
+
+    if (actions.wasPressed(InputActions.JUMP, input) && controller.isGrounded()) {
+        controller.jump();
     }
 }
 ```
 
-Anything marked `@EpysiaComponent` shows up in the Add Component menu, and
-`@Export` fields appear in the Inspector and are saved with the scene.
+**Animation.** Skeletons up to 256 joints, `.epyclip` clips, cross-fade
+blending, GPU skinning, and joint sockets if you need to bolt something onto
+a rig.
 
-## Exporting a game
+**VFX.** GPU particle systems built from node graphs, compiled down to
+compute shaders. Shapes, curl noise, curves and gradients get baked to
+lookup textures, plus burst schedules for the chaotic stuff.
 
-`File > Export Game` produces a self contained build for Windows or Linux. The
-output is a native launcher next to a bundled runtime and your project content,
-so it runs on a machine with no Java installed. Export works across platforms:
-the editor downloads a prebuilt template for the target and packs your game into
-it, so a Linux editor can produce a Windows `.exe`.
+**Visual scripting.** One graph format doing five jobs: logic graphs, state
+machines, surface shader graphs, post-effect graphs, and VFX graphs. Any
+public method on your components shows up as a node automatically, through
+reflection.
 
-## Building releases
+**Audio.** OpenAL underneath, with a bus mixer and ducking, spatial
+sources, a 48-voice one-shot pool, streaming, and EFX reverb.
 
-Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`. It builds on native
-Windows and Linux runners and publishes a GitHub Release containing:
+**Scripting.** `Behaviour` subclasses get compiled and hot reloaded while
+the editor's open. Slap `@EpysiaComponent` on a class and it shows up in the
+Add Component menu; `@Export` puts a field in the inspector and in the scene
+file.
 
-- Editor installers: a Windows `.exe`, a Linux `.deb`, and a portable Linux
-  `.tar.gz`, each with a trimmed runtime built by `jpackage`.
-- Export templates: one zip per platform, the prebuilt runtimes the editor
-  packs games into.
+```java
+@EpysiaComponent(name = "Spinner", category = "Gameplay")
+public final class Spinner extends Behaviour {
 
-The Box3D natives are compiled from
-[box3d-java](https://github.com/Meekiavelique/box3d-java) inside the same
-workflow, so every release ships matching binaries.
+    @Export(label = "Degrees Per Second", min = -720.0f, max = 720.0f, step = 5.0f)
+    private float degreesPerSecond = 90.0f;
+
+    private Transform3D transform;
+
+    @Override
+    public void onStart(EngineServices services) {
+        transform = ownerOrNull().getComponentOrNull(Transform3D.class);
+    }
+
+    @Override
+    public void onUpdate(InputState input, float deltaTimeSeconds) {
+        transform.rotateAxisAngle(0.0f, 1.0f, 0.0f,
+                (float) Math.toRadians(degreesPerSecond * deltaTimeSeconds));
+    }
+}
+```
+
+**Editor.** A Dear ImGui editor with the scene view, inspector, asset
+browser, graph canvas, sprite and tilemap authoring, profiler, lighting
+bakes, and export, all in one place.
+
+**Extending it.** Subsystems are just `EngineModule` services discovered
+through `ServiceLoader`. They load into both the editor and the standalone
+runtime, so you can bolt on new features without touching the core.
+
+```java
+public final class WeatherModule implements EngineModule {
+
+    @Override
+    public int order() {
+        return 150;
+    }
+
+    @Override
+    public void registerSystems(SystemRegistry registry) {
+        registry.add(new WeatherSystem());
+    }
+}
+```
+
+## Releases
+
+Push a `vX.Y.Z` tag and `.github/workflows/release.yml` takes it from there.
+It builds on native Windows and Linux runners, publishes editor installers plus
+the export templates the editor uses to pack games. The Box3D natives get
+compiled straight from [box3d-java](https://github.com/Meekiavelique/box3d-java)
+in the same workflow, so every release ships with binaries that actually
+match.
 
 ```sh
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-## Extending the engine
-
-Systems ship as `EngineModule` services and load into both the editor and the
-standalone runtime, so you add features without touching the core:
-
-```java
-public final class MyGameModule implements EngineModule {
-
-    @Override
-    public int order() {
-        return 500;
-    }
-
-    @Override
-    public void registerSystems(SystemRegistry registry) {
-        registry.add(new MyGameSystem());
-    }
-}
-```
-
 ## Third-party
 
 - Editor icons are derived from the Godot Engine icon set (MIT).
-- Physics is powered by Box3D, with vendored FFM bindings under
-  `src/main/java/com/meekdev/box3d`.
+- Physics runs on Box3D, with vendored FFM bindings under `src/main/java/com/meekdev/box3d`.
 - Built on LWJGL 3, JOML, Dear ImGui, and ClassGraph.
 
-<div align="center">
+## License
 
----
-
-Made with Epysia
-
-</div>
+MIT.
