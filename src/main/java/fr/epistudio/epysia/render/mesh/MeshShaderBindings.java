@@ -10,6 +10,8 @@ public final class MeshShaderBindings {
     public static final int INSTANCE_SSBO_BINDING = 3;
     public static final int JOINT_PALETTE_SSBO_BINDING = 4;
     public static final int PROBE_SSBO_BINDING = 5;
+    public static final int LIGHTMAP_UV_SSBO_BINDING = 6;
+    public static final int LIGHTMAP_BINDING = 2;
     public static final int MATERIAL_UBO_BINDING = 2;
     public static final int SHADOW_MAP_BINDING = 3;
     public static final int PICKING_UBO_BINDING = 2;

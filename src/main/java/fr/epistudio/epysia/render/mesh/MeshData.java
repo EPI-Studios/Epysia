@@ -8,6 +8,7 @@ public record MeshData(
         float[] positions,
         float[] normals,
         float[] uvs,
+        float[] lightmapUvs,
         float[] tangents,
         float[] vertexColors,
         short[] jointIndices,
@@ -35,6 +36,9 @@ public record MeshData(
         if (uvs.length != 0 && uvs.length != vertexCount * UV_COMPONENTS) {
             throw new EpysiaException("MeshData uvs must be empty or match positions count.");
         }
+        if (lightmapUvs.length != 0 && lightmapUvs.length != vertexCount * UV_COMPONENTS) {
+            throw new EpysiaException("MeshData lightmap uvs must be empty or match positions count.");
+        }
         if (tangents.length != 0 && tangents.length != vertexCount * TANGENT_COMPONENTS) {
             throw new EpysiaException("MeshData tangents must be empty or match positions count.");
         }
@@ -60,7 +64,18 @@ public record MeshData(
 
     public MeshData(float[] positions, float[] normals, float[] uvs, float[] tangents,
                     short[] jointIndices, float[] jointWeights, int[] indices, List<Submesh> submeshes) {
-        this(positions, normals, uvs, tangents, new float[0], jointIndices, jointWeights, indices, submeshes);
+        this(positions, normals, uvs, new float[0], tangents, new float[0],
+                jointIndices, jointWeights, indices, submeshes);
+    }
+
+    public MeshData(float[] positions, float[] normals, float[] uvs, float[] tangents, float[] vertexColors,
+                    short[] jointIndices, float[] jointWeights, int[] indices, List<Submesh> submeshes) {
+        this(positions, normals, uvs, new float[0], tangents, vertexColors,
+                jointIndices, jointWeights, indices, submeshes);
+    }
+
+    public boolean hasLightmapUvs() {
+        return lightmapUvs.length > 0;
     }
 
     public int vertexCount() {

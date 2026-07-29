@@ -112,7 +112,11 @@ final class MaterialPipelineCache {
     }
 
     MaterialClassResources classResourcesFor(Material material, boolean skinned, boolean colored) {
-        long textureMask = texturePresenceMask(material);
+        return classResourcesFor(material, skinned, colored, false);
+    }
+
+    MaterialClassResources classResourcesFor(Material material, boolean skinned, boolean colored, boolean lightmapped) {
+        long textureMask = texturePresenceMask(material) | (lightmapped ? LIGHTMAP_UV2_BIT : 0L);
         if (skinned || colored) {
             return classCache.computeIfAbsent(pipelineKey(material, skinned, colored) + "|tex" + textureMask,
                     ignored -> buildOrFallback(material, skinned, colored, textureMask));
@@ -165,6 +169,7 @@ final class MaterialPipelineCache {
     private static final long ALPHA_MASKED_BIT = 1L << 62;
     private static final long PROBE_LIT_BIT = 1L << 61;
     private static final long NO_SHADOWS_BIT = 1L << 60;
+    private static final long LIGHTMAP_UV2_BIT = 1L << 59;
 
     private String textureDefines(Material material, long textureMask) {
         MaterialClassMetadata metadata = reflectionCache.get(material.getClass());
@@ -188,6 +193,9 @@ final class MaterialPipelineCache {
         }
         if ((textureMask & NO_SHADOWS_BIT) != 0L) {
             defines.append("#define MATERIAL_NO_SHADOWS\n");
+        }
+        if ((textureMask & LIGHTMAP_UV2_BIT) != 0L) {
+            defines.append("#define LIGHTMAP_UV2\n");
         }
         return defines.toString();
     }
@@ -221,11 +229,11 @@ final class MaterialPipelineCache {
                                                                boolean skinned, boolean colored, long textureMask) {
         String defines = textureDefines(material, textureMask);
         LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(), "",
-                skinned, colored, defines);
+                skinned, colored, defines, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
         MaterialClassMetadata metadata =
                 MaterialClassMetadata.reflect(material.getClass(), programs.fragment().source());
         BindingSetLayout litLayout = buildLitBindingLayout(metadata, ParsedSource.empty(), skinned,
-                (textureMask & PROBE_LIT_BIT) != 0L);
+                (textureMask & PROBE_LIT_BIT) != 0L, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
         PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout, skinned, colored));
         registerHotReload(pipelineKey(material, skinned, colored) + "|tex" + textureMask, pipeline,
                 material.vertexShaderPath(), material.fragmentShaderPath(), surfacePath,
@@ -335,11 +343,11 @@ final class MaterialPipelineCache {
     private MaterialClassResources buildClassResources(Material material, boolean skinned, boolean colored, long textureMask) {
         String defines = textureDefines(material, textureMask);
         LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(),
-                surfaceShaderPathOf(material), skinned, colored, defines);
+                surfaceShaderPathOf(material), skinned, colored, defines, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
         MaterialClassMetadata metadata = MaterialClassMetadata.reflect(material.getClass(), programs.fragment().source());
         ParsedSource surfaceUniforms = parseSurfaceUniforms(material);
         BindingSetLayout litLayout = buildLitBindingLayout(metadata, surfaceUniforms, skinned,
-                (textureMask & PROBE_LIT_BIT) != 0L);
+                (textureMask & PROBE_LIT_BIT) != 0L, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
         PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout, skinned, colored));
         registerHotReload(pipelineKey(material, skinned, colored) + "|tex" + textureMask, pipeline,
                 material.vertexShaderPath(), material.fragmentShaderPath(), surfaceShaderPathOf(material),
@@ -368,6 +376,12 @@ final class MaterialPipelineCache {
 
     private LoadedPrograms loadPrograms(String vertexPath, String fragmentPath, String surfacePath,
                                         boolean skinned, boolean colored, String textureDefines) {
+        return loadPrograms(vertexPath, fragmentPath, surfacePath, skinned, colored, textureDefines, false);
+    }
+
+    private LoadedPrograms loadPrograms(String vertexPath, String fragmentPath, String surfacePath,
+                                        boolean skinned, boolean colored, String textureDefines,
+                                        boolean lightmapUv2) {
         LoadedShader vertex = shaderLoader.load(vertexPath);
         LoadedShader fragment = shaderLoader.load(fragmentPath);
         if (surfacePath.isEmpty()) {
@@ -389,12 +403,20 @@ final class MaterialPipelineCache {
         if (!textureDefines.isEmpty()) {
             fragment = SurfaceShaderComposer.injectDefineBlock(fragment, textureDefines);
         }
+        if (lightmapUv2) {
+            vertex = SurfaceShaderComposer.injectDefineBlock(vertex, "#define LIGHTMAP_UV2\n");
+        }
         return new LoadedPrograms(vertex, fragment);
     }
 
 
     private BindingSetLayout buildLitBindingLayout(MaterialClassMetadata metadata, ParsedSource surfaceUniforms,
                                                    boolean skinned, boolean probeLit) {
+        return buildLitBindingLayout(metadata, surfaceUniforms, skinned, probeLit, false);
+    }
+
+    private BindingSetLayout buildLitBindingLayout(MaterialClassMetadata metadata, ParsedSource surfaceUniforms,
+                                                   boolean skinned, boolean probeLit, boolean lightmapUv2) {
         List<BindingSlot> slots = new ArrayList<>();
         slots.add(new BindingSlot(MeshShaderBindings.FRAME_UBO_BINDING, BindingType.UNIFORM_BUFFER));
         slots.add(new BindingSlot(MeshShaderBindings.LIGHT_SSBO_BINDING, BindingType.STORAGE_BUFFER));
@@ -409,6 +431,9 @@ final class MaterialPipelineCache {
         }
         if (probeLit) {
             slots.add(new BindingSlot(MeshShaderBindings.PROBE_SSBO_BINDING, BindingType.STORAGE_BUFFER));
+        }
+        if (lightmapUv2) {
+            slots.add(new BindingSlot(MeshShaderBindings.LIGHTMAP_UV_SSBO_BINDING, BindingType.STORAGE_BUFFER));
         }
         if (metadata.hasUniformBuffer()) {
             slots.add(new BindingSlot(MeshShaderBindings.MATERIAL_UBO_BINDING, BindingType.UNIFORM_BUFFER));

@@ -50,6 +50,13 @@ out vec3 vertexWorldPosition;
 out vec3 vertexWorldNormal;
 out vec3 vertexWorldTangent;
 out vec2 vertexUv;
+out vec2 vertexLightmapUv;
+
+#ifdef LIGHTMAP_UV2
+layout(std430, binding = 6) readonly buffer LightmapUvSet {
+    vec2 lightmapUvSet[];
+};
+#endif
 out float vertexViewDepth;
 
 // SURFACE_FUNCTIONS
@@ -71,6 +78,11 @@ void main() {
     vertexWorldNormal = normalize(normalMatrix * localNormal);
     vertexWorldTangent = normalize(normalMatrix * localTangent);
     vertexUv = inUv;
+#ifdef LIGHTMAP_UV2
+    vertexLightmapUv = lightmapUvSet[gl_VertexID];
+#else
+    vertexLightmapUv = inUv;
+#endif
 #ifdef VERTEX_COLORED
     vertexColor = inVertexColor;
 #endif

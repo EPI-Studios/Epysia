@@ -8,6 +8,7 @@ import fr.epistudio.epysia.render.backend.IndexFormat;
 import fr.epistudio.epysia.render.backend.MeshDescriptor;
 import fr.epistudio.epysia.render.backend.MeshHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
+import fr.epistudio.epysia.render.backend.StorageBufferBinding;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
@@ -17,6 +18,8 @@ import java.util.Optional;
 
 public final class MeshUploader {
 
+    private static final int MAX_SHORT_INDEXED_VERTICES = 65536;
+
     private MeshUploader() {
     }
 
@@ -25,8 +28,10 @@ public final class MeshUploader {
     }
 
     public static UploadedMesh upload(RenderBackend backend, MeshData data, Optional<Skeleton> skeleton) {
+        IndexFormat indexFormat = indexFormatFor(data);
         BufferHandle vertexBuffer = backend.createBuffer(new BufferDescriptor(BufferUsage.VERTEX, interleaveVertices(data)));
-        BufferHandle indexBuffer = backend.createBuffer(new BufferDescriptor(BufferUsage.INDEX, packIndices(data.indices())));
+        BufferHandle indexBuffer = backend.createBuffer(
+                new BufferDescriptor(BufferUsage.INDEX, packIndices(data.indices(), indexFormat)));
         List<UploadedSubmesh> uploadedSubmeshes = new ArrayList<>(data.submeshes().size());
         for (Submesh submesh : data.submeshes()) {
             MeshHandle handle = backend.createMesh(new MeshDescriptor(
@@ -34,7 +39,7 @@ public final class MeshUploader {
                     indexBuffer,
                     submesh.indexOffset(),
                     submesh.indexCount(),
-                    IndexFormat.UINT32
+                    indexFormat
             ));
             uploadedSubmeshes.add(new UploadedSubmesh(handle, submesh.materialSlot()));
         }
@@ -45,8 +50,20 @@ public final class MeshUploader {
                 Aabb.fromPositions(data.positions()),
                 data.hasSkin(),
                 data.hasVertexColors(),
-                skeleton
+                skeleton,
+                lightmapUvBuffer(backend, data)
         );
+    }
+
+    private static Optional<StorageBufferBinding> lightmapUvBuffer(RenderBackend backend, MeshData data) {
+        if (!data.hasLightmapUvs()) {
+            return Optional.empty();
+        }
+        int byteSize = data.lightmapUvs().length * Float.BYTES;
+        ByteBuffer bytes = BufferUtils.createByteBuffer(byteSize);
+        bytes.asFloatBuffer().put(data.lightmapUvs());
+        return Optional.of(StorageBufferBinding.whole(
+                backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, bytes)), byteSize));
     }
 
     static ByteBuffer interleaveVertices(MeshData data) {
@@ -101,7 +118,27 @@ public final class MeshUploader {
         }
     }
 
-    private static ByteBuffer packIndices(int[] indices) {
+    static IndexFormat indexFormatFor(MeshData data) {
+        return data.vertexCount() <= MAX_SHORT_INDEXED_VERTICES ? IndexFormat.UINT16 : IndexFormat.UINT32;
+    }
+
+    static ByteBuffer packIndices(int[] indices, IndexFormat format) {
+        return switch (format) {
+            case UINT16 -> packShortIndices(indices);
+            case UINT32 -> packIntIndices(indices);
+        };
+    }
+
+    private static ByteBuffer packShortIndices(int[] indices) {
+        ByteBuffer bytes = BufferUtils.createByteBuffer(indices.length * Short.BYTES);
+        for (int index : indices) {
+            bytes.putShort((short) index);
+        }
+        bytes.flip();
+        return bytes;
+    }
+
+    private static ByteBuffer packIntIndices(int[] indices) {
         ByteBuffer bytes = BufferUtils.createByteBuffer(indices.length * Integer.BYTES);
         bytes.asIntBuffer().put(indices);
         return bytes;

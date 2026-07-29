@@ -26,6 +26,7 @@ in vec3 vertexWorldPosition;
 in vec3 vertexWorldNormal;
 in vec3 vertexWorldTangent;
 in vec2 vertexUv;
+in vec2 vertexLightmapUv;
 in float vertexViewDepth;
 
 #ifdef VERTEX_COLORED
@@ -40,6 +41,9 @@ layout(std140, binding = 2) uniform MaterialUbo {
     float alphaCutoff;
     float normalScale;
     float occlusionStrength;
+    vec4 lightmapScaleOffset;
+    float lightmapStrength;
+    float lightmapRgbmRange;
 } material;
 
 layout(binding = 4) uniform sampler2D albedo;
@@ -47,6 +51,7 @@ layout(binding = 5) uniform sampler2D normalMap;
 layout(binding = 6) uniform sampler2D metallicRoughnessMap;
 layout(binding = 7) uniform sampler2D occlusionMap;
 layout(binding = 8) uniform sampler2D emissiveMap;
+layout(binding = 2) uniform sampler2D lightmap;
 layout(binding = 9) uniform samplerCube irradianceMap;
 layout(binding = 10) uniform samplerCube prefilteredMap;
 layout(binding = 11) uniform sampler2D brdfLut;
@@ -147,7 +152,17 @@ vec3 imageBasedAmbient(vec3 normal, vec3 viewDirection, vec3 albedoColor,
     vec2 environmentBrdf = texture(brdfLut, vec2(normalDotView, roughness)).rg;
     vec3 diffuse = diffuseWeight * irradianceSample * albedoColor;
     vec3 specular = prefilteredSample * (baseReflectivity * environmentBrdf.x + environmentBrdf.y);
-    return (diffuse + specular) * occlusion * frame.ambientColor.rgb * frame.ambientColor.a;
+    vec3 environment = (diffuse + specular) * occlusion * frame.ambientColor.rgb * frame.ambientColor.a;
+#ifdef MATERIAL_HAS_LIGHTMAP
+    vec2 lightmapUv = vertexLightmapUv * material.lightmapScaleOffset.xy + material.lightmapScaleOffset.zw;
+    vec4 lightmapSample = texture(lightmap, lightmapUv);
+    vec3 baked = material.lightmapRgbmRange > 0.0
+            ? lightmapSample.rgb * lightmapSample.a * material.lightmapRgbmRange
+            : lightmapSample.rgb;
+    baked *= material.lightmapStrength;
+    environment += baked * albedoColor * diffuseWeight * occlusion;
+#endif
+    return environment;
 }
 
 vec3 computeWorldNormal() {

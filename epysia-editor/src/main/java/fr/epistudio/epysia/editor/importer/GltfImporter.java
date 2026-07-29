@@ -32,7 +32,8 @@ import fr.epistudio.epysia.animation.ClipProperty;
 import fr.epistudio.epysia.animation.Joint;
 import fr.epistudio.epysia.animation.Skeleton;
 import fr.epistudio.epysia.assets.epyclip.EpyClipWriter;
-import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
+import fr.epistudio.epysia.assets.AssetMetaFile;
+import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshWriter;
 import fr.epistudio.epysia.components.Animator;
 import fr.epistudio.epysia.components.MeshRenderer;
@@ -43,6 +44,7 @@ import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.mesh.MeshData;
+import fr.epistudio.epysia.render.mesh.VertexCacheOptimizer;
 import fr.epistudio.epysia.render.mesh.Submesh;
 import fr.epistudio.epysia.prefab.PrefabWriter;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
@@ -59,6 +61,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -155,11 +158,27 @@ public final class GltfImporter {
         Optional<SkinModel> skinModel = findSkinForMesh(model, meshModel);
         Optional<SkeletonBuild> skeletonBuild = skinModel.map(skeletonBuilds::get);
         List<PrimitiveVertexData> primitives = readPrimitives(meshModel, uvHints, meshName, skeletonBuild, warnings);
-        MeshData meshData = mergePrimitives(primitives, meshName, warnings);
+        MeshData meshData = optimizeForVertexCache(mergePrimitives(primitives, meshName, warnings), meshName, warnings);
         Optional<Skeleton> skeleton = meshData.hasSkin() ? skeletonBuild.map(SkeletonBuild::skeleton) : Optional.empty();
         Path outputPath = outputDirectory.resolve(meshName + ".epymesh");
         EpyMeshWriter.writeToFile(outputPath, meshData, Optional.empty(), skeleton);
         return outputPath;
+    }
+
+    private static MeshData optimizeForVertexCache(MeshData mesh, String meshName, List<String> warnings) {
+        if (!VERTEX_CACHE_OPTIMISATION) {
+            return mesh;
+        }
+        float before = VertexCacheOptimizer.averageCacheMissRatio(mesh.indices(),
+                VertexCacheOptimizer.SIMULATED_CACHE_SIZE);
+        MeshData optimized = VertexCacheOptimizer.optimize(mesh);
+        float after = VertexCacheOptimizer.averageCacheMissRatio(optimized.indices(),
+                VertexCacheOptimizer.SIMULATED_CACHE_SIZE);
+        if (after > before) {
+            warnings.add("Mesh " + meshName + " was already cache friendly, keeping the exporter order.");
+            return mesh;
+        }
+        return optimized;
     }
 
     private static String meshName(MeshModel meshModel, int meshIndex) {
@@ -201,7 +220,8 @@ public final class GltfImporter {
         warnUnsupportedFeatures(primitive, attributes, meshName, primitiveIndex, warnings);
         float[] colors = readColors(attributes, positions.length / 3);
         SkinAttributeData skinData = readSkinAttributes(attributes, positions.length / 3, skeletonBuild, meshName, primitiveIndex, warnings);
-        return Optional.of(new PrimitiveVertexData(positions, normals, uvs, colors,
+        float[] lightmapUvs = readLightmapUvs(attributes, hints);
+        return Optional.of(new PrimitiveVertexData(positions, normals, uvs, lightmapUvs, colors,
                 skinData.jointIndices(), skinData.jointWeights(), indices.get()));
     }
 
@@ -310,6 +330,18 @@ public final class GltfImporter {
             uvs[index] = 1.0f - uvs[index];
         }
         return uvs;
+    }
+
+    private static final int LIGHTMAP_TEXCOORD_SET = 1;
+    private static final boolean VERTEX_CACHE_OPTIMISATION =
+            Boolean.parseBoolean(System.getProperty("epysia.import.optimizeVertexCache", "true"));
+
+    private static float[] readLightmapUvs(Map<String, AccessorModel> attributes, MaterialUvHints hints) {
+        if (hints.baseColorTexCoord() == LIGHTMAP_TEXCOORD_SET) {
+            return new float[0];
+        }
+        AccessorModel accessor = attributes.get("TEXCOORD_" + LIGHTMAP_TEXCOORD_SET);
+        return accessor == null ? new float[0] : flipVerticalAxis(readFloats(accessor, 2));
     }
 
     private static Optional<AccessorModel> selectUvAccessor(Map<String, AccessorModel> attributes, int texCoordSet,
@@ -832,11 +864,29 @@ public final class GltfImporter {
             return;
         }
         String imagePath = resolveImagePath(image, outputDirectory, imageIndices, writtenImages, imageFileNames, warnings);
-        String wrapPrefix = wrapPrefixFor(texture, fieldName, materialIndex, warnings);
-        litMaterial.setTexturePath(fieldName, wrapPrefix + imagePath);
+        writeImportSettings(outputDirectory, imagePath, texture, fieldName, materialIndex, warnings);
+        litMaterial.setTexturePath(fieldName, imagePath);
     }
 
-    private static String wrapPrefixFor(TextureModel texture, String fieldName, int materialIndex, List<String> warnings) {
+    private static void writeImportSettings(Path outputDirectory, String imagePath, TextureModel texture,
+            String fieldName, int materialIndex, List<String> warnings) {
+        if (imagePath == null || imagePath.isEmpty()) {
+            return;
+        }
+        Path metaFile = AssetMetaFile.pathFor(outputDirectory.resolve(imagePath));
+        AssetMetaFile.writeString(metaFile, TextureImportSettings.WRAP_KEY,
+                wrapNameFor(texture, fieldName, materialIndex, warnings));
+        AssetMetaFile.writeString(metaFile, TextureImportSettings.COLOR_SPACE_KEY,
+                isColourTexture(fieldName)
+                        ? TextureImportSettings.COLOR_SPACE_SRGB : TextureImportSettings.COLOR_SPACE_LINEAR);
+    }
+
+    private static boolean isColourTexture(String fieldName) {
+        String lower = fieldName.toLowerCase(Locale.ROOT);
+        return lower.contains("albedo") || lower.contains("basecolor") || lower.contains("emissive");
+    }
+
+    private static String wrapNameFor(TextureModel texture, String fieldName, int materialIndex, List<String> warnings) {
         int wrapS = wrapModeOf(texture.getWrapS());
         int wrapT = wrapModeOf(texture.getWrapT());
         if (wrapS != wrapT) {
@@ -844,12 +894,12 @@ public final class GltfImporter {
                     + " has different wrapS and wrapT; using wrapS for both.");
         }
         if (wrapS == GltfConstants.GL_CLAMP_TO_EDGE) {
-            return TextureAssetLoader.CLAMP_PREFIX;
+            return TextureImportSettings.WRAP_CLAMP;
         }
         if (wrapS == GltfConstants.GL_MIRRORED_REPEAT) {
-            return TextureAssetLoader.MIRROR_PREFIX;
+            return TextureImportSettings.WRAP_MIRROR;
         }
-        return "";
+        return TextureImportSettings.WRAP_REPEAT;
     }
 
     private static int wrapModeOf(Integer wrapMode) {
@@ -1068,7 +1118,8 @@ public final class GltfImporter {
         warnIfMixedSkin(primitives, plan, meshName, warnings);
         MergeBuffers buffers = new MergeBuffers(plan);
         List<Submesh> submeshes = buffers.copyAll(primitives);
-        return new MeshData(buffers.positions(), buffers.normals(), buffers.uvs(), new float[0], buffers.colors(),
+        return new MeshData(buffers.positions(), buffers.normals(), buffers.uvs(), buffers.lightmapUvs(),
+                new float[0], buffers.colors(),
                 buffers.jointIndices(), buffers.jointWeights(), buffers.indices(), submeshes);
     }
 
@@ -1208,8 +1259,8 @@ public final class GltfImporter {
         }
     }
 
-    private record PrimitiveVertexData(float[] positions, float[] normals, float[] uvs, float[] colors,
-                                        short[] jointIndices, float[] jointWeights, int[] indices) {
+    private record PrimitiveVertexData(float[] positions, float[] normals, float[] uvs, float[] lightmapUvs,
+                                        float[] colors, short[] jointIndices, float[] jointWeights, int[] indices) {
         int vertexCount() {
             return positions.length / 3;
         }
@@ -1253,21 +1304,24 @@ public final class GltfImporter {
         }
     }
 
-    private record MergePlan(int vertexTotal, int indexTotal, boolean hasUv, boolean hasColor, boolean hasSkin) {
+    private record MergePlan(int vertexTotal, int indexTotal, boolean hasUv, boolean hasLightmapUv,
+                             boolean hasColor, boolean hasSkin) {
         static MergePlan of(List<PrimitiveVertexData> primitives) {
             int vertexTotal = 0;
             int indexTotal = 0;
             boolean hasUv = !primitives.isEmpty();
+            boolean hasLightmapUv = !primitives.isEmpty();
             boolean hasColor = false;
             boolean hasSkin = !primitives.isEmpty();
             for (PrimitiveVertexData primitive : primitives) {
                 vertexTotal += primitive.vertexCount();
                 indexTotal += primitive.indices().length;
                 hasUv = hasUv && primitive.uvs().length > 0;
+                hasLightmapUv = hasLightmapUv && primitive.lightmapUvs().length > 0;
                 hasColor = hasColor || primitive.colors().length > 0;
                 hasSkin = hasSkin && primitive.jointIndices().length > 0;
             }
-            return new MergePlan(vertexTotal, indexTotal, hasUv, hasColor, hasSkin);
+            return new MergePlan(vertexTotal, indexTotal, hasUv, hasLightmapUv, hasColor, hasSkin);
         }
     }
 
@@ -1276,6 +1330,7 @@ public final class GltfImporter {
         private final float[] positions;
         private final float[] normals;
         private final float[] uvs;
+        private final float[] lightmapUvs;
         private final float[] colors;
         private final short[] jointIndices;
         private final float[] jointWeights;
@@ -1287,6 +1342,8 @@ public final class GltfImporter {
             positions = new float[plan.vertexTotal() * MeshData.POSITION_COMPONENTS];
             normals = new float[plan.vertexTotal() * MeshData.NORMAL_COMPONENTS];
             uvs = plan.hasUv() ? new float[plan.vertexTotal() * MeshData.UV_COMPONENTS] : new float[0];
+            lightmapUvs = plan.hasLightmapUv()
+                    ? new float[plan.vertexTotal() * MeshData.UV_COMPONENTS] : new float[0];
             colors = plan.hasColor() ? new float[plan.vertexTotal() * MeshData.COLOR_COMPONENTS] : new float[0];
             jointIndices = plan.hasSkin() ? new short[plan.vertexTotal() * MeshData.INFLUENCES_PER_VERTEX] : new short[0];
             jointWeights = plan.hasSkin() ? new float[plan.vertexTotal() * MeshData.INFLUENCES_PER_VERTEX] : new float[0];
@@ -1307,11 +1364,20 @@ public final class GltfImporter {
             System.arraycopy(primitive.normals(), 0, normals, vertexOffset * MeshData.NORMAL_COMPONENTS, primitive.normals().length);
             copyUvs(primitive, vertexCount);
             copyColors(primitive, vertexCount);
+            copyLightmapUvs(primitive, vertexCount);
             copySkin(primitive, vertexCount);
             Submesh submesh = copyIndices(primitive, primitiveIndex);
             vertexOffset += vertexCount;
             indexOffset += primitive.indices().length;
             return submesh;
+        }
+
+        private void copyLightmapUvs(PrimitiveVertexData primitive, int vertexCount) {
+            if (lightmapUvs.length == 0) {
+                return;
+            }
+            System.arraycopy(primitive.lightmapUvs(), 0, lightmapUvs,
+                    vertexOffset * MeshData.UV_COMPONENTS, vertexCount * MeshData.UV_COMPONENTS);
         }
 
         private void copyUvs(PrimitiveVertexData primitive, int vertexCount) {
@@ -1362,6 +1428,10 @@ public final class GltfImporter {
 
         float[] uvs() {
             return uvs;
+        }
+
+        float[] lightmapUvs() {
+            return lightmapUvs;
         }
 
         float[] colors() {

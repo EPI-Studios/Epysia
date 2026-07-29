@@ -29,7 +29,16 @@ public final class LitMaterial extends Material {
     @Uniform
     public float occlusionStrength = 1.0f;
 
-    @Texture(srgb = true)
+    @Uniform
+    public final Vector4f lightmapScaleOffset = new Vector4f(1.0f, 1.0f, 0.0f, 0.0f);
+
+    @Uniform
+    public float lightmapStrength = 1.0f;
+
+    @Uniform
+    public float lightmapRgbmRange = 0.0f;
+
+    @Texture(colorSpace = ColorSpace.SRGB)
     public TextureHandle albedo;
 
     @Texture
@@ -41,8 +50,11 @@ public final class LitMaterial extends Material {
     @Texture
     public TextureHandle occlusionMap;
 
-    @Texture(srgb = true)
+    @Texture(colorSpace = ColorSpace.SRGB)
     public TextureHandle emissiveMap;
+
+    @Texture
+    public TextureHandle lightmap;
 
     private String surfaceShaderPath = "";
     private boolean animatedShadow = true;
@@ -181,6 +193,26 @@ public final class LitMaterial extends Material {
 
     public LitMaterial setOcclusionMap(TextureHandle texture) {
         this.occlusionMap = texture;
+        return this;
+    }
+
+    public LitMaterial setLightmap(TextureHandle texture) {
+        this.lightmap = texture;
+        return this;
+    }
+
+    public LitMaterial setLightmapScaleOffset(float scaleU, float scaleV, float offsetU, float offsetV) {
+        this.lightmapScaleOffset.set(scaleU, scaleV, offsetU, offsetV);
+        return this;
+    }
+
+    public LitMaterial setLightmapStrength(float value) {
+        this.lightmapStrength = value;
+        return this;
+    }
+
+    public LitMaterial setLightmapRgbmRange(float value) {
+        this.lightmapRgbmRange = value;
         return this;
     }
 

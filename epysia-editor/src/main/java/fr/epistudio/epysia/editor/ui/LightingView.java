@@ -12,6 +12,7 @@ import fr.epistudio.epysia.render.baking.LightBakeHashes;
 import fr.epistudio.epysia.render.baking.LightBakeOutput;
 import fr.epistudio.epysia.render.baking.LightBaker;
 import fr.epistudio.epysia.render.baking.LightBakerRegistry;
+import fr.epistudio.epysia.render.baking.LightmapBaker;
 import fr.epistudio.epysia.render.baking.ProbeBaker;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.scene.Scene;
@@ -46,6 +47,7 @@ public final class LightingView {
         this.activeDocument = activeDocument;
         this.outputDirectory = projectRoot.resolve(PROBES_DIRECTORY_NAME);
         bakers.register(new ProbeBaker());
+        bakers.register(new LightmapBaker());
     }
 
     public boolean isVisible() {
@@ -114,12 +116,16 @@ public final class LightingView {
             return;
         }
         if (ImGui.button(I18n.label(TextKey.EDITOR_LIGHTING_VIEW_BAKE, "lighting-bake"))) {
-            startBake();
+            startBake(LightBakeOutput.PROBES);
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Bake lightmaps##lighting-bake-lightmap")) {
+            startBake(LightBakeOutput.LIGHTMAP);
         }
     }
 
-    private void startBake() {
-        Optional<LightBaker> baker = bakers.firstProducing(LightBakeOutput.PROBES);
+    private void startBake(LightBakeOutput output) {
+        Optional<LightBaker> baker = bakers.firstProducing(output);
         if (baker.isEmpty()) {
             return;
         }

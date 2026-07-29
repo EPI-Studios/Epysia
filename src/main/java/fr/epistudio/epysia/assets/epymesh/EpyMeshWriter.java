@@ -38,6 +38,9 @@ public final class EpyMeshWriter {
             if (mesh.hasVertexColors()) {
                 writeFloats(stream, mesh.vertexColors());
             }
+            if (mesh.hasLightmapUvs()) {
+                writeFloats(stream, mesh.lightmapUvs());
+            }
         } catch (IOException exception) {
             throw new EpysiaException("Failed to encode .epymesh: " + exception.getMessage(), exception);
         }
@@ -78,6 +81,9 @@ public final class EpyMeshWriter {
         }
         if (mesh.hasVertexColors()) {
             flags |= EpyMeshFormat.HAS_VERTEX_COLORS;
+        }
+        if (mesh.hasLightmapUvs()) {
+            flags |= EpyMeshFormat.HAS_LIGHTMAP_UVS;
         }
         return flags;
     }

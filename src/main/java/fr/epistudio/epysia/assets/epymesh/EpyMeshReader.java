@@ -43,7 +43,9 @@ public final class EpyMeshReader {
                 validateJointIndices(skinArrays.jointIndices(), skeleton.orElseThrow());
             }
             float[] vertexColors = colored ? readFloats(stream) : new float[0];
-            MeshData mesh = buildMesh(body, skinArrays, vertexColors);
+            boolean hasLightmapUvs = (header.flags() & EpyMeshFormat.HAS_LIGHTMAP_UVS) != 0;
+            float[] lightmapUvs = hasLightmapUvs ? readFloats(stream) : new float[0];
+            MeshData mesh = buildMesh(body, skinArrays, vertexColors, lightmapUvs);
             return new EpyMesh(mesh, collider, skeleton);
         } catch (IOException exception) {
             throw new EpysiaException("Failed to decode .epymesh: " + exception.getMessage(), exception);
@@ -64,8 +66,9 @@ public final class EpyMeshReader {
             throw new EpysiaException("Bad .epymesh magic: expected " + EpyMeshFormat.MAGIC + " but got " + magic + ".");
         }
         int version = stream.readInt();
-        if (version != 1 && version != EpyMeshFormat.VERSION) {
-            throw new EpysiaException("Unsupported .epymesh version: expected 1 or " + EpyMeshFormat.VERSION + " but got " + version + ".");
+        if (version < 1 || version > EpyMeshFormat.VERSION) {
+            throw new EpysiaException("Unsupported .epymesh version: expected 1 to " + EpyMeshFormat.VERSION
+                    + " but got " + version + ".");
         }
         int flags = stream.readInt();
         return new Header(version, flags);
@@ -81,8 +84,9 @@ public final class EpyMeshReader {
         return new MeshBody(positions, normals, uvs, tangents, indices, submeshes);
     }
 
-    private static MeshData buildMesh(MeshBody body, SkinArrays skinArrays, float[] vertexColors) {
-        return new MeshData(body.positions(), body.normals(), body.uvs(), body.tangents(), vertexColors,
+    private static MeshData buildMesh(MeshBody body, SkinArrays skinArrays, float[] vertexColors,
+                                      float[] lightmapUvs) {
+        return new MeshData(body.positions(), body.normals(), body.uvs(), lightmapUvs, body.tangents(), vertexColors,
                 skinArrays.jointIndices(), skinArrays.jointWeights(), body.indices(), body.submeshes());
     }
 
