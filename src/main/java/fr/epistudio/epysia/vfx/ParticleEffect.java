@@ -11,6 +11,11 @@ import java.util.List;
 @EpysiaComponent(name = "Particle Effect", category = "Effects")
 public final class ParticleEffect extends Component {
 
+    public enum SizeUnit {
+        WORLD,
+        PIXELS
+    }
+
     public static final int MINIMUM_POOL_SIZE = 64;
     public static final int MAXIMUM_POOL_SIZE = 65536;
     public static final float MINIMUM_DURATION_SECONDS = 0.05f;
@@ -24,7 +29,7 @@ public final class ParticleEffect extends Component {
         WORLD
     }
 
-    @Export(label = "Graph")
+    @Export(label = "Graph", assetExtensions = {".epygraph"})
     private String graphPath = "";
     @Export(label = "Pool Size", min = MINIMUM_POOL_SIZE, max = MAXIMUM_POOL_SIZE, step = 64.0f)
     private int poolSize = 1024;
@@ -44,6 +49,14 @@ public final class ParticleEffect extends Component {
     private SimulationSpace simulationSpace = SimulationSpace.LOCAL;
     @Export(label = "Seed", min = 1.0f, max = 1000000.0f, step = 1.0f)
     private int seed = 1;
+    @Export(label = "Size Unit")
+    private SizeUnit sizeUnit = SizeUnit.WORLD;
+    @Export(label = "Pixels Per Unit", min = 1.0f, max = 10000.0f, step = 1.0f)
+    private float pixelsPerUnit = 32.0f;
+    @Export(label = "Sorting Layer", step = 1.0f)
+    private int sortingLayer;
+    @Export(label = "Order In Layer", step = 1.0f)
+    private int orderInLayer;
     @Export(label = "Playing")
     private boolean playing = true;
 
@@ -53,6 +66,28 @@ public final class ParticleEffect extends Component {
     private boolean prewarmDone;
     private int settleFrames;
     private long totalSpawned;
+
+    public float sizeScale() {
+        return sizeUnit == SizeUnit.PIXELS ? 1.0f / Math.max(1.0f, pixelsPerUnit) : 1.0f;
+    }
+
+    public int sortingLayer() {
+        return sortingLayer;
+    }
+
+    public ParticleEffect setSortingLayer(int sortingLayer) {
+        this.sortingLayer = sortingLayer;
+        return this;
+    }
+
+    public int orderInLayer() {
+        return orderInLayer;
+    }
+
+    public ParticleEffect setOrderInLayer(int orderInLayer) {
+        this.orderInLayer = orderInLayer;
+        return this;
+    }
 
     public String graphPath() {
         return graphPath;

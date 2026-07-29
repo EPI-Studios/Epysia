@@ -141,3 +141,11 @@ ShapeSample shapeEdge(float edgeLength, uint key) {
     result.direction = SHAPE_DEFAULT_DIRECTION;
     return result;
 }
+
+ShapeSample shapeToScreenPlane(ShapeSample source) {
+    ShapeSample rotated;
+    rotated.position = vec3(source.position.x, source.position.z, 0.0);
+    rotated.direction = shapeSafeNormalize(vec3(source.direction.x, source.direction.z, 0.0),
+            vec3(0.0, 1.0, 0.0));
+    return rotated;
+}

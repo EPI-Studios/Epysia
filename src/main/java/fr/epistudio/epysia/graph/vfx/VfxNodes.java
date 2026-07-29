@@ -125,6 +125,10 @@ public final class VfxNodes {
     public static final String SHAPE_DOT = "Dot";
     public static final String SHAPE_EDGE = "Edge";
 
+    public static final String PLANE_SETTING = "plane";
+    public static final String PLANE_GROUND = "Ground XZ";
+    public static final String PLANE_SCREEN = "Screen XY";
+
     public static final String NOISE_PERLIN = "Perlin";
     public static final String NOISE_FBM = "FBM";
     public static final String NOISE_CURL = "Curl";
@@ -240,6 +244,7 @@ public final class VfxNodes {
                 List.of(new PinDefinition(POSITION_PIN, PinType.VECTOR3),
                         new PinDefinition(DIRECTION_PIN, PinType.VECTOR3)),
                 List.of(new NodeSetting(SHAPE_SETTING, SettingKind.TEXT, SHAPE_CONE),
+                        new NodeSetting(PLANE_SETTING, SettingKind.TEXT, PLANE_GROUND),
                         new NodeSetting(RADIUS_SETTING, SettingKind.NUMBER, 1.0f),
                         new NodeSetting(RADIUS_THICKNESS_SETTING, SettingKind.NUMBER, 1.0f),
                         new NodeSetting(ARC_SETTING, SettingKind.NUMBER, 360.0f),

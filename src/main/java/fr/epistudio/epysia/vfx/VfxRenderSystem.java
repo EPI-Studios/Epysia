@@ -1,6 +1,9 @@
 package fr.epistudio.epysia.vfx;
 
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.LegacyAssetReferences;
 import fr.epistudio.epysia.graph.GraphAsset;
 import fr.epistudio.epysia.graph.GraphJsonCodec;
 import fr.epistudio.epysia.graph.vfx.VfxGraphCompiler;
@@ -9,6 +12,7 @@ import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderPasses;
+import fr.epistudio.epysia.render.sprite.SpriteSortKeys;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.StageConfigurer;
 import fr.epistudio.epysia.render.backend.BindingSetLayout;
@@ -40,6 +44,7 @@ import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.vfx.lut.VfxLutPack;
+import org.joml.Matrix3x2f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
@@ -57,6 +62,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.OptionalInt;
 import java.util.Set;
 
@@ -73,6 +79,8 @@ public final class VfxRenderSystem implements RenderSystem {
     private final ShaderLoader shaderLoader;
     private final MeshRenderSystem meshRenderSystem;
     private final Logger logger;
+    private long submitSequence;
+    private Supplier<AssetLocator> locatorSource = AssetLocator::withoutProject;
     private final Map<ParticleEffect, VfxEffectResources> effectResources = new IdentityHashMap<>();
     private final Map<ParticleEffect, CompiledGraph> compiledGraphs = new IdentityHashMap<>();
     private final ByteBuffer effectUboScratch = BufferUtils.createByteBuffer(EFFECT_UBO_BYTES);
@@ -173,6 +181,7 @@ public final class VfxRenderSystem implements RenderSystem {
 
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
+        submitSequence = 0L;
         float delta = advanceClock();
         List<ParticleEffect> seen = new ArrayList<>();
         for (ParticleEffect effect : scene.componentsOf(ParticleEffect.class)) {
@@ -180,22 +189,46 @@ public final class VfxRenderSystem implements RenderSystem {
             if (gameObject == null) {
                 continue;
             }
-            Transform3D transform = gameObject.getComponentOrNull(Transform3D.class);
-            if (transform == null) {
+            Optional<EmitterPose> pose = emitterPoseOf(gameObject);
+            if (pose.isEmpty()) {
                 warnMissingTransformOnce(gameObject, effect);
                 continue;
             }
             seen.add(effect);
             warnBurstsThatCannotFire(gameObject, effect);
-            simulateAndSubmit(effect, transform, delta, frame);
+            simulateAndSubmit(effect, pose.get(), delta, frame);
         }
         purgeStale(seen);
+    }
+
+    private record EmitterPose(Matrix4f world, boolean twoDimensional) {
+    }
+
+    private static Optional<EmitterPose> emitterPoseOf(GameObject gameObject) {
+        Transform3D spatial = gameObject.getComponentOrNull(Transform3D.class);
+        if (spatial != null) {
+            return Optional.of(new EmitterPose(spatial.worldMatrix(), false));
+        }
+        Transform2D planar = gameObject.getComponentOrNull(Transform2D.class);
+        if (planar == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new EmitterPose(planarWorldMatrix(planar), true));
+    }
+
+    private static Matrix4f planarWorldMatrix(Transform2D planar) {
+        Matrix3x2f planarMatrix = planar.localMatrix();
+        return new Matrix4f(
+                planarMatrix.m00(), planarMatrix.m01(), 0.0f, 0.0f,
+                planarMatrix.m10(), planarMatrix.m11(), 0.0f, 0.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                planarMatrix.m20(), planarMatrix.m21(), 0.0f, 1.0f);
     }
 
     private void warnMissingTransformOnce(GameObject gameObject, ParticleEffect effect) {
         if (warnedMissingTransform.add(effect)) {
             logger.warn("[VfxRenderSystem] Particle Effect on '" + gameObject.name()
-                    + "' needs a Transform3D and will not simulate without one.");
+                    + "' needs a Transform3D or a Transform2D and will not simulate without one.");
         }
     }
 
@@ -260,7 +293,7 @@ public final class VfxRenderSystem implements RenderSystem {
         return OptionalInt.of(readback.getInt(0));
     }
 
-    private void simulateAndSubmit(ParticleEffect effect, Transform3D transform, float delta, FrameBuilder frame) {
+    private void simulateAndSubmit(ParticleEffect effect, EmitterPose pose, float delta, FrameBuilder frame) {
         VfxEffectResources resources = effectResources.computeIfAbsent(effect, this::createResources);
         Optional<CompiledGraphPipelines> compiled = resolveGraphPipelines(effect);
         if (!effect.graphPath().isEmpty() && compiled.isEmpty()) {
@@ -268,11 +301,19 @@ public final class VfxRenderSystem implements RenderSystem {
         }
         compiled.ifPresent(pipelines -> applyCompiled(effect, resources, pipelines));
         EffectStages stages = stagesOf(compiled);
-        runPrewarm(effect, transform, resources, stages);
-        simulateStep(effect, transform, resources, stages, effect.settledDeltaSeconds(delta));
-        frame.submit(RenderPasses.TRANSPARENT_3D,
+        runPrewarm(effect, pose, resources, stages);
+        simulateStep(effect, pose, resources, stages, effect.settledDeltaSeconds(delta));
+        frame.submit(pose.twoDimensional() ? RenderPasses.OVERLAY_2D : RenderPasses.TRANSPARENT_3D,
                 DrawCommand.indirect(stages.draw(), quadMesh, resources.drawBindings(),
-                        Long.MAX_VALUE, resources.indirectBuffer()));
+                        sortKeyOf(effect, pose), resources.indirectBuffer()));
+    }
+
+    private long sortKeyOf(ParticleEffect effect, EmitterPose pose) {
+        if (!pose.twoDimensional()) {
+            return Long.MAX_VALUE;
+        }
+        return SpriteSortKeys.compose(effect.sortingLayer(), effect.orderInLayer(),
+                SpriteSortKeys.KIND_SPRITE, submitSequence++);
     }
 
     private static void applyCompiled(ParticleEffect effect, VfxEffectResources resources,
@@ -288,17 +329,17 @@ public final class VfxRenderSystem implements RenderSystem {
                 compiled.map(CompiledGraphPipelines::draw).orElse(billboardPipeline));
     }
 
-    private void runPrewarm(ParticleEffect effect, Transform3D transform,
+    private void runPrewarm(ParticleEffect effect, EmitterPose pose,
                             VfxEffectResources resources, EffectStages stages) {
         int steps = effect.consumePrewarmSteps();
         for (int step = 0; step < steps; step++) {
-            simulateStep(effect, transform, resources, stages, effect.prewarmStepSeconds());
+            simulateStep(effect, pose, resources, stages, effect.prewarmStepSeconds());
         }
     }
 
-    private void simulateStep(ParticleEffect effect, Transform3D transform,
+    private void simulateStep(ParticleEffect effect, EmitterPose pose,
                               VfxEffectResources resources, EffectStages stages, float delta) {
-        Matrix4f world = transform.worldMatrix();
+        Matrix4f world = pose.world();
         world.getTranslation(emitterPosition);
         int spawnCount = effect.advanceEmission(delta, emitterPosition);
         writeEffectUbo(resources, emitterPosition, delta, spawnCount, effect);
@@ -327,7 +368,7 @@ public final class VfxRenderSystem implements RenderSystem {
         if (effect.graphPath().isEmpty()) {
             return Optional.empty();
         }
-        Path graphFile = Path.of(effect.graphPath());
+        Path graphFile = graphFileOf(effect);
         long modifiedMillis = modifiedMillisOf(graphFile);
         Optional<CompiledGraph> existing = Optional.ofNullable(compiledGraphs.get(effect));
         Optional<CompiledGraph> reusable = existing.filter(graph -> graph.modifiedMillis() == modifiedMillis);
@@ -342,6 +383,16 @@ public final class VfxRenderSystem implements RenderSystem {
 
     private static Optional<CompiledGraphPipelines> pipelinesOf(CompiledGraph graph) {
         return graph instanceof CompiledGraphPipelines pipelines ? Optional.of(pipelines) : Optional.empty();
+    }
+
+    public void useProject(Supplier<AssetLocator> projectLocator) {
+        this.locatorSource = projectLocator == null ? AssetLocator::withoutProject : projectLocator;
+    }
+
+    private Path graphFileOf(ParticleEffect effect) {
+        AssetLocator locator = locatorSource.get();
+        return locator.file(LegacyAssetReferences.interpretWithoutMigration(effect.graphPath(), locator))
+                .orElseGet(() -> Path.of(effect.graphPath()));
     }
 
     private CompiledGraph compileGraph(Path graphFile, long modifiedMillis) {
@@ -426,6 +477,7 @@ public final class VfxRenderSystem implements RenderSystem {
         effectUboScratch.putFloat(effect.simulationSpaceFollow());
         effectUboScratch.putFloat(motion.x()).putFloat(motion.y()).putFloat(motion.z());
         effectUboScratch.putFloat(effect.distanceTravelled());
+        effectUboScratch.putFloat(effect.sizeScale()).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
         effectUboScratch.flip();
         resources.writeEffectUbo(effectUboScratch);
     }

@@ -41,6 +41,7 @@ layout(std140, binding = 1) uniform EffectUbo {
     uvec4 spawnSeedPool;
     vec4 effectClock;
     vec4 emitterMotion;
+    vec4 renderParams;
 } effect;
 
 const int VFX_LUT_RESOLUTION = 256;

@@ -15,7 +15,7 @@ void main() {
     vec3 toCamera = normalize(frame.cameraPosition.xyz - particle.positionAge.xyz);
     vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCamera));
     vec3 up = cross(toCamera, right);
-    float size = particle.sizeRotation.x;
+    float size = particle.sizeRotation.x * effect.renderParams.x;
     vec3 world = particle.positionAge.xyz + (right * corner.x + up * corner.y) * size;
     particleCorner = corner;
     particleColor = particle.color;

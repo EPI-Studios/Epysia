@@ -19,7 +19,7 @@ import java.util.List;
 final class VfxEffectResources {
 
     static final int PARTICLE_BYTES = 96;
-    static final int EFFECT_UBO_BYTES = 64;
+    static final int EFFECT_UBO_BYTES = 80;
     static final int INDIRECT_BYTES = 20;
     static final int POOL_BINDING = 5;
     static final int ALIVE_BINDING = 6;

@@ -30,6 +30,15 @@ public final class PostEffectBuiltins {
         return this;
     }
 
+    public int pixelPerfectBaseWidth() {
+        return settings.get().pixelPerfectBaseWidth();
+    }
+
+    public PostEffectBuiltins setPixelPerfectBaseWidth(int value) {
+        settings.get().setPixelPerfectBaseWidth(value);
+        return this;
+    }
+
     public boolean isBloomEnabled() {
         return settings.get().bloomEnabled();
     }

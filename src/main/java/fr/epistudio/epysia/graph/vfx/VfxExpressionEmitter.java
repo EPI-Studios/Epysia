@@ -207,6 +207,17 @@ final class VfxExpressionEmitter {
         String thickness = text(settingFloat(source, VfxNodes.RADIUS_THICKNESS_SETTING, 1.0f));
         String arc = text(settingFloat(source, VfxNodes.ARC_SETTING, 360.0f));
         String angle = text(settingFloat(source, VfxNodes.ANGLE_SETTING, 25.0f));
+        return wrapInPlane(source, shapeExpression(source, radius, thickness, arc, angle, key));
+    }
+
+    private static String wrapInPlane(GraphNode source, String shapeCall) {
+        String plane = GraphValues.asString(source.values().getOrDefault(
+                VfxNodes.PLANE_SETTING, VfxNodes.PLANE_GROUND));
+        return VfxNodes.PLANE_SCREEN.equals(plane) ? "shapeToScreenPlane(%s)".formatted(shapeCall) : shapeCall;
+    }
+
+    private static String shapeExpression(GraphNode source, String radius, String thickness,
+                                          String arc, String angle, String key) {
         return switch (shapeMode(source)) {
             case VfxNodes.SHAPE_SPHERE -> "shapeSphere(%s, %s, %s)".formatted(radius, thickness, key);
             case VfxNodes.SHAPE_HEMISPHERE -> "shapeHemisphere(%s, %s, %s)".formatted(radius, thickness, key);
