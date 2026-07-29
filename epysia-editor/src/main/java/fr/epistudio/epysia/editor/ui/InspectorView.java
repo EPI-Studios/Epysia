@@ -5,12 +5,16 @@ import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.MultiMeshRenderer;
+import fr.epistudio.epysia.components.SpriteRenderer;
+import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.EditorSelection;
+import fr.epistudio.epysia.editor.assets.SpriteTextureLookup;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
+import fr.epistudio.epysia.editor.command.builtin.MergeIntoMultiMeshCommand;
 import fr.epistudio.epysia.editor.command.builtin.RemoveComponentCommand;
 import fr.epistudio.epysia.editor.icons.ComponentIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
@@ -65,6 +69,7 @@ public final class InspectorView {
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final MaterialsSection materialsSection;
     private final PopulateSection populateSection;
+    private boolean playModeActive;
     private final AnimatorSection animatorSection;
     private final VfxSection vfxSection;
     private final PostEffectsSection postEffectsSection;
@@ -75,7 +80,9 @@ public final class InspectorView {
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
     private final Runnable openTilemapDock;
-    private final SpriteColliderFitSection spriteColliderFit = new SpriteColliderFitSection();
+    private final SpriteColliderFitSection spriteColliderFit;
+    private final SpriteTextureLookup spriteTextures;
+    private final SurfaceUniformRows spriteUniformRows;
 
     public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
                          Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
@@ -92,6 +99,10 @@ public final class InspectorView {
         this.icons = icons;
         this.assetPicker = assetPicker;
         this.propertyRows = new PropertyRows(activeDocument, assetPicker);
+        this.spriteColliderFit = new SpriteColliderFitSection(project.locator());
+        this.spriteTextures = new SpriteTextureLookup(project.locator());
+        this.spriteUniformRows = new SurfaceUniformRows(projectShaderLoader(project), this::history,
+                new AssetFilePicker(project, thumbnails), project.locator());
         this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project);
         this.populateSection = new PopulateSection(activeDocument, notifier, project);
         this.animatorSection = new AnimatorSection(activeDocument, project);
@@ -103,6 +114,12 @@ public final class InspectorView {
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
         this.openTilemapDock = openTilemapDock;
+    }
+
+    private static ShaderLoader projectShaderLoader(Project project) {
+        ShaderLoader loader = ShaderLoader.autoDetect();
+        loader.useProject(project::locator);
+        return loader;
     }
 
     private EditorSelection selection() {
@@ -118,10 +135,14 @@ public final class InspectorView {
             ImGui.end();
             return;
         }
+        renderPlayModeNotice();
         propertyRows.beginFrame();
         Optional<GameObject> selected = selection().get();
         if (selected.isPresent()) {
+            renderMultiSelectionTools();
             renderBody(selected.get());
+            renderSpriteUniforms(selected.get());
+            renderSelectedAssetFooter(selected.get());
         } else if (!renderAssetSections()) {
             renderEmpty();
         }
@@ -130,6 +151,59 @@ public final class InspectorView {
         removeConfirm.render();
         scriptNameDialog.render();
         ImGui.end();
+    }
+
+    private void renderMultiSelectionTools() {
+        List<GameObject> all = selection().all();
+        if (all.size() < 2) {
+            return;
+        }
+        long mergeable = all.stream().filter(MergeIntoMultiMeshCommand::mergeable).count();
+        if (mergeable < 2) {
+            return;
+        }
+        if (ImGui.button("Merge " + mergeable + " selected into one MultiMesh")) {
+            history().execute(new MergeIntoMultiMeshCommand(all));
+            return;
+        }
+        ImGui.textDisabled("Groups by mesh, material, shadows and layer.");
+        ImGui.separator();
+    }
+
+    private void renderSpriteUniforms(GameObject gameObject) {
+        SpriteRenderer sprite = gameObject.getComponentOrNull(SpriteRenderer.class);
+        if (sprite == null || sprite.surfaceShaderPath().isEmpty()) {
+            return;
+        }
+        ImGui.separator();
+        if (ImGui.collapsingHeader("Sprite Shader Uniforms", ImGuiTreeNodeFlags.DefaultOpen)) {
+            spriteUniformRows.render(sprite, List.of(sprite.surfaceShaderPath()));
+        }
+    }
+
+    private void renderSelectedAssetFooter(GameObject gameObject) {
+        Optional<Path> asset = selectedAssetPath.get()
+                .or(() -> spriteTextures.textureFileOf(gameObject));
+        if (asset.isEmpty()) {
+            return;
+        }
+        ImGui.separator();
+        if (ImGui.collapsingHeader("Texture Import", ImGuiTreeNodeFlags.DefaultOpen)
+                && !textureSection.render(asset)) {
+            atlasSection.render(asset);
+        }
+    }
+
+    public void setPlayModeActive(boolean value) {
+        playModeActive = value;
+    }
+
+    private void renderPlayModeNotice() {
+        if (!playModeActive) {
+            return;
+        }
+        ImGui.textColored(1.0f, 0.78f, 0.25f, 1.0f, "Playing: edits tune the running game and revert on stop.");
+        ImGui.separator();
     }
 
     private boolean renderAssetSections() {
@@ -358,7 +432,11 @@ public final class InspectorView {
             notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TOAST_COMPONENT_EXISTS));
             return;
         }
-        history().execute(new AddComponentCommand(gameObject, entry.componentClass()));
+        Optional<String> failure = history().execute(new AddComponentCommand(gameObject, entry.componentClass()));
+        if (failure.isPresent()) {
+            notifier.show("Could not add " + entry.displayName() + ": " + failure.get());
+            return;
+        }
         notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TOAST_COMPONENT_ADDED));
     }
 
