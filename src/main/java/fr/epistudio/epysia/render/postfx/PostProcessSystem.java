@@ -396,6 +396,7 @@ public final class PostProcessSystem implements RenderSystem {
         }
         stageConfigurer.publishSceneTexture(SceneTexture.OPAQUE_COLOR, opaqueColorTexture);
         stageConfigurer.publishSceneTexture(SceneTexture.OPAQUE_DEPTH, opaqueDepthTexture);
+        stageConfigurer.publishSceneTexture(SceneTexture.SCENE_DEPTH, sceneDepthTexture);
     }
 
     private void captureOpaqueScene() {

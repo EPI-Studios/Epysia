@@ -46,12 +46,13 @@ final class MeshInstanceBatches {
 
     boolean add(UploadedSubmesh submesh, PerSubmesh perSubmesh, MaterialStateSnapshot state,
                 Matrix4f model, long depthBits, boolean visible, boolean castsShadows,
-                Vector3f worldMin, Vector3f worldMax) {
+                Vector3f worldMin, Vector3f worldMax, Aabb localBounds) {
         MeshInstanceBatch batch = batchFor(submesh.handle().id(), state.digest(), castsShadows);
         if (batch.pendingCount() == 0) {
             batch.beginFrame();
             batch.adoptState(state);
             batch.setCastsShadows(castsShadows);
+            batch.setLocalBounds(localBounds);
             activeBatches.add(batch);
         } else if (!batch.state().matches(state)) {
             return false;

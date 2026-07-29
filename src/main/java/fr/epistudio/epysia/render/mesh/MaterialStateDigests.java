@@ -11,10 +11,18 @@ final class MaterialStateDigests {
     private final Map<Material, MaterialStateSnapshot> snapshots = new IdentityHashMap<>();
     private final Map<Material, Long> revisions = new IdentityHashMap<>();
     private Material lastMaterial;
-    private long lastLitBindingsId;
+    private long lastRevision;
     private MaterialStateSnapshot lastSnapshot;
+    private boolean sharedRevision =
+            Boolean.parseBoolean(System.getProperty("epysia.render.sharedMaterialDigest", "true"));
 
     void beginFrame() {
+        lastMaterial = null;
+        lastSnapshot = null;
+    }
+
+    void setSharedRevision(boolean value) {
+        sharedRevision = value;
         lastMaterial = null;
         lastSnapshot = null;
     }
@@ -22,21 +30,21 @@ final class MaterialStateDigests {
     MaterialStateSnapshot snapshotFor(PerSubmesh perSubmesh, MaterialPipelineCache materialCache,
                                       SurfaceUniformBinder surfaceUniforms) {
         Material material = perSubmesh.material();
-        long litBindingsId = perSubmesh.litBindings().id();
-        if (material == lastMaterial && litBindingsId == lastLitBindingsId) {
+        long revision = revisionOf(perSubmesh);
+        if (material == lastMaterial && revision == lastRevision && lastSnapshot != null) {
             return lastSnapshot;
         }
-        MaterialStateSnapshot resolved = resolve(perSubmesh, materialCache, surfaceUniforms);
+        MaterialStateSnapshot resolved = resolve(perSubmesh, revision, materialCache, surfaceUniforms);
         lastMaterial = material;
-        lastLitBindingsId = litBindingsId;
+        lastRevision = revision;
         lastSnapshot = resolved;
         return resolved;
     }
 
-    private MaterialStateSnapshot resolve(PerSubmesh perSubmesh, MaterialPipelineCache materialCache,
+    private MaterialStateSnapshot resolve(PerSubmesh perSubmesh, long revision,
+                                          MaterialPipelineCache materialCache,
                                           SurfaceUniformBinder surfaceUniforms) {
         Material material = perSubmesh.material();
-        long revision = revisionOf(perSubmesh);
         Long cachedRevision = revisions.get(material);
         MaterialStateSnapshot cached = snapshots.get(material);
         if (cached != null && cachedRevision != null && cachedRevision == revision) {
@@ -48,10 +56,18 @@ final class MaterialStateDigests {
         return rebuilt;
     }
 
-    private static long revisionOf(PerSubmesh perSubmesh) {
+    private long revisionOf(PerSubmesh perSubmesh) {
         long revision = SurfaceUniformBinder.valueRevisionOf(perSubmesh.material());
         revision = ShadowSignatures.mix(revision, SurfaceUniformBinder.structureRevisionOf(perSubmesh.material()));
-        return ShadowSignatures.mix(revision, perSubmesh.litBindings().id());
+        if (!sharedRevision) {
+            return ShadowSignatures.mix(revision, perSubmesh.litBindings().id());
+        }
+        revision = ShadowSignatures.mix(revision, System.identityHashCode(perSubmesh.classResources()));
+        revision = ShadowSignatures.mix(revision, perSubmesh.shadowMasked() ? 1L : 0L);
+        for (TextureHandle texture : perSubmesh.capturedTextures()) {
+            revision = ShadowSignatures.mix(revision, texture.id());
+        }
+        return revision;
     }
 
     private static MaterialStateSnapshot build(PerSubmesh perSubmesh, MaterialPipelineCache materialCache,

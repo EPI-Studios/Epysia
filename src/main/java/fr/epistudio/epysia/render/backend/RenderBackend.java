@@ -23,6 +23,8 @@ public interface RenderBackend {
 
     TextureHandle createTexture(TextureDescriptor descriptor);
 
+    void generateMipmaps(TextureHandle handle);
+
     RenderTargetHandle createRenderTarget(RenderTargetDescriptor descriptor);
 
     BindingSetHandle createBindingSet(BindingSetDescriptor descriptor);
@@ -36,6 +38,16 @@ public interface RenderBackend {
     void readBuffer(BufferHandle handle, ByteBuffer destination, long byteOffset);
 
     void writeTexture(TextureHandle handle, ByteBuffer rgbaPixels);
+
+    void writeTexture(TextureHandle handle, java.nio.FloatBuffer rgbaPixels);
+
+    void readTextureLevel(TextureHandle handle, int mipLevel, java.nio.FloatBuffer destination);
+
+    int meshIndexCount(MeshHandle handle);
+
+    int meshFirstIndex(MeshHandle handle);
+
+    IndexFormat meshIndexFormat(MeshHandle handle);
 
     int textureWidth(TextureHandle handle);
 

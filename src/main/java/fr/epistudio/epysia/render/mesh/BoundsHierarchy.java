@@ -1,7 +1,5 @@
 package fr.epistudio.epysia.render.mesh;
 
-import java.util.Arrays;
-
 public final class BoundsHierarchy {
 
     public interface Visitor {
@@ -108,15 +106,39 @@ public final class BoundsHierarchy {
     }
 
     private void partition(float[] entryBounds, int from, int count, int axis, int middle) {
-        Integer[] slice = new Integer[count];
-        for (int index = 0; index < count; index++) {
-            slice[index] = order[from + index];
+        sortByCentre(entryBounds, from, from + count - 1, axis);
+    }
+
+    private void sortByCentre(float[] entryBounds, int low, int high, int axis) {
+        while (low < high) {
+            int pivot = partitionRange(entryBounds, low, high, axis);
+            if (pivot - low < high - pivot) {
+                sortByCentre(entryBounds, low, pivot - 1, axis);
+                low = pivot + 1;
+            } else {
+                sortByCentre(entryBounds, pivot + 1, high, axis);
+                high = pivot - 1;
+            }
         }
-        Arrays.sort(slice, (first, second) ->
-                Float.compare(centre(entryBounds, first, axis), centre(entryBounds, second, axis)));
-        for (int index = 0; index < count; index++) {
-            order[from + index] = slice[index];
+    }
+
+    private int partitionRange(float[] entryBounds, int low, int high, int axis) {
+        float pivot = centre(entryBounds, order[high], axis);
+        int store = low;
+        for (int index = low; index < high; index++) {
+            if (centre(entryBounds, order[index], axis) < pivot) {
+                swapOrder(store, index);
+                store++;
+            }
         }
+        swapOrder(store, high);
+        return store;
+    }
+
+    private void swapOrder(int first, int second) {
+        int temporary = order[first];
+        order[first] = order[second];
+        order[second] = temporary;
     }
 
     private static float centre(float[] entryBounds, int entry, int axis) {

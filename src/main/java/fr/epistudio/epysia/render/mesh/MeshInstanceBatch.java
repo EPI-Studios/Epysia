@@ -335,6 +335,16 @@ final class MeshInstanceBatch {
         return firstModel;
     }
 
+    private Aabb localBounds;
+
+    void setLocalBounds(Aabb bounds) {
+        this.localBounds = bounds;
+    }
+
+    Aabb localBounds() {
+        return localBounds;
+    }
+
     UploadedSubmesh submesh() {
         return submesh;
     }

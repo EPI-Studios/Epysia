@@ -523,10 +523,21 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private void allocateTexture2dStorage(TextureDescriptor descriptor, int internalFormat) {
-        int pixelFormat = descriptor.format() == TextureFormat.DEPTH32F ? GL_DEPTH_COMPONENT : GL_RGBA;
+        int pixelFormat = pixelFormatToGl(descriptor.format());
         int pixelType = pixelTypeToGl(descriptor.format());
-        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, descriptor.width(), descriptor.height(),
-                0, pixelFormat, pixelType, (ByteBuffer) null);
+        for (int level = 0; level < Math.max(1, descriptor.mipLevels()); level++) {
+            glTexImage2D(GL_TEXTURE_2D, level, internalFormat,
+                    Math.max(1, descriptor.width() >> level), Math.max(1, descriptor.height() >> level),
+                    0, pixelFormat, pixelType, (ByteBuffer) null);
+        }
+    }
+
+    private static int pixelFormatToGl(TextureFormat format) {
+        return switch (format) {
+            case DEPTH32F -> GL_DEPTH_COMPONENT;
+            case R32F -> org.lwjgl.opengl.GL11.GL_RED;
+            default -> GL_RGBA;
+        };
     }
 
     private static int internalFormatToGl(TextureFormat format) {
@@ -535,6 +546,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case SRGB8_ALPHA8 -> GL_SRGB8_ALPHA8;
             case RGBA16F -> org.lwjgl.opengl.GL30.GL_RGBA16F;
             case R11G11B10F -> org.lwjgl.opengl.GL30.GL_R11F_G11F_B10F;
+            case R32F -> org.lwjgl.opengl.GL30.GL_R32F;
             case DEPTH32F -> GL_DEPTH_COMPONENT32F;
         };
     }
@@ -542,7 +554,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private static int pixelTypeToGl(TextureFormat format) {
         return switch (format) {
             case RGBA8, SRGB8_ALPHA8 -> GL_UNSIGNED_BYTE;
-            case RGBA16F, R11G11B10F, DEPTH32F -> GL_FLOAT;
+            case RGBA16F, R11G11B10F, R32F, DEPTH32F -> GL_FLOAT;
         };
     }
 
@@ -683,6 +695,44 @@ public final class OpenGlRenderBackend implements RenderBackend {
         TextureResource resource = requireTexture(handle);
         glBindTexture(GL_TEXTURE_2D, resource.textureId());
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, resource.width(), resource.height(), GL_RGBA, GL_UNSIGNED_BYTE, rgbaPixels);
+    }
+
+    @Override
+    public void writeTexture(TextureHandle handle, java.nio.FloatBuffer rgbaPixels) {
+        TextureResource resource = requireTexture(handle);
+        glBindTexture(GL_TEXTURE_2D, resource.textureId());
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, resource.width(), resource.height(),
+                GL_RGBA, GL_FLOAT, rgbaPixels);
+    }
+
+    @Override
+    public void generateMipmaps(TextureHandle handle) {
+        TextureResource resource = requireTexture(handle);
+        glBindTexture(GL_TEXTURE_2D, resource.textureId());
+        org.lwjgl.opengl.GL30.glGenerateMipmap(GL_TEXTURE_2D);
+    }
+
+    @Override
+    public void readTextureLevel(TextureHandle handle, int mipLevel, java.nio.FloatBuffer destination) {
+        TextureResource resource = requireTexture(handle);
+        glBindTexture(GL_TEXTURE_2D, resource.textureId());
+        org.lwjgl.opengl.GL11.glGetTexImage(GL_TEXTURE_2D, mipLevel,
+                org.lwjgl.opengl.GL11.GL_RED, GL_FLOAT, destination);
+    }
+
+    @Override
+    public int meshIndexCount(MeshHandle handle) {
+        return requireMesh(handle).indexCount();
+    }
+
+    @Override
+    public int meshFirstIndex(MeshHandle handle) {
+        return requireMesh(handle).firstIndex();
+    }
+
+    @Override
+    public IndexFormat meshIndexFormat(MeshHandle handle) {
+        return requireMesh(handle).indexFormat();
     }
 
     @Override
@@ -1264,6 +1314,14 @@ public final class OpenGlRenderBackend implements RenderBackend {
         int glFilter = filter == SamplerFilter.NEAREST ? GL_NEAREST : GL_LINEAR;
         glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, glFilter);
         glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, glFilter);
+    }
+
+    public void updateTextureWrap(TextureHandle handle, TextureWrap wrap) {
+        TextureResource resource = requireTexture(handle);
+        int glTarget = textureTargetToGl(resource.kind());
+        glBindTexture(glTarget, resource.textureId());
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, wrapToGl(wrap));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, wrapToGl(wrap));
     }
 
     private TextureResource requireTexture(TextureHandle handle) {
