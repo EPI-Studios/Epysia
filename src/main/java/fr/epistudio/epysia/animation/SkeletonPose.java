@@ -41,6 +41,13 @@ public final class SkeletonPose {
         }
     }
 
+    public Matrix4f globalMatrix(int jointIndex) {
+        if (jointIndex < 0 || jointIndex >= globalMatrices.length) {
+            throw new EpysiaException("Joint index out of range: " + jointIndex);
+        }
+        return globalMatrices[jointIndex];
+    }
+
     public void computeSkinningMatrices(Skeleton skeleton, Matrix4f[] out) {
         List<Joint> joints = skeleton.joints();
         if (joints.size() != jointPoses.length || out.length < joints.size()) {

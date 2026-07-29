@@ -29,6 +29,15 @@ public record Skeleton(List<Joint> joints) {
         }
     }
 
+    public int indexOfJoint(String name) {
+        for (int index = 0; index < joints.size(); index++) {
+            if (joints.get(index).name().equals(name)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
     public int jointCount() {
         return joints.size();
     }
