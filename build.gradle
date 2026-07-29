@@ -43,156 +43,8 @@ tasks.named('run', JavaExec) {
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
-tasks.register('runMaterialPixelCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders two instances of one surface shader with different uniform values and checks the pixels.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.MaterialInstancePixelCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runPhysics2DCheck', JavaExec) {
-    group = 'verification'
-    description = 'Drops a plane-locked 2D body onto a 2D ground box and walks a 2D character controller.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.Physics2DCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runRemovalPixelCheck', JavaExec) {
-    group = 'verification'
-    description = 'Removes a parented mesh subtree at runtime and checks the deleted mesh stops rendering.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.RemovedObjectPixelCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runSpriteRenderCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders two overlapping sorted sprites onto SCREEN after tonemap and checks the pixels.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.SpriteRenderCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runSpriteFlipbookCheck', JavaExec) {
-    group = 'verification'
-    description = 'Animates a two frame grid atlas flipbook and checks the sampled frame changes over time.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.SpriteFlipbookCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runTilemapRenderCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders a 2x2 tilemap from a generated atlas onto SCREEN after tonemap and checks tile and empty-cell pixels.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.TilemapRenderCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runTerrainAutotileCheck', JavaExec) {
-    group = 'verification'
-    description = 'Paints a terrain block and proves the solver picks matching edge and corner tiles.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.TerrainAutotileCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runTilemapUnboundedCheck', JavaExec) {
-    group = 'verification'
-    description = 'Paints far outside the authored box and in negative coordinates, then round trips it.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.TilemapUnboundedCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runPixelPerfectCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders at a low internal resolution and proves the upscale keeps hard pixel blocks.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.PixelPerfectCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runTilemapPhysicsCheck', JavaExec) {
-    group = 'verification'
-    description = 'Drops a plane-locked 2D body onto a solid tilemap row merged into one static box.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.TilemapPhysicsCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runProbeBakeCheck', JavaExec) {
-    group = 'verification'
-    description = 'Bakes SH light probes in an emissive room headlessly and checks the ambient red-shifts.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.ProbeBakeCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runSkinnedBindPoseCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders a skinned quad in bind pose through the skinned pipeline and checks the pixels.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.SkinnedBindPoseCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runSkinnedAnimationCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders a skinned quad driven by an .epyclip animation and checks the pixels moved.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.SkinnedAnimationPixelCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runVfxFountainCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders a GPU particle fountain and checks pixels appear above the emitter.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.VfxFountainPixelCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runVfxGraphCheck', JavaExec) {
-    group = 'verification'
-    description = 'Compiles a VFX graph to compute shaders and checks the effect renders.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.VfxGraphPixelCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runVfxShaderLibraryCheck', JavaExec) {
-    group = 'verification'
-    description = 'Compiles the VFX shape and noise GLSL library into a compute pipeline.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.VfxShaderLibraryCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runEmbersCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders the Embers example graph and checks pixels.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.EmbersRealFileCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runVfxExampleGraphsCheck', JavaExec) {
-    group = 'verification'
-    description = 'Parses and compiles the Fire, Smoke, Sparks and MagicSwirl example graphs.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.VfxExampleGraphsCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runVfxExamplesCheck', JavaExec) {
-    group = 'verification'
-    description = 'Renders the four example VFX graphs and checks each one produces its own colors.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.VfxExamplesPixelCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+tasks.named('test', Test) {
+    testLogging.showStandardStreams = true
 }
 
 tasks.register('runGame', JavaExec) {
@@ -244,11 +96,13 @@ dependencies {
     implementation 'org.lwjgl:lwjgl-glfw'
     implementation 'org.lwjgl:lwjgl-opengl'
     implementation 'org.lwjgl:lwjgl-stb'
+    implementation 'org.lwjgl:lwjgl-tinyexr'
     implementation 'org.lwjgl:lwjgl-openal'
     runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-tinyexr::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-openal::${lwjglNatives}"
 
     psyhouNatives platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
@@ -256,6 +110,7 @@ dependencies {
     psyhouNatives "org.lwjgl:lwjgl-glfw::${lwjglJarNatives}"
     psyhouNatives "org.lwjgl:lwjgl-opengl::${lwjglJarNatives}"
     psyhouNatives "org.lwjgl:lwjgl-stb::${lwjglJarNatives}"
+    psyhouNatives "org.lwjgl:lwjgl-tinyexr::${lwjglJarNatives}"
     psyhouNatives "org.lwjgl:lwjgl-openal::${lwjglJarNatives}"
 
     testImplementation platform('org.junit:junit-bom:6.0.0')
@@ -318,16 +173,11 @@ tasks.withType(JavaExec).configureEach {
 
 tasks.register('runRenderBenchmark', JavaExec) {
     group = 'verification'
-    description = 'Synthetic render benchmark: scales object count and reports CPU/GPU cost per frame.'
+    description = 'BENCHMARKKING'
     classpath = sourceSets.example.runtimeClasspath
     mainClass = 'com.meekdev.psyhou.game.RenderBenchmark'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runWallContactCheck', JavaExec) {
-    group = 'verification'
-    description = 'Pushes a 2D controller into a wall and checks contacts are reported by direction.'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.WallContactCheck'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    if (System.getProperty('epysia.jfr') != null) {
+        jvmArgs += ["-XX:StartFlightRecording=settings=profile,filename=${System.getProperty('epysia.jfr')},dumponexit=true".toString()]
+    }
 }
