@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor.command;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Optional;
 
 public final class EditorHistory {
 
@@ -23,22 +24,27 @@ public final class EditorHistory {
         };
     }
 
-    public void execute(EditorCommand command) {
+    public Optional<String> execute(EditorCommand command) {
         EditorCommand inverse;
         try {
             inverse = command.invert(context);
         } catch (RuntimeException error) {
             context.services().logger().error("[EditorHistory] invert failed for " + command.label(), error);
-            return;
+            return Optional.of(reasonOf(error));
         }
         try {
             command.apply(context);
         } catch (RuntimeException error) {
             context.services().logger().error("[EditorHistory] apply failed for " + command.label(), error);
-            return;
+            return Optional.of(reasonOf(error));
         }
         push(command, inverse);
         onChange.run();
+        return Optional.empty();
+    }
+
+    private static String reasonOf(RuntimeException error) {
+        return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
     }
 
     public void executeWithoutHistory(EditorCommand command) {
@@ -127,16 +133,16 @@ public final class EditorHistory {
         redoStack.clear();
     }
 
-    public java.util.Optional<String> undoLabel() {
+    public Optional<String> undoLabel() {
         return undoStack.isEmpty()
-                ? java.util.Optional.empty()
-                : java.util.Optional.of(undoStack.peek().forward.label());
+                ? Optional.empty()
+                : Optional.of(undoStack.peek().forward.label());
     }
 
-    public java.util.Optional<String> redoLabel() {
+    public Optional<String> redoLabel() {
         return redoStack.isEmpty()
-                ? java.util.Optional.empty()
-                : java.util.Optional.of(redoStack.peek().forward.label());
+                ? Optional.empty()
+                : Optional.of(redoStack.peek().forward.label());
     }
 
     public int undoDepth() {
