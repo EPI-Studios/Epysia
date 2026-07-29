@@ -6,6 +6,7 @@ import fr.epistudio.epysia.components.DirectionalLight;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.PointLight;
 import fr.epistudio.epysia.components.SpotLight;
+import fr.epistudio.epysia.components.SpriteRenderer;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
@@ -38,6 +39,7 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.physics.PhysicsSystem;
+import fr.epistudio.epysia.render.backend.TextureHandle;
 import imgui.ImDrawList;
 import imgui.flag.ImGuiFocusedFlags;
 import imgui.ImGui;
@@ -138,6 +140,7 @@ public final class ViewportView {
     private SelectionOutlineOverlay selectionOverlay;
     private SelectionSilhouetteOverlay selectionSilhouette;
     private Transform3D dragTransform;
+    private final PivotHandle pivotHandle = new PivotHandle();
     private Transform2D dragPlanarTransform;
     private boolean showGrid = true;
     private boolean showColliderWireframes;
@@ -278,6 +281,7 @@ public final class ViewportView {
         Optional<TilemapRenderer> paintTarget = activePaintTarget();
         paintingActiveThisFrame = paintTarget.isPresent();
         boolean gizmoBusy = renderGizmoUnlessPainting(paintTarget, imageX, imageY, width, height);
+        boolean pivotBusy = renderPivotHandle(imageX, imageY, width, height);
         if (!editorCamera.twoDimensional()) {
             timings.measure("axis indicator", () -> renderAxisIndicator(imageX, imageY, width));
         }
@@ -289,7 +293,40 @@ public final class ViewportView {
                 paintController::cancel);
         updateCamera(deltaSeconds, imageX, imageY, width, height);
         handleFrameShortcut();
-        handlePicking(gizmoBusy || paintTarget.isPresent(), imageX, imageY, width, height);
+        handlePicking(gizmoBusy || pivotBusy || paintTarget.isPresent(), imageX, imageY, width, height);
+    }
+
+    private boolean renderPivotHandle(float imageX, float imageY, int width, int height) {
+        Optional<GameObject> selected = activeDocument.get().selection().get();
+        Optional<Transform2D> planar = selected.flatMap(gameObject -> gameObject.getComponent(Transform2D.class));
+        if (gizmoState.tool() != GizmoState.Tool.PIVOT || playSession.isActive() || planar.isEmpty()) {
+            return false;
+        }
+        Vector3f mouse = viewportWorldOnPlane(imageX, imageY, width, height);
+        PivotHandle.WorldToScreen projection = (worldX, worldY) ->
+                worldToScreen(new Vector2f(worldX, worldY), imageX, imageY, width, height);
+        Optional<EditorCommand> finished = pivotHandle.render(planar.get(),
+                spriteHalfExtents(selected.get()), projection, new Vector2f(mouse.x, mouse.y),
+                viewportHoveredThisFrame);
+        finished.ifPresent(command -> activeDocument.get().history().execute(command));
+        return pivotHandle.busy() || finished.isPresent();
+    }
+
+    private Vector2f spriteHalfExtents(GameObject gameObject) {
+        SpriteRenderer sprite = gameObject.getComponentOrNull(SpriteRenderer.class);
+        if (sprite == null) {
+            return new Vector2f();
+        }
+        return sprite.texture().map(texture -> halfExtentsOf(sprite, texture)).orElseGet(Vector2f::new);
+    }
+
+    private Vector2f halfExtentsOf(SpriteRenderer sprite, TextureHandle texture) {
+        float pixelWidth = sceneHost.backend().textureWidth(texture)
+                * (sprite.regionMaxU() - sprite.regionMinU());
+        float pixelHeight = sceneHost.backend().textureHeight(texture)
+                * (sprite.regionMaxV() - sprite.regionMinV());
+        float perUnit = Math.max(0.01f, sprite.pixelsPerUnit());
+        return new Vector2f(Math.abs(pixelWidth) / perUnit * 0.5f, Math.abs(pixelHeight) / perUnit * 0.5f);
     }
 
     private boolean renderGizmoUnlessPainting(Optional<TilemapRenderer> paintTarget,

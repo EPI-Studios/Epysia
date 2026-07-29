@@ -26,6 +26,8 @@ public final class SpriteRenderer extends Component implements SurfaceUniformHos
     private boolean flipX;
     @Export(label = "Flip Y")
     private boolean flipY;
+    @Export(label = "Flip Around Pivot")
+    private boolean flipAroundPivot;
     @Export(label = "Pixels Per Unit", min = 0.01f, max = 10000.0f, step = 1.0f)
     private float pixelsPerUnit = 32.0f;
     @Export(label = "Sorting Layer", step = 1.0f)
@@ -128,6 +130,15 @@ public final class SpriteRenderer extends Component implements SurfaceUniformHos
 
     public SpriteRenderer setFlipY(boolean flipY) {
         this.flipY = flipY;
+        return this;
+    }
+
+    public boolean flipAroundPivot() {
+        return flipAroundPivot;
+    }
+
+    public SpriteRenderer setFlipAroundPivot(boolean flipAroundPivot) {
+        this.flipAroundPivot = flipAroundPivot;
         return this;
     }
 

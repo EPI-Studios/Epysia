@@ -668,6 +668,9 @@ public final class EditorView implements FrameView {
         renderToolButton("tool-scale", EditorIcon.TOOL_SCALE, GizmoState.Tool.SCALE,
                 TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_SCALE);
         ImGui.sameLine();
+        renderToolButton("tool-pivot", EditorIcon.TOOL_PIVOT, GizmoState.Tool.PIVOT,
+                TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_PIVOT);
+        ImGui.sameLine();
         TextKey spaceKey = gizmoState.worldSpace()
                 ? TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_WORLD
                 : TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_LOCAL;
@@ -1055,6 +1058,9 @@ public final class EditorView implements FrameView {
         }
         if (ImGui.isKeyPressed(ImGuiKey.S, false)) {
             gizmoState.setTool(GizmoState.Tool.SCALE);
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.P, false)) {
+            gizmoState.setTool(GizmoState.Tool.PIVOT);
         }
         if (ImGui.isKeyPressed(ImGuiKey.X, false)) {
             gizmoState.toggleSpace();

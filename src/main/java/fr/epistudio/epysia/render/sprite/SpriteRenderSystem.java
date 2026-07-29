@@ -276,11 +276,17 @@ public final class SpriteRenderSystem implements RenderSystem {
         float rightU = sprite.flipX() ? sprite.regionMinU() : sprite.regionMaxU();
         float bottomV = sprite.flipY() ? sprite.regionMaxV() : sprite.regionMinV();
         float topV = sprite.flipY() ? sprite.regionMinV() : sprite.regionMaxV();
+        float centerX = mirroredCenter(sprite, sprite.flipX(), entry.transform().pivot().x);
+        float centerY = mirroredCenter(sprite, sprite.flipY(), entry.transform().pivot().y);
         Matrix3x2f matrix = entry.transform().localMatrix();
-        appendVertex(matrix, -halfWidth, -halfHeight, leftU, bottomV, sprite);
-        appendVertex(matrix, halfWidth, -halfHeight, rightU, bottomV, sprite);
-        appendVertex(matrix, halfWidth, halfHeight, rightU, topV, sprite);
-        appendVertex(matrix, -halfWidth, halfHeight, leftU, topV, sprite);
+        appendVertex(matrix, centerX - halfWidth, centerY - halfHeight, leftU, bottomV, sprite);
+        appendVertex(matrix, centerX + halfWidth, centerY - halfHeight, rightU, bottomV, sprite);
+        appendVertex(matrix, centerX + halfWidth, centerY + halfHeight, rightU, topV, sprite);
+        appendVertex(matrix, centerX - halfWidth, centerY + halfHeight, leftU, topV, sprite);
+    }
+
+    private static float mirroredCenter(SpriteRenderer sprite, boolean flipped, float pivotComponent) {
+        return flipped && sprite.flipAroundPivot() ? 2.0f * pivotComponent : 0.0f;
     }
 
     private void appendVertex(Matrix3x2f matrix, float cornerX, float cornerY, float u, float v, SpriteRenderer sprite) {

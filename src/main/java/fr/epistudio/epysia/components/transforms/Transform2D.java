@@ -111,7 +111,6 @@ public final class Transform2D extends Component {
     private void rebuildLocalMatrix() {
         cachedLocalMatrix
                 .translation(position)
-                .translate(pivot)
                 .rotate(rotationRadians)
                 .scale(scale)
                 .translate(-pivot.x, -pivot.y);

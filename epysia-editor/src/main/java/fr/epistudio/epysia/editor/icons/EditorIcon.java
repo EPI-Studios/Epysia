@@ -52,6 +52,7 @@ public enum EditorIcon {
     TERRAIN_MATCH_CORNERS_AND_SIDES("TerrainMatchCornersAndSides"),
     TERRAIN_MATCH_SIDES("TerrainMatchSides"),
     TOOL_MOVE("ToolMove"),
+    TOOL_PIVOT("ToolPivot"),
     TOOL_ROTATE("ToolRotate"),
     TOOL_SCALE("ToolScale"),
     TOOL_SELECT("ToolSelect"),

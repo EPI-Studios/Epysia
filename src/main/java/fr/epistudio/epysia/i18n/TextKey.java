@@ -178,6 +178,7 @@ public enum TextKey {
     EDITOR_EDITOR_VIEW_TOOLBAR_MOVE("editor.editor-view.toolbar.move"),
     EDITOR_EDITOR_VIEW_TOOLBAR_ROTATE("editor.editor-view.toolbar.rotate"),
     EDITOR_EDITOR_VIEW_TOOLBAR_SCALE("editor.editor-view.toolbar.scale"),
+    EDITOR_EDITOR_VIEW_TOOLBAR_PIVOT("editor.editor-view.toolbar.pivot"),
     EDITOR_EDITOR_VIEW_TOOLBAR_WORLD("editor.editor-view.toolbar.world"),
     EDITOR_EDITOR_VIEW_TOOLBAR_LOCAL("editor.editor-view.toolbar.local"),
     EDITOR_EDITOR_VIEW_TOOLBAR_TOGGLE_GIZMO_SPACE("editor.editor-view.toolbar.toggle-gizmo-space"),
