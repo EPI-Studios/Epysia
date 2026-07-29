@@ -1,6 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
-import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
+import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
@@ -187,6 +187,7 @@ public final class EditorView implements FrameView {
         this.toasts = toasts;
         this.shell = shell;
         this.onOpenProjectSelector = onOpenProjectSelector;
+        sceneHost.engine().assets().attachProject(project.rootDirectory());
         this.serializer = new SceneSerializer(componentRegistry);
         this.workspace = new SceneWorkspace(project, sceneHost, serializer, componentRegistry, toasts);
         this.preferences = EditorPreferences.load(EditorPreferences.defaultFile());
@@ -216,7 +217,7 @@ public final class EditorView implements FrameView {
         this.hierarchyView = new HierarchyView(active, componentRegistry, toasts, icons, this::saveAsPrefab,
                 viewportView::frameObject, objectFactory, this::spawnPositionInFront);
         this.spriteEditorWindow = new SpriteEditorWindow(
-                new ImagePreviewTexture(sceneHost.backend()), this::onAtlasSaved);
+                new ImagePreviewTexture(sceneHost.backend()), project.locator(), this::onAtlasSaved);
         this.tilemapDockView = new TilemapDockView(active, sceneHost.engine(), icons, tilePalettePanel,
                 viewportView::enablePainting, editorCamera::twoDimensional);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
@@ -364,12 +365,13 @@ public final class EditorView implements FrameView {
     }
 
     private void renderPanels(float deltaSeconds) {
-        boolean editingBlocked = playSession.isActive();
+        boolean playing = playSession.isActive();
         panelTimings.beginFrame();
-        ImGui.beginDisabled(editingBlocked);
+        ImGui.beginDisabled(playing);
         panelTimings.measure("Hierarchy", hierarchyView::render);
-        panelTimings.measure("Inspector", inspectorView::render);
         ImGui.endDisabled();
+        inspectorView.setPlayModeActive(playing);
+        panelTimings.measure("Inspector", inspectorView::render);
         panelTimings.measure("Viewport", () -> viewportView.render(deltaSeconds));
         panelTimings.measure("Console", consoleView::render);
         panelTimings.measure("Assets", assetBrowserView::render);
@@ -522,6 +524,15 @@ public final class EditorView implements FrameView {
         }
         if (ImGui.menuItem("Tilemap")) {
             objectFactory.createTilemap(spawnPositionInFront());
+        }
+        if (ImGui.menuItem("Point Light 2D")) {
+            objectFactory.createPointLight2D(spawnPositionInFront());
+        }
+        if (ImGui.menuItem("Spot Light 2D")) {
+            objectFactory.createSpotLight2D(spawnPositionInFront());
+        }
+        if (ImGui.menuItem("Global Light 2D")) {
+            objectFactory.createGlobalLight2D(spawnPositionInFront());
         }
     }
 
@@ -1369,17 +1380,15 @@ public final class EditorView implements FrameView {
     }
 
     private void onTextureFilterChanged(Path textureFile) {
-        String absolute = textureFile.toAbsolutePath().toString();
-        SamplerFilter filter = Texture2D.metaFilter(absolute);
-        List<TextureHandle> loaded = sceneHost.engine().assets().loadedMatching(TextureHandle.class,
-                path -> TexturePathPrefixes.stripPrefixes(path).equals(absolute));
-        for (TextureHandle handle : loaded) {
+        AssetUri uri = project.locator().fromFile(textureFile);
+        SamplerFilter filter = Texture2D.importSettings(textureFile.toAbsolutePath().toString()).filter();
+        for (TextureHandle handle : sceneHost.engine().assets().loaded(TextureHandle.class, uri)) {
             sceneHost.backend().updateTextureFilter(handle, filter);
         }
     }
 
     private void onAtlasSaved(Path atlasFile) {
-        sceneHost.engine().assets().unload(atlasFile.toAbsolutePath().toString());
+        sceneHost.engine().assets().invalidate(project.locator().fromFile(atlasFile));
         toasts.show("Atlas saved: " + atlasFile.getFileName());
     }
 

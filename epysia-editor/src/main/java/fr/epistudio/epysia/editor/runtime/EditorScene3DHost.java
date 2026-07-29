@@ -154,12 +154,14 @@ public final class EditorScene3DHost {
         engine.addScene(scene);
         loadEngineModules();
         shaderLoader = ShaderLoader.autoDetect();
+        shaderLoader.useProject(() -> engine.assets().locator());
         shaderWatcher = new ShaderWatcher(shaderLoader.filesystemRoot());
         meshRenderSystem = new MeshRenderSystem(shaderLoader, shaderWatcher, engine.logger());
         postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());
         postProcessSystem.setShaderWatcher(shaderWatcher);
         vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
-        spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+        vfxRenderSystem.useProject(() -> engine.assets().locator());
+        spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         tilemapRenderSystem = new TilemapRenderSystem(spriteRenderSystem, engine.logger());
         textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());
         engine.addRenderSystem(meshRenderSystem);
@@ -219,10 +221,11 @@ public final class EditorScene3DHost {
         }
         if (!current.contains(vfxRenderSystem)) {
             vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+        vfxRenderSystem.useProject(() -> engine.assets().locator());
             engine.addRenderSystem(vfxRenderSystem);
         }
         if (!current.contains(spriteRenderSystem)) {
-            spriteRenderSystem = new SpriteRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
+            spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
             engine.addRenderSystem(spriteRenderSystem);
         }
         if (!current.contains(tilemapRenderSystem)) {
