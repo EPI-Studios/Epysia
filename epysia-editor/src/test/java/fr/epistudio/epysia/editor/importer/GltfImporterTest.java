@@ -2,7 +2,9 @@ package fr.epistudio.epysia.editor.importer;
 
 import fr.epistudio.epysia.animation.Clip;
 import fr.epistudio.epysia.animation.ClipProperty;
+import fr.epistudio.epysia.assets.AssetMetaFile;
 import fr.epistudio.epysia.assets.epyclip.EpyClipReader;
+import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
 import fr.epistudio.epysia.assets.epymesh.EpyMesh;
 import fr.epistudio.epysia.assets.epymesh.EpyMeshReader;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
@@ -21,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -493,13 +496,16 @@ class GltfImporterTest {
     }
 
     @Test
-    void clampToEdgeSamplerPrependsClampPrefixToTexturePath(@TempDir Path directory) throws Exception {
+    void aClampToEdgeSamplerLandsInTheTextureImportSettings(@TempDir Path directory) throws Exception {
         Path source = writeUvFixture(directory, "clamp.gltf", clampSamplerFixtureJson());
         GltfImportResult result = runImport(source, directory);
         String document = Files.readString(result.materialFiles().get(0));
         Material material = new MaterialJsonCodec().readSingle(document).orElseThrow();
         String albedoPath = ((LitMaterial) material).texturePath("albedo").orElseThrow();
-        assertTrue(albedoPath.startsWith("clamp:"));
+        assertFalse(albedoPath.startsWith("clamp:"));
+        Path metaFile = AssetMetaFile.pathFor(directory.resolve(albedoPath));
+        assertEquals(Optional.of(TextureImportSettings.WRAP_CLAMP),
+                AssetMetaFile.readString(metaFile, TextureImportSettings.WRAP_KEY));
     }
 
     private static String clampSamplerFixtureJson() throws IOException {

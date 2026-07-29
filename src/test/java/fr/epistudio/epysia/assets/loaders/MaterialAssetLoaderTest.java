@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.assets.loaders;
 
+import fr.epistudio.epysia.assets.AssetLocator;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
@@ -21,21 +22,21 @@ class MaterialAssetLoaderTest {
         Path file = directory.resolve("shared.epymaterial");
         Files.writeString(file, new MaterialJsonCodec().writeSingle(material));
         MaterialAssetLoader loader = new MaterialAssetLoader();
-        Material first = loader.loadFromFile(file);
-        Material second = loader.loadFromFile(file);
+        Material first = loader.loadFromFile(AssetLocator.forProject(file.getParent()), file);
+        Material second = loader.loadFromFile(AssetLocator.forProject(file.getParent()), file);
         assertSame(first, second);
         assertEquals("shaders/dissolve.surf.glsl", ((LitMaterial) first).surfaceShaderPath());
     }
 
     @Test
-    void clampPrefixedRelativeTexturePathRebasesWithThePrefixPreserved(@TempDir Path directory) throws Exception {
+    void aLegacyPrefixedRelativeTexturePathRebasesOntoAProjectUri(@TempDir Path directory) throws Exception {
         LitMaterial material = new LitMaterial();
         material.setTexturePath("albedo", "clamp:tex.png");
         Path file = directory.resolve("prefixed.epymaterial");
         Files.writeString(file, new MaterialJsonCodec().writeSingle(material));
         MaterialAssetLoader loader = new MaterialAssetLoader();
-        Material loaded = loader.loadFromFile(file);
+        Material loaded = loader.loadFromFile(AssetLocator.forProject(file.getParent()), file);
         String albedoPath = loaded.texturePath("albedo").orElseThrow();
-        assertEquals("clamp:" + directory.toAbsolutePath().normalize().resolve("tex.png"), albedoPath);
+        assertEquals("clamp:res://tex.png", albedoPath);
     }
 }

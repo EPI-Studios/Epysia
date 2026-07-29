@@ -88,6 +88,27 @@ class EpyMeshRoundTripTest {
     }
 
     @Test
+    void keepsLightmapUvsAcrossRoundTrip() {
+        MeshData source = lightmappedMesh();
+
+        EpyMesh restored = EpyMeshReader.read(EpyMeshWriter.write(source, Optional.empty(), Optional.empty()));
+
+        assertTrue(restored.mesh().hasLightmapUvs(), "lightmap uvs must survive the round trip");
+        assertArrayEquals(source.lightmapUvs(), restored.mesh().lightmapUvs(), 1.0e-6f);
+        assertArrayEquals(source.uvs(), restored.mesh().uvs(), 1.0e-6f);
+    }
+
+    private static MeshData lightmappedMesh() {
+        MeshData base = sampleMesh();
+        float[] lightmapUvs = new float[base.vertexCount() * 2];
+        for (int index = 0; index < lightmapUvs.length; index++) {
+            lightmapUvs[index] = 0.125f * (index + 1);
+        }
+        return new MeshData(base.positions(), base.normals(), base.uvs(), lightmapUvs, base.tangents(),
+                new float[0], new short[0], new float[0], base.indices(), base.submeshes());
+    }
+
+    @Test
     void rejectsWrongMagic() {
         byte[] corrupt = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
 
