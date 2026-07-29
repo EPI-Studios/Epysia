@@ -13,6 +13,8 @@ import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.editor.assets.EditorAssetPaths;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
 import fr.epistudio.epysia.render.material.LitMaterial;
@@ -82,12 +84,17 @@ public final class MaterialsSection {
     private final MaterialJsonCodec materialCodec = new MaterialJsonCodec();
     private final Map<String, Material> assetMaterials = new HashMap<>();
     private final Map<String, String> savedDocuments = new HashMap<>();
+    private final AssetLocator locator;
 
     public MaterialsSection(Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails, Project project) {
         this.activeDocument = activeDocument;
         this.thumbnails = thumbnails;
+        this.locator = project.locator();
         this.filePicker = new AssetFilePicker(project, thumbnails);
-        this.surfaceUniformRows = new SurfaceUniformRows(ShaderLoader.autoDetect(), this::history, filePicker);
+        ShaderLoader uniformLoader = ShaderLoader.autoDetect();
+        uniformLoader.useProject(project::locator);
+        this.surfaceUniformRows = new SurfaceUniformRows(uniformLoader, this::history,
+                filePicker, locator);
     }
 
     private EditorHistory history() {
@@ -538,8 +545,9 @@ public final class MaterialsSection {
             return;
         }
         String droppedPath = ImGui.acceptDragDropPayload(AssetMimeTypes.TEXTURE, String.class);
-        if (droppedPath != null && !droppedPath.equals(currentPath)) {
-            executeTextureChange(material, field, currentPath, droppedPath);
+        String stored = droppedPath == null ? null : EditorAssetPaths.stored(locator, droppedPath);
+        if (stored != null && !stored.equals(currentPath)) {
+            executeTextureChange(material, field, currentPath, stored);
         }
         ImGui.endDragDropTarget();
     }

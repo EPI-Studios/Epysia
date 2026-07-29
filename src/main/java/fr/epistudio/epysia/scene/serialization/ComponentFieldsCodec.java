@@ -8,6 +8,8 @@ import fr.epistudio.epysia.reflection.Reflection;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import fr.epistudio.epysia.render.shader.ShaderUniformValues;
+import org.joml.Vector4f;
 
 import java.util.List;
 import java.util.Map;
@@ -49,6 +51,8 @@ final class ComponentFieldsCodec {
             case STRING -> writer.valueString((String) value);
             case VECTOR2 -> writeVector2(writer, (Vector2f) value);
             case VECTOR3 -> writeVector3(writer, (Vector3f) value);
+            case VECTOR4 -> writeVector4(writer, (Vector4f) value);
+            case SURFACE_UNIFORMS -> SurfaceUniformJson.write(writer, (ShaderUniformValues) value);
             case QUATERNION -> writeQuaternion(writer, (Quaternionf) value);
             case ENUM -> writer.valueString(value == null ? "" : ((Enum<?>) value).name());
             case ASSET_REF -> writeAssetRef(writer, value);
@@ -92,6 +96,15 @@ final class ComponentFieldsCodec {
         writer.endArray();
     }
 
+    private static void writeVector4(JsonWriter writer, Vector4f vector) {
+        writer.beginArray();
+        writer.valueNumber(vector.x);
+        writer.valueNumber(vector.y);
+        writer.valueNumber(vector.z);
+        writer.valueNumber(vector.w);
+        writer.endArray();
+    }
+
     private static void writeQuaternion(JsonWriter writer, Quaternionf rotation) {
         writer.beginArray();
         writer.valueNumber(rotation.x);
@@ -120,6 +133,9 @@ final class ComponentFieldsCodec {
             case STRING -> property.writeObject(value.toString());
             case VECTOR2 -> applyVector2(property, (List<Object>) value);
             case VECTOR3 -> applyVector3(property, (List<Object>) value);
+            case VECTOR4 -> applyVector4(property, (List<Object>) value);
+            case SURFACE_UNIFORMS -> SurfaceUniformJson.apply(
+                    (ShaderUniformValues) property.read(), (Map<String, Object>) value);
             case QUATERNION -> applyQuaternion(property, (List<Object>) value);
             case ENUM -> applyEnum(property, value);
             case ASSET_REF -> applyAssetRef(property, value);
@@ -137,6 +153,12 @@ final class ComponentFieldsCodec {
     private static void applyVector3(ExportedProperty property, List<Object> values) {
         Vector3f target = (Vector3f) property.read();
         target.set(asFloat(values.get(0)), asFloat(values.get(1)), asFloat(values.get(2)));
+    }
+
+    private static void applyVector4(ExportedProperty property, List<Object> values) {
+        Vector4f target = (Vector4f) property.read();
+        target.set(asFloat(values.get(0)), asFloat(values.get(1)),
+                asFloat(values.get(2)), asFloat(values.get(3)));
     }
 
     private static void applyQuaternion(ExportedProperty property, List<Object> values) {

@@ -17,6 +17,8 @@ public final class ExportedProperty {
         STRING,
         VECTOR2,
         VECTOR3,
+        VECTOR4,
+        SURFACE_UNIFORMS,
         QUATERNION,
         ENUM,
         ASSET_REF,
@@ -60,6 +62,10 @@ public final class ExportedProperty {
 
     public boolean isColor() {
         return annotation.color();
+    }
+
+    public String[] assetExtensions() {
+        return annotation.assetExtensions();
     }
 
     public boolean isLayerMask() {

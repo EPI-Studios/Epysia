@@ -4,6 +4,8 @@ import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.editor.assets.EditorAssetPaths;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.render.postfx.PostEffect;
 import fr.epistudio.epysia.render.postfx.PostEffectInsertionPoint;
@@ -40,11 +42,13 @@ public final class PostEffectsSection {
 
     private final AssetFilePicker filePicker;
     private final ThumbnailCache thumbnails;
+    private final AssetLocator locator;
     private final Map<String, CachedParse> parseCache = new HashMap<>();
 
     public PostEffectsSection(Project project, ThumbnailCache thumbnails) {
         this.filePicker = new AssetFilePicker(project, thumbnails);
         this.thumbnails = thumbnails;
+        this.locator = project.locator();
     }
 
     public void render(PostEffectStack stack, Runnable onChanged) {
@@ -333,8 +337,9 @@ public final class PostEffectsSection {
             return;
         }
         String droppedPath = ImGui.acceptDragDropPayload(AssetMimeTypes.TEXTURE, String.class);
-        if (droppedPath != null && !droppedPath.equals(currentPath)) {
-            effect.setTexture(declaration.name(), droppedPath);
+        String stored = droppedPath == null ? null : EditorAssetPaths.stored(locator, droppedPath);
+        if (stored != null && !stored.equals(currentPath)) {
+            effect.setTexture(declaration.name(), stored);
             onChanged.run();
         }
         ImGui.endDragDropTarget();

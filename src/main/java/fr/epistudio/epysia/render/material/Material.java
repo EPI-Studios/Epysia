@@ -1,13 +1,14 @@
 package fr.epistudio.epysia.render.material;
 
 import fr.epistudio.epysia.render.shader.ShaderUniformValues;
+import fr.epistudio.epysia.render.shader.SurfaceUniformHost;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-public abstract class Material {
+public abstract class Material implements SurfaceUniformHost {
 
     private final String vertexShaderPath;
     private final String fragmentShaderPath;

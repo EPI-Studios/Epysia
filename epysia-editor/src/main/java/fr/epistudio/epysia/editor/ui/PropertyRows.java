@@ -18,6 +18,7 @@ import imgui.type.ImString;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -69,6 +70,7 @@ public final class PropertyRows {
             case ENUM -> renderEnum(owner, property);
             case VECTOR2 -> renderVector2(owner, property);
             case VECTOR3 -> renderVector3(owner, property);
+            case VECTOR4 -> renderVector4(owner, property);
             case QUATERNION -> renderQuaternion(owner, property, key);
             case ASSET_REF -> renderAssetRef(owner, property, key);
             case GAMEOBJECT_REF -> renderGameObjectRef(owner, property);
@@ -132,10 +134,44 @@ public final class PropertyRows {
     }
 
     private void renderString(IComponent owner, ExportedProperty property, String key) {
+        if (property.assetExtensions().length > 0) {
+            renderAssetPathRow(owner, property);
+            return;
+        }
         String current = String.valueOf(property.read());
         ImString buffer = stringBuffer(key, current);
         if (ImGui.inputText(property.label(), buffer) && !buffer.get().equals(current)) {
             history().execute(new SetPropertyCommand(owner, property, current, buffer.get()));
+        }
+    }
+
+    private void renderAssetPathRow(IComponent owner, ExportedProperty property) {
+        String current = String.valueOf(property.read());
+        if (ImGui.button("...")) {
+            assetPicker.open(Set.of(property.assetExtensions()),
+                    picked -> history().execute(new SetPropertyCommand(owner, property, current, picked)));
+        }
+        ImGui.sameLine();
+        ImGui.beginDisabled(current.isEmpty());
+        if (ImGui.button("x")) {
+            history().execute(new SetPropertyCommand(owner, property, current, ""));
+        }
+        ImGui.endDisabled();
+        ImGui.sameLine();
+        ImGui.labelText(property.label(), current.isEmpty() ? "none" : shortenPath(current));
+    }
+
+    private static String shortenPath(String path) {
+        int lastSeparator = path.lastIndexOf('/');
+        return lastSeparator < 0 ? path : path.substring(lastSeparator + 1);
+    }
+
+    private void renderVector4(IComponent owner, ExportedProperty property) {
+        Vector4f current = (Vector4f) property.read();
+        float[] buffer = {current.x, current.y, current.z, current.w};
+        if (ImGui.dragFloat4(property.label(), buffer, property.step())) {
+            Vector4f updated = new Vector4f(buffer[0], buffer[1], buffer[2], buffer[3]);
+            history().execute(new SetPropertyCommand(owner, property, new Vector4f(current), updated));
         }
     }
 

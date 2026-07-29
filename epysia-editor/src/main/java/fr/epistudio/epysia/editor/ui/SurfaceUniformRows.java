@@ -2,7 +2,8 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
-import fr.epistudio.epysia.editor.command.builtin.SetMaterialPropertyCommand;
+import fr.epistudio.epysia.editor.command.builtin.SetSurfaceUniformCommand;
+import fr.epistudio.epysia.render.shader.SurfaceUniformHost;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderUniformDeclaration;
@@ -10,6 +11,8 @@ import fr.epistudio.epysia.render.shader.ShaderUniformDefaults;
 import fr.epistudio.epysia.render.shader.ShaderUniformParser;
 import fr.epistudio.epysia.render.shader.ShaderUniformParser.ParsedSource;
 import fr.epistudio.epysia.render.shader.ShaderUniformValue;
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.editor.assets.EditorAssetPaths;
 import imgui.ImGui;
 import imgui.flag.ImGuiColorEditFlags;
 
@@ -32,20 +35,22 @@ public final class SurfaceUniformRows {
     private final ShaderLoader shaderLoader;
     private final Supplier<EditorHistory> history;
     private final AssetFilePicker filePicker;
+    private final AssetLocator locator;
     private final Map<String, List<ShaderUniformDeclaration>> declarationCache = new HashMap<>();
 
     public SurfaceUniformRows(ShaderLoader shaderLoader, Supplier<EditorHistory> history,
-                              AssetFilePicker filePicker) {
+                              AssetFilePicker filePicker, AssetLocator locator) {
         this.shaderLoader = shaderLoader;
         this.history = history;
         this.filePicker = filePicker;
+        this.locator = locator;
     }
 
     public void invalidate() {
         declarationCache.clear();
     }
 
-    public void render(Material material, List<String> shaderPaths) {
+    public void render(SurfaceUniformHost material, List<String> shaderPaths) {
         List<ShaderUniformDeclaration> declarations = declarationsFor(shaderPaths);
         if (declarations.isEmpty()) {
             return;
@@ -76,7 +81,7 @@ public final class SurfaceUniformRows {
         }
     }
 
-    private void renderRow(Material material, ShaderUniformDeclaration declaration) {
+    private void renderRow(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         if (declaration.isArray()) {
             return;
         }
@@ -97,7 +102,7 @@ public final class SurfaceUniformRows {
         ImGui.popID();
     }
 
-    private void renderTexture(Material material, ShaderUniformDeclaration declaration) {
+    private void renderTexture(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         ImGui.pushID(declaration.name());
         String currentPath = currentTexturePath(material, declaration);
         if (ImGui.button(textureButtonLabel(currentPath), TEXTURE_BUTTON_WIDTH, 0.0f)) {
@@ -113,28 +118,28 @@ public final class SurfaceUniformRows {
         ImGui.popID();
     }
 
-    private void acceptTextureDrop(Material material, ShaderUniformDeclaration declaration, String currentPath) {
+    private void acceptTextureDrop(SurfaceUniformHost material, ShaderUniformDeclaration declaration, String currentPath) {
         if (!ImGui.beginDragDropTarget()) {
             return;
         }
         String droppedPath = ImGui.acceptDragDropPayload(AssetMimeTypes.TEXTURE, String.class);
         if (droppedPath != null) {
-            commitTexture(material, declaration, currentPath, droppedPath);
+            commitTexture(material, declaration, currentPath, EditorAssetPaths.stored(locator, droppedPath));
         }
         ImGui.endDragDropTarget();
     }
 
-    private void commitTexture(Material material, ShaderUniformDeclaration declaration,
+    private void commitTexture(SurfaceUniformHost material, ShaderUniformDeclaration declaration,
                                String before, String after) {
         if (before.equals(after)) {
             return;
         }
-        history.get().execute(new SetMaterialPropertyCommand(material,
-                SetMaterialPropertyCommand.Target.SURFACE_UNIFORM, declaration.name(),
-                new ShaderUniformValue.TextureValue(before), new ShaderUniformValue.TextureValue(after)));
+        history.get().execute(new SetSurfaceUniformCommand(material, declaration.name(),
+                Optional.of(new ShaderUniformValue.TextureValue(before)),
+                new ShaderUniformValue.TextureValue(after)));
     }
 
-    private static String currentTexturePath(Material material, ShaderUniformDeclaration declaration) {
+    private static String currentTexturePath(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         if (material.surfaceUniforms().value(declaration.name())
                 .orElse(null) instanceof ShaderUniformValue.TextureValue texture) {
             return texture.path();
@@ -146,7 +151,7 @@ public final class SurfaceUniformRows {
         return currentPath.isEmpty() ? "None" : Path.of(currentPath).getFileName().toString();
     }
 
-    private void renderFloat(Material material, ShaderUniformDeclaration declaration) {
+    private void renderFloat(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         float current = currentFloat(material, declaration);
         float[] value = {current};
         if (ImGui.dragFloat(declaration.name(), value, DRAG_STEP) && value[0] != current) {
@@ -154,7 +159,7 @@ public final class SurfaceUniformRows {
         }
     }
 
-    private void renderInt(Material material, ShaderUniformDeclaration declaration) {
+    private void renderInt(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         int current = (int) currentFloat(material, declaration);
         int[] value = {current};
         if (ImGui.dragInt(declaration.name(), value) && value[0] != current) {
@@ -162,14 +167,14 @@ public final class SurfaceUniformRows {
         }
     }
 
-    private void renderBool(Material material, ShaderUniformDeclaration declaration) {
+    private void renderBool(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         boolean current = currentFloat(material, declaration) != 0.0f;
         if (ImGui.checkbox(declaration.name(), current)) {
             commit(material, declaration, new ShaderUniformValue.BoolValue(!current));
         }
     }
 
-    private void renderVector3(Material material, ShaderUniformDeclaration declaration) {
+    private void renderVector3(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         float[] components = currentComponents(material, declaration, 3);
         float[] edited = components.clone();
         boolean picked = ImGui.colorEdit3("##swatch", edited, COLOR_EDIT_FLAGS);
@@ -182,7 +187,7 @@ public final class SurfaceUniformRows {
         }
     }
 
-    private void renderVector(Material material, ShaderUniformDeclaration declaration, int size) {
+    private void renderVector(SurfaceUniformHost material, ShaderUniformDeclaration declaration, int size) {
         float[] components = currentComponents(material, declaration, size);
         float[] edited = components.clone();
         boolean dragged = size == 2
@@ -204,21 +209,21 @@ public final class SurfaceUniformRows {
         return false;
     }
 
-    private void commit(Material material, ShaderUniformDeclaration declaration,
+    private void commit(SurfaceUniformHost material, ShaderUniformDeclaration declaration,
                         ShaderUniformValue after) {
         ShaderUniformValue before = resolved(material, declaration)
                 .orElse(new ShaderUniformValue.FloatValue(0.0f));
-        history.get().execute(new SetMaterialPropertyCommand(material,
-                SetMaterialPropertyCommand.Target.SURFACE_UNIFORM, declaration.name(), before, after));
+        history.get().execute(new SetSurfaceUniformCommand(material, declaration.name(),
+                Optional.of(before), after));
     }
 
-    private Optional<ShaderUniformValue> resolved(Material material,
+    private Optional<ShaderUniformValue> resolved(SurfaceUniformHost material,
                                                   ShaderUniformDeclaration declaration) {
         Optional<ShaderUniformValue> assigned = material.surfaceUniforms().value(declaration.name());
         return assigned.isPresent() ? assigned : ShaderUniformDefaults.of(declaration);
     }
 
-    private float currentFloat(Material material, ShaderUniformDeclaration declaration) {
+    private float currentFloat(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         return switch (resolved(material, declaration).orElse(null)) {
             case ShaderUniformValue.FloatValue value -> value.value();
             case ShaderUniformValue.IntValue value -> value.value();
@@ -227,7 +232,7 @@ public final class SurfaceUniformRows {
         };
     }
 
-    private float[] currentComponents(Material material, ShaderUniformDeclaration declaration,
+    private float[] currentComponents(SurfaceUniformHost material, ShaderUniformDeclaration declaration,
                                       int size) {
         float[] components = new float[size];
         switch (resolved(material, declaration).orElse(null)) {

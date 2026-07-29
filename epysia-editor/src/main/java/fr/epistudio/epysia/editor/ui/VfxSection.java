@@ -4,6 +4,7 @@ import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
+import fr.epistudio.epysia.assets.AssetLocator;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.vfx.ParticleBurst;
 import fr.epistudio.epysia.vfx.ParticleEffect;
@@ -27,12 +28,14 @@ public final class VfxSection {
 
     private final Supplier<SceneDocument> activeDocument;
     private final Path projectRoot;
+    private final AssetLocator locator;
     private List<Path> cachedGraphs = List.of();
     private long cacheExpiryNanos;
 
     public VfxSection(Supplier<SceneDocument> activeDocument, Project project) {
         this.activeDocument = activeDocument;
         this.projectRoot = project.rootDirectory();
+        this.locator = project.locator();
     }
 
     public void render(ParticleEffect effect) {
@@ -75,10 +78,10 @@ public final class VfxSection {
     }
 
     private void renderGraphOption(ParticleEffect effect, Path graph) {
-        String absolute = graph.toAbsolutePath().toString();
-        boolean selected = absolute.equals(effect.graphPath());
+        String stored = locator.fromFile(graph).toString();
+        boolean selected = stored.equals(effect.graphPath());
         if (ImGui.selectable(stemOf(graph), selected) && !selected) {
-            effect.setGraphPath(absolute);
+            effect.setGraphPath(stored);
             activeDocument.get().markDirty();
         }
     }

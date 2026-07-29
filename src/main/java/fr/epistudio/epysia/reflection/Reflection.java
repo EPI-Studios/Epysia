@@ -7,6 +7,8 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import fr.epistudio.epysia.render.shader.ShaderUniformValues;
+import org.joml.Vector4f;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -56,6 +58,12 @@ public final class Reflection {
         }
         if (type == Vector3f.class) {
             return ExportedProperty.Kind.VECTOR3;
+        }
+        if (type == Vector4f.class) {
+            return ExportedProperty.Kind.VECTOR4;
+        }
+        if (type == ShaderUniformValues.class) {
+            return ExportedProperty.Kind.SURFACE_UNIFORMS;
         }
         if (type == Quaternionf.class) {
             return ExportedProperty.Kind.QUATERNION;

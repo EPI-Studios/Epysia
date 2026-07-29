@@ -13,6 +13,7 @@ import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
+import fr.epistudio.epysia.render.shader.SurfaceUniformHost;
 import fr.epistudio.epysia.render.shader.ShaderUniformDeclaration;
 import fr.epistudio.epysia.render.shader.ShaderUniformDefaults;
 import fr.epistudio.epysia.render.shader.ShaderUniformPacker;
@@ -33,35 +34,35 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-final class SurfaceUniformBinder {
+public final class SurfaceUniformBinder {
 
     private static final int SCRATCH_BYTES = 4096;
     private static final byte[] NO_UNIFORM_BYTES = new byte[0];
 
     private final Logger logger;
-    private final Map<Material, SizedBuffer> uniformBuffers = new IdentityHashMap<>();
+    private final Map<SurfaceUniformHost, SizedBuffer> uniformBuffers = new IdentityHashMap<>();
     private final Map<String, TextureHandle> textureCache = new HashMap<>();
-    private final Set<Material> writtenThisFrame = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<SurfaceUniformHost> writtenThisFrame = Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<BufferHandle> ownedBuffers = new ArrayList<>();
     private final ByteBuffer scratch = BufferUtils.createByteBuffer(SCRATCH_BYTES);
 
     private RenderBackend backend;
     private TextureHandle fallbackTexture;
 
-    SurfaceUniformBinder(Logger logger) {
+    public SurfaceUniformBinder(Logger logger) {
         this.logger = logger;
     }
 
-    void initialize(RenderBackend backend) {
+    public void initialize(RenderBackend backend) {
         this.backend = backend;
         this.fallbackTexture = Texture2D.whitePixel(backend);
     }
 
-    void beginFrame() {
+    public void beginFrame() {
         writtenThisFrame.clear();
     }
 
-    static void appendSlots(List<BindingSlot> slots, ParsedSource parsed) {
+    public static void appendSlots(List<BindingSlot> slots, ParsedSource parsed) {
         if (parsed.hasBufferDeclarations()) {
             slots.add(new BindingSlot(SurfaceShaderComposer.USER_UNIFORM_BINDING, BindingType.UNIFORM_BUFFER));
         }
@@ -71,7 +72,7 @@ final class SurfaceUniformBinder {
         }
     }
 
-    void appendBindings(List<Binding> bindings, Material material, ParsedSource parsed) {
+    public void appendBindings(List<Binding> bindings, SurfaceUniformHost material, ParsedSource parsed) {
         if (parsed.hasBufferDeclarations()) {
             bindings.add(new Binding(SurfaceShaderComposer.USER_UNIFORM_BINDING,
                     UniformBufferBinding.whole(ensureUniformBuffer(material, parsed), parsed.uniformBufferSize())));
@@ -83,7 +84,7 @@ final class SurfaceUniformBinder {
         }
     }
 
-    private BufferHandle ensureUniformBuffer(Material material, ParsedSource parsed) {
+    private BufferHandle ensureUniformBuffer(SurfaceUniformHost material, ParsedSource parsed) {
         SizedBuffer existing = uniformBuffers.get(material);
         if (existing != null && existing.byteSize() == parsed.uniformBufferSize()) {
             return existing.handle();
@@ -99,7 +100,7 @@ final class SurfaceUniformBinder {
         return created;
     }
 
-    void writeIfNeeded(Material material, ParsedSource parsed) {
+    public void writeIfNeeded(SurfaceUniformHost material, ParsedSource parsed) {
         if (!parsed.hasBufferDeclarations() || !writtenThisFrame.add(material)) {
             return;
         }
@@ -111,7 +112,7 @@ final class SurfaceUniformBinder {
         backend.writeBuffer(buffer.handle(), scratch, 0L);
     }
 
-    private void packInto(Material material, ParsedSource parsed) {
+    private void packInto(SurfaceUniformHost material, ParsedSource parsed) {
         int size = Math.min(parsed.uniformBufferSize(), SCRATCH_BYTES);
         scratch.clear();
         for (int index = 0; index < size; index++) {
@@ -128,44 +129,46 @@ final class SurfaceUniformBinder {
         scratch.limit(size);
     }
 
-    private Optional<ShaderUniformValue> resolveValue(Material material, ShaderUniformDeclaration declaration) {
+    private Optional<ShaderUniformValue> resolveValue(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         Optional<ShaderUniformValue> assigned = valuesOf(material).value(declaration.name());
         return assigned.isPresent() ? assigned : ShaderUniformDefaults.of(declaration);
     }
 
-    private static ShaderUniformValues valuesOf(Material material) {
+    private static ShaderUniformValues valuesOf(SurfaceUniformHost material) {
         return material.surfaceUniforms();
     }
 
-    static long valueRevisionOf(Material material) {
+    static long valueRevisionOf(SurfaceUniformHost material) {
         return material.surfaceUniforms().valueRevision();
     }
 
-    static long structureRevisionOf(Material material) {
+    static long structureRevisionOf(SurfaceUniformHost material) {
         return material.surfaceUniforms().structureRevision();
     }
 
-    byte[] uniformSnapshotOf(Material material, ParsedSource parsed) {
+    byte[] uniformSnapshotOf(SurfaceUniformHost material, ParsedSource parsed) {
         if (!parsed.hasBufferDeclarations()) {
             return NO_UNIFORM_BYTES;
         }
         packInto(material, parsed);
         byte[] snapshot = new byte[scratch.limit()];
-        for (int index = 0; index < snapshot.length; index++) {
-            snapshot[index] = scratch.get(index);
-        }
+        int position = scratch.position();
+        scratch.position(0);
+        scratch.get(snapshot);
+        scratch.position(position);
         return snapshot;
     }
 
-    long[] samplerHandlesOf(Material material, ParsedSource parsed) {
-        long[] handles = new long[parsed.samplerDeclarations().size()];
+    long[] samplerHandlesOf(SurfaceUniformHost material, ParsedSource parsed) {
+        List<ShaderUniformDeclaration> samplers = parsed.samplerDeclarations();
+        long[] handles = new long[samplers.size()];
         for (int index = 0; index < handles.length; index++) {
-            handles[index] = resolveTexture(material, parsed.samplerDeclarations().get(index)).id();
+            handles[index] = resolveTexture(material, samplers.get(index)).id();
         }
         return handles;
     }
 
-    private TextureHandle resolveTexture(Material material, ShaderUniformDeclaration declaration) {
+    private TextureHandle resolveTexture(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         Optional<ShaderUniformValue> value = valuesOf(material).value(declaration.name());
         if (value.orElse(null) instanceof ShaderUniformValue.TextureValue texture && !texture.path().isEmpty()) {
             return textureCache.computeIfAbsent(texture.path(), this::loadTexture);
@@ -185,7 +188,7 @@ final class SurfaceUniformBinder {
         }
     }
 
-    void shutdown() {
+    public void shutdown() {
         if (backend == null) {
             return;
         }

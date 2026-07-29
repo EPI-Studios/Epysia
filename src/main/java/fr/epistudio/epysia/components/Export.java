@@ -20,4 +20,6 @@ public @interface Export {
     boolean color() default false;
 
     boolean layerMask() default false;
+
+    String[] assetExtensions() default {};
 }

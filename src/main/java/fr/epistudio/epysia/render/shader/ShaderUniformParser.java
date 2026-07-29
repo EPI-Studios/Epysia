@@ -21,19 +21,60 @@ public final class ShaderUniformParser {
     private ShaderUniformParser() {
     }
 
-    public record ParsedSource(List<ShaderUniformDeclaration> declarations, String body,
-                               Map<String, Integer> byteOffsetsByName, int uniformBufferSize) {
+    public static final class ParsedSource {
+
+        private final List<ShaderUniformDeclaration> declarations;
+        private final String body;
+        private final Map<String, Integer> byteOffsetsByName;
+        private final int uniformBufferSize;
+        private final List<ShaderUniformDeclaration> samplerDeclarations;
+        private final List<ShaderUniformDeclaration> bufferDeclarations;
+
+        public ParsedSource(List<ShaderUniformDeclaration> declarations, String body,
+                            Map<String, Integer> byteOffsetsByName, int uniformBufferSize) {
+            this.declarations = declarations;
+            this.body = body;
+            this.byteOffsetsByName = byteOffsetsByName;
+            this.uniformBufferSize = uniformBufferSize;
+            List<ShaderUniformDeclaration> samplers = new ArrayList<>();
+            List<ShaderUniformDeclaration> buffers = new ArrayList<>();
+            for (ShaderUniformDeclaration declaration : declarations) {
+                if (declaration.isSampler()) {
+                    samplers.add(declaration);
+                } else {
+                    buffers.add(declaration);
+                }
+            }
+            this.samplerDeclarations = List.copyOf(samplers);
+            this.bufferDeclarations = List.copyOf(buffers);
+        }
+
+        public List<ShaderUniformDeclaration> declarations() {
+            return declarations;
+        }
+
+        public String body() {
+            return body;
+        }
+
+        public Map<String, Integer> byteOffsetsByName() {
+            return byteOffsetsByName;
+        }
+
+        public int uniformBufferSize() {
+            return uniformBufferSize;
+        }
 
         public List<ShaderUniformDeclaration> samplerDeclarations() {
-            return declarations.stream().filter(ShaderUniformDeclaration::isSampler).toList();
+            return samplerDeclarations;
         }
 
         public List<ShaderUniformDeclaration> bufferDeclarations() {
-            return declarations.stream().filter(declaration -> !declaration.isSampler()).toList();
+            return bufferDeclarations;
         }
 
         public boolean hasBufferDeclarations() {
-            return declarations.stream().anyMatch(declaration -> !declaration.isSampler());
+            return !bufferDeclarations.isEmpty();
         }
 
         public static ParsedSource empty() {
