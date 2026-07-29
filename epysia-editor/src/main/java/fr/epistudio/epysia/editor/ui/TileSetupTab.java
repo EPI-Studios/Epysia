@@ -46,9 +46,20 @@ public final class TileSetupTab {
         ImGui.sameLine();
         ImGui.beginChild("tileSetupRight", 0.0f, 0.0f, true);
         changed |= terrainsSection.render(tilemap);
-        changed |= dataSection.render(tilemap);
+        changed |= dataSection.render(tilemap, tilePreview(tilemap, atlas));
         ImGui.endChild();
         return changed;
+    }
+
+    private Optional<TileDataSection.TilePreview> tilePreview(SpriteTilemap tilemap, SpriteAtlas atlas) {
+        Optional<ImagePreviewTexture.PreviewImage> image = palette.atlasImage(tilemap, atlas);
+        Optional<SpriteAtlasRegion> region = atlas.region(Integer.toString(brush.tileIndex()));
+        if (image.isEmpty() || region.isEmpty()) {
+            return Optional.empty();
+        }
+        SpriteAtlasRegion bounds = region.orElseThrow();
+        return Optional.of(new TileDataSection.TilePreview(image.orElseThrow().textureId(),
+                bounds.minU(), bounds.minV(), bounds.maxU(), bounds.maxV()));
     }
 
     private boolean renderCollisionColumn(SpriteTilemap tilemap, SpriteAtlas atlas) {

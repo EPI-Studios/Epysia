@@ -5,13 +5,28 @@ import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.assets.epytilemap.TileNeighbor;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
+import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.type.ImFloat;
 import imgui.type.ImString;
 
+import java.util.Optional;
+
 public final class TileDataSection {
 
     private static final float BIT_BUTTON_SIZE = 22.0f;
+    private static final float TILE_ZONE_EXTENT = 132.0f;
+    private static final int ZONE_BORDER_COLOUR = 0x60FFFFFF;
+    private static final int CENTRE_BORDER_COLOUR = 0xFFFFFFFF;
+    private static final int INACTIVE_ZONE_COLOUR = 0x90101010;
+
+    private static int zoneColour(org.joml.Vector4f colour, float alpha) {
+        int red = Math.clamp(Math.round(colour.x * 255.0f), 0, 255);
+        int green = Math.clamp(Math.round(colour.y * 255.0f), 0, 255);
+        int blue = Math.clamp(Math.round(colour.z * 255.0f), 0, 255);
+        int opacity = Math.clamp(Math.round(alpha * 255.0f), 0, 255);
+        return opacity << 24 | blue << 16 | green << 8 | red;
+    }
     private static final int KEY_CAPACITY = 48;
     private static final int PATH_CAPACITY = 260;
     private static final float PLATFORM_HEIGHT = 0.35f;
@@ -21,12 +36,21 @@ public final class TileDataSection {
     private final ImString customValue = new ImString(KEY_CAPACITY);
     private final ImString scenePath = new ImString(PATH_CAPACITY);
     private final ImFloat probability = new ImFloat(1.0f);
+    private Optional<TilePreview> preview = Optional.empty();
 
     public TileDataSection(TileBrush brush) {
         this.brush = brush;
     }
 
+    public record TilePreview(int textureId, float minU, float minV, float maxU, float maxV) {
+    }
+
     public boolean render(SpriteTilemap tilemap) {
+        return render(tilemap, Optional.empty());
+    }
+
+    public boolean render(SpriteTilemap tilemap, Optional<TilePreview> preview) {
+        this.preview = preview;
         if (!ImGui.collapsingHeader("Tile " + brush.tileIndex())) {
             return false;
         }
@@ -127,15 +151,107 @@ public final class TileDataSection {
         }
         ImGui.textDisabled("Terrain bits");
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("The middle square says which terrain this tile belongs to.\n"
-                    + "The eight around say which terrain it connects to on that side.\n"
-                    + "Left click assigns the selected terrain, right click clears.");
+            ImGui.setTooltip("Click the middle of the tile to say which terrain it is.\n"
+                    + "Click an edge or a corner to say what it connects to there.\n"
+                    + "Right click clears. Greyed zones are off in this match mode.");
         }
-        boolean changed = false;
+        boolean changed = renderFillRow(tilemap, data);
+        if (preview.isPresent()) {
+            return touchIfChanged(tilemap, changed | renderBitsOverTile(tilemap, data, preview.orElseThrow()));
+        }
         for (int row = 0; row < 3; row++) {
             changed |= renderBitRow(tilemap, data, row);
         }
         return touchIfChanged(tilemap, changed);
+    }
+
+    private boolean renderFillRow(SpriteTilemap tilemap, TileData data) {
+        boolean fill = ImGui.button("Fill whole tile");
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Sets the centre and every active neighbour to the selected terrain.\n"
+                    + "This is the solid interior tile of a terrain.");
+        }
+        ImGui.sameLine();
+        boolean clear = ImGui.button("Clear tile");
+        if (fill) {
+            assignWholeTile(tilemap, data, brush.terrainIndex());
+        }
+        if (clear) {
+            assignWholeTile(tilemap, data, TileData.NO_TERRAIN);
+        }
+        return fill || clear;
+    }
+
+    private static void assignWholeTile(SpriteTilemap tilemap, TileData data, int terrain) {
+        data.setTerrain(terrain);
+        for (TileNeighbor neighbor : TileNeighbor.values()) {
+            if (neighbor.matches(tilemap.terrainMatchMode())) {
+                data.setPeeringTerrain(neighbor, terrain);
+            }
+        }
+    }
+
+    private boolean renderBitsOverTile(SpriteTilemap tilemap, TileData data, TilePreview image) {
+        float originX = ImGui.getCursorScreenPosX();
+        float originY = ImGui.getCursorScreenPosY();
+        ImGui.image(image.textureId(), TILE_ZONE_EXTENT, TILE_ZONE_EXTENT,
+                image.minU(), image.minV(), image.maxU(), image.maxV());
+        boolean changed = false;
+        float cell = TILE_ZONE_EXTENT / 3.0f;
+        for (int row = 0; row < 3; row++) {
+            for (int column = 0; column < 3; column++) {
+                changed |= renderZone(tilemap, data, row, column, originX + column * cell, originY + row * cell, cell);
+            }
+        }
+        ImGui.setCursorScreenPos(originX, originY + TILE_ZONE_EXTENT + 4.0f);
+        return changed;
+    }
+
+    private boolean renderZone(SpriteTilemap tilemap, TileData data, int row, int column,
+                               float x, float y, float cell) {
+        boolean centre = row == 1 && column == 1;
+        TileNeighbor neighbor = centre ? null : neighborAt(row, column);
+        boolean active = centre || neighbor.matches(tilemap.terrainMatchMode());
+        int current = centre ? data.terrain() : data.peeringTerrain(neighbor);
+        paintZone(tilemap, x, y, cell, current, active, centre);
+        ImGui.setCursorScreenPos(x, y);
+        ImGui.invisibleButton("zone" + row + column, cell, cell);
+        if (!active) {
+            return false;
+        }
+        return applyZoneClick(data, neighbor, centre);
+    }
+
+    private boolean applyZoneClick(TileData data, TileNeighbor neighbor, boolean centre) {
+        if (ImGui.isItemClicked(0)) {
+            assignZone(data, neighbor, centre, brush.terrainIndex());
+            return true;
+        }
+        if (ImGui.isItemClicked(1)) {
+            assignZone(data, neighbor, centre, TileData.NO_TERRAIN);
+            return true;
+        }
+        return false;
+    }
+
+    private static void assignZone(TileData data, TileNeighbor neighbor, boolean centre, int terrain) {
+        if (centre) {
+            data.setTerrain(terrain);
+            return;
+        }
+        data.setPeeringTerrain(neighbor, terrain);
+    }
+
+    private static void paintZone(SpriteTilemap tilemap, float x, float y, float cell,
+                                  int terrain, boolean active, boolean centre) {
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        if (terrain != TileData.NO_TERRAIN && terrain < tilemap.terrains().size()) {
+            drawList.addRectFilled(x, y, x + cell, y + cell,
+                    zoneColour(tilemap.terrains().get(terrain).color(), centre ? 0.65f : 0.45f));
+        } else if (!active) {
+            drawList.addRectFilled(x, y, x + cell, y + cell, INACTIVE_ZONE_COLOUR);
+        }
+        drawList.addRect(x, y, x + cell, y + cell, centre ? CENTRE_BORDER_COLOUR : ZONE_BORDER_COLOUR);
     }
 
     private boolean renderBitRow(SpriteTilemap tilemap, TileData data, int row) {

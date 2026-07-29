@@ -6,7 +6,7 @@ import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasGrid;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
-import fr.epistudio.epysia.assets.loaders.TexturePathPrefixes;
+import fr.epistudio.epysia.assets.LegacyAssetReferences;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
@@ -93,7 +93,7 @@ public final class TilePalettePanel {
         if (tilemap.isEmpty() || file.isEmpty()) {
             return false;
         }
-        return !TilemapDiskFile.matchesDisk(tilemap.get(), file.get());
+        return !TilemapDiskFile.matchesDisk(tilemap.get(), file.get(), services.assets().locator());
     }
 
     public void renderSaveBar(TilemapRenderer renderer) {
@@ -151,7 +151,7 @@ public final class TilePalettePanel {
 
     private void renderSaveRow(SpriteTilemap tilemap, TilemapRenderer renderer) {
         Optional<Path> file = tilemapFile(renderer);
-        boolean dirty = file.map(path -> !TilemapDiskFile.matchesDisk(tilemap, path)).orElse(true);
+        boolean dirty = file.map(path -> !TilemapDiskFile.matchesDisk(tilemap, path, services.assets().locator())).orElse(true);
         ImGui.textDisabled(dirty ? "Unsaved changes" : "Saved");
         ImGui.sameLine();
         ImGui.beginDisabled(file.isEmpty());
@@ -166,7 +166,7 @@ public final class TilePalettePanel {
 
     private void save(SpriteTilemap tilemap, Path file) {
         try {
-            TilemapDiskFile.write(tilemap, file);
+            TilemapDiskFile.write(tilemap, file, services.assets().locator());
             saveError = "";
         } catch (IOException unwritable) {
             saveError = unwritable.getMessage() == null ? "write failed" : unwritable.getMessage();
@@ -201,31 +201,13 @@ public final class TilePalettePanel {
         if (atlas.texturePath().isEmpty() || tilemap.atlasPath().isEmpty()) {
             return Optional.empty();
         }
-        String stripped = TexturePathPrefixes.stripPrefixes(atlas.texturePath());
-        Path texture = Path.of(stripped);
-        if (!texture.isAbsolute()) {
-            Path atlasParent = Path.of(TexturePathPrefixes.stripPrefixes(tilemap.atlasPath()))
-                    .toAbsolutePath().getParent();
-            texture = atlasParent.resolve(stripped).normalize();
-        }
-        return Files.isRegularFile(texture) ? Optional.of(texture) : Optional.empty();
+        return services.assets().locator()
+                .file(LegacyAssetReferences.interpret(atlas.texturePath(), services.assets()))
+                .filter(Files::isRegularFile);
     }
 
     private Optional<ImagePreviewTexture.PreviewImage> texturePreview(SpriteTilemap tilemap, SpriteAtlas atlas) {
-        if (atlas.texturePath().isEmpty() || tilemap.atlasPath().isEmpty()) {
-            return Optional.empty();
-        }
-        String stripped = TexturePathPrefixes.stripPrefixes(atlas.texturePath());
-        Path texture = Path.of(stripped);
-        if (!texture.isAbsolute()) {
-            Path atlasParent = Path.of(TexturePathPrefixes.stripPrefixes(tilemap.atlasPath()))
-                    .toAbsolutePath().getParent();
-            texture = atlasParent.resolve(stripped).normalize();
-        }
-        if (!Files.isRegularFile(texture)) {
-            return Optional.empty();
-        }
-        return preview.get(texture);
+        return atlasTextureFile(tilemap, atlas).flatMap(preview::get);
     }
 
     private static AtlasCanvas drawImage(ImagePreviewTexture.PreviewImage image) {

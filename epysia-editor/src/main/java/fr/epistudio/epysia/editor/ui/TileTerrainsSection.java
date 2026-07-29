@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TerrainDefinition;
+import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.assets.epytilemap.TerrainMatchMode;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -55,6 +56,16 @@ public final class TileTerrainsSection {
         return true;
     }
 
+    private static int configuredTileCount(SpriteTilemap tilemap, int terrainIndex) {
+        int count = 0;
+        for (TileData data : tilemap.tileDataByIndex().values()) {
+            if (data.terrain() == terrainIndex) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     private static String tooltipFor(TerrainMatchMode mode) {
         return switch (mode) {
             case CORNERS_AND_SIDES -> "Tiles match on all eight neighbours. Richest, needs the most tiles.";
@@ -82,6 +93,11 @@ public final class TileTerrainsSection {
         if (ImGui.selectable(terrainIndex + ": " + terrain.name(), terrainIndex == brush.terrainIndex(),
                 0, 140.0f, 0.0f)) {
             brush.setTerrainIndex(terrainIndex);
+        }
+        ImGui.sameLine();
+        ImGui.textDisabled(configuredTileCount(tilemap, terrainIndex) + " tiles");
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Tiles whose centre is this terrain. Painting does nothing until at least one exists.");
         }
         ImGui.sameLine();
         boolean removed = icons.iconButton("removeTerrain", EditorIcon.REMOVE, BUTTON_SIZE);
