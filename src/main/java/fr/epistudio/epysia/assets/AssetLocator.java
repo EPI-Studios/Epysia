@@ -5,6 +5,7 @@ import fr.epistudio.epysia.assets.source.ClasspathAssetSource;
 import fr.epistudio.epysia.assets.source.FilesystemAssetSource;
 
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Optional;
 
@@ -39,9 +40,17 @@ public final class AssetLocator {
     public Optional<Path> file(AssetUri uri) {
         return switch (uri.scheme()) {
             case NONE, ENGINE -> Optional.empty();
-            case SYSTEM -> Optional.of(Path.of(uri.path()));
-            case PROJECT -> projectRoot.map(root -> root.resolve(uri.path()));
+            case SYSTEM -> asPath(uri.path());
+            case PROJECT -> asPath(uri.path()).flatMap(relative -> projectRoot.map(root -> root.resolve(relative)));
         };
+    }
+
+    private static Optional<Path> asPath(String text) {
+        try {
+            return Optional.of(Path.of(text));
+        } catch (InvalidPathException unusableOnThisFilesystem) {
+            return Optional.empty();
+        }
     }
 
     public boolean exists(AssetUri uri) {
