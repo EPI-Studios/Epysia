@@ -234,9 +234,13 @@ public final class SpriteTilemapJsonCodec {
     }
 
     public String write(SpriteTilemap tilemap) {
+        return write(tilemap, tilemap.atlasPath());
+    }
+
+    public String write(SpriteTilemap tilemap, String atlasPath) {
         JsonWriter writer = new JsonWriter();
         writer.beginObject();
-        writer.key(ATLAS_KEY).valueString(tilemap.atlasPath());
+        writer.key(ATLAS_KEY).valueString(atlasPath);
         writer.key(CELL_WIDTH_KEY).valueNumber(tilemap.cellWidth());
         writer.key(CELL_HEIGHT_KEY).valueNumber(tilemap.cellHeight());
         writer.key(WIDTH_KEY).valueNumber(tilemap.width());

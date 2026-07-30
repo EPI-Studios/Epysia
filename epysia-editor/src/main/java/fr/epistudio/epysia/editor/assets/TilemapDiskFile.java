@@ -18,7 +18,7 @@ public final class TilemapDiskFile {
     }
 
     public static String serialize(SpriteTilemap tilemap, AssetLocator locator) {
-        return CODEC.write(copyWithAtlasPath(tilemap, projectAtlasPath(tilemap.atlasPath(), locator)));
+        return CODEC.write(tilemap, projectAtlasPath(tilemap.atlasPath(), locator));
     }
 
     public static void write(SpriteTilemap tilemap, Path tilemapFile, AssetLocator locator) throws IOException {
@@ -31,18 +31,6 @@ public final class TilemapDiskFile {
         } catch (IOException unreadable) {
             return false;
         }
-    }
-
-    private static SpriteTilemap copyWithAtlasPath(SpriteTilemap source, String atlasPath) {
-        SpriteTilemap copy = new SpriteTilemap(source.width(), source.height(),
-                source.cellWidth(), source.cellHeight(), atlasPath);
-        for (int cellY = 0; cellY < source.height(); cellY++) {
-            for (int cellX = 0; cellX < source.width(); cellX++) {
-                copy.setTile(cellX, cellY, source.tileIndex(cellX, cellY));
-            }
-        }
-        source.solidTiles().forEach(tileIndex -> copy.setSolid(tileIndex, true));
-        return copy;
     }
 
     private static String projectAtlasPath(String atlasPath, AssetLocator locator) {
