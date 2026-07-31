@@ -2,6 +2,7 @@ package fr.epistudio.epysia.scripting.compile;
 
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.reflection.DiscoveredComponent;
 import fr.epistudio.epysia.scripting.Behaviour;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
@@ -20,31 +21,32 @@ public final class ScriptModule {
     private ScriptModule() {
     }
 
-    public static ScriptLoadResult load(Path scriptsDirectory, Path outputDirectory) {
-        ScriptCompiler.Result compiled = new ScriptCompiler().compile(scriptsDirectory, outputDirectory);
+    public static ScriptLoadResult load(Path scriptsDirectory, Path outputDirectory, ProjectLibraries libraries) {
+        ScriptCompileResult compiled =
+                ScriptLanguages.discover().compileAll(scriptsDirectory, outputDirectory, libraries);
         if (!compiled.ok()) {
             return new ScriptLoadResult(false, List.of(), List.of(), compiled.messages(), null);
         }
-        URL outputUrl = toUrl(outputDirectory);
-        if (outputUrl == null) {
-            return new ScriptLoadResult(false, List.of(), List.of(), List.of("Invalid script output path."), null);
-        }
-        ScriptClassLoader loader = new ScriptClassLoader(new URL[]{outputUrl}, ScriptModule.class.getClassLoader());
-        try (ScanResult scan = openScan(loader)) {
-            return new ScriptLoadResult(true, discoverComponents(scan), discoverRenderSetups(scan),
-                    compiled.messages(), loader);
-        }
+        return scan(outputDirectory, libraries, compiled.messages());
     }
 
-    public static ScriptLoadResult loadPrecompiled(Path classesDirectory) {
+    public static ScriptLoadResult loadPrecompiled(Path classesDirectory, ProjectLibraries libraries) {
+        return scan(classesDirectory, libraries, List.of());
+    }
+
+    private static ScriptLoadResult scan(Path classesDirectory, ProjectLibraries libraries, List<String> messages) {
         URL classesUrl = toUrl(classesDirectory);
         if (classesUrl == null) {
-            return new ScriptLoadResult(false, List.of(), List.of(), List.of("Invalid precompiled scripts path."), null);
+            return new ScriptLoadResult(false, List.of(), List.of(), List.of("Invalid script output path."), null);
         }
-        ScriptClassLoader loader = new ScriptClassLoader(new URL[]{classesUrl}, ScriptModule.class.getClassLoader());
-        try (ScanResult scan = openScan(loader)) {
-            return new ScriptLoadResult(true, discoverComponents(scan), discoverRenderSetups(scan),
-                    List.of(), loader);
+        List<URL> urls = new ArrayList<>();
+        urls.add(classesUrl);
+        urls.addAll(libraries.urls());
+        ScriptClassLoader loader = new ScriptClassLoader(urls.toArray(URL[]::new),
+                ScriptModule.class.getClassLoader());
+        try (ScanResult scanned = openScan(loader)) {
+            return new ScriptLoadResult(true, discoverComponents(scanned), discoverRenderSetups(scanned),
+                    messages, loader);
         }
     }
 

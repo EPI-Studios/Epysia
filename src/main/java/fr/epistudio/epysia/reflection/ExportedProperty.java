@@ -2,11 +2,11 @@ package fr.epistudio.epysia.reflection;
 
 import fr.epistudio.epysia.components.Export;
 import fr.epistudio.epysia.components.HiddenInEditor;
-import fr.epistudio.epysia.components.IComponent;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public final class ExportedProperty {
 
@@ -23,16 +23,17 @@ public final class ExportedProperty {
         ENUM,
         ASSET_REF,
         GAMEOBJECT_REF,
+        OBJECT_LIST,
         UNKNOWN
     }
 
-    private final IComponent owner;
+    private final Object owner;
     private final Field field;
     private final Export annotation;
     private final Kind kind;
     private final String label;
 
-    public ExportedProperty(IComponent owner, Field field, Export annotation, Kind kind) {
+    public ExportedProperty(Object owner, Field field, Export annotation, Kind kind) {
         this.owner = owner;
         this.field = field;
         this.annotation = annotation;
@@ -118,6 +119,14 @@ public final class ExportedProperty {
 
     public Class<?> fieldType() {
         return field.getType();
+    }
+
+    public Optional<Class<?>> elementType() {
+        return Reflection.elementTypeOf(field);
+    }
+
+    public boolean isHiddenInEditor() {
+        return field.isAnnotationPresent(HiddenInEditor.class);
     }
 
     public Object[] enumConstants() {

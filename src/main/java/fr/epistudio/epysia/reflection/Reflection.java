@@ -11,33 +11,64 @@ import fr.epistudio.epysia.render.shader.ShaderUniformValues;
 import org.joml.Vector4f;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public final class Reflection {
 
     private Reflection() {
     }
 
-    public static List<ExportedProperty> scan(IComponent component) {
+    public static List<ExportedProperty> scan(Object owner) {
         List<ExportedProperty> properties = new ArrayList<>();
-        Class<?> currentClass = component.getClass();
+        Class<?> currentClass = owner.getClass();
         while (currentClass != null && currentClass != Object.class) {
             for (Field field : currentClass.getDeclaredFields()) {
                 Export annotation = field.getAnnotation(Export.class);
                 if (annotation == null) {
                     continue;
                 }
-                ExportedProperty.Kind kind = classifyKind(field.getType());
+                ExportedProperty.Kind kind = classifyField(field);
                 if (kind == ExportedProperty.Kind.UNKNOWN) {
                     continue;
                 }
                 field.setAccessible(true);
-                properties.add(new ExportedProperty(component, field, annotation, kind));
+                properties.add(new ExportedProperty(owner, field, annotation, kind));
             }
             currentClass = currentClass.getSuperclass();
         }
         return properties;
+    }
+
+    private static ExportedProperty.Kind classifyField(Field field) {
+        if (List.class.isAssignableFrom(field.getType())) {
+            return elementTypeOf(field).isPresent()
+                    ? ExportedProperty.Kind.OBJECT_LIST : ExportedProperty.Kind.UNKNOWN;
+        }
+        return classifyKind(field.getType());
+    }
+
+    public static Optional<Class<?>> elementTypeOf(Field field) {
+        if (!(field.getGenericType() instanceof ParameterizedType parameterized)) {
+            return Optional.empty();
+        }
+        Type[] arguments = parameterized.getActualTypeArguments();
+        if (arguments.length != 1 || !(arguments[0] instanceof Class<?> elementType)) {
+            return Optional.empty();
+        }
+        return hasNoArgumentConstructor(elementType) ? Optional.of(elementType) : Optional.empty();
+    }
+
+    private static boolean hasNoArgumentConstructor(Class<?> elementType) {
+        try {
+            elementType.getDeclaredConstructor();
+            return true;
+        } catch (NoSuchMethodException absent) {
+            return false;
+        }
     }
 
     private static ExportedProperty.Kind classifyKind(Class<?> type) {
