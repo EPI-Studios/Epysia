@@ -3,6 +3,8 @@ package fr.epistudio.epysia.input.action;
 import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MouseButton;
+import fr.epistudio.epysia.input.gamepad.GamepadAxis;
+import fr.epistudio.epysia.input.gamepad.GamepadButton;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -30,13 +32,23 @@ public final class InputActions {
     public static List<InputAction> defaultActions() {
         List<InputAction> actions = new ArrayList<>();
         actions.add(InputAction.axis(MOVE_FORWARD,
-                List.of(InputBinding.key(KeyCode.W)), List.of(InputBinding.key(KeyCode.S))));
+                List.of(InputBinding.key(KeyCode.W),
+                        InputBinding.gamepadAxis(GamepadAxis.LEFT_Y, 0, true)),
+                List.of(InputBinding.key(KeyCode.S),
+                        InputBinding.gamepadAxis(GamepadAxis.LEFT_Y, 0, false))));
         actions.add(InputAction.axis(MOVE_RIGHT,
-                List.of(InputBinding.key(KeyCode.D)), List.of(InputBinding.key(KeyCode.A))));
-        actions.add(InputAction.button(JUMP, InputBinding.key(KeyCode.SPACE)));
-        actions.add(InputAction.button(SPRINT, InputBinding.key(KeyCode.LEFT_SHIFT)));
-        actions.add(InputAction.button(FIRE, InputBinding.mouse(MouseButton.LEFT)));
-        actions.add(InputAction.button(CANCEL, InputBinding.key(KeyCode.ESCAPE)));
+                List.of(InputBinding.key(KeyCode.D),
+                        InputBinding.gamepadAxis(GamepadAxis.LEFT_X, 0, false)),
+                List.of(InputBinding.key(KeyCode.A),
+                        InputBinding.gamepadAxis(GamepadAxis.LEFT_X, 0, true))));
+        actions.add(InputAction.button(JUMP, InputBinding.key(KeyCode.SPACE),
+                InputBinding.gamepadButton(GamepadButton.SOUTH)));
+        actions.add(InputAction.button(SPRINT, InputBinding.key(KeyCode.LEFT_SHIFT),
+                InputBinding.gamepadButton(GamepadButton.LEFT_THUMB)));
+        actions.add(InputAction.button(FIRE, InputBinding.mouse(MouseButton.LEFT),
+                InputBinding.gamepadAxis(GamepadAxis.RIGHT_TRIGGER)));
+        actions.add(InputAction.button(CANCEL, InputBinding.key(KeyCode.ESCAPE),
+                InputBinding.gamepadButton(GamepadButton.START)));
         return actions;
     }
 
@@ -73,5 +85,10 @@ public final class InputActions {
     public float value(String name, InputState input) {
         InputAction action = byName.get(name);
         return action == null ? 0.0f : action.value(input);
+    }
+
+    public boolean consumeBufferedPress(String name, InputState input, float withinSeconds) {
+        InputAction action = byName.get(name);
+        return action != null && action.consumeBufferedPress(input, withinSeconds);
     }
 }

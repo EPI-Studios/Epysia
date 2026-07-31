@@ -32,7 +32,29 @@ public record InputAction(String name, List<InputBinding> positive, List<InputBi
     }
 
     public float value(InputState input) {
-        return (anyDown(positive, input) ? 1.0f : 0.0f) - (anyDown(negative, input) ? 1.0f : 0.0f);
+        return Math.clamp(strongest(positive, input) - strongest(negative, input), -1.0f, 1.0f);
+    }
+
+    public boolean consumeBufferedPress(InputState input, float withinSeconds) {
+        for (InputBinding binding : positive) {
+            if (binding.consumeBufferedPress(input, withinSeconds)) {
+                return true;
+            }
+        }
+        for (InputBinding binding : negative) {
+            if (binding.consumeBufferedPress(input, withinSeconds)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static float strongest(List<InputBinding> bindings, InputState input) {
+        float best = 0.0f;
+        for (InputBinding binding : bindings) {
+            best = Math.max(best, binding.value(input));
+        }
+        return best;
     }
 
     private static boolean anyDown(List<InputBinding> bindings, InputState input) {
