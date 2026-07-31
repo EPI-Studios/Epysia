@@ -41,6 +41,7 @@ import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.render.baking.ImpostorBaker;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.mesh.MeshData;
@@ -83,16 +84,24 @@ public final class GltfImporter {
     }
 
     public static GltfImportResult importFile(Path source, Path outputDirectory, ComponentRegistry componentRegistry) {
+        return importFile(source, outputDirectory, componentRegistry, Optional.empty());
+    }
+
+    public static GltfImportResult importFile(Path source, Path outputDirectory, ComponentRegistry componentRegistry,
+            Optional<ImpostorBaker> impostorBaker) {
         List<String> warnings = new ArrayList<>();
         GltfModel model = readModel(source, warnings);
         Map<MaterialModel, MaterialUvHints> uvHints = buildMaterialUvHints(model, source, warnings);
         Map<SkinModel, SkeletonBuild> skeletonBuilds = buildSkeletonBuilds(model);
-        List<Path> meshFiles = importMeshes(model, skeletonBuilds, uvHints, outputDirectory, warnings);
-        List<Path> clipFiles = importAnimations(model, skeletonBuilds, outputDirectory, warnings);
         MaterialImport materials = importMaterials(model, outputDirectory, warnings);
+        List<ImportedMesh> meshes = importMeshes(model, skeletonBuilds, uvHints, outputDirectory, warnings);
+        List<Path> meshFiles = meshes.stream().map(ImportedMesh::file).toList();
+        List<Path> clipFiles = importAnimations(model, skeletonBuilds, outputDirectory, warnings);
+        List<Path> impostorFiles = ImpostorImport.bakeWholeModel(model, meshes, materials.litMaterialsByModel(),
+                source, outputDirectory, impostorBaker, warnings);
         Optional<Path> prefabFile = buildPrefab(model, source, outputDirectory, meshFiles, clipFiles,
                 materials.byModel(), componentRegistry, warnings);
-        return new GltfImportResult(meshFiles, clipFiles, materials.files(), prefabFile, warnings);
+        return new GltfImportResult(meshFiles, clipFiles, materials.files(), impostorFiles, prefabFile, warnings);
     }
 
     private static GltfModel readModel(Path source, List<String> warnings) {
@@ -141,17 +150,17 @@ public final class GltfImporter {
         return skeletonBuilds;
     }
 
-    private static List<Path> importMeshes(GltfModel model, Map<SkinModel, SkeletonBuild> skeletonBuilds,
+    private static List<ImportedMesh> importMeshes(GltfModel model, Map<SkinModel, SkeletonBuild> skeletonBuilds,
             Map<MaterialModel, MaterialUvHints> uvHints, Path outputDirectory, List<String> warnings) {
-        List<Path> meshFiles = new ArrayList<>();
+        List<ImportedMesh> meshes = new ArrayList<>();
         List<MeshModel> meshModels = model.getMeshModels();
         for (int meshIndex = 0; meshIndex < meshModels.size(); meshIndex++) {
-            meshFiles.add(importMesh(model, meshModels.get(meshIndex), meshIndex, skeletonBuilds, uvHints, outputDirectory, warnings));
+            meshes.add(importMesh(model, meshModels.get(meshIndex), meshIndex, skeletonBuilds, uvHints, outputDirectory, warnings));
         }
-        return meshFiles;
+        return meshes;
     }
 
-    private static Path importMesh(GltfModel model, MeshModel meshModel, int meshIndex,
+    private static ImportedMesh importMesh(GltfModel model, MeshModel meshModel, int meshIndex,
             Map<SkinModel, SkeletonBuild> skeletonBuilds, Map<MaterialModel, MaterialUvHints> uvHints,
             Path outputDirectory, List<String> warnings) {
         String meshName = meshName(meshModel, meshIndex);
@@ -162,7 +171,7 @@ public final class GltfImporter {
         Optional<Skeleton> skeleton = meshData.hasSkin() ? skeletonBuild.map(SkeletonBuild::skeleton) : Optional.empty();
         Path outputPath = outputDirectory.resolve(meshName + ".epymesh");
         EpyMeshWriter.writeToFile(outputPath, meshData, Optional.empty(), skeleton);
-        return outputPath;
+        return new ImportedMesh(meshModel, meshName, outputPath, meshData);
     }
 
     private static MeshData optimizeForVertexCache(MeshData mesh, String meshName, List<String> warnings) {
@@ -292,7 +301,7 @@ public final class GltfImporter {
         return result;
     }
 
-    private static boolean isTriangleMode(int mode) {
+    static boolean isTriangleMode(int mode) {
         return mode == MODE_TRIANGLES || mode == MODE_TRIANGLE_STRIP || mode == MODE_TRIANGLE_FAN;
     }
 
@@ -745,16 +754,21 @@ public final class GltfImporter {
         FileNameAllocator imageFileNames = new FileNameAllocator();
         List<Path> materialFiles = new ArrayList<>();
         Map<MaterialModel, Path> byModel = new IdentityHashMap<>();
+        Map<MaterialModel, LitMaterial> litMaterialsByModel = new IdentityHashMap<>();
         List<MaterialModel> materialModels = model.getMaterialModels();
         for (int materialIndex = 0; materialIndex < materialModels.size(); materialIndex++) {
             MaterialModel materialModel = materialModels.get(materialIndex);
             importMaterial(materialModel, materialIndex, outputDirectory, imageIndices,
-                    writtenImages, materialFileNames, imageFileNames, warnings).ifPresent(path -> {
-                        materialFiles.add(path);
-                        byModel.put(materialModel, path);
+                    writtenImages, materialFileNames, imageFileNames, warnings).ifPresent(imported -> {
+                        materialFiles.add(imported.file());
+                        byModel.put(materialModel, imported.file());
+                        litMaterialsByModel.put(materialModel, imported.material());
                     });
         }
-        return new MaterialImport(materialFiles, byModel);
+        return new MaterialImport(materialFiles, byModel, litMaterialsByModel);
+    }
+
+    private record ImportedMaterial(Path file, LitMaterial material) {
     }
 
     private static Map<ImageModel, Integer> buildImageIndices(GltfModel model) {
@@ -766,8 +780,8 @@ public final class GltfImporter {
         return imageIndices;
     }
 
-    private static Optional<Path> importMaterial(MaterialModel materialModel, int materialIndex, Path outputDirectory,
-            Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages,
+    private static Optional<ImportedMaterial> importMaterial(MaterialModel materialModel, int materialIndex,
+            Path outputDirectory, Map<ImageModel, Integer> imageIndices, Map<ImageModel, String> writtenImages,
             FileNameAllocator materialFileNames, FileNameAllocator imageFileNames, List<String> warnings) {
         if (!(materialModel instanceof MaterialModelV2 material)) {
             warnings.add("Material " + materialIndex + " is not a PBR metallic-roughness material; skipped.");
@@ -780,7 +794,7 @@ public final class GltfImporter {
                 ".epymaterial", materialName, "Material", warnings);
         Path outputPath = outputDirectory.resolve(fileName);
         writeMaterialFile(outputPath, litMaterial);
-        return Optional.of(outputPath);
+        return Optional.of(new ImportedMaterial(outputPath, litMaterial));
     }
 
     private static LitMaterial buildLitMaterial(MaterialModelV2 material, Path outputDirectory,
@@ -1107,7 +1121,7 @@ public final class GltfImporter {
         return outputPath;
     }
 
-    private static String fileStem(Path source) {
+    static String fileStem(Path source) {
         String fileName = source.getFileName().toString();
         int extensionSeparator = fileName.lastIndexOf('.');
         return extensionSeparator > 0 ? fileName.substring(0, extensionSeparator) : fileName;
@@ -1278,7 +1292,8 @@ public final class GltfImporter {
     private record JointReference(SkinModel skin, int jointIndex) {
     }
 
-    private record MaterialImport(List<Path> files, Map<MaterialModel, Path> byModel) {
+    private record MaterialImport(List<Path> files, Map<MaterialModel, Path> byModel,
+                                  Map<MaterialModel, LitMaterial> litMaterialsByModel) {
     }
 
     private record MeshNodeBinding(String nodeName, Path meshFile, List<Optional<Path>> materialPaths,

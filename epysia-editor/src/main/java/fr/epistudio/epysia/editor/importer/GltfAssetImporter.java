@@ -1,10 +1,12 @@
 package fr.epistudio.epysia.editor.importer;
 
 import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.render.baking.ImpostorBaker;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public final class GltfAssetImporter implements AssetImporter {
@@ -12,12 +14,18 @@ public final class GltfAssetImporter implements AssetImporter {
     private static final String GLTF_EXTENSION = ".gltf";
     private static final String GLB_EXTENSION = ".glb";
     private static final String PREFAB_EXTENSION = ".epyprefab";
-    private static final int IMPORTER_VERSION = 13;
+    private static final int IMPORTER_VERSION = 14;
 
     private final ComponentRegistry componentRegistry;
+    private final Optional<ImpostorBaker> impostorBaker;
 
     public GltfAssetImporter(ComponentRegistry componentRegistry) {
+        this(componentRegistry, Optional.empty());
+    }
+
+    public GltfAssetImporter(ComponentRegistry componentRegistry, Optional<ImpostorBaker> impostorBaker) {
         this.componentRegistry = componentRegistry;
+        this.impostorBaker = impostorBaker;
     }
 
     @Override
@@ -37,7 +45,7 @@ public final class GltfAssetImporter implements AssetImporter {
 
     @Override
     public ImportOutcome importSource(Path source, Path outputDirectory) {
-        GltfImportResult result = GltfImporter.importFile(source, outputDirectory, componentRegistry);
+        GltfImportResult result = GltfImporter.importFile(source, outputDirectory, componentRegistry, impostorBaker);
         return new ImportOutcome(collectOutputs(result), result.prefabFile(), result.warnings());
     }
 
@@ -51,6 +59,7 @@ public final class GltfAssetImporter implements AssetImporter {
         outputs.addAll(result.meshFiles());
         outputs.addAll(result.clipFiles());
         outputs.addAll(result.materialFiles());
+        outputs.addAll(result.impostorFiles());
         result.prefabFile().ifPresent(outputs::add);
         return outputs;
     }

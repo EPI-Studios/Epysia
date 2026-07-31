@@ -5,5 +5,5 @@ import java.util.List;
 import java.util.Optional;
 
 public record GltfImportResult(List<Path> meshFiles, List<Path> clipFiles, List<Path> materialFiles,
-                               Optional<Path> prefabFile, List<String> warnings) {
+                               List<Path> impostorFiles, Optional<Path> prefabFile, List<String> warnings) {
 }
