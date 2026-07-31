@@ -34,7 +34,6 @@ public final class CompletionEngine {
     private static final String BEHAVIOUR_TYPE_NAME = "Behaviour";
     private static final int MAX_RESULTS = 50;
     private static final int MINIMUM_PREFIX_LENGTH = 2;
-    private static final String IMPORT_STATEMENT_SUFFIX = ";";
     private static final char PACKAGE_SEPARATOR = '.';
 
     private final JavaSymbols symbols;
@@ -67,9 +66,9 @@ public final class CompletionEngine {
                 || context.prefix().length() >= MINIMUM_PREFIX_LENGTH;
     }
 
-    public List<CompletionSymbol> candidates(Context context, String fullText) {
+    public List<CompletionSymbol> candidates(Context context, String fullText, ImportStyle style) {
         if (context.isImport()) {
-            return importPool(context.importPath().orElse(""));
+            return importPool(context.importPath().orElse(""), style);
         }
         List<CompletionSymbol> pool = context.isMember()
                 ? memberPool(context.receiver().orElse(""), fullText)
@@ -77,7 +76,7 @@ public final class CompletionEngine {
         return rank(pool, context.prefix());
     }
 
-    private List<CompletionSymbol> importPool(String typedPath) {
+    private List<CompletionSymbol> importPool(String typedPath, ImportStyle style) {
         List<String> matches = symbols.qualifiedTypeNames().stream()
                 .filter(qualifiedName -> qualifiedName.startsWith(typedPath)
                         && !qualifiedName.equals(typedPath))
@@ -85,18 +84,18 @@ public final class CompletionEngine {
                 .toList();
         Map<String, CompletionSymbol> merged = new LinkedHashMap<>();
         for (String qualifiedName : matches) {
-            CompletionSymbol candidate = importCandidate(qualifiedName, typedPath, matches);
+            CompletionSymbol candidate = importCandidate(qualifiedName, typedPath, matches, style);
             merged.putIfAbsent(candidate.insertText(), candidate);
         }
         return merged.values().stream().limit(MAX_RESULTS).toList();
     }
 
     private static CompletionSymbol importCandidate(String qualifiedName, String typedPath,
-                                                    List<String> matches) {
+                                                    List<String> matches, ImportStyle style) {
         int nextSeparator = qualifiedName.indexOf(PACKAGE_SEPARATOR, typedPath.length());
         if (nextSeparator < 0) {
             String simpleName = qualifiedName.substring(qualifiedName.lastIndexOf(PACKAGE_SEPARATOR) + 1);
-            return new CompletionSymbol(simpleName, qualifiedName + IMPORT_STATEMENT_SUFFIX,
+            return new CompletionSymbol(simpleName, style.completionInsertTextFor(qualifiedName),
                     CompletionKind.TYPE, Optional.of(qualifiedName));
         }
         String collapsed = collapsedPackage(qualifiedName.substring(0, nextSeparator + 1), matches);

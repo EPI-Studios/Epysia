@@ -2,7 +2,10 @@ package fr.epistudio.epysia.editor.scripteditor;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.MalformedURLException;
 import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.CodeSource;
@@ -30,6 +33,33 @@ public final class ClasspathTypeScanner {
                 ? namesInDirectory(root.get(), packagePrefix)
                 : namesInArchive(root.get(), packagePrefix);
         return resolve(names, anchor.getClassLoader());
+    }
+
+    public static List<Class<?>> typesIn(List<Path> roots, ClassLoader parent) {
+        List<Path> present = roots.stream().filter(Files::exists).toList();
+        if (present.isEmpty()) {
+            return List.of();
+        }
+        ClassLoader loader = loaderFor(present, parent);
+        List<Class<?>> types = new ArrayList<>();
+        for (Path root : present) {
+            List<String> names = Files.isDirectory(root)
+                    ? namesInDirectory(root, "")
+                    : namesInArchive(root, "");
+            types.addAll(resolve(names, loader));
+        }
+        return types;
+    }
+
+    private static ClassLoader loaderFor(List<Path> roots, ClassLoader parent) {
+        List<URL> urls = new ArrayList<>(roots.size());
+        for (Path root : roots) {
+            try {
+                urls.add(root.toUri().toURL());
+            } catch (MalformedURLException ignored) {
+            }
+        }
+        return new URLClassLoader(urls.toArray(URL[]::new), parent);
     }
 
     private static Optional<Path> codeSourceOf(Class<?> anchor) {

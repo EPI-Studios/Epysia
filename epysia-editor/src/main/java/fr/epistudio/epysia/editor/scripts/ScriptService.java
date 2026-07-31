@@ -9,6 +9,7 @@ import fr.epistudio.epysia.reflection.ComponentFieldCodec;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 import fr.epistudio.epysia.scripting.compile.ScriptLoadResult;
 import fr.epistudio.epysia.scripting.compile.ScriptModule;
 
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
 
 public final class ScriptService {
 
+    private final ScriptLanguages languages = ScriptLanguages.discover();
     private final Project project;
     private final ComponentRegistry registry;
     private final SceneSerializer serializer;
@@ -60,7 +62,7 @@ public final class ScriptService {
             return 0L;
         }
         try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(scriptsDirectory)) {
-            return walk.filter(path -> path.toString().endsWith(".java"))
+            return walk.filter(languages::isSource)
                     .mapToLong(path -> path.toFile().lastModified())
                     .max().orElse(0L);
         } catch (java.io.IOException exception) {
@@ -69,8 +71,9 @@ public final class ScriptService {
     }
 
     public void reload() {
-        ScriptLoadResult result = ScriptModule.load(
-                project.scriptsDirectory(), project.rootDirectory().resolve(".epysia/scripts-out"));
+        KotlinRuntimeInstaller.ensureStandardLibrary(project, languages).ifPresent(log);
+        ScriptLoadResult result = ScriptModule.load(project.scriptsDirectory(),
+                project.compiledScriptsDirectory(), project.libraries());
         for (String message : result.messages()) {
             log.accept(message);
         }

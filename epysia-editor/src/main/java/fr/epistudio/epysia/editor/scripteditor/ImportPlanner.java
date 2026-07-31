@@ -3,7 +3,6 @@ package fr.epistudio.epysia.editor.scripteditor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 public final class ImportPlanner {
 
@@ -12,29 +11,24 @@ public final class ImportPlanner {
 
     private static final String IMPORT_PREFIX = "import ";
     private static final String PACKAGE_PREFIX = "package ";
-    private static final String JAVA_LANG_PACKAGE = "java.lang";
-    private static final Pattern TYPE_DECLARATION_PATTERN =
-            Pattern.compile("\\b(?:class|interface|enum|record)\\s+([A-Za-z_][A-Za-z0-9_]*)");
-    private static final Pattern IMPORTED_NAME_PATTERN =
-            Pattern.compile("^\\s*import\\s+(?:static\\s+)?([A-Za-z0-9_.]+)\\s*;");
 
     private ImportPlanner() {
     }
 
-    public static Optional<ImportPlan> plan(String buffer, String qualifiedName) {
+    public static Optional<ImportPlan> plan(String buffer, String qualifiedName, ImportStyle style) {
         String simpleName = simpleNameOf(qualifiedName);
         String packageName = packageNameOf(qualifiedName);
         List<String> lines = List.of(buffer.split("\n", -1));
-        if (packageName.equals(JAVA_LANG_PACKAGE)
-                || declaresType(buffer, simpleName)
-                || alreadyImportedOrConflicting(lines, qualifiedName, simpleName)) {
+        if (style.isImplicitPackage(packageName)
+                || declaresType(buffer, simpleName, style)
+                || alreadyImportedOrConflicting(lines, qualifiedName, simpleName, style)) {
             return Optional.empty();
         }
-        return Optional.of(insertionPlan(lines, qualifiedName));
+        return Optional.of(insertionPlan(lines, style.statementFor(qualifiedName), style));
     }
 
-    private static boolean declaresType(String buffer, String simpleName) {
-        var matcher = TYPE_DECLARATION_PATTERN.matcher(buffer);
+    private static boolean declaresType(String buffer, String simpleName, ImportStyle style) {
+        var matcher = style.typeDeclarationPattern().matcher(buffer);
         while (matcher.find()) {
             if (matcher.group(1).equals(simpleName)) {
                 return true;
@@ -44,25 +38,22 @@ public final class ImportPlanner {
     }
 
     private static boolean alreadyImportedOrConflicting(List<String> lines, String qualifiedName,
-                                                        String simpleName) {
-        for (String importedName : importedNames(lines)) {
-            if (importedName.equals(qualifiedName)) {
-                return true;
-            }
-            if (simpleNameOf(importedName).equals(simpleName)) {
+                                                        String simpleName, ImportStyle style) {
+        for (String importedName : importedNames(lines, style)) {
+            if (importedName.equals(qualifiedName) || simpleNameOf(importedName).equals(simpleName)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static List<String> importedNames(List<String> lines) {
+    private static List<String> importedNames(List<String> lines, ImportStyle style) {
         List<String> names = new ArrayList<>();
         for (String line : lines) {
-            if (isTypeDeclarationLine(line)) {
+            if (isTypeDeclarationLine(line, style)) {
                 return names;
             }
-            var matcher = IMPORTED_NAME_PATTERN.matcher(line);
+            var matcher = style.importedNamePattern().matcher(line);
             if (matcher.find()) {
                 names.add(matcher.group(1));
             }
@@ -70,21 +61,21 @@ public final class ImportPlanner {
         return names;
     }
 
-    private static boolean isTypeDeclarationLine(String line) {
-        return TYPE_DECLARATION_PATTERN.matcher(line).find();
+    private static boolean isTypeDeclarationLine(String line, ImportStyle style) {
+        return style.typeDeclarationPattern().matcher(line).find();
     }
 
-    private static ImportPlan insertionPlan(List<String> lines, String qualifiedName) {
-        String statement = IMPORT_PREFIX + qualifiedName + ";";
-        Optional<ImportPlan> withinBlock = planWithinImportBlock(lines, statement);
+    private static ImportPlan insertionPlan(List<String> lines, String statement, ImportStyle style) {
+        Optional<ImportPlan> withinBlock = planWithinImportBlock(lines, statement, style);
         return withinBlock.orElseGet(() -> planWithoutImportBlock(lines, statement));
     }
 
-    private static Optional<ImportPlan> planWithinImportBlock(List<String> lines, String statement) {
+    private static Optional<ImportPlan> planWithinImportBlock(List<String> lines, String statement,
+                                                              ImportStyle style) {
         int lastImportLine = -1;
         for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
             String trimmed = lines.get(lineIndex).strip();
-            if (isTypeDeclarationLine(lines.get(lineIndex))) {
+            if (isTypeDeclarationLine(lines.get(lineIndex), style)) {
                 break;
             }
             if (trimmed.startsWith(IMPORT_PREFIX)) {

@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scripting.Behaviour;
 import org.joml.Matrix3f;
@@ -13,6 +14,7 @@ import org.joml.Vector4f;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -47,17 +49,26 @@ public final class JavaSymbols {
     private final Map<String, List<CompletionSymbol>> staticMembers = new HashMap<>();
     private final List<CompletionSymbol> globalPool = new ArrayList<>();
 
-    public JavaSymbols(ComponentRegistry registry) {
-        indexAll(discoverTypes(registry));
+    public JavaSymbols(ComponentRegistry registry, ProjectLibraries libraries, Path compiledScriptsDirectory) {
+        indexAll(discoverTypes(registry, libraries, compiledScriptsDirectory));
         buildGlobalPool();
     }
 
-    private static List<Class<?>> discoverTypes(ComponentRegistry registry) {
+    private static List<Class<?>> discoverTypes(ComponentRegistry registry, ProjectLibraries libraries,
+                                                Path compiledScriptsDirectory) {
         List<Class<?>> classes = new ArrayList<>(EXTRA_CLASSES);
         classes.addAll(ClasspathTypeScanner.typesUnder(Behaviour.class, ENGINE_PACKAGE));
         classes.addAll(ClasspathTypeScanner.typesUnder(EngineServices.class, ENGINE_PACKAGE));
+        classes.addAll(ClasspathTypeScanner.typesIn(projectRoots(libraries, compiledScriptsDirectory),
+                JavaSymbols.class.getClassLoader()));
         registry.entries().forEach(entry -> classes.add(entry.componentClass()));
         return classes;
+    }
+
+    private static List<Path> projectRoots(ProjectLibraries libraries, Path compiledScriptsDirectory) {
+        List<Path> roots = new ArrayList<>(libraries.archives());
+        roots.add(compiledScriptsDirectory);
+        return roots;
     }
 
     private void indexAll(List<Class<?>> classes) {
