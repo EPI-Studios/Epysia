@@ -9,8 +9,10 @@ import fr.epistudio.epysia.editor.scripteditor.CompletionSymbol;
 import fr.epistudio.epysia.editor.scripteditor.DelimiterAutoClose;
 import fr.epistudio.epysia.editor.scripteditor.SourceIndent;
 import fr.epistudio.epysia.editor.scripteditor.ImportPlanner;
-import fr.epistudio.epysia.editor.scripteditor.JavaLanguageDefinition;
+import fr.epistudio.epysia.editor.scripteditor.ImportStyle;
 import fr.epistudio.epysia.editor.scripteditor.JavaSymbols;
+import fr.epistudio.epysia.editor.scripteditor.ScriptSyntaxes;
+import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
@@ -18,7 +20,6 @@ import fr.epistudio.epysia.reflection.ComponentRegistry;
 import imgui.ImGui;
 import imgui.extension.texteditor.TextEditor;
 import imgui.extension.texteditor.TextEditorCoordinates;
-import imgui.extension.texteditor.TextEditorLanguageDefinition;
 import imgui.extension.texteditor.flag.TextEditorPaletteIndex;
 import imgui.flag.ImGuiFocusedFlags;
 import imgui.flag.ImGuiKey;
@@ -38,7 +39,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,6 +53,8 @@ public final class ScriptEditorView {
     private static final float DIAGNOSTICS_INNER_HEIGHT = DIAGNOSTICS_HEIGHT - 8.0f;
     private static final float MINIMUM_EDITOR_HEIGHT = 80.0f;
     private static final int TAB_SIZE = 4;
+    private static final ImportStyle PLAIN_IMPORT_STYLE =
+            ImportStyle.of("", Set.of(), List.of("class"));
     private static final float MAXIMUM_AUTOSCROLL_OVERSHOOT = 120.0f;
     private static final float AUTOSCROLL_SPEED = 0.35f;
     private static final float LINE_NUMBER_MARGIN = 10.0f;
@@ -68,8 +73,6 @@ public final class ScriptEditorView {
     private static final int CURRENT_LINE_FILL_INACTIVE_ABGR = 0x0FFFFFFF;
     private static final int CURRENT_LINE_EDGE_ABGR = 0x00000000;
     private static final int ERROR_MARKER_COLOR_ABGR = 0x804B4BFF;
-    private static final Pattern DIAGNOSTIC_PATTERN =
-            Pattern.compile("([\\w./\\\\-]+\\.java):(\\d+):\\s*(?:error|warning)?:?\\s*(.*)");
     private static final String[] DROPPABLE_MIME_TYPES = {
             AssetMimeTypes.MESH, AssetMimeTypes.TEXTURE, AssetMimeTypes.AUDIO,
             AssetMimeTypes.PREFAB, AssetMimeTypes.SHADER, AssetMimeTypes.SCENE
@@ -77,9 +80,11 @@ public final class ScriptEditorView {
 
     private final Notifier notifier;
     private final Consumer<Path> onSaved;
-    private final CompletionEngine completionEngine;
+    private final ComponentRegistry componentRegistry;
+    private CompletionEngine completionEngine;
     private final CompletionPopup completionPopup = new CompletionPopup();
-    private final TextEditorLanguageDefinition languageDefinition;
+    private final ScriptSyntaxes syntaxes = ScriptSyntaxes.discover();
+    private final Pattern diagnosticPattern = diagnosticPatternFor(syntaxes);
     private final Map<Path, OpenScript> openScripts = new LinkedHashMap<>();
     private final List<Diagnostic> diagnostics = new ArrayList<>();
     private final TextEditorCoordinates cursorCoordinates = new TextEditorCoordinates();
@@ -94,11 +99,20 @@ public final class ScriptEditorView {
     private boolean windowFocused;
 
     public ScriptEditorView(ComponentRegistry componentRegistry, Notifier notifier, Consumer<Path> onSaved) {
+        this.componentRegistry = componentRegistry;
         this.notifier = notifier;
         this.onSaved = onSaved;
-        JavaSymbols javaSymbols = new JavaSymbols(componentRegistry);
+        applySymbols(new JavaSymbols(componentRegistry, ProjectLibraries.none(), Path.of("")));
+    }
+
+    public void refreshSymbols(ProjectLibraries libraries, Path compiledScriptsDirectory) {
+        applySymbols(new JavaSymbols(componentRegistry, libraries, compiledScriptsDirectory));
+        openScripts.forEach((path, script) -> script.editor().setLanguageDefinition(syntaxes.definitionFor(path)));
+    }
+
+    private void applySymbols(JavaSymbols javaSymbols) {
         this.completionEngine = new CompletionEngine(javaSymbols);
-        this.languageDefinition = JavaLanguageDefinition.create(javaSymbols);
+        syntaxes.rebuild(javaSymbols);
     }
 
     public void open(Path path) {
@@ -117,16 +131,16 @@ public final class ScriptEditorView {
     private void loadScript(Path path) {
         try {
             String text = Files.readString(path);
-            openScripts.put(path, new OpenScript(createEditor(text)));
+            openScripts.put(path, new OpenScript(createEditor(text, path)));
         } catch (IOException error) {
             notifier.show(I18n.translate(TextKey.EDITOR_SCRIPT_EDITOR_VIEW_TOAST_COULD_NOT_OPEN_SCRIPT,
                     error.getMessage()));
         }
     }
 
-    private TextEditor createEditor(String text) {
+    private TextEditor createEditor(String text, Path path) {
         TextEditor editor = new TextEditor();
-        editor.setLanguageDefinition(languageDefinition);
+        editor.setLanguageDefinition(syntaxes.definitionFor(path));
         editor.setPalette(themedPalette(editor));
         editor.setTabSize(TAB_SIZE);
         editor.setShowWhitespaces(false);
@@ -163,13 +177,21 @@ public final class ScriptEditorView {
         return !openScripts.isEmpty();
     }
 
+    private static Pattern diagnosticPatternFor(ScriptSyntaxes syntaxes) {
+        String extensions = syntaxes.syntaxes().stream()
+                .flatMap(syntax -> syntax.sourceExtensions().stream())
+                .map(Pattern::quote)
+                .collect(Collectors.joining("|"));
+        return Pattern.compile("([\\w./\\\\-]+(?:" + extensions + ")):(\\d+):\\s*(?:error|warning)?:?\\s*(.*)");
+    }
+
     public void clearDiagnostics() {
         diagnostics.clear();
         markersDirty = true;
     }
 
     public void acceptCompilerMessage(String message) {
-        Matcher matcher = DIAGNOSTIC_PATTERN.matcher(message);
+        Matcher matcher = diagnosticPattern.matcher(message);
         if (matcher.find()) {
             diagnostics.add(new Diagnostic(Path.of(matcher.group(1)),
                     Integer.parseInt(matcher.group(2)), matcher.group(3)));
@@ -266,22 +288,22 @@ public final class ScriptEditorView {
     private void renderEditor(Path path, OpenScript script) {
         handleSaveShortcut(path, script);
         boolean forceCompletion = isCompletionShortcutPressed();
-        gateEditorKeyboard(script);
+        gateEditorKeyboard(path, script);
         pendingEnter = claimSmartEnter(script);
         pendingWordDelete = !pendingEnter && claimWordDelete(script);
         float editorHeight = Math.max(MINIMUM_EDITOR_HEIGHT,
                 ImGui.getContentRegionAvailY() - diagnosticsHeightFor(path));
         renderEditorChild(path, script, editorHeight, forceCompletion);
-        completionPopup.render().ifPresent(symbol -> acceptCompletion(script, symbol));
+        completionPopup.render().ifPresent(symbol -> acceptCompletion(path, script, symbol));
         renderDiagnostics(path);
     }
 
-    private void gateEditorKeyboard(OpenScript script) {
+    private void gateEditorKeyboard(Path path, OpenScript script) {
         CompletionPopup.KeyAction action = completionPopup.handleKeys();
         keyboardGateOpen = action == CompletionPopup.KeyAction.NONE;
         script.editor().setHandleKeyboardInputs(keyboardGateOpen);
         if (action == CompletionPopup.KeyAction.ACCEPT) {
-            completionPopup.selected().ifPresent(symbol -> acceptCompletion(script, symbol));
+            completionPopup.selected().ifPresent(symbol -> acceptCompletion(path, script, symbol));
         }
         if (action == CompletionPopup.KeyAction.CLOSE) {
             completionPopup.hide();
@@ -340,7 +362,7 @@ public final class ScriptEditorView {
         } else {
             applyAutoClose(script);
         }
-        updateCompletion(editor, textChanged, cursorMoved, forceCompletion);
+        updateCompletion(path, editor, textChanged, cursorMoved, forceCompletion);
         renderAssetDropOverlay(script, editorOriginX, editorOriginY, editorWidth, height);
         ImGui.endChild();
     }
@@ -536,7 +558,7 @@ public final class ScriptEditorView {
         }
     }
 
-    private void updateCompletion(TextEditor editor, boolean textChanged, boolean cursorMoved,
+    private void updateCompletion(Path path, TextEditor editor, boolean textChanged, boolean cursorMoved,
                                   boolean forceCompletion) {
         if (!textChanged && !forceCompletion) {
             if (cursorMoved) {
@@ -552,7 +574,8 @@ public final class ScriptEditorView {
             completionPopup.hide();
             return;
         }
-        List<CompletionSymbol> candidates = completionEngine.candidates(context, editor.getText());
+        List<CompletionSymbol> candidates = completionEngine.candidates(context, editor.getText(),
+                syntaxes.importStyleFor(path).orElse(PLAIN_IMPORT_STYLE));
         completionPopup.show(candidates,
                 completionAnchorX(editor, cursorCoordinates.mColumn),
                 completionAnchorY(cursorCoordinates.mLine));
@@ -570,7 +593,7 @@ public final class ScriptEditorView {
                 - ImGui.getScrollY();
     }
 
-    private void acceptCompletion(OpenScript script, CompletionSymbol symbol) {
+    private void acceptCompletion(Path path, OpenScript script, CompletionSymbol symbol) {
         TextEditor editor = script.editor();
         editor.getCursorPosition(cursorCoordinates);
         String lineText = editor.getCurrentLineText();
@@ -584,14 +607,15 @@ public final class ScriptEditorView {
         }
         editor.insertText(symbol.insertText());
         if (!context.isImport() && symbol.kind() == CompletionKind.TYPE) {
-            symbol.qualifiedName().ifPresent(qualifiedName -> ensureImport(editor, qualifiedName));
+            symbol.qualifiedName().ifPresent(qualifiedName -> ensureImport(path, editor, qualifiedName));
         }
         script.markDirty();
         completionPopup.hide();
     }
 
-    private void ensureImport(TextEditor editor, String qualifiedName) {
-        ImportPlanner.plan(editor.getText(), qualifiedName)
+    private void ensureImport(Path path, TextEditor editor, String qualifiedName) {
+        syntaxes.importStyleFor(path)
+                .flatMap(style -> ImportPlanner.plan(editor.getText(), qualifiedName, style))
                 .ifPresent(plan -> insertImport(editor, plan));
     }
 

@@ -127,6 +127,7 @@ public final class SettingsDialog {
     private Optional<SkySettings> skySettings = Optional.empty();
     private Optional<MeshRenderSystem> meshRenderSystem = Optional.empty();
     private Optional<PostEffectsSection> postEffectsSection = Optional.empty();
+    private Optional<LibrariesSection> librariesSection = Optional.empty();
     private Optional<Supplier<PostEffectStack>> globalPostEffectStack = Optional.empty();
     private Runnable onPostEffectsChanged = () -> {
     };
@@ -158,6 +159,10 @@ public final class SettingsDialog {
         skySettings = Optional.of(sky);
         meshRenderSystem = Optional.of(meshSystem);
         shadowDistance[0] = meshSystem.shadowDistance();
+    }
+
+    public void attachLibraries(LibrariesSection section) {
+        librariesSection = Optional.of(section);
     }
 
     public void attachPostEffects(PostEffectsSection section, Supplier<PostEffectStack> stack, Runnable onChanged) {
@@ -403,6 +408,7 @@ public final class SettingsDialog {
         List<Category> built = new ArrayList<>();
         built.add(new Category("Application", "General", this::renderApplicationCategory));
         built.add(new Category("Application", "Project", this::renderProjectIdentity));
+        built.add(new Category("Application", "Libraries", this::renderLibrariesCategory));
         built.add(new Category("Display", "Window", this::renderWindowCategory));
         built.add(new Category("Display", "Stretch", this::renderStretchCategory));
         built.add(new Category("Input", "Actions", this::renderInputActionsCategory));
@@ -424,6 +430,17 @@ public final class SettingsDialog {
     private void renderApplicationCategory() {
         row("Window title", () -> ImGui.inputText("##value", windowTitle));
         hint("Shown on the exported game window and written into its launcher configuration.");
+    }
+
+    private void renderLibrariesCategory() {
+        if (filtering() || librariesSection.isEmpty()) {
+            return;
+        }
+        if (project == null) {
+            hint("No project is open.");
+            return;
+        }
+        librariesSection.get().render(project);
     }
 
     private void renderProjectIdentity() {

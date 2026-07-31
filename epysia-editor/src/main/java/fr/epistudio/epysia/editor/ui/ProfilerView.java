@@ -356,9 +356,20 @@ public final class ProfilerView {
                 + ", collapsed: " + sceneHost.meshRenderSystem().instancedBatchCount()
                 + ", instances drawn: " + statistics.instances());
         ImGui.textDisabled("Triangles: " + statistics.triangles());
+        renderRenderResolutionRow();
         ImGui.textDisabled("Render passes: " + statistics.passes());
         ImGui.textDisabled("Pipeline switches: " + statistics.pipelineSwitches());
         ImGui.textDisabled("Binding set switches: " + statistics.bindingSetSwitches());
+    }
+
+    private void renderRenderResolutionRow() {
+        int width = viewportView.renderedWidth();
+        int height = viewportView.renderedHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+        ImGui.textDisabled(String.format("Shaded pixels: %d x %d = %.1f Mpx (supersampling %dx)",
+                width, height, width * (double) height / 1_000_000.0, viewportView.supersampleFactor()));
     }
 
     private void renderShadowStatistics() {

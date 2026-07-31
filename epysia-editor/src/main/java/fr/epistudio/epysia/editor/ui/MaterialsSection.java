@@ -10,6 +10,8 @@ import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.command.builtin.SetMaterialsCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetMultiMeshMaterialCommand;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
+import fr.epistudio.epysia.assets.AssetUri;
+import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
@@ -85,9 +87,12 @@ public final class MaterialsSection {
     private final Map<String, Material> assetMaterials = new HashMap<>();
     private final Map<String, String> savedDocuments = new HashMap<>();
     private final AssetLocator locator;
+    private final Notifier notifier;
 
-    public MaterialsSection(Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails, Project project) {
+    public MaterialsSection(Supplier<SceneDocument> activeDocument, ThumbnailCache thumbnails,
+                            Project project, Notifier notifier) {
         this.activeDocument = activeDocument;
+        this.notifier = notifier;
         this.thumbnails = thumbnails;
         this.locator = project.locator();
         this.filePicker = new AssetFilePicker(project, thumbnails);
@@ -251,12 +256,33 @@ public final class MaterialsSection {
     }
 
     private void writeAssetDocument(String path, String document) {
-        savedDocuments.put(path, document);
-        try {
-            Files.writeString(Path.of(path), document);
-        } catch (IOException error) {
-            throw new EpysiaException("Failed to save material asset " + path + ": " + error.getMessage());
+        Optional<Path> file = resolveAssetFile(path);
+        if (file.isEmpty()) {
+            reportSaveFailure(path, document, "the asset path does not resolve to a project file");
+            return;
         }
+        try {
+            Path target = file.get();
+            if (target.getParent() != null) {
+                Files.createDirectories(target.getParent());
+            }
+            Files.writeString(target, document);
+            savedDocuments.put(path, document);
+        } catch (IOException error) {
+            reportSaveFailure(path, document, error.getMessage());
+        }
+    }
+
+    private Optional<Path> resolveAssetFile(String path) {
+        return AssetUri.parse(path)
+                .filter(uri -> !uri.isEmpty())
+                .flatMap(locator::file)
+                .or(() -> locator.projectRoot().map(root -> root.resolve(path)));
+    }
+
+    private void reportSaveFailure(String path, String document, String reason) {
+        savedDocuments.put(path, document);
+        notifier.show("Could not save material " + path + ": " + reason);
     }
 
     private void renderTypeCombo(Material material, Consumer<Material> replace) {

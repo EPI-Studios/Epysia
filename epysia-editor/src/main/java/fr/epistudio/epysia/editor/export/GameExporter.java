@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor.export;
 
 import fr.epistudio.epysia.editor.BuildInfo;
 import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.project.ProjectStore;
 
 import java.io.IOException;
@@ -61,6 +62,16 @@ public final class GameExporter {
     private void injectContent(Path content) throws IOException {
         copyProjectContent(content);
         Files.createDirectories(content.resolve(SCRIPTS_OUTPUT));
+        verifyLibraries(content);
+    }
+
+    private void verifyLibraries(Path content) throws IOException {
+        int expected = ProjectLibraries.forProjectRoot(project.rootDirectory()).archives().size();
+        int copied = ProjectLibraries.forProjectRoot(content).archives().size();
+        if (copied != expected) {
+            throw new IOException("Export dropped project libraries: expected " + expected
+                    + " jar(s) in libs/, found " + copied + ".");
+        }
     }
 
     private void copyProjectContent(Path content) throws IOException {
@@ -84,6 +95,10 @@ public final class GameExporter {
             Files.createDirectories(target.getParent());
             Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
+    }
+
+    static boolean excludesDirectory(String directoryName) {
+        return EXCLUDED_PROJECT_DIRECTORIES.contains(directoryName.toLowerCase(Locale.ROOT));
     }
 
     private static boolean isExcluded(Path relative) {

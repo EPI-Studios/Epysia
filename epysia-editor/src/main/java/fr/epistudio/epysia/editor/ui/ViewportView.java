@@ -60,6 +60,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Supplier;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiKey;
@@ -83,6 +84,9 @@ public final class ViewportView {
     private static final float PREVIEW_ASPECT = 16.0f / 9.0f;
     private static final float PREVIEW_MARGIN = 12.0f;
     private static final float PREVIEW_ROUNDING = 6.0f;
+    private static final float PREVIEW_LABEL_INSET_X = 8.0f;
+    private static final float PREVIEW_LABEL_INSET_Y = 6.0f;
+    private static final float PREVIEW_PIN_SIZE = 12.0f;
     private static final float BILLBOARD_HALF_SIZE = 11.0f;
     private static final float BILLBOARD_CLICK_RADIUS = 14.0f;
     private static final float BILLBOARD_SHADOW_RADIUS = 14.0f;
@@ -148,6 +152,10 @@ public final class ViewportView {
     private float overlayThicknessMultiplier = 1.0f;
     private float gridFadeDistance = GridOverlay.DEFAULT_MINOR_FADE_DISTANCE;
     private int supersampleFactor = DEFAULT_SUPERSAMPLE_FACTOR;
+    private int renderedWidth;
+    private int renderedHeight;
+    private Optional<UUID> pinnedCameraId = Optional.empty();
+    private boolean previewClickConsumed;
     private boolean viewportHoveredThisFrame;
     private boolean viewportFocusedThisFrame;
     private boolean billboardClickConsumed;
@@ -222,6 +230,14 @@ public final class ViewportView {
         return supersampleFactor;
     }
 
+    public int renderedWidth() {
+        return renderedWidth;
+    }
+
+    public int renderedHeight() {
+        return renderedHeight;
+    }
+
     public void setSupersampleFactor(int factor) {
         supersampleFactor = Math.clamp(factor, MINIMUM_SUPERSAMPLE_FACTOR, MAXIMUM_SUPERSAMPLE_FACTOR);
     }
@@ -264,6 +280,7 @@ public final class ViewportView {
         billboardClickConsumed = false;
         timings.measure("scene image", () -> drawSceneImage(width, height, gameView));
         viewportHoveredThisFrame = ImGui.isItemHovered();
+        previewClickConsumed = mouseOverCameraPreview(imageX, imageY, width, height);
         acceptAssetDrops(imageX, imageY, width, height);
         renderSceneModeContent(deltaSeconds, imageX, imageY, width, height, gameView);
         renderPlayDecorations(imageX, imageY, width, height);
@@ -348,6 +365,8 @@ public final class ViewportView {
         int factor = sceneHost.postProcessSettings().pixelPerfectEnabled() ? 1 : supersampleFactor;
         int renderWidth = width * factor;
         int renderHeight = height * factor;
+        renderedWidth = renderWidth;
+        renderedHeight = renderHeight;
         float alpha = renderAlpha();
         return gameView
                 ? renderGameViewTexture(renderWidth, renderHeight, alpha)
@@ -962,7 +981,7 @@ public final class ViewportView {
     }
 
     private void handleBillboardClick(GameObject gameObject, float screenX, float screenY) {
-        if (!viewportHoveredThisFrame || billboardClickConsumed
+        if (!viewportHoveredThisFrame || billboardClickConsumed || previewClickConsumed
                 || !ImGui.isMouseClicked(ImGuiMouseButton.Left)) {
             return;
         }
@@ -1095,7 +1114,8 @@ public final class ViewportView {
     }
 
     private void handlePicking(boolean gizmoBusy, float imageX, float imageY, int width, int height) {
-        if (!viewportHoveredThisFrame || gizmoBusy || billboardClickConsumed || ImGui.getIO().getKeyAlt()) {
+        if (!viewportHoveredThisFrame || gizmoBusy || billboardClickConsumed || previewClickConsumed
+                || ImGui.getIO().getKeyAlt()) {
             return;
         }
         boolean rightHeld = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
@@ -1278,34 +1298,100 @@ public final class ViewportView {
         if (playSession.isActive()) {
             return;
         }
-        Optional<Camera3D> selectedCamera = selectedCamera();
-        if (selectedCamera.isEmpty()) {
+        Optional<GameObject> previewObject = previewCameraObject();
+        if (previewObject.isEmpty()) {
             return;
         }
+        GameObject cameraObject = previewObject.get();
+        Optional<Camera3D> camera = cameraObject.getComponent(Camera3D.class);
+        if (camera.isEmpty()) {
+            return;
+        }
+        PreviewBounds bounds = previewBounds(imageX, imageY, width, height);
+        int textureId = sceneHost.renderPreviewFrom(camera.get(),
+                bounds.width() * supersampleFactor, bounds.height() * supersampleFactor);
+        drawPreviewFrame(textureId, bounds, cameraObject);
+        renderPreviewPinButton(bounds, cameraObject);
+    }
+
+    private record PreviewBounds(float x, float y, int width, int height) {
+
+        boolean contains(float pointX, float pointY) {
+            return pointX >= x && pointX <= x + width && pointY >= y && pointY <= y + height;
+        }
+    }
+
+    private static PreviewBounds previewBounds(float imageX, float imageY, int width, int height) {
         int previewWidth = Math.max(64, (int) (width * PREVIEW_WIDTH_FRACTION));
         int previewHeight = Math.max(36, (int) (previewWidth / PREVIEW_ASPECT));
-        int textureId = sceneHost.renderPreviewFrom(selectedCamera.get(),
-                previewWidth * supersampleFactor, previewHeight * supersampleFactor);
-        float x0 = imageX + width - previewWidth - PREVIEW_MARGIN;
-        float y0 = imageY + height - previewHeight - PREVIEW_MARGIN;
-        drawPreviewFrame(textureId, x0, y0, previewWidth, previewHeight);
+        return new PreviewBounds(imageX + width - previewWidth - PREVIEW_MARGIN,
+                imageY + height - previewHeight - PREVIEW_MARGIN, previewWidth, previewHeight);
     }
 
-    private void drawPreviewFrame(int textureId, float x0, float y0, int previewWidth, int previewHeight) {
+    private boolean mouseOverCameraPreview(float imageX, float imageY, int width, int height) {
+        if (playSession.isActive() || previewCameraObject().isEmpty()) {
+            return false;
+        }
+        return previewBounds(imageX, imageY, width, height)
+                .contains(ImGui.getMousePosX(), ImGui.getMousePosY());
+    }
+
+    private void drawPreviewFrame(int textureId, PreviewBounds bounds, GameObject cameraObject) {
+        float x0 = bounds.x();
+        float y0 = bounds.y();
+        float x1 = x0 + bounds.width();
+        float y1 = y0 + bounds.height();
         var drawList = ImGui.getWindowDrawList();
-        drawList.addRectFilled(x0 - 1.0f, y0 - 1.0f, x0 + previewWidth + 1.0f, y0 + previewHeight + 1.0f,
+        drawList.addRectFilled(x0 - 1.0f, y0 - 1.0f, x1 + 1.0f, y1 + 1.0f,
                 EditorStyle.COLOR_OUTLINE, PREVIEW_ROUNDING);
-        drawList.addImageRounded(textureId, x0, y0, x0 + previewWidth, y0 + previewHeight,
+        drawList.addImageRounded(textureId, x0, y0, x1, y1,
                 0.0f, 1.0f, 1.0f, 0.0f, 0xFFFFFFFF, PREVIEW_ROUNDING);
-        drawList.addRect(x0, y0, x0 + previewWidth, y0 + previewHeight,
-                EditorStyle.COLOR_ACCENT, PREVIEW_ROUNDING, 0, 1.5f);
-        drawList.addText(x0 + 8.0f, y0 + 6.0f, EditorStyle.COLOR_TEXT,
-                I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_CAMERA_PREVIEW));
+        drawList.addRect(x0, y0, x1, y1,
+                isPinned(cameraObject) ? EditorStyle.COLOR_HIGHLIGHT : EditorStyle.COLOR_ACCENT,
+                PREVIEW_ROUNDING, 0, 1.5f);
+        drawList.addText(x0 + PREVIEW_LABEL_INSET_X, y0 + PREVIEW_LABEL_INSET_Y, EditorStyle.COLOR_TEXT,
+                cameraObject.name());
     }
 
-    private Optional<Camera3D> selectedCamera() {
+    private void renderPreviewPinButton(PreviewBounds bounds, GameObject cameraObject) {
+        boolean pinned = isPinned(cameraObject);
+        float restoreX = ImGui.getCursorScreenPosX();
+        float restoreY = ImGui.getCursorScreenPosY();
+        ImGui.setCursorScreenPos(bounds.x() + bounds.width() - PREVIEW_PIN_SIZE - PREVIEW_LABEL_INSET_X * 2.0f,
+                bounds.y() + PREVIEW_LABEL_INSET_Y * 0.5f);
+        if (icons.toggleButton("camera-preview-pin", pinned ? EditorIcon.LOCK : EditorIcon.UNLOCK,
+                PREVIEW_PIN_SIZE, pinned)) {
+            togglePin(cameraObject);
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(I18n.translate(pinned
+                    ? TextKey.EDITOR_VIEWPORT_VIEW_CAMERA_PREVIEW_UNPIN
+                    : TextKey.EDITOR_VIEWPORT_VIEW_CAMERA_PREVIEW_PIN));
+        }
+        ImGui.setCursorScreenPos(restoreX, restoreY);
+    }
+
+    private void togglePin(GameObject cameraObject) {
+        pinnedCameraId = isPinned(cameraObject) ? Optional.empty() : Optional.of(cameraObject.id());
+    }
+
+    private boolean isPinned(GameObject cameraObject) {
+        return pinnedCameraId.filter(id -> id.equals(cameraObject.id())).isPresent();
+    }
+
+    private Optional<GameObject> previewCameraObject() {
+        return pinnedCameraObject().or(this::selectedCameraObject);
+    }
+
+    private Optional<GameObject> pinnedCameraObject() {
+        return pinnedCameraId
+                .flatMap(id -> activeDocument.get().scene().findById(id))
+                .filter(gameObject -> gameObject.getComponent(Camera3D.class).isPresent());
+    }
+
+    private Optional<GameObject> selectedCameraObject() {
         return activeDocument.get().selection().get()
-                .flatMap(gameObject -> gameObject.getComponent(Camera3D.class));
+                .filter(gameObject -> gameObject.getComponent(Camera3D.class).isPresent());
     }
 
     private void renderContextMenu(float imageX, float imageY, int width, int height) {

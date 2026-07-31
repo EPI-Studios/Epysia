@@ -69,6 +69,31 @@ public final class TextureInspectorSection {
         renderFilterCombo(path, settings);
         renderWrapCombo(path, settings);
         renderColorSpaceCheckbox(path, settings);
+        renderMipmapCheckbox(path, settings);
+        renderAnisotropySlider(path, settings);
+    }
+
+    private void renderMipmapCheckbox(Path path, TextureImportSettings settings) {
+        if (ImGui.checkbox("Mipmaps", settings.mipmaps())) {
+            apply(path, TextureImportSettings.MIPMAPS_KEY, Boolean.toString(!settings.mipmaps()));
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Off by default for point filtering, on for linear. "
+                    + "Without them a surface seen at an angle shimmers.");
+        }
+    }
+
+    private void renderAnisotropySlider(Path path, TextureImportSettings settings) {
+        if (!settings.mipmaps()) {
+            return;
+        }
+        int[] level = {settings.anisotropy()};
+        if (ImGui.sliderInt("Anisotropy", level, 1, TextureImportSettings.MAXIMUM_ANISOTROPY)) {
+            apply(path, TextureImportSettings.ANISOTROPY_KEY, Integer.toString(level[0]));
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Clamped to what the GPU reports. 1 disables it.");
+        }
     }
 
     private static TextureImportSettings settingsOf(Path path) {

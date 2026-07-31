@@ -4,8 +4,12 @@ import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.SamplerFilter;
 import fr.epistudio.epysia.render.backend.TextureHandle;
+import fr.epistudio.epysia.render.baking.ImpostorBaker;
+import fr.epistudio.epysia.render.baking.OctahedralImpostorBaker;
+import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.texture.Texture2D;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
@@ -47,6 +51,8 @@ import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.prefab.PrefabWriter;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import imgui.ImGui;
@@ -81,7 +87,10 @@ public final class EditorView implements FrameView {
     private static final float TOOLBAR_SEPARATOR_HEIGHT = 22.0f;
     private static final int TOOLBAR_SEPARATOR_COLOR = EditorStyle.rgba(255, 255, 255, 30);
 
-    private static final float TOOLBAR_HEIGHT = 64.0f;
+    private static final float TOOLBAR_TOOLS_HEIGHT = 36.0f;
+    private static final float TOOLBAR_TABS_HEIGHT = 26.0f;
+    private static final float TOOLBAR_EDGE_PADDING = 8.0f;
+    private static final int PLAY_BUTTON_COUNT = 4;
     private static final float STATUS_BAR_HEIGHT = 26.0f;
     private static final float SPAWN_DISTANCE = 4.0f;
     private static final float TWO_DIMENSIONAL_FRAME_MINIMUM_RADIUS = 3.0f;
@@ -89,7 +98,7 @@ public final class EditorView implements FrameView {
     private static final String PREFAB_EXTENSION = ".epyprefab";
     private static final String ABOUT_POPUP_ID = "about-epysia";
     private static final String CLOSE_SCENE_POPUP_ID = "close-scene-unsaved-changes";
-    private static final Set<String> COMPILED_SCRIPT_EXTENSIONS = Set.of(".java");
+    private static final ScriptLanguages SCRIPT_LANGUAGES = ScriptLanguages.discover();
     private static final Set<String> SHADER_FILE_EXTENSIONS = Set.of(".glsl", ".vert", ".frag");
     private static final int HOST_WINDOW_FLAGS = ImGuiWindowFlags.NoTitleBar
             | ImGuiWindowFlags.NoCollapse
@@ -100,28 +109,6 @@ public final class EditorView implements FrameView {
             | ImGuiWindowFlags.NoDocking
             | ImGuiWindowFlags.NoSavedSettings;
 
-    private static final String SCRIPT_TEMPLATE = """
-            import fr.epistudio.epysia.EngineServices;
-            import fr.epistudio.epysia.components.EpysiaComponent;
-            import fr.epistudio.epysia.components.Export;
-            import fr.epistudio.epysia.input.InputState;
-            import fr.epistudio.epysia.scripting.Behaviour;
-
-            @EpysiaComponent(name = "%s", category = "Scripts")
-            public final class %s extends Behaviour {
-
-                @Export(label = "Speed")
-                private float speed = 1.0f;
-
-                @Override
-                public void onStart(EngineServices services) {
-                }
-
-                @Override
-                public void onUpdate(InputState input, float deltaTimeSeconds) {
-                }
-            }
-            """;
 
     private final Project project;
     private final ComponentRegistry componentRegistry;
@@ -158,6 +145,7 @@ public final class EditorView implements FrameView {
     private final GraphEditorView graphEditorView;
     private final SettingsDialog settingsDialog;
     private final PostEffectsSection settingsPostEffectsSection;
+    private final LibrariesSection librariesSection;
     private final MeshBakeDialog meshBakeDialog;
     private final ExportGameDialog exportGameDialog;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
@@ -201,7 +189,7 @@ public final class EditorView implements FrameView {
         this.playSession = new EmbeddedPlaySession(sceneHost, serializer, project, projectStore,
                 active, toasts, editorConsole);
         this.objectFactory = new GameObjectFactory(active, sceneHost.engine());
-        this.importPipeline = new AssetImportPipeline(buildImporterRegistry(componentRegistry));
+        this.importPipeline = new AssetImportPipeline(buildImporterRegistry(componentRegistry, sceneHost.backend()));
         this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::onScriptFileSaved);
         this.shaderGraphPreviews = new ShaderGraphPreviewService(sceneHost.window(), sceneHost.backend());
         this.vfxPreviewPanel = new VfxPreviewPanel(sceneHost.window(), sceneHost.backend());
@@ -236,6 +224,7 @@ public final class EditorView implements FrameView {
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onViewportTuningChanged);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
+        this.librariesSection = new LibrariesSection(toasts, this::reloadScripts);
         this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView, panelTimings);
         this.lightingView = new LightingView(sceneHost, active, project.rootDirectory());
         this.exportGameDialog = new ExportGameDialog(project, toasts);
@@ -247,15 +236,18 @@ public final class EditorView implements FrameView {
         return assetBrowserView == null ? Optional.empty() : assetBrowserView.selectedEntryPath();
     }
 
-    private static AssetImporterRegistry buildImporterRegistry(ComponentRegistry componentRegistry) {
+    private static AssetImporterRegistry buildImporterRegistry(ComponentRegistry componentRegistry,
+                                                               RenderBackend backend) {
         AssetImporterRegistry registry = new AssetImporterRegistry();
-        registry.register(new GltfAssetImporter(componentRegistry));
+        ImpostorBaker impostorBaker = new OctahedralImpostorBaker(backend, ShaderLoader.autoDetect());
+        registry.register(new GltfAssetImporter(componentRegistry, Optional.of(impostorBaker)));
         return registry;
     }
 
     private void finishSetup() {
         applyPreferences();
         scriptService.reload();
+        refreshScriptSymbols();
         assetBrowserView.sweepProjectForImports();
         if (Files.isRegularFile(project.defaultScenePath())) {
             workspace.open(project.defaultScenePath());
@@ -443,8 +435,12 @@ public final class EditorView implements FrameView {
     }
 
     private void renderFileScriptItems() {
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT, "menu-file-new-script"))) {
-            createNewScript();
+        for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
+            String label = I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT, "menu-file-new-script")
+                    + " (" + language.displayName() + ")";
+            if (ImGui.menuItem(label)) {
+                createNewScript(language);
+            }
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_RELOAD_SCRIPTS,
                 "menu-file-reload-scripts"))) {
@@ -629,20 +625,35 @@ public final class EditorView implements FrameView {
     }
 
     private void renderToolbarStrip() {
-        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, EditorStyle.WINDOW_PADDING, EditorStyle.FRAME_PADDING_Y);
-        ImGui.beginChild("##toolbar", 0.0f, TOOLBAR_HEIGHT, false);
-        renderToolButtons();
-        renderSceneTabs();
-        ImGui.endChild();
+        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, EditorStyle.ITEM_SPACING_X, 0.0f);
+        renderToolsStrip();
+        renderTabsStrip();
         ImGui.popStyleVar();
         ImGui.separator();
     }
 
-    private void renderToolButtons() {
+    private void renderToolsStrip() {
+        ImGui.pushStyleColor(ImGuiCol.ChildBg, EditorStyle.COLOR_PANEL_BACKGROUND);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, TOOLBAR_EDGE_PADDING, EditorStyle.FRAME_PADDING_Y);
+        ImGui.beginChild("##toolbar-tools", 0.0f, TOOLBAR_TOOLS_HEIGHT, false);
         renderGizmoToolButtons();
         renderToolbarSeparator();
         renderToggleButtons();
         renderPlayControls();
+        renderRunGameButton();
+        ImGui.endChild();
+        ImGui.popStyleVar();
+        ImGui.popStyleColor();
+    }
+
+    private void renderTabsStrip() {
+        ImGui.pushStyleColor(ImGuiCol.ChildBg, EditorStyle.COLOR_HEADER_BACKGROUND);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, TOOLBAR_EDGE_PADDING, 0.0f);
+        ImGui.beginChild("##toolbar-tabs", 0.0f, TOOLBAR_TABS_HEIGHT, false);
+        renderSceneTabs();
+        ImGui.endChild();
+        ImGui.popStyleVar();
+        ImGui.popStyleColor();
     }
 
     private static void renderToolbarSeparator() {
@@ -762,11 +773,24 @@ public final class EditorView implements FrameView {
     }
 
     private void renderPlayControls() {
-        float center = ImGui.getWindowWidth() * 0.5f - EditorStyle.ICON_SIZE_TOOLBAR * 4.0f;
-        ImGui.sameLine(center);
+        ImGui.sameLine(0.0f, TOOLBAR_GROUP_SPACING);
+        float leftEdge = ImGui.getCursorPosX();
+        float centered = (ImGui.getWindowWidth() - playGroupWidth()) * 0.5f;
+        ImGui.sameLine(Math.max(centered, leftEdge));
         renderEmbeddedPlayButtons();
-        ImGui.sameLine();
-        renderRunGameButton();
+    }
+
+    private static float playGroupWidth() {
+        return iconButtonWidth() * PLAY_BUTTON_COUNT
+                + ImGui.getStyle().getItemSpacingX() * (PLAY_BUTTON_COUNT - 1);
+    }
+
+    private static float iconButtonWidth() {
+        return EditorStyle.ICON_SIZE_TOOLBAR + ImGui.getStyle().getFramePaddingX() * 2.0f;
+    }
+
+    private static float labelButtonWidth(String label) {
+        return ImGui.calcTextSize(label).x + ImGui.getStyle().getFramePaddingX() * 2.0f;
     }
 
     private void renderEmbeddedPlayButtons() {
@@ -804,21 +828,35 @@ public final class EditorView implements FrameView {
     }
 
     private void renderRunGameButton() {
-        renderToolbarSeparator();
         boolean subprocessRunning = playController.isRunning();
+        String runLabel = I18n.label(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_RUN_GAME, "toolbar-run-game");
+        String killLabel = I18n.label(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_KILL, "toolbar-kill-game");
+        ImGui.sameLine(rightAlignedX(runGroupWidth(runLabel, killLabel, subprocessRunning)));
         ImGui.beginDisabled(subprocessRunning || playSession.isActive());
-        if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_RUN_GAME, "toolbar-run-game"))) {
+        if (ImGui.button(runLabel)) {
             startPlay();
         }
         ImGui.endDisabled();
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_RUN_GAME_TOOLTIP);
         if (subprocessRunning) {
             ImGui.sameLine();
-            if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_KILL, "toolbar-kill-game"))) {
+            if (ImGui.button(killLabel)) {
                 playController.stop();
             }
             tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_KILL_TOOLTIP);
         }
+    }
+
+    private static float runGroupWidth(String runLabel, String killLabel, boolean subprocessRunning) {
+        float width = labelButtonWidth(runLabel);
+        if (subprocessRunning) {
+            width += ImGui.getStyle().getItemSpacingX() + labelButtonWidth(killLabel);
+        }
+        return width;
+    }
+
+    private static float rightAlignedX(float groupWidth) {
+        return ImGui.getWindowWidth() - groupWidth - TOOLBAR_EDGE_PADDING;
     }
 
     private void tooltip(String text) {
@@ -1202,12 +1240,12 @@ public final class EditorView implements FrameView {
         history().execute(new InstantiatePrefabCommand(prefabPath, new Vector3f()));
     }
 
-    private void createNewScript() {
+    private void createNewScript(ScriptLanguage language) {
         try {
             Files.createDirectories(project.scriptsDirectory());
-            Path target = nextScriptFile(project.scriptsDirectory());
-            String className = target.getFileName().toString().replace(".java", "");
-            Files.writeString(target, String.format(SCRIPT_TEMPLATE, className, className));
+            Path target = nextScriptFile(project.scriptsDirectory(), language.sourceExtension());
+            String className = SCRIPT_LANGUAGES.baseNameOf(target);
+            Files.writeString(target, language.behaviourTemplate(className));
             scriptEditorView.open(target);
             reloadScripts();
         } catch (IOException error) {
@@ -1216,12 +1254,12 @@ public final class EditorView implements FrameView {
         }
     }
 
-    private static Path nextScriptFile(Path scriptsDirectory) {
+    private static Path nextScriptFile(Path scriptsDirectory, String extension) {
         String baseName = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCRIPT_DEFAULT_NAME);
-        Path target = scriptsDirectory.resolve(baseName + ".java");
+        Path target = scriptsDirectory.resolve(baseName + extension);
         int suffix = 2;
         while (Files.exists(target)) {
-            target = scriptsDirectory.resolve(baseName + suffix + ".java");
+            target = scriptsDirectory.resolve(baseName + suffix + extension);
             suffix++;
         }
         return target;
@@ -1230,13 +1268,14 @@ public final class EditorView implements FrameView {
     private void createScriptAndAttach(String className, GameObject target) {
         try {
             Files.createDirectories(project.scriptsDirectory());
-            Path file = project.scriptsDirectory().resolve(className + ".java");
+            ScriptLanguage language = SCRIPT_LANGUAGES.defaultLanguage();
+            Path file = project.scriptsDirectory().resolve(className + language.sourceExtension());
             if (Files.exists(file)) {
                 toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_ALREADY_EXISTS, className));
                 scriptEditorView.open(file);
                 return;
             }
-            Files.writeString(file, String.format(SCRIPT_TEMPLATE, className, className));
+            Files.writeString(file, language.behaviourTemplate(className));
             reloadScripts();
             attachScriptComponent(className, target);
             scriptEditorView.open(file);
@@ -1273,7 +1312,7 @@ public final class EditorView implements FrameView {
     }
 
     private void attachScriptToSelected(Path scriptPath) {
-        String className = scriptPath.getFileName().toString().replace(".java", "");
+        String className = SCRIPT_LANGUAGES.baseNameOf(scriptPath);
         Optional<GameObject> selected = workspace.active().selection().get();
         if (selected.isEmpty()) {
             toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SELECT_GAMEOBJECT_FIRST));
@@ -1298,7 +1337,7 @@ public final class EditorView implements FrameView {
 
     private void onScriptFileSaved(Path savedFile) {
         String name = savedFile.getFileName().toString().toLowerCase(Locale.ROOT);
-        if (COMPILED_SCRIPT_EXTENSIONS.stream().anyMatch(name::endsWith)) {
+        if (SCRIPT_LANGUAGES.sourceExtensions().stream().anyMatch(name::endsWith)) {
             reloadScripts();
         }
         if (SHADER_FILE_EXTENSIONS.stream().anyMatch(name::endsWith)) {
@@ -1309,8 +1348,13 @@ public final class EditorView implements FrameView {
     private void reloadScripts() {
         scriptEditorView.clearDiagnostics();
         scriptService.reload();
+        refreshScriptSymbols();
         assetBrowserView.refreshAssets();
         graphEditorView.refreshReflectionNodes();
+    }
+
+    private void refreshScriptSymbols() {
+        scriptEditorView.refreshSymbols(project.libraries(), project.compiledScriptsDirectory());
     }
 
     private void onScriptMessage(String message) {
@@ -1335,6 +1379,7 @@ public final class EditorView implements FrameView {
         settingsDialog.attachPostEffects(settingsPostEffectsSection,
                 () -> workspace.active().scene().postEffects(),
                 () -> workspace.active().markDirty());
+        settingsDialog.attachLibraries(librariesSection);
         settingsDialog.openFor(projectStore.readSettings(project), preferences, project,
                 projectStore.readQuality(project), projectStore.readInputActions(project));
     }

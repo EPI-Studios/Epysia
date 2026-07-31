@@ -103,7 +103,7 @@ public final class InspectorView {
         this.spriteTextures = new SpriteTextureLookup(project.locator());
         this.spriteUniformRows = new SurfaceUniformRows(projectShaderLoader(project), this::history,
                 new AssetFilePicker(project, thumbnails), project.locator());
-        this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project);
+        this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project, notifier);
         this.populateSection = new PopulateSection(activeDocument, notifier, project);
         this.animatorSection = new AnimatorSection(activeDocument, project);
         this.vfxSection = new VfxSection(activeDocument, project);
@@ -294,6 +294,9 @@ public final class InspectorView {
         String keyPrefix = gameObject.id() + "#" + component.getClass().getName()
                 + "#" + System.identityHashCode(component);
         for (ExportedProperty property : properties) {
+            if (property.isHiddenInEditor()) {
+                continue;
+            }
             propertyRows.renderProperty(component, property, keyPrefix + "." + property.fieldName());
         }
         if (component instanceof MeshRenderer renderer) {
