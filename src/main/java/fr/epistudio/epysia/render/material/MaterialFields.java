@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.render.material;
 
+import fr.epistudio.epysia.assets.AcquiredAssets;
 import fr.epistudio.epysia.assets.AssetRegistry;
+import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.assets.AssetVariant;
 import fr.epistudio.epysia.assets.LegacyAssetReferences;
 import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
@@ -68,6 +70,28 @@ public final class MaterialFields {
                             variantFor(field))
                     .ifPresent(handle -> write(material, field, handle));
         }
+    }
+
+    public static void acquireTextures(Material material, AssetRegistry assets, AcquiredAssets into) {
+        for (Field field : textureFields(material.getClass())) {
+            Optional<String> path = material.texturePath(field.getName());
+            if (path.isEmpty()) {
+                continue;
+            }
+            acquireTexture(material, field, path.get(), assets, into);
+        }
+    }
+
+    private static void acquireTexture(Material material, Field field, String path,
+                                       AssetRegistry assets, AcquiredAssets into) {
+        AssetUri uri = LegacyAssetReferences.interpret(path, assets);
+        AssetVariant variant = variantFor(field);
+        Optional<TextureHandle> handle = assets.acquire(TextureHandle.class, uri, variant);
+        if (handle.isEmpty()) {
+            return;
+        }
+        into.record(TextureHandle.class, uri, variant);
+        write(material, field, handle.get());
     }
 
     public static AssetVariant variantFor(Field field) {

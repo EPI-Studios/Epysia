@@ -8,10 +8,30 @@ public record DrawCommand(
         int instanceCount,
         int indexCountOverride,
         BufferHandle instanceBuffer,
-        BufferHandle indirectBuffer
+        BufferHandle indirectBuffer,
+        int indirectDrawCount
 ) {
 
     public static final int USE_MESH_INDEX_COUNT = -1;
+
+    public DrawCommand(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey,
+                       int instanceCount, int indexCountOverride, BufferHandle instanceBuffer,
+                       BufferHandle indirectBuffer) {
+        this(pipeline, mesh, bindings, sortKey, instanceCount, indexCountOverride,
+                instanceBuffer, indirectBuffer, 1);
+    }
+
+    public boolean isMultiDraw() {
+        return indirectBuffer != null && indirectDrawCount > 1;
+    }
+
+    public static DrawCommand multiDrawIndirect(PipelineHandle pipeline, MeshHandle arenaMesh,
+                                                BindingSetHandle bindings, long sortKey,
+                                                BufferHandle commands, int drawCount,
+                                                BufferHandle perDrawBuffer) {
+        return new DrawCommand(pipeline, arenaMesh, bindings, sortKey, 1, USE_MESH_INDEX_COUNT,
+                perDrawBuffer, commands, drawCount);
+    }
 
     public DrawCommand(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey, int instanceCount, int indexCountOverride, BufferHandle instanceBuffer) {
         this(pipeline, mesh, bindings, sortKey, instanceCount, indexCountOverride, instanceBuffer, null);

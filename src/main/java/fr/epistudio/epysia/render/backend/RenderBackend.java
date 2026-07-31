@@ -49,6 +49,8 @@ public interface RenderBackend {
 
     IndexFormat meshIndexFormat(MeshHandle handle);
 
+    void updateMeshRange(MeshHandle handle, int firstIndex, int indexCount);
+
     int textureWidth(TextureHandle handle);
 
     int textureHeight(TextureHandle handle);
@@ -103,4 +105,6 @@ public interface RenderBackend {
     int readPixelArgb(RenderTargetHandle target, int x, int y);
 
     PixelColor readPixelFloat(RenderTargetHandle target, int x, int y);
+
+    void readPixelsRgba(RenderTargetHandle target, int x, int y, int width, int height, ByteBuffer destination);
 }

@@ -15,7 +15,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.lwjgl.opengl.EXTTextureFilterAnisotropic.GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT;
+import static org.lwjgl.opengl.EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT;
+import static org.lwjgl.opengl.GL11.GL_ALWAYS;
 import static org.lwjgl.opengl.GL11.GL_BACK;
+import static org.lwjgl.opengl.GL11.GL_DECR;
+import static org.lwjgl.opengl.GL11.GL_EQUAL;
+import static org.lwjgl.opengl.GL11.GL_GEQUAL;
+import static org.lwjgl.opengl.GL11.GL_GREATER;
+import static org.lwjgl.opengl.GL11.GL_INCR;
+import static org.lwjgl.opengl.GL11.GL_INVERT;
+import static org.lwjgl.opengl.GL11.GL_KEEP;
+import static org.lwjgl.opengl.GL11.GL_NEVER;
+import static org.lwjgl.opengl.GL11.GL_NOTEQUAL;
+import static org.lwjgl.opengl.GL11.GL_REPLACE;
+import static org.lwjgl.opengl.GL11.GL_STENCIL_BUFFER_BIT;
+import static org.lwjgl.opengl.GL11.GL_STENCIL_TEST;
+import static org.lwjgl.opengl.GL11.GL_ZERO;
+import static org.lwjgl.opengl.GL11.glClearStencil;
+import static org.lwjgl.opengl.GL11.glStencilFunc;
+import static org.lwjgl.opengl.GL11.glStencilMask;
+import static org.lwjgl.opengl.GL11.glStencilOp;
+import static org.lwjgl.opengl.GL14.GL_DECR_WRAP;
+import static org.lwjgl.opengl.GL14.GL_INCR_WRAP;
+import static org.lwjgl.opengl.GL11.glGetInteger;
+import static org.lwjgl.opengl.GL11.glTexParameterf;
 import static org.lwjgl.opengl.GL11.GL_BLEND;
 import static org.lwjgl.opengl.GL11.GL_COLOR_BUFFER_BIT;
 import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
@@ -121,7 +145,11 @@ import static org.lwjgl.opengl.GL20.glLinkProgram;
 import static org.lwjgl.opengl.GL20.glShaderSource;
 import static org.lwjgl.opengl.GL20.glUseProgram;
 import static org.lwjgl.opengl.GL30.GL_COLOR_ATTACHMENT0;
+import static org.lwjgl.opengl.GL30.GL_DEPTH32F_STENCIL8;
 import static org.lwjgl.opengl.GL30.GL_DEPTH_ATTACHMENT;
+import static org.lwjgl.opengl.GL30.GL_DEPTH_STENCIL;
+import static org.lwjgl.opengl.GL30.GL_DEPTH_STENCIL_ATTACHMENT;
+import static org.lwjgl.opengl.GL30.GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
 import static org.lwjgl.opengl.GL30.GL_DEPTH_COMPONENT;
 import static org.lwjgl.opengl.GL30.GL_FRAMEBUFFER;
 import static org.lwjgl.opengl.GL30.GL_FRAMEBUFFER_COMPLETE;
@@ -159,7 +187,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private static final int VERTEX_BINDING_INDEX = 0;
     private static final int INSTANCE_BINDING_INDEX = 1;
 
+    private static final int UNKNOWN_ANISOTROPY = -1;
+
     private final AtomicLong nextId = new AtomicLong(1);
+    private int maximumAnisotropy = UNKNOWN_ANISOTROPY;
     private long shaderCompileNanos;
     private int shaderCompileCount;
     private long frameShaderCompileNanos;
@@ -321,6 +352,16 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     @Override
+    public void updateMeshRange(MeshHandle handle, int firstIndex, int indexCount) {
+        MeshResource existing = meshes.get(handle.id());
+        if (existing == null) {
+            throw new EpysiaException("Unknown mesh handle: " + handle.id());
+        }
+        meshes.put(handle.id(), new MeshResource(existing.vertexBufferId(), existing.indexBufferId(),
+                firstIndex, indexCount, existing.indexFormat()));
+    }
+
+    @Override
     public PipelineHandle createPipeline(PipelineDescriptor descriptor) {
         int program = compileProgram(descriptor.shaders());
         int vao = createVertexArrayObject(descriptor.vertexLayout(), descriptor.instanceLayout());
@@ -416,7 +457,9 @@ public final class OpenGlRenderBackend implements RenderBackend {
             org.lwjgl.opengl.GL43.glVertexAttribIFormat(
                     attribute.location(),
                     attribute.format().componentCount(),
-                    org.lwjgl.opengl.GL11.GL_UNSIGNED_SHORT,
+                    attribute.format().wideInteger()
+                            ? org.lwjgl.opengl.GL11.GL_UNSIGNED_INT
+                            : org.lwjgl.opengl.GL11.GL_UNSIGNED_SHORT,
                     attribute.byteOffset()
             );
         } else {
@@ -535,6 +578,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private static int pixelFormatToGl(TextureFormat format) {
         return switch (format) {
             case DEPTH32F -> GL_DEPTH_COMPONENT;
+            case DEPTH32F_STENCIL8 -> GL_DEPTH_STENCIL;
             case R32F -> org.lwjgl.opengl.GL11.GL_RED;
             default -> GL_RGBA;
         };
@@ -548,6 +592,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case R11G11B10F -> org.lwjgl.opengl.GL30.GL_R11F_G11F_B10F;
             case R32F -> org.lwjgl.opengl.GL30.GL_R32F;
             case DEPTH32F -> GL_DEPTH_COMPONENT32F;
+            case DEPTH32F_STENCIL8 -> GL_DEPTH32F_STENCIL8;
         };
     }
 
@@ -555,6 +600,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return switch (format) {
             case RGBA8, SRGB8_ALPHA8 -> GL_UNSIGNED_BYTE;
             case RGBA16F, R11G11B10F, R32F, DEPTH32F -> GL_FLOAT;
+            case DEPTH32F_STENCIL8 -> GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
         };
     }
 
@@ -576,6 +622,30 @@ public final class OpenGlRenderBackend implements RenderBackend {
             glTexParameteri(glTarget, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
             glTexParameteri(glTarget, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
         }
+        configureAnisotropy(glTarget, descriptor);
+    }
+
+    private void configureAnisotropy(int glTarget, TextureDescriptor descriptor) {
+        if (descriptor.mipLevels() <= 1 || descriptor.samplerFilter() == SamplerFilter.NEAREST) {
+            return;
+        }
+        int supported = maximumAnisotropy();
+        if (supported <= TextureDescriptor.NO_ANISOTROPY) {
+            return;
+        }
+        int requested = Math.min(descriptor.anisotropy(), supported);
+        if (requested > TextureDescriptor.NO_ANISOTROPY) {
+            glTexParameterf(glTarget, GL_TEXTURE_MAX_ANISOTROPY_EXT, requested);
+        }
+    }
+
+    private int maximumAnisotropy() {
+        if (maximumAnisotropy == UNKNOWN_ANISOTROPY) {
+            maximumAnisotropy = GL.getCapabilities().GL_EXT_texture_filter_anisotropic
+                    ? glGetInteger(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT)
+                    : TextureDescriptor.NO_ANISOTROPY;
+        }
+        return maximumAnisotropy;
     }
 
     private static int wrapToGl(TextureWrap wrap) {
@@ -625,7 +695,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     private void attachDepthTexture(RenderTargetDescriptor descriptor, TextureHandle depth) {
         TextureResource resource = requireTexture(depth);
-        attachTexture(GL_DEPTH_ATTACHMENT, resource, descriptor.depthLayer(), 0);
+        int attachment = resource.format() == TextureFormat.DEPTH32F_STENCIL8
+                ? GL_DEPTH_STENCIL_ATTACHMENT
+                : GL_DEPTH_ATTACHMENT;
+        attachTexture(attachment, resource, descriptor.depthLayer(), 0);
     }
 
     private void attachTexture(int attachmentPoint, TextureResource resource, int layer, int mipLevel) {
@@ -996,6 +1069,12 @@ public final class OpenGlRenderBackend implements RenderBackend {
             glClearDepth(clear.depth());
             mask |= GL_DEPTH_BUFFER_BIT;
         }
+        if (clear.clearStencil()) {
+            glStencilMask(StencilState.ALL_BITS);
+            glClearStencil(clear.stencil());
+            mask |= GL_STENCIL_BUFFER_BIT;
+            appliedRenderState = null;
+        }
         if (mask != 0) {
             glClear(mask);
         }
@@ -1030,14 +1109,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
                 : command.indexCountOverride();
         long indexOffset = (long) mesh.firstIndex() * mesh.indexFormat().byteSize();
         if (command.indirectBuffer() != null) {
-            BufferResource indirectBuffer = requireBuffer(command.indirectBuffer());
-            glBindBuffer(org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER, indirectBuffer.bufferId());
-            drawStatistics.recordDraw(pipeline.state().topology(), indexCount, 1, true);
-            org.lwjgl.opengl.GL40.glDrawElementsIndirect(
-                    topologyToGl(pipeline.state().topology()),
-                    indexFormatToGl(mesh.indexFormat()),
-                    0L
-            );
+            executeIndirect(command, pipeline, mesh, indexCount);
             return;
         }
         boolean hasInstanceAttributes = command.instanceBuffer() != null && pipeline.instanceStride() > 0;
@@ -1063,6 +1135,38 @@ public final class OpenGlRenderBackend implements RenderBackend {
                 indexFormatToGl(mesh.indexFormat()),
                 indexOffset
         );
+    }
+
+    private void executeIndirect(DrawCommand command, PipelineResource pipeline,
+                                 MeshResource mesh, int indexCount) {
+        BufferResource indirectBuffer = requireBuffer(command.indirectBuffer());
+        glBindBuffer(org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER, indirectBuffer.bufferId());
+        bindPerDrawBuffer(command, pipeline);
+        if (!command.isMultiDraw()) {
+            drawStatistics.recordDraw(pipeline.state().topology(), indexCount, 1, true);
+            org.lwjgl.opengl.GL40.glDrawElementsIndirect(
+                    topologyToGl(pipeline.state().topology()),
+                    indexFormatToGl(mesh.indexFormat()),
+                    0L
+            );
+            return;
+        }
+        drawStatistics.recordDraw(pipeline.state().topology(), indexCount, command.indirectDrawCount(), true);
+        org.lwjgl.opengl.GL43.glMultiDrawElementsIndirect(
+                topologyToGl(pipeline.state().topology()),
+                indexFormatToGl(mesh.indexFormat()),
+                0L,
+                command.indirectDrawCount(),
+                0
+        );
+    }
+
+    private void bindPerDrawBuffer(DrawCommand command, PipelineResource pipeline) {
+        if (command.instanceBuffer() == null || pipeline.instanceStride() <= 0) {
+            return;
+        }
+        BufferResource perDraw = requireBuffer(command.instanceBuffer());
+        glBindVertexBuffer(INSTANCE_BINDING_INDEX, perDraw.bufferId(), 0L, pipeline.instanceStride());
     }
 
     @Override
@@ -1113,6 +1217,16 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return previousReadFbo;
     }
 
+    @Override
+    public void readPixelsRgba(RenderTargetHandle target, int x, int y, int width, int height,
+                               java.nio.ByteBuffer destination) {
+        int previousReadFbo = beginPixelRead(target);
+        org.lwjgl.opengl.GL11.glPixelStorei(org.lwjgl.opengl.GL11.GL_PACK_ALIGNMENT, 1);
+        org.lwjgl.opengl.GL11.glReadPixels(x, y, width, height, GL_RGBA,
+                org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, destination);
+        endPixelRead(target, previousReadFbo);
+    }
+
     private void endPixelRead(RenderTargetHandle target, int previousReadFbo) {
         if (target.id() == RenderTargetHandle.SCREEN.id()) {
             org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_BACK);
@@ -1147,7 +1261,51 @@ public final class OpenGlRenderBackend implements RenderBackend {
                 glDisable(org.lwjgl.opengl.GL32.GL_DEPTH_CLAMP);
             }
         }
+        applyStencilState(state.stencil());
         appliedRenderState = state;
+    }
+
+    private void applyStencilState(StencilState stencil) {
+        if (appliedRenderState != null && appliedRenderState.stencil().equals(stencil)) {
+            return;
+        }
+        if (!stencil.enabled()) {
+            glDisable(GL_STENCIL_TEST);
+            glStencilMask(StencilState.ALL_BITS);
+            return;
+        }
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(stencilTestToGl(stencil.test()), stencil.reference(), stencil.compareMask());
+        glStencilMask(stencil.writeMask());
+        glStencilOp(stencilOperationToGl(stencil.onStencilFail()),
+                stencilOperationToGl(stencil.onDepthFail()),
+                stencilOperationToGl(stencil.onPass()));
+    }
+
+    private static int stencilTestToGl(StencilTest test) {
+        return switch (test) {
+            case NEVER -> GL_NEVER;
+            case LESS -> GL_LESS;
+            case LESS_EQUAL -> GL_LEQUAL;
+            case GREATER -> GL_GREATER;
+            case GREATER_EQUAL -> GL_GEQUAL;
+            case EQUAL -> GL_EQUAL;
+            case NOT_EQUAL -> GL_NOTEQUAL;
+            case ALWAYS -> GL_ALWAYS;
+        };
+    }
+
+    private static int stencilOperationToGl(StencilOperation operation) {
+        return switch (operation) {
+            case KEEP -> GL_KEEP;
+            case ZERO -> GL_ZERO;
+            case REPLACE -> GL_REPLACE;
+            case INCREMENT_CLAMP -> GL_INCR;
+            case DECREMENT_CLAMP -> GL_DECR;
+            case INVERT -> GL_INVERT;
+            case INCREMENT_WRAP -> GL_INCR_WRAP;
+            case DECREMENT_WRAP -> GL_DECR_WRAP;
+        };
     }
 
     private void applyBindings(BindingSetHandle handle) {

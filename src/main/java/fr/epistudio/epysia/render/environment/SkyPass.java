@@ -105,7 +105,7 @@ final class SkyPass {
     }
 
     private void writeUbo(Camera3D camera, Vector3f sunDirection, float skyIntensity, float alpha) {
-        camera.viewProjection(alpha).invert(scratchInverseViewProjection);
+        camera.cullingViewProjection(alpha).invert(scratchInverseViewProjection);
         camera.position(scratchCameraPosition, alpha);
         uboScratch.clear();
         scratchInverseViewProjection.get(0, uboScratch);

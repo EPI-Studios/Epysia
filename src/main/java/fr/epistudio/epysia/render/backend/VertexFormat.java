@@ -5,7 +5,8 @@ public enum VertexFormat {
     FLOAT2(2, 8),
     FLOAT3(3, 12),
     FLOAT4(4, 16),
-    UINT16X4(4, 8, true);
+    UINT16X4(4, 8, true),
+    UINT32(1, 4, true);
 
     private final int componentCount;
     private final int byteSize;
@@ -31,5 +32,9 @@ public enum VertexFormat {
 
     public boolean integer() {
         return integer;
+    }
+
+    public boolean wideInteger() {
+        return this == UINT32;
     }
 }

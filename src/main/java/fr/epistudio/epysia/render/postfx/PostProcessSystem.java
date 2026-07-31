@@ -185,6 +185,18 @@ public final class PostProcessSystem implements RenderSystem {
         return sceneDepthTexture;
     }
 
+    public TextureHandle sceneColorTexture() {
+        return sceneColorTexture;
+    }
+
+    public int targetWidth() {
+        return targetWidth;
+    }
+
+    public int targetHeight() {
+        return targetHeight;
+    }
+
     public RenderTargetHandle sceneTarget() {
         return sceneTarget;
     }

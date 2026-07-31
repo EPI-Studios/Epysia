@@ -7,8 +7,19 @@ public record PassClear(
         float green,
         float blue,
         float alpha,
-        float depth
+        float depth,
+        boolean clearStencil,
+        int stencil
 ) {
+
+    public PassClear(boolean clearColor, boolean clearDepth, float red, float green, float blue,
+                     float alpha, float depth) {
+        this(clearColor, clearDepth, red, green, blue, alpha, depth, false, 0);
+    }
+
+    public PassClear withStencil(int value) {
+        return new PassClear(clearColor, clearDepth, red, green, blue, alpha, depth, true, value);
+    }
 
     public static PassClear color(float red, float green, float blue) {
         return new PassClear(true, true, red, green, blue, 1.0f, 1.0f);
