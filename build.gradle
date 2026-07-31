@@ -171,6 +171,14 @@ tasks.withType(JavaExec).configureEach {
     }
 }
 
+tasks.register('runMountains', JavaExec) {
+    group = 'application'
+    description = 'Fly around a procedurally generated mountain range'
+    classpath = sourceSets.example.runtimeClasspath
+    mainClass = 'com.meekdev.psyhou.forest.ProceduralMountains'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+}
+
 tasks.register('runRenderBenchmark', JavaExec) {
     group = 'verification'
     description = 'BENCHMARKKING'
