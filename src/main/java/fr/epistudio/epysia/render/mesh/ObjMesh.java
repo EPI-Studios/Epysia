@@ -143,11 +143,17 @@ public final class ObjMesh {
         private void appendVertex(String token) {
             String[] parts = token.split("/", -1);
             int positionIndex = Integer.parseInt(parts[0]) - 1;
-            int uvIndex = parts.length > 1 && !parts[1].isEmpty() ? Integer.parseInt(parts[1]) - 1 : -1;
+            int uvIndex = parts.length > 1 && !parts[1].isEmpty()
+                    ? Integer.parseInt(parts[1]) - 1
+                    : parallelUvIndex(positionIndex);
             int normalIndex = parts.length > 2 && !parts[2].isEmpty() ? Integer.parseInt(parts[2]) - 1 : -1;
             appendFloats(outPositions, sourcePositions.get(positionIndex));
             appendFloats(outNormals, normalIndex >= 0 ? sourceNormals.get(normalIndex) : new float[]{0.0f, 1.0f, 0.0f});
             appendFloats(outUvs, uvIndex >= 0 ? sourceUvs.get(uvIndex) : new float[]{0.0f, 0.0f});
+        }
+
+        private int parallelUvIndex(int positionIndex) {
+            return sourceUvs.size() == sourcePositions.size() ? positionIndex : -1;
         }
 
         private static void appendFloats(List<Float> destination, float[] values) {
