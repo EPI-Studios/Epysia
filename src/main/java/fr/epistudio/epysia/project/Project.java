@@ -9,6 +9,10 @@ public record Project(String name, Path rootDirectory, String engineVersion, lon
     public static final String MARKER_FILENAME = "epysia.project";
     public static final String SCENES_DIRECTORY_NAME = "scenes";
     public static final String SCRIPTS_DIRECTORY_NAME = "scripts";
+    public static final String LIBRARIES_DIRECTORY_NAME = "libs";
+    public static final String COMPILED_SCRIPTS_DIRECTORY_NAME = ".epysia/scripts-out";
+    public static final String LIBRARIES_CACHE_DIRECTORY_NAME = ".epysia/libs-cache";
+    public static final String DEPENDENCIES_FILENAME = "dependencies.txt";
     public static final String DEFAULT_SCENE_NAME = "main";
     public static final String SCENE_EXTENSION = ".epyscene";
 
@@ -26,6 +30,30 @@ public record Project(String name, Path rootDirectory, String engineVersion, lon
 
     public Path scriptsDirectory() {
         return rootDirectory.resolve(SCRIPTS_DIRECTORY_NAME);
+    }
+
+    public Path librariesDirectory() {
+        return rootDirectory.resolve(LIBRARIES_DIRECTORY_NAME);
+    }
+
+    public Path compiledScriptsDirectory() {
+        return rootDirectory.resolve(COMPILED_SCRIPTS_DIRECTORY_NAME);
+    }
+
+    public Path librariesCacheDirectory() {
+        return rootDirectory.resolve(LIBRARIES_CACHE_DIRECTORY_NAME);
+    }
+
+    public Path dependenciesFile() {
+        return librariesDirectory().resolve(DEPENDENCIES_FILENAME);
+    }
+
+    public ProjectLibraries libraries() {
+        return ProjectLibraries.forProjectRoot(rootDirectory);
+    }
+
+    public ProjectDependencies dependencies() {
+        return ProjectDependencies.read(dependenciesFile());
     }
 
     public Path defaultScenePath() {

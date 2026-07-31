@@ -126,6 +126,7 @@ public final class ProjectStore {
         writeMarker(project);
         Files.createDirectories(project.scenesDirectory());
         Files.createDirectories(project.scriptsDirectory());
+        Files.createDirectories(project.librariesDirectory());
         return project;
     }
 
