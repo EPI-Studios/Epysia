@@ -221,6 +221,10 @@ public final class Transform3D extends Component {
         if (previousStateCaptured && unchangedSincePreviousState()) {
             return;
         }
+        resetInterpolation();
+    }
+
+    public void resetInterpolation() {
         previousPosition.set(position);
         previousRotation.set(rotation);
         previousScale.set(scale);

@@ -41,9 +41,32 @@ public final class MultiMeshRenderer extends Component implements MeshRenderSour
     private int instanceCount;
     private long dataRevision = 1L;
     private final Matrix4f scratchNormalMatrix = new Matrix4f();
+    private final LevelOfDetailChain levelsOfDetail = new LevelOfDetailChain();
 
     public AssetRef<UploadedMesh> meshRef() {
         return mesh;
+    }
+
+    public MultiMeshRenderer addLevelOfDetail(UploadedMesh levelMesh, float switchDistance) {
+        levelsOfDetail.addDirect(levelMesh, switchDistance);
+        return this;
+    }
+
+    public MultiMeshRenderer addLevelOfDetailPath(String path, float switchDistance) {
+        levelsOfDetail.addPath(path, switchDistance);
+        return this;
+    }
+
+    public int levelOfDetailCount() {
+        return levelsOfDetail.count();
+    }
+
+    public int activeLevelOfDetail() {
+        return levelsOfDetail.activeLevel();
+    }
+
+    public UploadedMesh meshForDistance(float distance) {
+        return levelsOfDetail.meshForDistance(distance, mesh.directOrNull());
     }
 
     public AssetRef<Material> materialRef() {
@@ -132,6 +155,7 @@ public final class MultiMeshRenderer extends Component implements MeshRenderSour
     public void onLoad(EngineServices services) {
         mesh.resolve(services.assets());
         material.resolve(services.assets());
+        levelsOfDetail.resolve(services.assets());
         loadInstances(services);
         if (material.directOrNull() == null && mesh.directOrNull() != null) {
             attachDefaultMaterial(services);

@@ -1,7 +1,9 @@
 package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.AcquiredAssets;
 import fr.epistudio.epysia.assets.AssetRef;
+import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.material.Material;
@@ -33,63 +35,33 @@ public final class MeshRenderer extends Component implements MeshRenderSource {
     @Export(label = "Visible Until", min = 0.0f, max = 100000.0f, step = 0.5f)
     private float visibilityRangeEnd;
     private final List<Material> materials = new ArrayList<>();
-    private final List<LevelOfDetail> levelsOfDetail = new ArrayList<>();
-    private int activeLevelOfDetail;
-
-    private record LevelOfDetail(AssetRef<UploadedMesh> mesh, float switchDistance) {
-    }
-
-    private static final float LEVEL_OF_DETAIL_HYSTERESIS = 0.92f;
+    private final LevelOfDetailChain levelsOfDetail = new LevelOfDetailChain();
+    private final AcquiredAssets ownedTextures = new AcquiredAssets();
 
     public AssetRef<UploadedMesh> meshRef() {
         return mesh;
     }
 
     public MeshRenderer addLevelOfDetail(UploadedMesh levelMesh, float switchDistance) {
-        AssetRef<UploadedMesh> reference = new AssetRef<>(UploadedMesh.class);
-        reference.setDirect(levelMesh);
-        levelsOfDetail.add(new LevelOfDetail(reference, switchDistance));
+        levelsOfDetail.addDirect(levelMesh, switchDistance);
         return this;
     }
 
     public MeshRenderer addLevelOfDetailPath(String path, float switchDistance) {
-        AssetRef<UploadedMesh> reference = new AssetRef<>(UploadedMesh.class);
-        reference.setPath(path);
-        levelsOfDetail.add(new LevelOfDetail(reference, switchDistance));
+        levelsOfDetail.addPath(path, switchDistance);
         return this;
     }
 
     public int levelOfDetailCount() {
-        return levelsOfDetail.size();
+        return levelsOfDetail.count();
     }
 
     public int activeLevelOfDetail() {
-        return activeLevelOfDetail;
+        return levelsOfDetail.activeLevel();
     }
 
     public UploadedMesh meshForDistance(float distance) {
-        UploadedMesh base = mesh.directOrNull();
-        if (levelsOfDetail.isEmpty()) {
-            return base;
-        }
-        activeLevelOfDetail = selectLevelOfDetail(distance);
-        if (activeLevelOfDetail == 0) {
-            return base;
-        }
-        UploadedMesh selected = levelsOfDetail.get(activeLevelOfDetail - 1).mesh().directOrNull();
-        return selected == null ? base : selected;
-    }
-
-    private int selectLevelOfDetail(float distance) {
-        int level = Math.min(activeLevelOfDetail, levelsOfDetail.size());
-        while (level < levelsOfDetail.size() && distance >= levelsOfDetail.get(level).switchDistance()) {
-            level++;
-        }
-        while (level > 0
-                && distance < levelsOfDetail.get(level - 1).switchDistance() * LEVEL_OF_DETAIL_HYSTERESIS) {
-            level--;
-        }
-        return level;
+        return levelsOfDetail.meshForDistance(distance, mesh.directOrNull());
     }
 
     public boolean viewModel() {
@@ -200,26 +172,25 @@ public final class MeshRenderer extends Component implements MeshRenderSource {
         if (mesh.direct().isPresent() && materials.isEmpty()) {
             attachDefaultMaterial(services);
         }
-        resolveLevelsOfDetail(services);
+        levelsOfDetail.resolve(services.assets());
         resolveMaterialTextures(services);
     }
 
-    private void resolveLevelsOfDetail(EngineServices services) {
-        for (LevelOfDetail level : levelsOfDetail) {
-            if (level.mesh().direct().isEmpty() && !level.mesh().isEmpty()) {
-                level.mesh().resolve(services.assets());
-            }
-        }
-    }
-
     private void resolveMaterialTextures(EngineServices services) {
+        ownedTextures.releaseAll(services.assets());
         for (Material material : materials) {
             try {
-                MaterialFields.resolveTextures(material, services.assets());
+                MaterialFields.acquireTextures(material, services.assets(), ownedTextures);
             } catch (RuntimeException error) {
                 services.logger().error("[MeshRenderer] Texture resolution failed", error);
             }
         }
+    }
+
+    @Override
+    public void onDestroy(EngineServices services) {
+        super.onDestroy(services);
+        ownedTextures.releaseAll(services.assets());
     }
 
     private void resolveMeshAndMaterials(EngineServices services) {
@@ -241,9 +212,16 @@ public final class MeshRenderer extends Component implements MeshRenderSource {
     }
 
     private static LoadedObj loadObj(EngineServices services, String path) {
-        LoadedObj loaded = ObjLoader.load(services.renderBackend(), path);
+        LoadedObj loaded = ObjLoader.load(services.renderBackend(), resolvedObjPath(services, path));
         loaded.warnings().forEach(warning -> services.logger().warn("[MeshRenderer] " + warning));
         return loaded;
+    }
+
+    private static String resolvedObjPath(EngineServices services, String path) {
+        return AssetUri.parse(path)
+                .filter(uri -> !uri.isEmpty())
+                .map(uri -> services.assets().locator().resolvedPath(uri))
+                .orElse(path);
     }
 
     private void attachDefaultMaterial(EngineServices services) {

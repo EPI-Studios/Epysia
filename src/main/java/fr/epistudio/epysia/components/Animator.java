@@ -1,8 +1,12 @@
 package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.animation.AnimationLayer;
 import fr.epistudio.epysia.animation.Clip;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 @EpysiaComponent(name = "Animator", category = "Animation")
@@ -16,6 +20,9 @@ public final class Animator extends Component {
     private boolean looping = true;
     @Export(label = "Speed", min = 0.0f, max = 8.0f, step = 0.1f)
     private float speed = 1.0f;
+    @Export(label = "Layers")
+    @HiddenInEditor
+    private final List<AnimationLayer> layers = new ArrayList<>();
 
     private Optional<Clip> activeClip = Optional.empty();
     private float activeTimeSeconds;
@@ -26,11 +33,35 @@ public final class Animator extends Component {
 
     @Override
     public void onLoad(EngineServices services) {
-        if (clipPath.isEmpty()) {
-            activeClip = Optional.empty();
+        activeClip = clipPath.isEmpty() ? Optional.empty() : services.assets().resolve(Clip.class, clipPath);
+        for (AnimationLayer layer : layers) {
+            resolveLayerClip(services, layer);
+        }
+    }
+
+    private static void resolveLayerClip(EngineServices services, AnimationLayer layer) {
+        if (layer.clipPath().isEmpty()) {
             return;
         }
-        activeClip = services.assets().resolve(Clip.class, clipPath);
+        services.assets().resolve(Clip.class, layer.clipPath())
+                .ifPresent(clip -> layer.assignClip(layer.clipPath(), clip));
+    }
+
+    public List<AnimationLayer> layers() {
+        return Collections.unmodifiableList(layers);
+    }
+
+    public AnimationLayer addLayer() {
+        AnimationLayer layer = new AnimationLayer();
+        layers.add(layer);
+        return layer;
+    }
+
+    public Animator removeLayer(int layerIndex) {
+        if (layerIndex >= 0 && layerIndex < layers.size()) {
+            layers.remove(layerIndex);
+        }
+        return this;
     }
 
     public Optional<Clip> resolvedClip() {
@@ -123,15 +154,18 @@ public final class Animator extends Component {
     }
 
     public void advance(float deltaSeconds) {
+        for (AnimationLayer layer : layers) {
+            layer.advance(deltaSeconds);
+        }
         if (!playing || activeClip.isEmpty()) {
             return;
         }
-        float duration = activeClip.get().durationSeconds();
+        Clip clip = activeClip.get();
         activeTimeSeconds += speed * deltaSeconds;
         if (looping) {
-            activeTimeSeconds = wrap(activeTimeSeconds, duration);
-        } else if (activeTimeSeconds >= duration) {
-            activeTimeSeconds = duration;
+            activeTimeSeconds = clip.wrapTime(activeTimeSeconds);
+        } else if (activeTimeSeconds >= clip.durationSeconds()) {
+            activeTimeSeconds = clip.durationSeconds();
             playing = false;
         }
         advanceFade(deltaSeconds);
@@ -141,7 +175,7 @@ public final class Animator extends Component {
         if (previousClip.isEmpty()) {
             return;
         }
-        previousTimeSeconds = wrap(previousTimeSeconds + speed * deltaSeconds, previousClip.get().durationSeconds());
+        previousTimeSeconds = previousClip.get().wrapTime(previousTimeSeconds + speed * deltaSeconds);
         fadeElapsedSeconds += deltaSeconds;
         if (fadeElapsedSeconds >= fadeDurationSeconds) {
             clearFade();
@@ -153,10 +187,5 @@ public final class Animator extends Component {
         previousTimeSeconds = 0.0f;
         fadeDurationSeconds = 0.0f;
         fadeElapsedSeconds = 0.0f;
-    }
-
-    private static float wrap(float value, float duration) {
-        float wrapped = value % duration;
-        return wrapped < 0.0f ? wrapped + duration : wrapped;
     }
 }

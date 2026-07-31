@@ -4,6 +4,7 @@ import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.postfx.PostEffectStack;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 import java.util.Optional;
@@ -41,7 +42,10 @@ public final class Camera3D extends Component {
     private float projectionOrthographicSize = Float.NaN;
     private final Matrix4f viewMatrix = new Matrix4f();
     private final Matrix4f projectionMatrix = new Matrix4f();
+    private final Matrix4f projectionOverride = new Matrix4f();
+    private boolean projectionOverridden;
     private final Matrix4f viewProjectionMatrix = new Matrix4f();
+    private final Matrix4f cullingViewProjectionMatrix = new Matrix4f();
     private transient int renderHeightPixels;
 
     public Camera3D setFieldOfViewDegrees(float degrees) {
@@ -184,7 +188,26 @@ public final class Camera3D extends Component {
         return view;
     }
 
+    public Camera3D setProjection(Matrix4fc matrix) {
+        projectionOverride.set(matrix);
+        projectionOverridden = true;
+        return this;
+    }
+
+    public Camera3D clearProjectionOverride() {
+        projectionOverridden = false;
+        return this;
+    }
+
+    public boolean projectionOverridden() {
+        return projectionOverridden;
+    }
+
     public Matrix4f projection() {
+        return projectionOverridden ? projectionOverride : cullingProjection();
+    }
+
+    public Matrix4f cullingProjection() {
         if (projectionMatchesSettings()) {
             return projectionMatrix;
         }
@@ -221,6 +244,10 @@ public final class Camera3D extends Component {
 
     public Matrix4f viewProjection(float interpolationAlpha) {
         return projection().mul(view(interpolationAlpha), viewProjectionMatrix);
+    }
+
+    public Matrix4f cullingViewProjection(float interpolationAlpha) {
+        return cullingProjection().mul(view(interpolationAlpha), cullingViewProjectionMatrix);
     }
 
     private Transform3D requireOwnerTransform() {
