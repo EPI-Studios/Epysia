@@ -12,4 +12,9 @@ public record Clip(String name, float durationSeconds, long skeletonChecksum, Li
         }
         channels = List.copyOf(channels);
     }
+
+    public float wrapTime(float timeSeconds) {
+        float wrapped = timeSeconds % durationSeconds;
+        return wrapped < 0.0f ? wrapped + durationSeconds : wrapped;
+    }
 }

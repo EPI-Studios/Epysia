@@ -31,10 +31,7 @@ public final class ClipSampler {
 
     private void applyBindDefaults(Joint joint, JointPose pose) {
         bindScratch.set(joint.localBindTransform());
-        bindScratch.getTranslation(pose.translation());
-        bindScratch.getUnnormalizedRotation(pose.rotation());
-        pose.rotation().normalize();
-        bindScratch.getScale(pose.scale());
+        pose.setFromMatrix(bindScratch);
     }
 
     private void applyChannel(ClipChannel channel, float timeSeconds, JointPose pose) {
