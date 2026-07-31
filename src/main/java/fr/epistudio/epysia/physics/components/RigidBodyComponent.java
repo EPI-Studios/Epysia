@@ -72,4 +72,9 @@ public final class RigidBodyComponent extends Component {
         this.handle = assignedHandle;
         this.registered = true;
     }
+
+    public void clearRegistered() {
+        this.handle = BodyHandle.NONE;
+        this.registered = false;
+    }
 }

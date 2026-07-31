@@ -36,6 +36,14 @@ public abstract class Collider extends Component {
         this.registered = true;
     }
 
+    public void clearRegistered() {
+        this.registered = false;
+    }
+
+    public boolean requiresRebuild() {
+        return false;
+    }
+
     public Vector3fc offset() {
         return offset;
     }

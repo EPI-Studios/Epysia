@@ -25,14 +25,38 @@ public final class MeshCollider extends Collider {
 
     private Optional<MeshData> resolvedMesh = Optional.empty();
     private Optional<BakedCollider> bakedCollider = Optional.empty();
+    private boolean meshDataProvided;
+    private boolean geometryChanged;
 
     public boolean convex() {
         return convex;
     }
 
+    public MeshCollider setMeshData(MeshData value) {
+        resolvedMesh = Optional.of(value);
+        bakedCollider = Optional.empty();
+        meshDataProvided = true;
+        geometryChanged = true;
+        return this;
+    }
+
+    @Override
+    public void markRegistered() {
+        super.markRegistered();
+        geometryChanged = false;
+    }
+
+    @Override
+    public boolean requiresRebuild() {
+        return isRegistered() && geometryChanged;
+    }
+
     @Override
     public void onLoad(EngineServices services) {
         resolveMaterial(services);
+        if (meshDataProvided) {
+            return;
+        }
         resolveCollisionGeometry();
     }
 

@@ -42,6 +42,8 @@ public class CharacterControllerComponent extends Component {
     private float verticalVelocity;
     private boolean grounded;
     private BodyHandle bodyHandle = BodyHandle.NONE;
+    private final Vector3f pendingTeleport = new Vector3f();
+    private boolean teleportRequested;
     private Box3dCharacterController nativeController;
     private final Vector3f desiredHorizontalMovement = new Vector3f();
     private final Vector3f groundNormal = new Vector3f(0.0f, 1.0f, 0.0f);
@@ -198,6 +200,20 @@ public class CharacterControllerComponent extends Component {
     public void attachNative(BodyHandle handle, Box3dCharacterController controller) {
         this.bodyHandle = handle;
         this.nativeController = controller;
+    }
+
+    public void teleportTo(Vector3fc worldPosition) {
+        pendingTeleport.set(worldPosition);
+        teleportRequested = true;
+    }
+
+    public boolean consumeTeleport(Vector3f destination) {
+        if (!teleportRequested) {
+            return false;
+        }
+        destination.set(pendingTeleport);
+        teleportRequested = false;
+        return true;
     }
 
     public void move(Vector3fc velocityMetersPerSecond) {

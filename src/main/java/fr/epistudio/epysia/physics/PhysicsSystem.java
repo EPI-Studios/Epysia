@@ -253,6 +253,9 @@ public final class PhysicsSystem implements IPhysicsSystem {
             return;
         }
         Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
+        if (applyPendingTeleport(controller, transform)) {
+            return;
+        }
         controller.consumeDesiredHorizontalMove(scratchHorizontal);
         float vertical = verticalVelocityFor(controller, deltaTimeSeconds);
         scratchDisplacement.set(scratchHorizontal.x * deltaTimeSeconds, vertical * deltaTimeSeconds, scratchHorizontal.z * deltaTimeSeconds);
@@ -275,6 +278,19 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (controller.applyGravity()) {
             controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
         }
+    }
+
+    private boolean applyPendingTeleport(CharacterControllerComponent controller, Transform3D transform) {
+        if (!controller.consumeTeleport(scratchPosition)) {
+            return false;
+        }
+        transform.setPosition(scratchPosition.x, scratchPosition.y, scratchPosition.z);
+        scratchRotation.set(transform.rotation());
+        world.setBodyPose(controller.bodyHandle(),
+                new RigidBodyPose(new Vector3f(scratchPosition), new Quaternionf(scratchRotation)));
+        transform.resetInterpolation();
+        controller.consumeDesiredHorizontalMove(scratchHorizontal);
+        return true;
     }
 
     private static float verticalVelocityFor(CharacterControllerComponent controller, float deltaTimeSeconds) {
@@ -306,10 +322,26 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (rigidBodyOptional.isEmpty() && colliders.isEmpty()) {
             return;
         }
+        if (colliders.stream().anyMatch(Collider::requiresRebuild)) {
+            releaseBody(gameObject, rigidBodyOptional, colliders);
+        }
         if (alreadyRegistered(rigidBodyOptional, colliders)) {
             return;
         }
         registerBody(gameObject, rigidBodyOptional, colliders);
+    }
+
+    private void releaseBody(GameObject gameObject, Optional<RigidBodyComponent> rigidBodyOptional,
+                             List<Collider> colliders) {
+        bodyOwners.entrySet().removeIf(entry -> {
+            if (entry.getValue() != gameObject) {
+                return false;
+            }
+            world.removeBody(new BodyHandle(entry.getKey()));
+            return true;
+        });
+        colliders.forEach(Collider::clearRegistered);
+        rigidBodyOptional.ifPresent(RigidBodyComponent::clearRegistered);
     }
 
     private boolean alreadyRegistered(Optional<RigidBodyComponent> rigidBodyOptional, List<Collider> colliders) {
