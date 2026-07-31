@@ -112,6 +112,7 @@ public final class Window implements RenderSurface {
             glfwTerminate();
             throw new EpysiaException("GLFW failed to create a window.");
         }
+        WindowIcon.applyDefault(handle);
         glfwMakeContextCurrent(handle);
         glfwSwapInterval(vsyncEnabled && !offscreenRequested() ? 1 : 0);
         if (!offscreenRequested()) {

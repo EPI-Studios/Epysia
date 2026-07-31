@@ -8,6 +8,7 @@ import imgui.extension.imguizmo.ImGuizmo;
 import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
+import fr.epistudio.epysia.window.WindowIcon;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWDropCallback;
 import org.lwjgl.glfw.GLFWErrorCallback;
@@ -111,6 +112,7 @@ public final class ImGuiShell {
         if (windowHandle == 0L) {
             throw new IllegalStateException("GLFW window creation failed");
         }
+        WindowIcon.applyDefault(windowHandle);
         GLFW.glfwMakeContextCurrent(windowHandle);
         GLFW.glfwSwapInterval(1);
         GL.createCapabilities();
