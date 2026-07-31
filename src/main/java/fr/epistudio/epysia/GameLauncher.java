@@ -11,6 +11,8 @@ import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.physics.PhysicsSystem;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
 import fr.epistudio.epysia.project.EditorSettings;
+import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.project.ProjectQuality;
 import fr.epistudio.epysia.project.ProjectQualityProperties;
 import fr.epistudio.epysia.project.ProjectStore;
@@ -93,10 +95,12 @@ public final class GameLauncher {
     }
 
     private static ScriptLoadResult loadScripts(Path projectRoot, Optional<Path> precompiledScripts) {
+        ProjectLibraries libraries = ProjectLibraries.forProjectRoot(projectRoot);
         if (precompiledScripts.isPresent()) {
-            return ScriptModule.loadPrecompiled(precompiledScripts.get());
+            return ScriptModule.loadPrecompiled(precompiledScripts.get(), libraries);
         }
-        return ScriptModule.load(projectRoot.resolve("scripts"), projectRoot.resolve(".epysia/scripts-out"));
+        return ScriptModule.load(projectRoot.resolve(Project.SCRIPTS_DIRECTORY_NAME),
+                projectRoot.resolve(".epysia/scripts-out"), libraries);
     }
 
     private static void attachAssetDatabase(EngineServices services, Path projectRoot, Logger logger) {

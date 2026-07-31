@@ -1,7 +1,9 @@
 package fr.epistudio.epysia;
 
 import fr.epistudio.epysia.assets.AssetRegistry;
+import fr.epistudio.epysia.concurrent.BackgroundTasks;
 import fr.epistudio.epysia.logging.Logger;
+import fr.epistudio.epysia.render.PreRenderPass;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.postfx.PostEffects;
@@ -30,11 +32,17 @@ public interface EngineServices {
 
     Scheduler scheduler();
 
+    BackgroundTasks backgroundTasks();
+
     InputActions inputActions();
 
     Hud hud();
 
     PostEffects postEffects();
+
+    void addPreRenderPass(PreRenderPass pass);
+
+    void removePreRenderPass(PreRenderPass pass);
 
     void addRenderSystem(RenderSystem renderSystem);
 

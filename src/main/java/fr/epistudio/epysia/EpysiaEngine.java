@@ -3,6 +3,7 @@ package fr.epistudio.epysia;
 import fr.epistudio.epysia.assets.AssetRegistry;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.concurrent.BackgroundTasks;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.input.InputState;
@@ -22,6 +23,8 @@ import fr.epistudio.epysia.render.backend.DrawCommand;
 import fr.epistudio.epysia.input.action.InputActions;
 import fr.epistudio.epysia.render.backend.PassClear;
 import fr.epistudio.epysia.render.backend.RenderBackend;
+import fr.epistudio.epysia.render.PreRenderPass;
+import fr.epistudio.epysia.render.SceneCapture;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.profiling.FrameProfiler;
@@ -47,7 +50,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-public final class EpysiaEngine implements StageConfigurer, EngineServices {
+public final class EpysiaEngine implements StageConfigurer, EngineServices, SceneCapture {
+
+    private static final float ASSET_SWEEP_INTERVAL_SECONDS = 5.0f;
 
     private PassClear defaultClear = PassClear.color(0.10f, 0.12f, 0.18f);
     private final InputActions inputActions = InputActions.defaults();
@@ -59,6 +64,8 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     private final List<GameSystem> gameSystems = new ArrayList<>();
     private final SystemRegistryImpl systemRegistry = new SystemRegistryImpl();
     private final List<RenderSystem> renderSystems = new ArrayList<>();
+    private final List<PreRenderPass> preRenderPasses = new ArrayList<>();
+    private boolean capturing;
     private final List<String> renderSystemSectionNames = new ArrayList<>();
     private final Frame frame = new Frame();
     private final Map<RenderPass, StageBinding> stageBindings = defaultStageBindings();
@@ -79,6 +86,8 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     private volatile boolean shutdownRequested;
     private boolean initialized;
     private boolean playing;
+    private float secondsSinceAssetSweep;
+    private final BackgroundTasks backgroundTasks = new BackgroundTasks(this::logger);
 
     public EpysiaEngine(Window window, RenderBackend renderBackend) {
         this.window = window;
@@ -213,6 +222,9 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     public void tick(InputState input, float deltaTimeSeconds) {
         long tickStart = System.nanoTime();
         hud.clear();
+        long deliveryStart = System.nanoTime();
+        backgroundTasks.deliverCompleted();
+        profiler.record(FrameProfiler.BACKGROUND_DELIVERY_SECTION, System.nanoTime() - deliveryStart);
         scheduler.tick(deltaTimeSeconds);
         if (activeScene != null) {
             activeScene.advanceTick();
@@ -221,7 +233,17 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
             captureTransformInterpolationSnapshots(activeScene);
             updateGameSystems(input, deltaTimeSeconds);
         }
+        sweepUnusedAssets(deltaTimeSeconds);
         profiler.record(FrameProfiler.TICK_SECTION, System.nanoTime() - tickStart);
+    }
+
+    private void sweepUnusedAssets(float deltaTimeSeconds) {
+        secondsSinceAssetSweep += deltaTimeSeconds;
+        if (secondsSinceAssetSweep < ASSET_SWEEP_INTERVAL_SECONDS) {
+            return;
+        }
+        secondsSinceAssetSweep = 0.0f;
+        assetRegistry.unloadUnused();
     }
 
     public boolean isPlaying() {
@@ -316,7 +338,37 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
         return pickingPass.pickAt(activeScene, camera, x, y, width, height, renderBackend);
     }
 
+    @Override
+    public void addPreRenderPass(PreRenderPass pass) {
+        preRenderPasses.add(pass);
+    }
+
+    @Override
+    public void removePreRenderPass(PreRenderPass pass) {
+        preRenderPasses.remove(pass);
+    }
+
+    @Override
+    public void renderTo(List<Camera3D> cameras, RenderTargetHandle target, float interpolationAlpha) {
+        render(cameras, target, interpolationAlpha);
+    }
+
+    private void runPreRenderPasses(float interpolationAlpha) {
+        if (capturing || preRenderPasses.isEmpty()) {
+            return;
+        }
+        capturing = true;
+        try {
+            for (int index = 0; index < preRenderPasses.size(); index++) {
+                preRenderPasses.get(index).capture(this, interpolationAlpha);
+            }
+        } finally {
+            capturing = false;
+        }
+    }
+
     public void render(List<Camera3D> activeCameras, RenderTargetHandle screenTarget, float interpolationAlpha) {
+        runPreRenderPasses(interpolationAlpha);
         long renderStart = System.nanoTime();
         frame.reset();
         renderBackend.beginFrame();
@@ -350,6 +402,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     }
 
     public void shutdown() {
+        backgroundTasks.shutdown();
         for (GameSystem system : gameSystems) {
             system.shutdown();
         }
@@ -438,6 +491,11 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices {
     @Override
     public Logger logger() {
         return logger;
+    }
+
+    @Override
+    public BackgroundTasks backgroundTasks() {
+        return backgroundTasks;
     }
 
     @Override

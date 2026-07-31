@@ -201,7 +201,7 @@ public final class StandaloneRunner {
         while (!window.shouldClose() && !engine.isShutdownRequested()) {
             long pollStart = System.nanoTime();
             frameStartNanos = pollStart;
-            window.pollEvents();
+            pollInput(window, inputState);
             handleResizeIfNeeded(window, engine);
             long pollEnd = System.nanoTime();
             consumeRuntimeCommands(engine);
@@ -209,7 +209,7 @@ public final class StandaloneRunner {
             double frameSeconds = Math.min((currentNanos - previousNanos) / NANOS_PER_SECOND, MAX_FRAME_SECONDS);
             previousNanos = currentNanos;
             long updateStart = System.nanoTime();
-            accumulator = drainFixedSteps(engine, inputState, accumulator + frameSeconds);
+            accumulator = drainFixedSteps(engine, window, inputState, accumulator + frameSeconds);
             long updateEnd = System.nanoTime();
             float interpolationAlpha = (float) (accumulator / fixedTimestepSeconds);
             List<Camera3D> activeCameras = collectActiveCameras(engine.scene());
@@ -254,15 +254,27 @@ public final class StandaloneRunner {
         engine.logger().info(report.toString());
     }
 
-    private static double drainFixedSteps(EpysiaEngine engine, MutableInputState input, double accumulator) {
+    private static double drainFixedSteps(EpysiaEngine engine, Window window,
+                                          MutableInputState input, double accumulator) {
         float step = (float) fixedTimestepSeconds;
         double remaining = accumulator;
+        boolean firstStep = true;
         while (remaining >= fixedTimestepSeconds) {
+            if (!firstStep) {
+                pollInput(window, input);
+            }
+            input.pollGamepads();
             engine.tick(input, step);
             input.advanceFrame();
             remaining -= fixedTimestepSeconds;
+            firstStep = false;
         }
         return remaining;
+    }
+
+    private static void pollInput(Window window, MutableInputState input) {
+        input.setTimeSeconds(System.nanoTime() / NANOS_PER_SECOND);
+        window.pollEvents();
     }
 
     private static void handleResizeIfNeeded(Window window, EpysiaEngine engine) {
