@@ -3,11 +3,13 @@ package fr.epistudio.epysia.graph;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.SystemRegistry;
 import fr.epistudio.epysia.assets.AssetRegistry;
+import fr.epistudio.epysia.concurrent.BackgroundTasks;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MutableInputState;
 import fr.epistudio.epysia.logging.Logger;
+import fr.epistudio.epysia.render.PreRenderPass;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.postfx.PostEffects;
@@ -108,6 +110,11 @@ class InputValueNodeTest {
         public Scheduler scheduler() { throw new UnsupportedOperationException(); }
 
         @Override
+        public BackgroundTasks backgroundTasks() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public fr.epistudio.epysia.input.action.InputActions inputActions() {
             return fr.epistudio.epysia.input.action.InputActions.defaults();
         }
@@ -117,6 +124,16 @@ class InputValueNodeTest {
 
         @Override
         public PostEffects postEffects() { throw new UnsupportedOperationException(); }
+
+        @Override
+        public void addPreRenderPass(PreRenderPass pass) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void removePreRenderPass(PreRenderPass pass) {
+            throw new UnsupportedOperationException();
+        }
 
         @Override
         public void addRenderSystem(RenderSystem renderSystem) { throw new UnsupportedOperationException(); }
