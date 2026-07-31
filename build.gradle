@@ -16,31 +16,7 @@ java {
 }
 
 application {
-    mainClass = 'com.meekdev.psyhou.game.PsyhouMain'
-}
-
-sourceSets {
-    example {
-        java {
-            srcDirs = ['examples/java']
-        }
-        resources {
-            srcDirs = ['examples/resources']
-        }
-        compileClasspath += sourceSets.main.output
-        runtimeClasspath += sourceSets.main.output
-    }
-}
-
-configurations {
-    exampleImplementation.extendsFrom implementation
-    exampleRuntimeOnly.extendsFrom runtimeOnly
-}
-
-tasks.named('run', JavaExec) {
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.PsyhouMain'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    mainClass = 'fr.epistudio.epysia.GameLauncher'
 }
 
 tasks.named('test', Test) {
@@ -80,11 +56,6 @@ static String hostLwjglNatives() {
 ext {
     lwjglVersion = '3.3.6'
     lwjglNatives = (project.findProperty('lwjglNatives') ?: hostLwjglNatives()).toString()
-    lwjglJarNatives = (project.findProperty('lwjglJarNatives') ?: 'natives-windows').toString()
-}
-
-configurations {
-    psyhouNatives
 }
 
 dependencies {
@@ -105,13 +76,6 @@ dependencies {
     runtimeOnly "org.lwjgl:lwjgl-tinyexr::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-openal::${lwjglNatives}"
 
-    psyhouNatives platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
-    psyhouNatives "org.lwjgl:lwjgl::${lwjglJarNatives}"
-    psyhouNatives "org.lwjgl:lwjgl-glfw::${lwjglJarNatives}"
-    psyhouNatives "org.lwjgl:lwjgl-opengl::${lwjglJarNatives}"
-    psyhouNatives "org.lwjgl:lwjgl-stb::${lwjglJarNatives}"
-    psyhouNatives "org.lwjgl:lwjgl-tinyexr::${lwjglJarNatives}"
-    psyhouNatives "org.lwjgl:lwjgl-openal::${lwjglJarNatives}"
 
     testImplementation platform('org.junit:junit-bom:6.0.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -137,30 +101,6 @@ tasks.register('engineRuntimeJar', ShadowJar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-tasks.register('psyhouJar', ShadowJar) {
-    group = 'distribution'
-    description = 'Builds a runnable fat jar of the Psyhou example for the target platform (default: windows)'
-    archiveBaseName = 'psyhou'
-    archiveClassifier = lwjglJarNatives.replace('natives-', '')
-    from sourceSets.example.output
-    from sourceSets.main.output
-    configurations = [
-            project.configurations.exampleRuntimeClasspath,
-            project.configurations.psyhouNatives
-    ]
-    exclude { details ->
-        def name = details.path
-        def isLwjglNative = name.contains('lwjgl') && (name.endsWith('.so') || name.endsWith('.dylib') || name.endsWith('.dll'))
-        def keep = name.contains(lwjglJarNatives.replace('natives-', ''))
-        return isLwjglNative && !keep
-    }
-    manifest {
-        attributes 'Main-Class': 'com.meekdev.psyhou.game.PsyhouMain'
-    }
-    mergeServiceFiles()
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
 tasks.withType(JavaExec).configureEach {
     systemProperties System.getProperties().findAll {
         String key = it.key.toString()
@@ -171,21 +111,3 @@ tasks.withType(JavaExec).configureEach {
     }
 }
 
-tasks.register('runMountains', JavaExec) {
-    group = 'application'
-    description = 'Fly around a procedurally generated mountain range'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.forest.ProceduralMountains'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-}
-
-tasks.register('runRenderBenchmark', JavaExec) {
-    group = 'verification'
-    description = 'BENCHMARKKING'
-    classpath = sourceSets.example.runtimeClasspath
-    mainClass = 'com.meekdev.psyhou.game.RenderBenchmark'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
-    if (System.getProperty('epysia.jfr') != null) {
-        jvmArgs += ["-XX:StartFlightRecording=settings=profile,filename=${System.getProperty('epysia.jfr')},dumponexit=true".toString()]
-    }
-}
