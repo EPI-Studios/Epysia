@@ -63,6 +63,7 @@ public final class PickingPass {
     private RenderBackend backend;
     private BindingSetLayout bindingLayout;
     private PipelineHandle pipeline;
+    private PipelineHandle coloredPipeline;
     private BufferHandle frameUbo;
     private BufferHandle pickingUbo;
     private TextureHandle colorTexture;
@@ -87,15 +88,20 @@ public final class PickingPass {
                 new BindingSlot(MeshShaderBindings.OBJECT_UBO_BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(MeshShaderBindings.PICKING_UBO_BINDING, BindingType.UNIFORM_BUFFER)
         ));
-        VertexAttribute position = new VertexAttribute(0, VertexFormat.FLOAT3, 0);
-        VertexLayout layout = new VertexLayout(List.of(position), MeshShaderBindings.VERTEX_STRIDE);
-        pipeline = backend.createPipeline(new PipelineDescriptor(
-                loadShaderSource(), layout, RenderState.OPAQUE_3D, bindingLayout));
+        pipeline = createPipeline(MeshShaderBindings.VERTEX_STRIDE);
+        coloredPipeline = createPipeline(MeshShaderBindings.COLORED_VERTEX_STRIDE);
         frameUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(MeshShaderBindings.FRAME_UBO_SIZE)));
         pickingUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(MeshShaderBindings.PICKING_UBO_SIZE)));
         initialized = true;
+    }
+
+    private PipelineHandle createPipeline(int vertexStride) {
+        VertexLayout layout = new VertexLayout(
+                List.of(new VertexAttribute(0, VertexFormat.FLOAT3, 0)), vertexStride);
+        return backend.createPipeline(new PipelineDescriptor(
+                loadShaderSource(), layout, RenderState.OPAQUE_3D, bindingLayout));
     }
 
     public Optional<GameObject> pickAt(Scene scene, Camera3D camera, int x, int y, int width, int height,
@@ -123,18 +129,15 @@ public final class PickingPass {
                 logExclusionOnce(gameObject, renderer, "Skinned");
                 continue;
             }
-            if (mesh.vertexColored()) {
-                logExclusionOnce(gameObject, renderer, "Vertex-colored");
-                continue;
-            }
             if (!allSubmeshesAlive(mesh)) {
                 continue;
             }
             PerRenderer perRenderer = resourcesByRenderer.computeIfAbsent(renderer, this::createPerRenderer);
             writeObjectUbo(perRenderer.modelUbo(), transformOpt.get().worldMatrix());
             writePickingId(index + 1);
+            PipelineHandle meshPipeline = mesh.vertexColored() ? coloredPipeline : pipeline;
             for (UploadedSubmesh submesh : mesh.submeshes()) {
-                backend.execute(new DrawCommand(pipeline, submesh.handle(), perRenderer.bindings(), 0L, 1));
+                backend.execute(new DrawCommand(meshPipeline, submesh.handle(), perRenderer.bindings(), 0L, 1));
             }
         }
         backend.endPass();
@@ -158,6 +161,7 @@ public final class PickingPass {
         resourcesByRenderer.clear();
         loggedSkinnedExclusions.clear();
         backend.destroy(pipeline);
+        backend.destroy(coloredPipeline);
         backend.destroy(frameUbo);
         backend.destroy(pickingUbo);
         if (target != null) {

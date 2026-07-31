@@ -45,13 +45,14 @@ final class MeshInstanceBatches {
     }
 
     boolean add(UploadedSubmesh submesh, PerSubmesh perSubmesh, MaterialStateSnapshot state,
-                Matrix4f model, long depthBits, boolean visible, boolean castsShadows,
+                Matrix4f model, long depthBits, boolean visible, boolean castsShadows, boolean colored,
                 Vector3f worldMin, Vector3f worldMax, Aabb localBounds) {
         MeshInstanceBatch batch = batchFor(submesh.handle().id(), state.digest(), castsShadows);
         if (batch.pendingCount() == 0) {
             batch.beginFrame();
             batch.adoptState(state);
             batch.setCastsShadows(castsShadows);
+            batch.setVertexColored(colored);
             batch.setLocalBounds(localBounds);
             activeBatches.add(batch);
         } else if (!batch.state().matches(state)) {
@@ -116,6 +117,8 @@ final class MeshInstanceBatches {
         if (batch.needsBufferRebuild()) {
             rebuildResources(batch);
             batch.invalidateUpload();
+        } else if (batch.needsBindingRebuild()) {
+            rebuildBindings(batch);
         }
         if (batch.uploadUnchangedSinceLastFrame()) {
             return;
@@ -129,29 +132,41 @@ final class MeshInstanceBatches {
         long byteSize = batch.requiredByteSize();
         BufferHandle buffer = backend.createBuffer(new BufferDescriptor(
                 BufferUsage.STORAGE, BufferUtils.createByteBuffer((int) byteSize)));
-        int tiles = batch.tileCount();
-        BindingSetHandle[] lit = new BindingSetHandle[tiles];
-        BindingSetHandle[] shadow = new BindingSetHandle[tiles];
-        for (int tile = 0; tile < tiles; tile++) {
-            long offset = batch.tileByteOffset(tile);
-            long size = batch.tileByteSize(tile);
-            lit[tile] = bindingSetFactory.create(batch.representative(), buffer, offset, size, false);
-            shadow[tile] = bindingSetFactory.create(batch.representative(), buffer, offset, size, true);
+        batch.adoptResources(buffer, createBindings(batch, buffer, false), createBindings(batch, buffer, true));
+    }
+
+    private void rebuildBindings(MeshInstanceBatch batch) {
+        BufferHandle buffer = batch.instanceBuffer();
+        BindingSetHandle[] lit = createBindings(batch, buffer, false);
+        BindingSetHandle[] shadow = createBindings(batch, buffer, true);
+        destroyBindings(batch);
+        batch.adoptBindings(lit, shadow);
+    }
+
+    private BindingSetHandle[] createBindings(MeshInstanceBatch batch, BufferHandle buffer, boolean shadow) {
+        BindingSetHandle[] handles = new BindingSetHandle[batch.tileCount()];
+        for (int tile = 0; tile < handles.length; tile++) {
+            handles[tile] = bindingSetFactory.create(batch.representative(), buffer,
+                    batch.tileByteOffset(tile), batch.tileByteSize(tile), shadow);
         }
-        batch.adoptResources(buffer, lit, shadow);
+        return handles;
     }
 
     private void releaseResources(MeshInstanceBatch batch) {
         if (batch.instanceBuffer() == null) {
             return;
         }
+        destroyBindings(batch);
+        backend.destroy(batch.instanceBuffer());
+    }
+
+    private void destroyBindings(MeshInstanceBatch batch) {
         for (BindingSetHandle handle : batch.allLitBindings()) {
             backend.destroy(handle);
         }
         for (BindingSetHandle handle : batch.allShadowBindings()) {
             backend.destroy(handle);
         }
-        backend.destroy(batch.instanceBuffer());
     }
 
     void shutdown() {

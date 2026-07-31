@@ -200,9 +200,10 @@ final class CascadedShadowMaps {
         return maskedPipeline;
     }
 
-    PipelineHandle pipelineFor(String surfacePath, boolean masked, boolean frozenTime, boolean skinned) {
+    PipelineHandle pipelineFor(String surfacePath, boolean masked, boolean frozenTime, boolean skinned,
+                               boolean colored) {
         SurfaceShadowVariants variants = masked ? maskedSurfaceVariants : surfaceVariants;
-        return variants.pipelineFor(surfacePath, frozenTime, skinned);
+        return variants.pipelineFor(surfacePath, frozenTime, skinned, colored);
     }
 
     BindingSetLayout bindingLayout() {
@@ -289,7 +290,7 @@ final class CascadedShadowMaps {
     }
 
     private void computeFrustumCorners(Camera3D camera, float alpha) {
-        camera.viewProjection(alpha).invert(scratchInverseViewProjection);
+        camera.cullingViewProjection(alpha).invert(scratchInverseViewProjection);
         for (int i = 0; i < 4; i++) {
             float x = (i & 1) == 0 ? -1.0f : 1.0f;
             float y = (i & 2) == 0 ? -1.0f : 1.0f;

@@ -155,8 +155,8 @@ final class SpotShadowAtlas {
         return pipeline;
     }
 
-    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime, boolean skinned) {
-        return surfaceVariants.pipelineFor(surfacePath, frozenTime, skinned);
+    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime, boolean skinned, boolean colored) {
+        return surfaceVariants.pipelineFor(surfacePath, frozenTime, skinned, colored);
     }
 
     TextureHandle texture() {

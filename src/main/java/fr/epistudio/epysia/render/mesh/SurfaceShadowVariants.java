@@ -32,7 +32,8 @@ final class SurfaceShadowVariants {
     private final String fragmentPath;
     private final RenderState renderState;
     private final Runnable pipelineInvalidation;
-    private record Variant(String surfacePath, boolean frozenTime, boolean skinned) {
+    private record Variant(String surfacePath, boolean frozenTime, boolean skinned, boolean colored,
+                           boolean doubleSided) {
     }
 
     private final Map<Variant, PipelineHandle> pipelines = new HashMap<>();
@@ -67,11 +68,17 @@ final class SurfaceShadowVariants {
         return new BindingSetLayout(slots);
     }
 
-    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime, boolean skinned) {
-        if (surfacePath.isEmpty() && !skinned) {
+    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime, boolean skinned, boolean colored) {
+        return pipelineFor(surfacePath, frozenTime, skinned, colored, false);
+    }
+
+    PipelineHandle pipelineFor(String surfacePath, boolean frozenTime, boolean skinned, boolean colored,
+                               boolean doubleSided) {
+        if (surfacePath.isEmpty() && !skinned && !colored && !doubleSided) {
             return basePipeline;
         }
-        return pipelines.computeIfAbsent(new Variant(surfacePath, frozenTime, skinned), this::buildPipeline);
+        return pipelines.computeIfAbsent(
+                new Variant(surfacePath, frozenTime, skinned, colored, doubleSided), this::buildPipeline);
     }
 
     private PipelineHandle buildPipeline(Variant variant) {
@@ -86,21 +93,28 @@ final class SurfaceShadowVariants {
     }
 
     private PipelineDescriptor buildDescriptor(Variant variant) {
-        return new PipelineDescriptor(loadShaderSource(variant), vertexLayoutFor(variant.skinned()),
-                renderState, layoutFor(variant));
+        return new PipelineDescriptor(loadShaderSource(variant),
+                vertexLayoutFor(variant.skinned(), variant.colored()), stateFor(variant), layoutFor(variant));
     }
 
-    private static VertexLayout vertexLayoutFor(boolean skinned) {
+    private RenderState stateFor(Variant variant) {
+        return variant.doubleSided() ? renderState.withoutBackfaceCulling() : renderState;
+    }
+
+    private static VertexLayout vertexLayoutFor(boolean skinned, boolean colored) {
         List<VertexAttribute> attributes = new ArrayList<>(List.of(
                 new VertexAttribute(0, VertexFormat.FLOAT3, 0),
                 new VertexAttribute(1, VertexFormat.FLOAT3, 12),
                 new VertexAttribute(2, VertexFormat.FLOAT2, 24)));
-        if (!skinned) {
-            return new VertexLayout(attributes, MeshShaderBindings.VERTEX_STRIDE);
+        int skinOffset = MeshShaderBindings.VERTEX_STRIDE;
+        if (colored) {
+            skinOffset += MeshShaderBindings.VERTEX_COLOR_BYTES;
         }
-        attributes.add(new VertexAttribute(4, VertexFormat.UINT16X4, MeshShaderBindings.VERTEX_STRIDE));
-        attributes.add(new VertexAttribute(5, VertexFormat.FLOAT4, MeshShaderBindings.VERTEX_STRIDE + 8));
-        return new VertexLayout(attributes, MeshShaderBindings.SKINNED_VERTEX_STRIDE);
+        if (skinned) {
+            attributes.add(new VertexAttribute(4, VertexFormat.UINT16X4, skinOffset));
+            attributes.add(new VertexAttribute(5, VertexFormat.FLOAT4, skinOffset + 8));
+        }
+        return new VertexLayout(attributes, MeshShaderBindings.vertexStride(skinned, colored));
     }
 
     private BindingSetLayout layoutFor(Variant variant) {

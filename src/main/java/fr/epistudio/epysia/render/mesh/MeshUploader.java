@@ -27,22 +27,85 @@ public final class MeshUploader {
         return upload(backend, data, Optional.empty());
     }
 
+    public static Optional<UploadedMesh> uploadInto(RenderBackend backend, MeshData data, MeshArena arena) {
+        Optional<ArenaMesh> allocation = arena.allocate(data);
+        if (allocation.isEmpty()) {
+            return Optional.empty();
+        }
+        ArenaMesh placed = allocation.get();
+        List<UploadedSubmesh> uploadedSubmeshes = new ArrayList<>(data.submeshes().size());
+        for (Submesh submesh : data.submeshes()) {
+            uploadedSubmeshes.add(new UploadedSubmesh(arena.createHandleFor(
+                    new ArenaMesh(placed.vertexOffset(), placed.vertexCount(),
+                            placed.indexOffset() + submesh.indexOffset(), submesh.indexCount())),
+                    submesh.materialSlot()));
+        }
+        return Optional.of(new UploadedMesh(
+                arena.vertexBuffer(),
+                arena.indexBuffer(),
+                uploadedSubmeshes,
+                Aabb.fromPositions(data.positions()),
+                data.hasSkin(),
+                data.hasVertexColors(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(new ArenaPlacement(arena, placed))));
+    }
+
+    public static ResizableMesh uploadResizable(RenderBackend backend, MeshData data,
+                                                int maximumVertexCount, int maximumIndexCount) {
+        IndexFormat indexFormat = IndexFormat.UINT32;
+        ByteBuffer vertices = interleaveVertices(data);
+        ByteBuffer indices = packIndices(data.indices(), indexFormat);
+        int vertexStride = MeshShaderBindings.vertexStride(data.hasSkin(), data.hasVertexColors());
+        int vertexCapacity = Math.max(vertices.remaining(), maximumVertexCount * vertexStride);
+        int indexCapacity = Math.max(indices.remaining(), maximumIndexCount * indexFormat.byteSize());
+        BufferHandle vertexBuffer = backend.createBuffer(
+                new BufferDescriptor(BufferUsage.VERTEX, padded(vertices, vertexCapacity)));
+        BufferHandle indexBuffer = backend.createBuffer(
+                new BufferDescriptor(BufferUsage.INDEX, padded(indices, indexCapacity)));
+        UploadedMesh mesh = assemble(data, vertexBuffer, indexBuffer,
+                submeshHandles(backend, data, vertexBuffer, indexBuffer, indexFormat),
+                Optional.empty(), Optional.empty());
+        return new ResizableMesh(mesh, indexFormat, vertexCapacity, indexCapacity);
+    }
+
+    static ByteBuffer padded(ByteBuffer source, int capacityBytes) {
+        if (source.remaining() == capacityBytes) {
+            return source;
+        }
+        ByteBuffer padded = BufferUtils.createByteBuffer(capacityBytes);
+        padded.put(source.duplicate());
+        padded.position(0);
+        padded.limit(capacityBytes);
+        return padded;
+    }
+
     public static UploadedMesh upload(RenderBackend backend, MeshData data, Optional<Skeleton> skeleton) {
         IndexFormat indexFormat = indexFormatFor(data);
         BufferHandle vertexBuffer = backend.createBuffer(new BufferDescriptor(BufferUsage.VERTEX, interleaveVertices(data)));
         BufferHandle indexBuffer = backend.createBuffer(
                 new BufferDescriptor(BufferUsage.INDEX, packIndices(data.indices(), indexFormat)));
+        return assemble(data, vertexBuffer, indexBuffer,
+                submeshHandles(backend, data, vertexBuffer, indexBuffer, indexFormat),
+                skeleton, lightmapUvBuffer(backend, data));
+    }
+
+    private static List<UploadedSubmesh> submeshHandles(RenderBackend backend, MeshData data,
+                                                        BufferHandle vertexBuffer, BufferHandle indexBuffer,
+                                                        IndexFormat indexFormat) {
         List<UploadedSubmesh> uploadedSubmeshes = new ArrayList<>(data.submeshes().size());
         for (Submesh submesh : data.submeshes()) {
             MeshHandle handle = backend.createMesh(new MeshDescriptor(
-                    vertexBuffer,
-                    indexBuffer,
-                    submesh.indexOffset(),
-                    submesh.indexCount(),
-                    indexFormat
-            ));
+                    vertexBuffer, indexBuffer, submesh.indexOffset(), submesh.indexCount(), indexFormat));
             uploadedSubmeshes.add(new UploadedSubmesh(handle, submesh.materialSlot()));
         }
+        return uploadedSubmeshes;
+    }
+
+    private static UploadedMesh assemble(MeshData data, BufferHandle vertexBuffer, BufferHandle indexBuffer,
+                                         List<UploadedSubmesh> uploadedSubmeshes, Optional<Skeleton> skeleton,
+                                         Optional<StorageBufferBinding> lightmapUvs) {
         return new UploadedMesh(
                 vertexBuffer,
                 indexBuffer,
@@ -51,7 +114,7 @@ public final class MeshUploader {
                 data.hasSkin(),
                 data.hasVertexColors(),
                 skeleton,
-                lightmapUvBuffer(backend, data)
+                lightmapUvs
         );
     }
 

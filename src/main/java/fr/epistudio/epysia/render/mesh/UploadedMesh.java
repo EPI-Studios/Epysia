@@ -17,8 +17,20 @@ public record UploadedMesh(
         boolean skinned,
         boolean vertexColored,
         Optional<Skeleton> skeleton,
-        Optional<StorageBufferBinding> lightmapUvs
+        Optional<StorageBufferBinding> lightmapUvs,
+        Optional<ArenaPlacement> arenaPlacement
 ) {
+
+    public UploadedMesh(BufferHandle vertexBuffer, BufferHandle indexBuffer, List<UploadedSubmesh> submeshes,
+                        Aabb localBounds, boolean skinned, boolean vertexColored, Optional<Skeleton> skeleton,
+                        Optional<StorageBufferBinding> lightmapUvs) {
+        this(vertexBuffer, indexBuffer, submeshes, localBounds, skinned, vertexColored, skeleton,
+                lightmapUvs, Optional.empty());
+    }
+
+    public boolean arenaBacked() {
+        return arenaPlacement.isPresent();
+    }
 
     public UploadedMesh {
         if (skinned && skeleton.isEmpty()) {
@@ -40,8 +52,12 @@ public record UploadedMesh(
         for (UploadedSubmesh submesh : submeshes) {
             backend.destroy(submesh.handle());
         }
+        lightmapUvs.ifPresent(binding -> backend.destroy(binding.buffer()));
+        if (arenaPlacement.isPresent()) {
+            arenaPlacement.get().release();
+            return;
+        }
         backend.destroy(vertexBuffer);
         backend.destroy(indexBuffer);
-        lightmapUvs.ifPresent(binding -> backend.destroy(binding.buffer()));
     }
 }

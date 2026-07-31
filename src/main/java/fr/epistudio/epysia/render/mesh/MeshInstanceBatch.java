@@ -51,6 +51,7 @@ final class MeshInstanceBatch {
     private MaterialStateSnapshot state;
     private boolean bulk;
     private boolean castsShadows = true;
+    private boolean vertexColored;
     private float visibilityRangeBegin;
     private float visibilityRangeEnd;
     private long bulkRevision = -1L;
@@ -58,6 +59,7 @@ final class MeshInstanceBatch {
     void beginFrame() {
         bulk = false;
         castsShadows = true;
+        vertexColored = false;
         visibilityRangeBegin = 0.0f;
         visibilityRangeEnd = 0.0f;
         tileStart = NO_TILES;
@@ -118,6 +120,14 @@ final class MeshInstanceBatch {
 
     void setCastsShadows(boolean value) {
         castsShadows = value;
+    }
+
+    void setVertexColored(boolean value) {
+        vertexColored = value;
+    }
+
+    boolean vertexColored() {
+        return vertexColored;
     }
 
     void setVisibilityRange(float begin, float end) {
@@ -244,16 +254,23 @@ final class MeshInstanceBatch {
     }
 
     boolean needsBufferRebuild() {
-        return instanceBuffer == null || uploadedCapacity != capacity || uploadedTileCount != tileCount
-                || boundLitBindingsId != representative.litBindings().id();
+        return instanceBuffer == null || uploadedCapacity != capacity || uploadedTileCount != tileCount;
+    }
+
+    boolean needsBindingRebuild() {
+        return boundLitBindingsId != representative.litBindings().id();
     }
 
     void adoptResources(BufferHandle buffer, BindingSetHandle[] lit, BindingSetHandle[] shadow) {
         instanceBuffer = buffer;
-        litBindings = lit;
-        shadowBindings = shadow;
         uploadedCapacity = capacity;
         uploadedTileCount = tileCount;
+        adoptBindings(lit, shadow);
+    }
+
+    void adoptBindings(BindingSetHandle[] lit, BindingSetHandle[] shadow) {
+        litBindings = lit;
+        shadowBindings = shadow;
         boundLitBindingsId = representative.litBindings().id();
     }
 

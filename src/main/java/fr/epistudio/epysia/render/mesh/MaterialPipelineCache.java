@@ -47,6 +47,8 @@ import java.util.Set;
 
 final class MaterialPipelineCache {
 
+    public static final int MULTI_DRAW_INDEX_LOCATION = 7;
+
     private final ShaderLoader shaderLoader;
     private final ShaderWatcher shaderWatcher;
     private final Logger logger;
@@ -116,7 +118,16 @@ final class MaterialPipelineCache {
     }
 
     MaterialClassResources classResourcesFor(Material material, boolean skinned, boolean colored, boolean lightmapped) {
+        return classResourcesFor(material, skinned, colored, lightmapped, false);
+    }
+
+    MaterialClassResources classResourcesFor(Material material, boolean skinned, boolean colored,
+                                             boolean lightmapped, boolean multiDraw) {
         long textureMask = texturePresenceMask(material) | (lightmapped ? LIGHTMAP_UV2_BIT : 0L);
+        if (multiDraw) {
+            return classCache.computeIfAbsent(pipelineKey(material, skinned, colored, true) + "|tex" + textureMask,
+                    ignored -> buildOrFallback(material, skinned, colored, textureMask, true));
+        }
         if (skinned || colored) {
             return classCache.computeIfAbsent(pipelineKey(material, skinned, colored) + "|tex" + textureMask,
                     ignored -> buildOrFallback(material, skinned, colored, textureMask));
@@ -212,8 +223,13 @@ final class MaterialPipelineCache {
     }
 
     private MaterialClassResources buildOrFallback(Material material, boolean skinned, boolean colored, long textureMask) {
+        return buildOrFallback(material, skinned, colored, textureMask, false);
+    }
+
+    private MaterialClassResources buildOrFallback(Material material, boolean skinned, boolean colored,
+                                                   long textureMask, boolean multiDraw) {
         try {
-            return buildClassResources(material, skinned, colored, textureMask);
+            return buildClassResources(material, skinned, colored, textureMask, multiDraw);
         } catch (EpysiaException failure) {
             String surfacePath = surfaceShaderPathOf(material);
             if (surfacePath.isEmpty()) {
@@ -221,12 +237,18 @@ final class MaterialPipelineCache {
             }
             logger.error("Surface shader '" + surfacePath
                     + "' failed to compile, falling back to the base material shaders", failure);
-            return buildFallbackClassResources(material, surfacePath, skinned, colored, textureMask);
+            return buildFallbackClassResources(material, surfacePath, skinned, colored, textureMask, multiDraw);
         }
     }
 
     private MaterialClassResources buildFallbackClassResources(Material material, String surfacePath,
                                                                boolean skinned, boolean colored, long textureMask) {
+        return buildFallbackClassResources(material, surfacePath, skinned, colored, textureMask, false);
+    }
+
+    private MaterialClassResources buildFallbackClassResources(Material material, String surfacePath,
+                                                               boolean skinned, boolean colored,
+                                                               long textureMask, boolean multiDraw) {
         String defines = textureDefines(material, textureMask);
         LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(), "",
                 skinned, colored, defines, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
@@ -234,8 +256,9 @@ final class MaterialPipelineCache {
                 MaterialClassMetadata.reflect(material.getClass(), programs.fragment().source());
         BindingSetLayout litLayout = buildLitBindingLayout(metadata, ParsedSource.empty(), skinned,
                 (textureMask & PROBE_LIT_BIT) != 0L, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
-        PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout, skinned, colored));
-        registerHotReload(pipelineKey(material, skinned, colored) + "|tex" + textureMask, pipeline,
+        PipelineHandle pipeline = backend.createPipeline(
+                buildLitPipelineDescriptor(material, programs, litLayout, skinned, colored, multiDraw));
+        registerHotReload(pipelineKey(material, skinned, colored, multiDraw) + "|tex" + textureMask, pipeline,
                 material.vertexShaderPath(), material.fragmentShaderPath(), surfacePath,
                 skinned, colored, defines, programs);
         return new MaterialClassResources(metadata, pipeline, litLayout, ParsedSource.empty(),
@@ -243,12 +266,17 @@ final class MaterialPipelineCache {
     }
 
     private static String pipelineKey(Material material, boolean skinned, boolean colored) {
+        return pipelineKey(material, skinned, colored, false);
+    }
+
+    private static String pipelineKey(Material material, boolean skinned, boolean colored, boolean multiDraw) {
         return material.getClass().getName() + "|" + material.vertexShaderPath() + "|" + material.fragmentShaderPath()
                 + "|" + surfaceShaderPathOf(material)
                 + "|" + (material.blended() ? "blended" : "opaque")
                 + "|" + (material.doubleSided() ? "doubleSided" : "culled")
                 + "|" + (skinned ? "skinned" : "static")
-                + "|" + (colored ? "colored" : "plain");
+                + "|" + (colored ? "colored" : "plain")
+                + "|" + (multiDraw ? "multiDraw" : "singleDraw");
     }
 
     static String surfaceShaderPathOf(Material material) {
@@ -341,15 +369,22 @@ final class MaterialPipelineCache {
     }
 
     private MaterialClassResources buildClassResources(Material material, boolean skinned, boolean colored, long textureMask) {
+        return buildClassResources(material, skinned, colored, textureMask, false);
+    }
+
+    private MaterialClassResources buildClassResources(Material material, boolean skinned, boolean colored,
+                                                       long textureMask, boolean multiDraw) {
         String defines = textureDefines(material, textureMask);
         LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(),
-                surfaceShaderPathOf(material), skinned, colored, defines, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
+                surfaceShaderPathOf(material), skinned, colored, defines,
+                (textureMask & LIGHTMAP_UV2_BIT) != 0L, multiDraw);
         MaterialClassMetadata metadata = MaterialClassMetadata.reflect(material.getClass(), programs.fragment().source());
         ParsedSource surfaceUniforms = parseSurfaceUniforms(material);
         BindingSetLayout litLayout = buildLitBindingLayout(metadata, surfaceUniforms, skinned,
                 (textureMask & PROBE_LIT_BIT) != 0L, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
-        PipelineHandle pipeline = backend.createPipeline(buildLitPipelineDescriptor(material, programs, litLayout, skinned, colored));
-        registerHotReload(pipelineKey(material, skinned, colored) + "|tex" + textureMask, pipeline,
+        PipelineHandle pipeline = backend.createPipeline(
+                buildLitPipelineDescriptor(material, programs, litLayout, skinned, colored, multiDraw));
+        registerHotReload(pipelineKey(material, skinned, colored, multiDraw) + "|tex" + textureMask, pipeline,
                 material.vertexShaderPath(), material.fragmentShaderPath(), surfaceShaderPathOf(material),
                 skinned, colored, defines, programs);
         return new MaterialClassResources(metadata, pipeline, litLayout, surfaceUniforms,
@@ -382,6 +417,13 @@ final class MaterialPipelineCache {
     private LoadedPrograms loadPrograms(String vertexPath, String fragmentPath, String surfacePath,
                                         boolean skinned, boolean colored, String textureDefines,
                                         boolean lightmapUv2) {
+        return loadPrograms(vertexPath, fragmentPath, surfacePath, skinned, colored,
+                textureDefines, lightmapUv2, false);
+    }
+
+    private LoadedPrograms loadPrograms(String vertexPath, String fragmentPath, String surfacePath,
+                                        boolean skinned, boolean colored, String textureDefines,
+                                        boolean lightmapUv2, boolean multiDraw) {
         LoadedShader vertex = shaderLoader.load(vertexPath);
         LoadedShader fragment = shaderLoader.load(fragmentPath);
         if (surfacePath.isEmpty()) {
@@ -392,6 +434,9 @@ final class MaterialPipelineCache {
             LoadedShader surface = shaderLoader.load(surfacePath);
             vertex = SurfaceShaderComposer.composeVertex(vertex, surface);
             fragment = SurfaceShaderComposer.composeFragment(fragment, surface);
+        }
+        if (multiDraw) {
+            vertex = SurfaceShaderComposer.injectMultiDrawDefine(vertex);
         }
         if (skinned) {
             vertex = SurfaceShaderComposer.injectSkinningDefine(vertex);
@@ -449,6 +494,19 @@ final class MaterialPipelineCache {
         slots.add(new BindingSlot(MeshShaderBindings.POINT_SHADOW_ATLAS_BINDING, BindingType.SAMPLED_TEXTURE_ARRAY));
         SurfaceUniformBinder.appendSlots(slots, surfaceUniforms);
         return new BindingSetLayout(slots);
+    }
+
+    private PipelineDescriptor buildLitPipelineDescriptor(Material material, LoadedPrograms programs,
+                                                          BindingSetLayout bindingLayout, boolean skinned,
+                                                          boolean colored, boolean multiDraw) {
+        PipelineDescriptor single = buildLitPipelineDescriptor(material, programs, bindingLayout, skinned, colored);
+        if (!multiDraw) {
+            return single;
+        }
+        VertexLayout perDraw = new VertexLayout(
+                List.of(new VertexAttribute(MULTI_DRAW_INDEX_LOCATION, VertexFormat.UINT32, 0)), Integer.BYTES);
+        return new PipelineDescriptor(single.shaders(), single.vertexLayout(), single.state(),
+                single.bindingLayout(), perDraw);
     }
 
     private PipelineDescriptor buildLitPipelineDescriptor(Material material, LoadedPrograms programs,
