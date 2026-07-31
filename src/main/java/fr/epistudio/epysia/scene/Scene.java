@@ -12,9 +12,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -37,10 +39,12 @@ public final class Scene implements IScene {
             new PostProcessSettings();
     private final Vector3f clearColor = defaultClearColor();
     private final Map<Class<?>, List<? extends IComponent>> componentIndex = new HashMap<>();
+    private final Set<GameObject> indexDropped =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+    private final List<GameObject> indexAppended = new ArrayList<>();
     private Consumer<GameObject> removalListener = removed -> {
     };
     private long modificationCount;
-    private long indexedModificationCount = -1;
 
     public Scene(String name) {
         this.name = name;
@@ -116,6 +120,8 @@ public final class Scene implements IScene {
             gameObjectsById.remove(removed.id());
             removed.clearStructuralChangeListener();
             recentlyDeactivated.add(removed);
+            indexDropped.add(removed);
+            indexAppended.remove(removed);
             modificationCount++;
             removalListener.accept(removed);
         }
@@ -131,8 +137,9 @@ public final class Scene implements IScene {
             GameObject added = pendingAdditions.poll();
             gameObjects.add(added);
             gameObjectsById.put(added.id(), added);
-            added.setStructuralChangeListener(this::recordStructuralChange);
+            added.setStructuralChangeListener(() -> recordStructuralChange(added));
             recentlyActivated.add(added);
+            indexAppended.add(added);
             modificationCount++;
         }
     }
@@ -155,7 +162,11 @@ public final class Scene implements IScene {
         return drained;
     }
 
-    private void recordStructuralChange() {
+    private void recordStructuralChange(GameObject changed) {
+        indexDropped.add(changed);
+        if (!indexAppended.contains(changed)) {
+            indexAppended.add(changed);
+        }
         modificationCount++;
     }
 
@@ -165,11 +176,40 @@ public final class Scene implements IScene {
 
     @SuppressWarnings("unchecked")
     public <T extends IComponent> List<T> componentsOf(Class<T> componentClass) {
-        if (indexedModificationCount != modificationCount) {
-            componentIndex.clear();
-            indexedModificationCount = modificationCount;
-        }
+        flushIndexChanges();
         return (List<T>) componentIndex.computeIfAbsent(componentClass, this::collectComponents);
+    }
+
+    private void flushIndexChanges() {
+        if (indexDropped.isEmpty() && indexAppended.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<Class<?>, List<? extends IComponent>> entry : componentIndex.entrySet()) {
+            entry.setValue(rebuiltIndex(entry.getKey(), entry.getValue()));
+        }
+        indexDropped.clear();
+        indexAppended.clear();
+    }
+
+    private List<IComponent> rebuiltIndex(Class<?> componentClass, List<? extends IComponent> current) {
+        List<IComponent> rebuilt = new ArrayList<>(current.size() + indexAppended.size());
+        for (IComponent component : current) {
+            if (!indexDropped.contains(component.ownerOrNull())) {
+                rebuilt.add(component);
+            }
+        }
+        for (GameObject appended : indexAppended) {
+            appendMatching(componentClass, rebuilt, appended);
+        }
+        return rebuilt;
+    }
+
+    private static void appendMatching(Class<?> componentClass, List<IComponent> target, GameObject source) {
+        for (IComponent component : source.components()) {
+            if (componentClass.isInstance(component)) {
+                target.add(component);
+            }
+        }
     }
 
     private List<? extends IComponent> collectComponents(Class<?> componentClass) {

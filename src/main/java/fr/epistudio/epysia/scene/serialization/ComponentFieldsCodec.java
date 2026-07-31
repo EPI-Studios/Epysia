@@ -2,6 +2,7 @@ package fr.epistudio.epysia.scene.serialization;
 
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
@@ -11,8 +12,10 @@ import org.joml.Vector3f;
 import fr.epistudio.epysia.render.shader.ShaderUniformValues;
 import org.joml.Vector4f;
 
+import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 final class ComponentFieldsCodec {
@@ -57,8 +60,29 @@ final class ComponentFieldsCodec {
             case ENUM -> writer.valueString(value == null ? "" : ((Enum<?>) value).name());
             case ASSET_REF -> writeAssetRef(writer, value);
             case GAMEOBJECT_REF -> writeGameObjectReference(writer, value, referenceEncoder);
+            case OBJECT_LIST -> writeObjectList(writer, value, referenceEncoder);
             default -> writer.valueString("(unsupported)");
         }
+    }
+
+    private void writeObjectList(JsonWriter writer, Object value,
+                                 Function<GameObject, String> referenceEncoder) {
+        writer.beginArray();
+        if (value instanceof List<?> elements) {
+            for (Object element : elements) {
+                writeObjectListEntry(writer, element, referenceEncoder);
+            }
+        }
+        writer.endArray();
+    }
+
+    private void writeObjectListEntry(JsonWriter writer, Object element,
+                                      Function<GameObject, String> referenceEncoder) {
+        writer.beginObject();
+        for (ExportedProperty property : Reflection.scan(element)) {
+            writeProperty(writer, property, referenceEncoder);
+        }
+        writer.endObject();
     }
 
     private static void writeAssetRef(JsonWriter writer, Object value) {
@@ -114,7 +138,7 @@ final class ComponentFieldsCodec {
         writer.endArray();
     }
 
-    void applyFields(IComponent component, Map<String, Object> fields, ReferenceSink referenceSink) {
+    void applyFields(Object component, Map<String, Object> fields, ReferenceSink referenceSink) {
         for (ExportedProperty property : Reflection.scan(component)) {
             Object value = fields.get(property.fieldName());
             if (value == null) {
@@ -128,7 +152,7 @@ final class ComponentFieldsCodec {
     private void applyProperty(ExportedProperty property, Object value, ReferenceSink referenceSink) {
         switch (property.kind()) {
             case FLOAT -> property.writeFloat(asFloat(value));
-            case INT -> property.writeInt((int) asFloat(value));
+            case INT -> property.writeInt(asInt(value));
             case BOOLEAN -> property.writeBoolean(value instanceof Boolean booleanValue && booleanValue);
             case STRING -> property.writeObject(value.toString());
             case VECTOR2 -> applyVector2(property, (List<Object>) value);
@@ -140,8 +164,43 @@ final class ComponentFieldsCodec {
             case ENUM -> applyEnum(property, value);
             case ASSET_REF -> applyAssetRef(property, value);
             case GAMEOBJECT_REF -> applyGameObjectReference(property, value, referenceSink);
+            case OBJECT_LIST -> applyObjectList(property, value, referenceSink);
             default -> {
             }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyObjectList(ExportedProperty property, Object value, ReferenceSink referenceSink) {
+        Optional<Class<?>> elementType = property.elementType();
+        if (!(value instanceof List<?> encoded) || !(property.read() instanceof List<?> existing)
+                || elementType.isEmpty()) {
+            return;
+        }
+        List<Object> target = (List<Object>) existing;
+        target.clear();
+        for (Object entry : encoded) {
+            if (entry instanceof Map<?, ?> fields) {
+                target.add(readObjectListEntry(elementType.get(), (Map<String, Object>) fields, referenceSink));
+            }
+        }
+    }
+
+    private Object readObjectListEntry(Class<?> elementType, Map<String, Object> fields,
+                                       ReferenceSink referenceSink) {
+        Object element = instantiate(elementType);
+        applyFields(element, fields, referenceSink);
+        return element;
+    }
+
+    private static Object instantiate(Class<?> elementType) {
+        try {
+            Constructor<?> constructor = elementType.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (ReflectiveOperationException unusable) {
+            throw new EpysiaException("Cannot instantiate exported list element "
+                    + elementType.getName() + ": no usable no-argument constructor.");
         }
     }
 
@@ -219,5 +278,12 @@ final class ComponentFieldsCodec {
             return numericValue.floatValue();
         }
         return 0.0f;
+    }
+
+    private static int asInt(Object number) {
+        if (number instanceof Number numericValue) {
+            return numericValue.intValue();
+        }
+        return 0;
     }
 }

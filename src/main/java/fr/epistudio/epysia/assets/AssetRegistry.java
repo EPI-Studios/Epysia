@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.assets;
 
 import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.assets.source.AssetResolvers;
 import fr.epistudio.epysia.logging.Logger;
 
 import java.nio.file.Path;
@@ -27,6 +28,7 @@ public final class AssetRegistry {
     }
 
     public void attachProject(Path projectRoot) {
+        AssetResolvers.useProjectRoot(projectRoot);
         locator = AssetLocator.forProject(projectRoot);
         setDatabase(AssetDatabase.open(projectRoot));
     }
@@ -111,8 +113,7 @@ public final class AssetRegistry {
         if (uri.isEmpty()) {
             return Optional.empty();
         }
-        Entry entry = cache.computeIfAbsent(cacheKey(type, uri, variant),
-                ignored -> loadEntry(type, new AssetLoadRequest(uri, variant)));
+        Entry entry = cached(type, uri, variant);
         if (entry == null) {
             return Optional.empty();
         }
@@ -121,6 +122,24 @@ public final class AssetRegistry {
             entry.counted = true;
         }
         return Optional.of((T) entry.value);
+    }
+
+    private <T> Entry cached(Class<T> type, AssetUri uri, AssetVariant variant) {
+        String key = cacheKey(type, uri, variant);
+        Entry entry = cache.get(key);
+        if (entry != null) {
+            return entry;
+        }
+        Entry loaded = loadEntry(type, new AssetLoadRequest(uri, variant));
+        if (loaded == null) {
+            return null;
+        }
+        Entry raced = cache.putIfAbsent(key, loaded);
+        if (raced == null) {
+            return loaded;
+        }
+        dispose(loaded);
+        return raced;
     }
 
     private <T> Entry loadEntry(Class<T> type, AssetLoadRequest request) {

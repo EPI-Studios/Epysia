@@ -191,7 +191,7 @@ public final class GameObjectJsonCodec {
             return resolved;
         } catch (RuntimeException error) {
             services.logger().warn("[GameObjectJsonCodec] Material asset unavailable, keeping placeholder: "
-                    + material.assetPath() + " (" + error.getMessage() + ")");
+                    + material.assetPath() + " (" + error + ")");
             return material;
         }
     }

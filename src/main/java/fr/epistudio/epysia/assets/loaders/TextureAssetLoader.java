@@ -26,7 +26,7 @@ public final class TextureAssetLoader implements AssetLoader<TextureHandle> {
             TextureImportSettings settings =
                     TextureImportSettings.from(request.settings(locator), request.variant());
             return Texture2D.load(services.renderBackend(), locator.resolvedPath(request.uri()),
-                    settings.format(), settings.wrap(), settings.filter());
+                    settings.format(), settings.wrap(), settings.filter(), Texture2D.samplingOf(settings));
         } catch (RuntimeException error) {
             services.logger().error("[TextureAssetLoader] Failed to load " + request.uri(), error);
             return null;

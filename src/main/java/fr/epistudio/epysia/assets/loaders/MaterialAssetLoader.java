@@ -9,6 +9,7 @@ import fr.epistudio.epysia.assets.NestedAssetPaths;
 import fr.epistudio.epysia.assets.source.AssetSource;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.render.material.Material;
+import fr.epistudio.epysia.render.material.MaterialFields;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
 
 import java.io.IOException;
@@ -40,8 +41,10 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
     @Override
     public Material load(EngineServices services, AssetLoadRequest request) {
         AssetLocator locator = services.assets().locator();
-        return loadedByPath.computeIfAbsent(request.uri().toString(),
+        Material material = loadedByPath.computeIfAbsent(request.uri().toString(),
                 ignored -> readResolved(locator, request.uri()));
+        MaterialFields.resolveTextures(material, services.assets());
+        return material;
     }
 
     @Override
