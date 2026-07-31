@@ -9,6 +9,8 @@ import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.BufferUsage;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.SampledTextureBinding;
+import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
+import fr.epistudio.epysia.render.backend.TextureFormat;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
 import fr.epistudio.epysia.render.material.LitMaterial;
@@ -48,6 +50,7 @@ public final class SurfaceUniformBinder {
 
     private RenderBackend backend;
     private TextureHandle fallbackTexture;
+    private TextureHandle flatNormalTexture;
 
     public SurfaceUniformBinder(Logger logger) {
         this.logger = logger;
@@ -56,6 +59,7 @@ public final class SurfaceUniformBinder {
     public void initialize(RenderBackend backend) {
         this.backend = backend;
         this.fallbackTexture = Texture2D.whitePixel(backend);
+        this.flatNormalTexture = Texture2D.solidColor(backend, 0x80, 0x80, 0xFF);
     }
 
     public void beginFrame() {
@@ -171,20 +175,38 @@ public final class SurfaceUniformBinder {
     private TextureHandle resolveTexture(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         Optional<ShaderUniformValue> value = valuesOf(material).value(declaration.name());
         if (value.orElse(null) instanceof ShaderUniformValue.TextureValue texture && !texture.path().isEmpty()) {
-            return textureCache.computeIfAbsent(texture.path(), this::loadTexture);
+            return cachedTexture(texture.path(), declaration);
         }
         if (declaration.hasDefault()) {
-            return textureCache.computeIfAbsent(declaration.defaultText(), this::loadTexture);
+            return cachedTexture(declaration.defaultText(), declaration);
         }
         return fallbackTexture;
     }
 
-    private TextureHandle loadTexture(String path) {
+    private TextureHandle cachedTexture(String path, ShaderUniformDeclaration declaration) {
+        TextureImportSettings settings = Texture2D.importSettings(path);
+        TextureFormat format = formatFor(settings, declaration);
+        return textureCache.computeIfAbsent(format.name() + ' ' + settings.wrap().name() + ' ' + path,
+                ignored -> loadTexture(path, format, settings, fallbackFor(declaration)));
+    }
+
+    private TextureHandle fallbackFor(ShaderUniformDeclaration declaration) {
+        return declaration.tangentNormal() ? flatNormalTexture : fallbackTexture;
+    }
+
+    private static TextureFormat formatFor(TextureImportSettings settings,
+                                           ShaderUniformDeclaration declaration) {
+        return declaration.standardRedGreenBlue() ? TextureFormat.SRGB8_ALPHA8 : settings.format();
+    }
+
+    private TextureHandle loadTexture(String path, TextureFormat format, TextureImportSettings settings,
+                                      TextureHandle fallback) {
         try {
-            return Texture2D.load(backend, path);
+            return Texture2D.load(backend, path, format, settings.wrap(), settings.filter(),
+                    Texture2D.samplingOf(settings));
         } catch (RuntimeException error) {
             logger.error("[SurfaceUniformBinder] Failed to load texture " + path, error);
-            return fallbackTexture;
+            return fallback;
         }
     }
 
@@ -199,12 +221,13 @@ public final class SurfaceUniformBinder {
         uniformBuffers.clear();
         writtenThisFrame.clear();
         for (TextureHandle texture : textureCache.values()) {
-            if (texture != fallbackTexture) {
+            if (texture != fallbackTexture && texture != flatNormalTexture) {
                 backend.destroy(texture);
             }
         }
         textureCache.clear();
         backend.destroy(fallbackTexture);
+        backend.destroy(flatNormalTexture);
     }
 
     private record SizedBuffer(BufferHandle handle, int byteSize) {

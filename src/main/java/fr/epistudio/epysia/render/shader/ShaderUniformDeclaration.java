@@ -1,10 +1,16 @@
 package fr.epistudio.epysia.render.shader;
 
 public record ShaderUniformDeclaration(String name, ShaderUniformKind kind, int arraySize, boolean color,
-                                           String defaultText) {
+                                           String defaultText, boolean standardRedGreenBlue,
+                                           boolean tangentNormal) {
 
     public ShaderUniformDeclaration(String name, ShaderUniformKind kind, int arraySize, boolean color) {
-        this(name, kind, arraySize, color, "");
+        this(name, kind, arraySize, color, "", false, false);
+    }
+
+    public ShaderUniformDeclaration(String name, ShaderUniformKind kind, int arraySize, boolean color,
+                                    String defaultText) {
+        this(name, kind, arraySize, color, defaultText, false, false);
     }
 
     public boolean isArray() {

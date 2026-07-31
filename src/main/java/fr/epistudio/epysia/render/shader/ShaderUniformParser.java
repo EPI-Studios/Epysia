@@ -16,6 +16,8 @@ public final class ShaderUniformParser {
             "\\buniform\\s+(float|int|bool|vec2|vec3|vec4|mat4|sampler2D)\\s+(\\w+)\\s*(?:\\[\\s*(\\d+)\\s*\\])?\\s*;");
     private static final String COLOR_ANNOTATION = "@color";
     private static final String DEFAULT_ANNOTATION = "@default";
+    private static final String SRGB_ANNOTATION = "@srgb";
+    private static final String NORMAL_ANNOTATION = "@normal";
     private static final int BLOCK_ALIGNMENT = 16;
 
     private ShaderUniformParser() {
@@ -123,7 +125,12 @@ public final class ShaderUniformParser {
         String remainder = lineRemainder(source, matcher.end());
         boolean color = remainder.contains(COLOR_ANNOTATION)
                 && (kind == ShaderUniformKind.VECTOR3 || kind == ShaderUniformKind.VECTOR4);
-        return new ShaderUniformDeclaration(name, kind, arraySize, color, defaultAnnotation(remainder));
+        boolean sampler = kind == ShaderUniformKind.SAMPLER2D;
+        boolean standardRedGreenBlue = sampler
+                && (remainder.contains(SRGB_ANNOTATION) || remainder.contains(COLOR_ANNOTATION));
+        boolean tangentNormal = sampler && remainder.contains(NORMAL_ANNOTATION);
+        return new ShaderUniformDeclaration(name, kind, arraySize, color, defaultAnnotation(remainder),
+                standardRedGreenBlue, tangentNormal);
     }
 
     private static String defaultAnnotation(String remainder) {

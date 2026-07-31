@@ -2,6 +2,7 @@ package fr.epistudio.epysia.render.shader;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -160,11 +161,19 @@ public final class ShaderWatcher {
     }
 
     private Optional<Path> resolveFile(String shaderPath) {
-        Path candidate = Path.of(shaderPath);
-        if (candidate.isAbsolute()) {
-            return Optional.of(candidate);
+        Optional<Path> candidate = asPath(shaderPath);
+        if (candidate.filter(Path::isAbsolute).isPresent()) {
+            return candidate;
         }
-        return filesystemRoot.map(root -> root.resolve(candidate));
+        return candidate.flatMap(relative -> filesystemRoot.map(root -> root.resolve(relative)));
+    }
+
+    private static Optional<Path> asPath(String text) {
+        try {
+            return Optional.of(Path.of(text));
+        } catch (InvalidPathException unusableOnThisFilesystem) {
+            return Optional.empty();
+        }
     }
 
     private static long modifiedMillis(Path file) {

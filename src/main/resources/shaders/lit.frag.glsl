@@ -241,6 +241,7 @@ vec3 shadeLight(int lightIndex, int shadowIndex, vec3 worldNormal, vec3 viewDire
 }
 
 void main() {
+    // SURFACE_PREPARE_CALL
 #ifdef MATERIAL_HAS_ALBEDO
     vec4 albedoSample = texture(albedo, vertexUv);
 #else

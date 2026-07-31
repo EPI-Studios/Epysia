@@ -18,6 +18,7 @@ public final class SurfaceShaderComposer {
     public static final int FIRST_SAMPLER_BINDING = 16;
     public static final String SKINNED_DEFINE = "#define SKINNED\n";
     public static final String VERTEX_COLORED_DEFINE = "#define VERTEX_COLORED\n";
+    public static final String MULTI_DRAW_DEFINE = "#define MULTI_DRAW\n";
     private static final String VERSION_DIRECTIVE = "#version";
 
     private static final String UNIFORM_BLOCK_NAME = "SurfaceUniforms";
@@ -26,12 +27,16 @@ public final class SurfaceShaderComposer {
     private static final String COLOR_CALL_MARKER = "// SURFACE_COLOR_CALL";
     private static final String NORMAL_CALL_MARKER = "// SURFACE_NORMAL_CALL";
     private static final String SHADE_CALL_MARKER = "// SURFACE_SHADE_CALL";
+    private static final String PREPARE_CALL_MARKER = "// SURFACE_PREPARE_CALL";
     private static final String SPRITE_CALL_MARKER = "// SPRITE_SURFACE_CALL";
     private static final Pattern VERTEX_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceVertex\\s*\\(");
     private static final Pattern COLOR_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceColor\\s*\\(");
     private static final Pattern LIGHT_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceLight\\s*\\(");
     private static final Pattern NORMAL_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceNormal\\s*\\(");
     private static final Pattern SHADE_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceShade\\s*\\(");
+    private static final Pattern PREPARE_FUNCTION_PATTERN = Pattern.compile("void\\s+surfacePrepare\\s*\\(");
+    private static final Pattern RENDER_MODE_PATTERN =
+            Pattern.compile("render_mode\\s+[^;]*;");
     private static final Pattern UNSHADED_MODE_PATTERN =
             Pattern.compile("render_mode\\s+[^;]*\\bunshaded\\b[^;]*;");
     private static final Pattern TIME_IDENTIFIER_PATTERN = Pattern.compile("\\b(time|frameTime)\\b");
@@ -53,6 +58,10 @@ public final class SurfaceShaderComposer {
 
     public static LoadedShader injectSkinningDefine(LoadedShader vertex) {
         return new LoadedShader(insertAfterVersion(vertex.source(), SKINNED_DEFINE), vertex.dependencyPaths());
+    }
+
+    public static LoadedShader injectMultiDrawDefine(LoadedShader vertex) {
+        return new LoadedShader(insertAfterVersion(vertex.source(), MULTI_DRAW_DEFINE), vertex.dependencyPaths());
     }
 
     public static LoadedShader injectVertexColoredDefine(LoadedShader shader) {
@@ -100,6 +109,10 @@ public final class SurfaceShaderComposer {
         return ShaderSnippets.block("surface/default_shade.glsl");
     }
 
+    private static String defaultPrepareFunction() {
+        return ShaderSnippets.block("surface/default_prepare.glsl");
+    }
+
     private static String litVertexCall() {
         return ShaderSnippets.block("surface/lit_vertex_call.glsl");
     }
@@ -124,6 +137,10 @@ public final class SurfaceShaderComposer {
         return ShaderSnippets.line("surface/shade_call.glsl");
     }
 
+    private static String prepareCall() {
+        return ShaderSnippets.line("surface/prepare_call.glsl");
+    }
+
     public static LoadedShader composeVertex(LoadedShader base, LoadedShader surface) {
         return compose(base, surface, SurfaceSplit::vertexBlock, VERTEX_CALL_MARKER, litVertexCall(),
                 VERTEX_MODEL_EXPRESSION);
@@ -144,12 +161,14 @@ public final class SurfaceShaderComposer {
                 FRAGMENT_MODEL_EXPRESSION);
         String source = replaceMarker(composed.source(), NORMAL_CALL_MARKER, normalCall());
         source = replaceMarker(source, SHADE_CALL_MARKER, shadeCall());
+        source = replaceMarker(source, PREPARE_CALL_MARKER, prepareCall());
         return new LoadedShader(source, composed.dependencyPaths());
     }
 
     public static LoadedShader composeSpriteFragment(LoadedShader base, LoadedShader surface) {
         ParsedSource parsed = ShaderUniformParser.parse(surface.source());
-        String functions = uniformsBlock(parsed) + parsed.body() + spriteDefaultIfMissing(parsed.body());
+        String body = stripRenderModes(parsed.body());
+        String functions = uniformsBlock(parsed) + body + spriteDefaultIfMissing(body);
         String source = replaceMarker(base.source(), FUNCTIONS_MARKER, functions);
         source = replaceMarker(source, SPRITE_CALL_MARKER, spriteCall());
         Set<String> dependencies = new LinkedHashSet<>(base.dependencyPaths());
@@ -166,6 +185,17 @@ public final class SurfaceShaderComposer {
         return ShaderSnippets.line("surface/sprite_call.glsl");
     }
 
+    static String stripRenderModes(String body) {
+        Matcher matcher = RENDER_MODE_PATTERN.matcher(ShaderComments.mask(body));
+        StringBuilder stripped = new StringBuilder();
+        int copiedUpTo = 0;
+        while (matcher.find()) {
+            stripped.append(body, copiedUpTo, matcher.start());
+            copiedUpTo = matcher.end();
+        }
+        return copiedUpTo == 0 ? body : stripped.append(body.substring(copiedUpTo)).toString();
+    }
+
     public static boolean declaresUnshaded(LoadedShader surface) {
         return UNSHADED_MODE_PATTERN.matcher(ShaderComments.mask(surface.source())).find();
     }
@@ -174,7 +204,7 @@ public final class SurfaceShaderComposer {
                                         Function<SurfaceSplit, String> blockSelector,
                                         String callMarker, String callStatement, String modelExpression) {
         ParsedSource parsed = ShaderUniformParser.parse(surface.source());
-        SurfaceSplit split = split(parsed.body());
+        SurfaceSplit split = split(stripRenderModes(parsed.body()));
         String functionsBlock = renderModeDefines(surface, split)
                 + uniformsBlock(parsed) + objectHelpers(modelExpression) + blockSelector.apply(split);
         String source = replaceMarker(base.source(), FUNCTIONS_MARKER, functionsBlock);
@@ -237,14 +267,16 @@ public final class SurfaceShaderComposer {
         Optional<int[]> lightSpan = functionSpan(masked, LIGHT_FUNCTION_PATTERN);
         Optional<int[]> normalSpan = functionSpan(masked, NORMAL_FUNCTION_PATTERN);
         Optional<int[]> shadeSpan = functionSpan(masked, SHADE_FUNCTION_PATTERN);
-        String shared = removeSpans(source, vertexSpan, colorSpan, lightSpan, normalSpan, shadeSpan);
+        Optional<int[]> prepareSpan = functionSpan(masked, PREPARE_FUNCTION_PATTERN);
+        String shared = removeSpans(source, vertexSpan, colorSpan, lightSpan, normalSpan, shadeSpan, prepareSpan);
         String vertexFunction = extract(source, vertexSpan, defaultVertexFunction());
         String colorFunction = extract(source, colorSpan, defaultColorFunction());
         String lightFunction = extract(source, lightSpan, "");
         String normalFunction = extract(source, normalSpan, defaultNormalFunction());
         String shadeFunction = extract(source, shadeSpan, defaultShadeFunction());
+        String prepareFunction = extract(source, prepareSpan, defaultPrepareFunction());
         return new SurfaceSplit(shared, vertexFunction, colorFunction, lightFunction,
-                normalFunction, shadeFunction);
+                normalFunction, shadeFunction, prepareFunction);
     }
 
     private static String renderModeDefines(LoadedShader surface, SurfaceSplit split) {
@@ -319,15 +351,16 @@ public final class SurfaceShaderComposer {
     }
 
     private record SurfaceSplit(String shared, String vertexFunction, String colorFunction,
-                                String lightFunction, String normalFunction, String shadeFunction) {
+                                String lightFunction, String normalFunction, String shadeFunction,
+                                String prepareFunction) {
 
         String vertexBlock() {
             return shared + "\n" + vertexFunction;
         }
 
         String fragmentBlock() {
-            return shared + "\n" + colorFunction + "\n" + normalFunction + "\n" + shadeFunction
-                    + "\n" + lightFunction;
+            return shared + "\n" + prepareFunction + "\n" + colorFunction + "\n" + normalFunction
+                    + "\n" + shadeFunction + "\n" + lightFunction;
         }
 
         String vertexBody() {

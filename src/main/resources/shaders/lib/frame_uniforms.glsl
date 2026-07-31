@@ -44,9 +44,16 @@ layout(std430, binding = 3) readonly buffer InstanceTransformSsbo {
     InstanceTransform instanceTransforms[];
 };
 
+#ifdef MULTI_DRAW
+layout(location = 7) in uint inDrawIndex;
+#define OBJECT_MODEL (instanceTransforms[inDrawIndex].model)
+#define OBJECT_INSTANCE_INDEX (int(inDrawIndex))
+#define OBJECT_NORMAL_MATRIX (instanceTransforms[inDrawIndex].normalMatrix)
+#else
 #define OBJECT_MODEL (instanceTransforms[gl_InstanceID].model)
 #define OBJECT_INSTANCE_INDEX (gl_InstanceID)
 #define OBJECT_NORMAL_MATRIX (instanceTransforms[gl_InstanceID].normalMatrix)
+#endif
 
 layout(std140, binding = 1) uniform ObjectUbo {
     mat4 model;

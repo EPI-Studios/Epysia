@@ -1,0 +1,1 @@
+surfacePrepare(vertexUv, vertexWorldPosition, frameTime());
