@@ -7,7 +7,9 @@ import fr.epistudio.epysia.render.backend.BufferDescriptor;
 import fr.epistudio.epysia.render.backend.BufferHandle;
 import fr.epistudio.epysia.render.backend.BufferUsage;
 import fr.epistudio.epysia.render.backend.RenderBackend;
+import fr.epistudio.epysia.render.backend.SampledTextureBinding;
 import fr.epistudio.epysia.render.backend.StorageBufferBinding;
+import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.backend.UniformBufferBinding;
 import fr.epistudio.epysia.render.mesh.MeshShaderBindings;
 import fr.epistudio.epysia.vfx.lut.VfxLutPack;
@@ -27,6 +29,7 @@ final class VfxEffectResources {
     static final int INDIRECT_BINDING = 8;
     static final int CURVE_LUT_BINDING = 9;
     static final int GRADIENT_LUT_BINDING = 10;
+    static final int OPAQUE_DEPTH_BINDING = 11;
 
     private static final int MINIMUM_CURVE_FLOATS = VfxLutPack.VFX_LUT_RESOLUTION;
     private static final int MINIMUM_GRADIENT_FLOATS = VfxLutPack.VFX_LUT_RESOLUTION * 4;
@@ -47,11 +50,14 @@ final class VfxEffectResources {
     private BindingSetHandle computeBindings;
     private BindingSetHandle drawBindings;
     private VfxLutPack uploadedPack;
+    private TextureHandle opaqueDepth;
 
-    VfxEffectResources(RenderBackend backend, VfxBindingLayouts layouts, int poolSize) {
+    VfxEffectResources(RenderBackend backend, VfxBindingLayouts layouts, int poolSize,
+                       TextureHandle opaqueDepth) {
         this.backend = backend;
         this.layouts = layouts;
         this.poolSize = poolSize;
+        this.opaqueDepth = opaqueDepth;
         this.pool = storageBuffer(poolSize * PARTICLE_BYTES);
         this.aliveList = storageBuffer(poolSize * Integer.BYTES);
         this.freeList = backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE, initialFreeList(poolSize)));
@@ -85,7 +91,21 @@ final class VfxEffectResources {
         gradientLut = storageBuffer((int) gradientBytes);
     }
 
+    void useOpaqueDepth(TextureHandle texture) {
+        if (texture.equals(opaqueDepth)) {
+            return;
+        }
+        opaqueDepth = texture;
+        backend.destroy(drawBindings);
+        createDrawBindings();
+    }
+
     private void createBindingSets() {
+        createComputeBindings();
+        createDrawBindings();
+    }
+
+    private void createComputeBindings() {
         computeBindings = backend.createBindingSet(new BindingSetDescriptor(layouts.computeLayout(), List.of(
                 new Binding(POOL_BINDING, StorageBufferBinding.whole(pool, (long) poolSize * PARTICLE_BYTES)),
                 new Binding(ALIVE_BINDING, StorageBufferBinding.whole(aliveList, (long) poolSize * Integer.BYTES)),
@@ -94,6 +114,9 @@ final class VfxEffectResources {
                 new Binding(CURVE_LUT_BINDING, StorageBufferBinding.whole(curveLut, curveLutBytes)),
                 new Binding(GRADIENT_LUT_BINDING, StorageBufferBinding.whole(gradientLut, gradientLutBytes)),
                 new Binding(1, UniformBufferBinding.whole(effectUbo, EFFECT_UBO_BYTES)))));
+    }
+
+    private void createDrawBindings() {
         drawBindings = backend.createBindingSet(new BindingSetDescriptor(layouts.drawLayout(), List.of(
                 new Binding(0, UniformBufferBinding.whole(layouts.frameUniformBuffer(),
                         MeshShaderBindings.FRAME_UBO_SIZE)),
@@ -103,7 +126,8 @@ final class VfxEffectResources {
                 new Binding(FREE_BINDING, StorageBufferBinding.whole(freeList, freeListBytes())),
                 new Binding(INDIRECT_BINDING, StorageBufferBinding.whole(indirectBuffer, INDIRECT_BYTES)),
                 new Binding(CURVE_LUT_BINDING, StorageBufferBinding.whole(curveLut, curveLutBytes)),
-                new Binding(GRADIENT_LUT_BINDING, StorageBufferBinding.whole(gradientLut, gradientLutBytes)))));
+                new Binding(GRADIENT_LUT_BINDING, StorageBufferBinding.whole(gradientLut, gradientLutBytes)),
+                new Binding(OPAQUE_DEPTH_BINDING, new SampledTextureBinding(opaqueDepth)))));
     }
 
     private long freeListBytes() {

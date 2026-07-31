@@ -189,7 +189,7 @@ public final class VfxGraphCompiler {
                     float falloff = smoothstep(1.0, 1.0 - clamp(softEdge, 0.05, 1.0), distanceFromCenter);
                     float core = smoothstep(0.45, 0.0, distanceFromCenter) * 0.6;
                     vec3 hdrColor = particleColor.rgb * intensity * (falloff + core);
-                    fragmentColor = vec4(hdrColor * particleColor.a, 1.0);
+                    fragmentColor = vec4(hdrColor * particleColor.a * particleDepthFade(), 1.0);
                 """.formatted(softEdge, intensity);
     }
 

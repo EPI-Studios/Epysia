@@ -5,6 +5,7 @@ import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MouseButton;
 import fr.epistudio.epysia.input.MutableInputState;
 import fr.epistudio.epysia.render.backend.RenderSurface;
+import org.lwjgl.glfw.GLFWCharCallback;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWFramebufferSizeCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
@@ -26,6 +27,11 @@ import static org.lwjgl.glfw.GLFW.GLFW_CURSOR;
 import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED;
 import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_HIDDEN;
 import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
+import static org.lwjgl.glfw.GLFW.GLFW_RAW_MOUSE_MOTION;
+import static org.lwjgl.glfw.GLFW.GLFW_TRUE;
+import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
+import static org.lwjgl.glfw.GLFW.glfwRawMouseMotionSupported;
+import static org.lwjgl.glfw.GLFW.glfwSetCharCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
@@ -72,6 +78,8 @@ public final class Window implements RenderSurface {
     private int framebufferHeight;
     private boolean vsyncEnabled = Boolean.parseBoolean(System.getProperty("epysia.vsync", "true"));
     private boolean framebufferResized;
+    private MutableInputState attachedInput;
+    private GLFWCharCallback charCallback;
     private GLFWKeyCallback keyCallback;
     private GLFWMouseButtonCallback mouseButtonCallback;
     private GLFWCursorPosCallback cursorPosCallback;
@@ -147,20 +155,28 @@ public final class Window implements RenderSurface {
     }
 
     public void attachInput(MutableInputState input) {
-        keyCallback = GLFWKeyCallback.create((window, glfwKey, scancode, action, mods) -> {
-            if (action == GLFW_REPEAT) {
-                return;
-            }
-            KeyCode.fromGlfw(glfwKey).ifPresent(key -> input.onKey(key, action == GLFW_PRESS));
-        });
+        attachedInput = input;
+        keyCallback = GLFWKeyCallback.create((window, glfwKey, scancode, action, mods) ->
+                KeyCode.fromGlfw(glfwKey).ifPresent(key -> forwardKey(input, key, action, mods)));
         mouseButtonCallback = GLFWMouseButtonCallback.create((window, glfwButton, action, mods) ->
-                MouseButton.fromGlfw(glfwButton).ifPresent(button -> input.onMouseButton(button, action == GLFW_PRESS)));
+                MouseButton.fromGlfw(glfwButton).ifPresent(button ->
+                        input.onMouseButton(button, action == GLFW_PRESS, mods)));
         cursorPosCallback = GLFWCursorPosCallback.create((window, x, y) -> input.onCursorPosition((float) x, (float) y));
         scrollCallback = GLFWScrollCallback.create((window, dx, dy) -> input.onScroll((float) dy));
+        charCallback = GLFWCharCallback.create((window, codePoint) -> input.onTextTyped(codePoint));
         glfwSetKeyCallback(handle, keyCallback);
         glfwSetMouseButtonCallback(handle, mouseButtonCallback);
         glfwSetCursorPosCallback(handle, cursorPosCallback);
         glfwSetScrollCallback(handle, scrollCallback);
+        glfwSetCharCallback(handle, charCallback);
+    }
+
+    private static void forwardKey(MutableInputState input, KeyCode key, int action, int modifiers) {
+        if (action == GLFW_REPEAT) {
+            input.onKeyRepeat(key, modifiers);
+            return;
+        }
+        input.onKey(key, action == GLFW_PRESS, modifiers);
     }
 
     private void applyPlatformHint() {
@@ -219,6 +235,26 @@ public final class Window implements RenderSurface {
             case DISABLED -> GLFW_CURSOR_DISABLED;
         };
         glfwSetInputMode(handle, GLFW_CURSOR, glfwMode);
+        applyRawMouseMotion(mode == CursorMode.DISABLED);
+        resetCursorBaseline();
+    }
+
+    private void applyRawMouseMotion(boolean wanted) {
+        if (!glfwRawMouseMotionSupported()) {
+            return;
+        }
+        glfwSetInputMode(handle, GLFW_RAW_MOUSE_MOTION, wanted ? GLFW_TRUE : GLFW_FALSE);
+    }
+
+    private void resetCursorBaseline() {
+        if (attachedInput == null) {
+            return;
+        }
+        attachedInput.discardCursorBaseline();
+    }
+
+    public boolean rawMouseMotionSupported() {
+        return glfwRawMouseMotionSupported();
     }
 
     public boolean shouldClose() {
@@ -247,6 +283,10 @@ public final class Window implements RenderSurface {
     }
 
     private void freeCallbacks() {
+        if (charCallback != null) {
+            charCallback.free();
+            charCallback = null;
+        }
         if (keyCallback != null) {
             keyCallback.free();
             keyCallback = null;

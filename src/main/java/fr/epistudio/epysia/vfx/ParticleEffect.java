@@ -59,6 +59,8 @@ public final class ParticleEffect extends Component {
     private int orderInLayer;
     @Export(label = "Playing")
     private boolean playing = true;
+    @Export(label = "Depth Fade", min = 0.0f, max = 10.0f, step = 0.05f)
+    private float depthFadeDistance;
 
     private final ParticleEmission emission = new ParticleEmission();
     private List<ParticleBurst> decodedBursts = List.of();
@@ -69,6 +71,15 @@ public final class ParticleEffect extends Component {
 
     public float sizeScale() {
         return sizeUnit == SizeUnit.PIXELS ? 1.0f / Math.max(1.0f, pixelsPerUnit) : 1.0f;
+    }
+
+    public float depthFadeDistance() {
+        return depthFadeDistance;
+    }
+
+    public ParticleEffect setDepthFadeDistance(float worldUnits) {
+        depthFadeDistance = Math.max(0.0f, worldUnits);
+        return this;
     }
 
     public int sortingLayer() {

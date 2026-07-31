@@ -7,6 +7,7 @@ import java.util.Map;
 public final class FrameProfiler {
 
     public static final String TICK_SECTION = "tick";
+    public static final String BACKGROUND_DELIVERY_SECTION = "backgroundDelivery";
     public static final String RENDER_SECTION = "render";
     public static final String COLLECT_SECTION = "collect";
     public static final String DRAIN_SECTION = "drain";

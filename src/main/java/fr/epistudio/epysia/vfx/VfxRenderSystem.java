@@ -141,7 +141,8 @@ public final class VfxRenderSystem implements RenderSystem {
                 new BindingSlot(VfxEffectResources.FREE_BINDING, BindingType.STORAGE_BUFFER),
                 new BindingSlot(VfxEffectResources.INDIRECT_BINDING, BindingType.STORAGE_BUFFER),
                 new BindingSlot(VfxEffectResources.CURVE_LUT_BINDING, BindingType.STORAGE_BUFFER),
-                new BindingSlot(VfxEffectResources.GRADIENT_LUT_BINDING, BindingType.STORAGE_BUFFER)));
+                new BindingSlot(VfxEffectResources.GRADIENT_LUT_BINDING, BindingType.STORAGE_BUFFER),
+                new BindingSlot(VfxEffectResources.OPAQUE_DEPTH_BINDING, BindingType.SAMPLED_TEXTURE_2D)));
     }
 
     private PipelineHandle createComputePipeline(String resourcePath) {
@@ -295,6 +296,7 @@ public final class VfxRenderSystem implements RenderSystem {
 
     private void simulateAndSubmit(ParticleEffect effect, EmitterPose pose, float delta, FrameBuilder frame) {
         VfxEffectResources resources = effectResources.computeIfAbsent(effect, this::createResources);
+        resources.useOpaqueDepth(meshRenderSystem.opaqueDepthTexture());
         Optional<CompiledGraphPipelines> compiled = resolveGraphPipelines(effect);
         if (!effect.graphPath().isEmpty() && compiled.isEmpty()) {
             return;
@@ -477,7 +479,8 @@ public final class VfxRenderSystem implements RenderSystem {
         effectUboScratch.putFloat(effect.simulationSpaceFollow());
         effectUboScratch.putFloat(motion.x()).putFloat(motion.y()).putFloat(motion.z());
         effectUboScratch.putFloat(effect.distanceTravelled());
-        effectUboScratch.putFloat(effect.sizeScale()).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
+        effectUboScratch.putFloat(effect.sizeScale()).putFloat(effect.depthFadeDistance())
+                .putFloat(0.0f).putFloat(0.0f);
         effectUboScratch.flip();
         resources.writeEffectUbo(effectUboScratch);
     }
@@ -485,7 +488,8 @@ public final class VfxRenderSystem implements RenderSystem {
     private VfxEffectResources createResources(ParticleEffect effect) {
         VfxBindingLayouts layouts = new VfxBindingLayouts(computeLayout, drawLayout,
                 meshRenderSystem.frameUniformBuffer());
-        return new VfxEffectResources(backend, layouts, effect.poolSize());
+        return new VfxEffectResources(backend, layouts, effect.poolSize(),
+                meshRenderSystem.opaqueDepthTexture());
     }
 
     private void purgeStale(List<ParticleEffect> seen) {

@@ -46,6 +46,10 @@ layout(std140, binding = 1) uniform EffectUbo {
 
 const int VFX_LUT_RESOLUTION = 256;
 
+float particleDepthFadeDistance() {
+    return effect.renderParams.y;
+}
+
 float sampleCurve(int index, float t) {
     if (index < 0) {
         return 0.0;

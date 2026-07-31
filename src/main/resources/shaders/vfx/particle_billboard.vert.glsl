@@ -6,6 +6,7 @@ layout(location = 0) in vec3 inPosition;
 
 out vec2 particleCorner;
 out vec4 particleColor;
+out float particleViewDepth;
 
 void main() {
     uint slot = aliveIndices[gl_InstanceID];
@@ -20,4 +21,5 @@ void main() {
     particleCorner = corner;
     particleColor = particle.color;
     gl_Position = frame.cameraViewProjection * vec4(world, 1.0);
+    particleViewDepth = gl_Position.w;
 }
