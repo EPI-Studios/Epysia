@@ -31,11 +31,11 @@ jlink_runtime() {
 }
 
 make_zip() {
-    local archive="$1" parent="$2" name="$3"
+    local archive="$1" directory="$2"
     if command -v 7z >/dev/null 2>&1; then
-        (cd "$parent" && 7z a -tzip -bd "$archive" "$name" >/dev/null)
+        (cd "$directory" && 7z a -tzip -bd "$archive" . >/dev/null)
     else
-        (cd "$parent" && zip -qr "$archive" "$name")
+        (cd "$directory" && zip -qr "$archive" .)
     fi
 }
 
@@ -50,7 +50,7 @@ package_template() {
         --runtime-image "$WORK/template-runtime" --java-options "$NATIVE_ACCESS" \
         --add-launcher "${LAUNCHER_NAME}-console=$CONSOLE_LAUNCHER" \
         --dest "$WORK/template"
-    make_zip "$DIST/epysia-template-${TARGET}-${VERSION}.zip" "$WORK/template" "$LAUNCHER_NAME"
+    make_zip "$DIST/epysia-template-${TARGET}-${VERSION}.zip" "$WORK/template/$LAUNCHER_NAME"
 }
 
 package_editor_windows() {
