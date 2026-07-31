@@ -47,7 +47,12 @@ public final class Texture2D {
 
     public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format,
             TextureWrap wrap, SamplerFilter filter) {
-        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, wrap, filter);
+        return loadFrom(backend, source, format, wrap, filter, SamplingOptions.none());
+    }
+
+    public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format,
+            TextureWrap wrap, SamplerFilter filter, SamplingOptions sampling) {
+        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, wrap, filter, sampling);
     }
 
     public static TextureHandle load(RenderBackend backend, String path) {
@@ -59,17 +64,29 @@ public final class Texture2D {
     }
 
     public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap) {
-        return load(backend, path, format, wrap, importSettings(path).filter());
+        TextureImportSettings settings = importSettings(path);
+        return load(backend, path, format, wrap, settings.filter(), samplingOf(settings));
     }
 
     public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap,
             SamplerFilter filter) {
+        return load(backend, path, format, wrap, filter, samplingOf(importSettings(path)));
+    }
+
+    public static TextureHandle load(RenderBackend backend, String path, TextureFormat format, TextureWrap wrap,
+            SamplerFilter filter, SamplingOptions sampling) {
         AssetSource source = AssetResolvers.forPath(path, "").source()
                 .orElseThrow(() -> new EpysiaException("Texture resource not found: " + path));
         if (HighDynamicRangeImage.isHighDynamicRange(path)) {
-            return uploadHighDynamicRange(backend, decodeHighDynamicRange(path, source), wrap, filter);
+            return uploadHighDynamicRange(backend, decodeHighDynamicRange(path, source), wrap, filter, sampling);
         }
-        return loadFrom(backend, source, format, wrap, filter);
+        return loadFrom(backend, source, format, wrap, filter, sampling);
+    }
+
+    public static SamplingOptions samplingOf(TextureImportSettings settings) {
+        return settings.mipmaps()
+                ? SamplingOptions.mipmapped(settings.anisotropy())
+                : SamplingOptions.none();
     }
 
     private static HighDynamicRangeImage decodeHighDynamicRange(String path, AssetSource source) {
@@ -80,11 +97,16 @@ public final class Texture2D {
     }
 
     private static TextureHandle uploadHighDynamicRange(RenderBackend backend, HighDynamicRangeImage image,
-            TextureWrap wrap, SamplerFilter filter) {
+            TextureWrap wrap, SamplerFilter filter, SamplingOptions sampling) {
         try {
+            int mipLevels = sampling.mipmaps() ? mipLevelsFor(image.width(), image.height()) : 1;
             TextureHandle handle = backend.createTexture(new TextureDescriptor(image.width(), image.height(),
-                    TextureFormat.RGBA16F, TextureUsage.SAMPLED, filter, TextureKind.TEXTURE_2D, 1, 1, wrap));
+                    TextureFormat.RGBA16F, TextureUsage.SAMPLED, filter, TextureKind.TEXTURE_2D, mipLevels, 1,
+                    wrap, sampling.anisotropy()));
             backend.writeTexture(handle, image.pixels());
+            if (mipLevels > 1) {
+                backend.generateMipmaps(handle);
+            }
             return handle;
         } finally {
             image.free();
@@ -97,11 +119,17 @@ public final class Texture2D {
 
     private static Map<String, Object> metaOf(String path) {
         try {
-            Path file = Path.of(path);
+            Path file = Path.of(resolvedFilePath(path));
             return Files.isRegularFile(file) ? AssetMetaFile.settingsOf(file) : Map.of();
         } catch (InvalidPathException malformed) {
             return Map.of();
         }
+    }
+
+    private static String resolvedFilePath(String path) {
+        return AssetResolvers.forPath(path, "").source()
+                .map(AssetSource::path)
+                .orElse(path);
     }
 
     public static TextureHandle loadFromFile(RenderBackend backend, Path imagePath) {
@@ -148,10 +176,10 @@ public final class Texture2D {
 
     public static TextureHandle fromTilingPixels(RenderBackend backend, int width, int height,
                                                  ByteBuffer rgbaPixels, TextureFormat format) {
-        int mipLevels = 32 - Integer.numberOfLeadingZeros(Math.max(1, Math.max(width, height)));
+        int mipLevels = mipLevelsFor(width, height);
         TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height, format,
-                TextureUsage.SAMPLED, SamplerFilter.LINEAR, TextureKind.TEXTURE_2D, 1, mipLevels,
-                TextureWrap.REPEAT));
+                TextureUsage.SAMPLED, SamplerFilter.LINEAR, TextureKind.TEXTURE_2D, mipLevels, 1,
+                TextureWrap.REPEAT, TextureImportSettings.DEFAULT_ANISOTROPY));
         backend.writeTexture(handle, rgbaPixels);
         backend.generateMipmaps(handle);
         return handle;
@@ -181,7 +209,7 @@ public final class Texture2D {
     }
 
     private static TextureHandle decodeAndUpload(RenderBackend backend, ByteBuffer encodedBytes, TextureFormat format,
-            TextureWrap wrap, SamplerFilter filter) {
+            TextureWrap wrap, SamplerFilter filter, SamplingOptions sampling) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer widthBuffer = stack.mallocInt(1);
             IntBuffer heightBuffer = stack.mallocInt(1);
@@ -192,7 +220,8 @@ public final class Texture2D {
                 throw new EpysiaException("Image decode failed: " + STBImage.stbi_failure_reason());
             }
             try {
-                return upload(backend, widthBuffer.get(0), heightBuffer.get(0), pixels, format, wrap, filter);
+                return upload(backend, widthBuffer.get(0), heightBuffer.get(0), pixels, format, wrap,
+                        filter, sampling);
             } finally {
                 STBImage.stbi_image_free(pixels);
             }
@@ -224,9 +253,23 @@ public final class Texture2D {
 
     private static TextureHandle upload(RenderBackend backend, int width, int height, ByteBuffer pixels,
             TextureFormat format, TextureWrap wrap, SamplerFilter filter) {
+        return upload(backend, width, height, pixels, format, wrap, filter, SamplingOptions.none());
+    }
+
+    private static TextureHandle upload(RenderBackend backend, int width, int height, ByteBuffer pixels,
+            TextureFormat format, TextureWrap wrap, SamplerFilter filter, SamplingOptions sampling) {
+        int mipLevels = sampling.mipmaps() ? mipLevelsFor(width, height) : 1;
         TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height, format,
-                TextureUsage.SAMPLED, filter, TextureKind.TEXTURE_2D, 1, 1, wrap));
+                TextureUsage.SAMPLED, filter, TextureKind.TEXTURE_2D, mipLevels, 1, wrap,
+                sampling.anisotropy()));
         backend.writeTexture(handle, pixels);
+        if (mipLevels > 1) {
+            backend.generateMipmaps(handle);
+        }
         return handle;
+    }
+
+    public static int mipLevelsFor(int width, int height) {
+        return 32 - Integer.numberOfLeadingZeros(Math.max(1, Math.max(width, height)));
     }
 }

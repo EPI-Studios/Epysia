@@ -46,12 +46,20 @@ public record HighDynamicRangeImage(int width, int height, FloatBuffer pixels, b
                     MemoryUtil.memAddress(width), MemoryUtil.memAddress(height),
                     MemoryUtil.memAddress(stack.UTF8(file)), MemoryUtil.NULL, MemoryUtil.memAddress(error));
             if (status != TinyEXR.TINYEXR_SUCCESS) {
-                throw new EpysiaException("OpenEXR decode failed for " + file + ": " + messageOf(error));
+                throw new EpysiaException("OpenEXR decode failed for " + file + ": " + messageOf(error)
+                        + unsupportedCompressionHint(file));
             }
             FloatBuffer pixels = MemoryUtil.memFloatBuffer(out.get(0), width.get(0) * height.get(0) * 4);
             return new HighDynamicRangeImage(width.get(0), height.get(0), flipRows(pixels, width.get(0),
                     height.get(0)), true);
         }
+    }
+
+    private static String unsupportedCompressionHint(String file) {
+        return OpenExrHeader.compressionNameOf(file)
+                .map(name -> ". The file uses " + name + " compression, which the decoder does not support; "
+                        + "re-encode it as ZIP or PIZ, or convert it to PNG.")
+                .orElse("");
     }
 
     private static String messageOf(PointerBuffer error) {
