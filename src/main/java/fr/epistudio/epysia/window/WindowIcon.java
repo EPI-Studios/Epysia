@@ -13,7 +13,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import static org.lwjgl.glfw.GLFW.GLFW_WAYLAND_APP_ID;
+import static org.lwjgl.glfw.GLFW.GLFW_X11_CLASS_NAME;
+import static org.lwjgl.glfw.GLFW.GLFW_X11_INSTANCE_NAME;
 import static org.lwjgl.glfw.GLFW.glfwSetWindowIcon;
+import static org.lwjgl.glfw.GLFW.glfwWindowHintString;
 
 public final class WindowIcon {
 
@@ -23,7 +27,15 @@ public final class WindowIcon {
     private record Decoded(int width, int height, ByteBuffer pixels) {
     }
 
+    public static final String APPLICATION_CLASS = "Epysia";
+
     private WindowIcon() {
+    }
+
+    public static void hintApplicationClass() {
+        glfwWindowHintString(GLFW_X11_CLASS_NAME, APPLICATION_CLASS);
+        glfwWindowHintString(GLFW_X11_INSTANCE_NAME, APPLICATION_CLASS);
+        glfwWindowHintString(GLFW_WAYLAND_APP_ID, APPLICATION_CLASS);
     }
 
     public static void applyDefault(long handle) {

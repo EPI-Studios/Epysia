@@ -115,6 +115,8 @@ public final class EditorView implements FrameView {
     private final ProjectStore projectStore;
     private final EditorScene3DHost sceneHost;
     private final EditorCamera editorCamera;
+    private static final float BRAND_MARGIN = 6.0f;
+
     private final IconWidgets icons;
     private final ToastCenter toasts;
     private final ImGuiShell shell;
@@ -188,7 +190,7 @@ public final class EditorView implements FrameView {
         Supplier<SceneDocument> active = workspace::active;
         this.playSession = new EmbeddedPlaySession(sceneHost, serializer, project, projectStore,
                 active, toasts, editorConsole);
-        this.objectFactory = new GameObjectFactory(active, sceneHost.engine());
+        this.objectFactory = new GameObjectFactory(active, sceneHost.engine(), editorCamera::twoDimensional);
         this.importPipeline = new AssetImportPipeline(buildImporterRegistry(componentRegistry, sceneHost.backend()));
         this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::onScriptFileSaved);
         this.shaderGraphPreviews = new ShaderGraphPreviewService(sceneHost.window(), sceneHost.backend());
@@ -388,12 +390,24 @@ public final class EditorView implements FrameView {
         if (!ImGui.beginMainMenuBar()) {
             return;
         }
+        renderBrandMark();
         renderFileMenu();
         renderEditMenu();
         renderGameObjectMenu();
         renderWindowMenu();
         renderHelpMenu();
         ImGui.endMainMenuBar();
+    }
+
+    private void renderBrandMark() {
+        float size = ImGui.getFontSize();
+        ImGui.setCursorPosY(ImGui.getCursorPosY() + (ImGui.getFrameHeight() - size) * 0.5f);
+        ImGui.dummy(BRAND_MARGIN, 0.0f);
+        ImGui.sameLine();
+        icons.draw(EditorIcon.EPYSIA_LOGO, size);
+        ImGui.sameLine();
+        ImGui.dummy(BRAND_MARGIN, 0.0f);
+        ImGui.sameLine();
     }
 
     private void renderFileMenu() {

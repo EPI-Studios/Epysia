@@ -107,6 +107,7 @@ public final class Window implements RenderSurface {
             }
         }
         applyWindowHints();
+        WindowIcon.hintApplicationClass();
         handle = glfwCreateWindow(width, height, title, 0L, 0L);
         if (handle == 0L) {
             glfwTerminate();

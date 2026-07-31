@@ -1,9 +1,11 @@
 package fr.epistudio.epysia.editor.command.builtin;
 
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import org.joml.Matrix3x2f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -22,14 +24,33 @@ public final class ReparentCommand implements EditorCommand {
 
     @Override
     public void apply(CommandContext context) {
-        Transform3D childTransform = transformOf(child);
-        Optional<Transform3D> parentTransform = newParent.map(ReparentCommand::transformOf);
+        if (child.getComponent(Transform3D.class).isPresent()) {
+            applySpatial();
+            return;
+        }
+        applyPlanar();
+    }
+
+    private void applySpatial() {
+        Transform3D childTransform = spatialOf(child);
+        Optional<Transform3D> parentTransform = newParent.map(ReparentCommand::spatialOf);
         Matrix4f worldBefore = new Matrix4f(childTransform.worldMatrix());
-        boolean accepted = childTransform.setParent(parentTransform.orElse(null));
-        if (!accepted) {
+        if (!childTransform.setParent(parentTransform.orElse(null))) {
             throw new IllegalStateException("Reparenting would create a cycle");
         }
         applyLocalFromWorld(childTransform, parentTransform, worldBefore);
+    }
+
+    private void applyPlanar() {
+        Transform2D childTransform = planarOf(child);
+        Optional<Transform2D> parentTransform = newParent.map(ReparentCommand::planarOf);
+        Matrix3x2f worldBefore = new Matrix3x2f(childTransform.worldMatrix());
+        if (!childTransform.setParent(parentTransform.orElse(null))) {
+            throw new IllegalStateException("Reparenting would create a cycle");
+        }
+        childTransform.setLocalMatrix(parentTransform
+                .map(parent -> new Matrix3x2f(parent.worldMatrix()).invert().mul(worldBefore))
+                .orElse(worldBefore));
     }
 
     private static void applyLocalFromWorld(Transform3D childTransform,
@@ -48,8 +69,16 @@ public final class ReparentCommand implements EditorCommand {
 
     @Override
     public EditorCommand invert(CommandContext context) {
-        Optional<GameObject> currentParent = transformOf(child).parent().flatMap(Transform3D::owner);
-        return new ReparentCommand(child, currentParent);
+        return new ReparentCommand(child, currentParentOf(child));
+    }
+
+    private static Optional<GameObject> currentParentOf(GameObject gameObject) {
+        Optional<Transform3D> spatial = gameObject.getComponent(Transform3D.class);
+        if (spatial.isPresent()) {
+            return spatial.get().parent().flatMap(Transform3D::owner);
+        }
+        return gameObject.getComponent(Transform2D.class)
+                .flatMap(Transform2D::parent).flatMap(Transform2D::owner);
     }
 
     @Override
@@ -57,8 +86,13 @@ public final class ReparentCommand implements EditorCommand {
         return "Reparent " + child.name();
     }
 
-    private static Transform3D transformOf(GameObject gameObject) {
+    private static Transform3D spatialOf(GameObject gameObject) {
         return gameObject.getComponent(Transform3D.class)
                 .orElseThrow(() -> new IllegalStateException(gameObject.name() + " has no Transform3D"));
+    }
+
+    private static Transform2D planarOf(GameObject gameObject) {
+        return gameObject.getComponent(Transform2D.class)
+                .orElseThrow(() -> new IllegalStateException(gameObject.name() + " has no Transform2D"));
     }
 }

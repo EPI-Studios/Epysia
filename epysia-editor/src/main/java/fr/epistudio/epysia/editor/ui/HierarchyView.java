@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.components.IComponent;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.editor.EditorSelection;
@@ -408,16 +409,39 @@ public final class HierarchyView {
         if (dropped == target) {
             return;
         }
-        Optional<Transform3D> droppedTransform = dropped.getComponent(Transform3D.class);
-        Optional<Transform3D> targetTransform = target.getComponent(Transform3D.class);
-        if (droppedTransform.isEmpty() || targetTransform.isEmpty()) {
+        Optional<Transform3D> droppedSpatial = dropped.getComponent(Transform3D.class);
+        Optional<Transform3D> targetSpatial = target.getComponent(Transform3D.class);
+        if (droppedSpatial.isPresent() && targetSpatial.isPresent()) {
+            reparentSpatialOnto(dropped, target, droppedSpatial.get(), targetSpatial.get());
             return;
         }
-        if (isDescendantOf(targetTransform.get(), droppedTransform.get())) {
+        Optional<Transform2D> droppedPlanar = dropped.getComponent(Transform2D.class);
+        Optional<Transform2D> targetPlanar = target.getComponent(Transform2D.class);
+        if (droppedPlanar.isPresent() && targetPlanar.isPresent()) {
+            reparentPlanarOnto(dropped, target, droppedPlanar.get(), targetPlanar.get());
+            return;
+        }
+        notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_CANNOT_PARENT_MIXED));
+    }
+
+    private void reparentSpatialOnto(GameObject dropped, GameObject target,
+                                     Transform3D droppedTransform, Transform3D targetTransform) {
+        if (isDescendantOf(targetTransform, droppedTransform)) {
             notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_CANNOT_PARENT_TO_CHILD));
             return;
         }
-        if (targetTransform.get() != droppedTransform.get().parent().orElse(null)) {
+        if (targetTransform != droppedTransform.parent().orElse(null)) {
+            history().execute(new ReparentCommand(dropped, Optional.of(target)));
+        }
+    }
+
+    private void reparentPlanarOnto(GameObject dropped, GameObject target,
+                                    Transform2D droppedTransform, Transform2D targetTransform) {
+        if (isPlanarDescendantOf(targetTransform, droppedTransform)) {
+            notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_CANNOT_PARENT_TO_CHILD));
+            return;
+        }
+        if (targetTransform != droppedTransform.parent().orElse(null)) {
             history().execute(new ReparentCommand(dropped, Optional.of(target)));
         }
     }
@@ -434,17 +458,28 @@ public final class HierarchyView {
     }
 
     private void unparent(GameObject target) {
-        Optional<Transform3D> transform = target.getComponent(Transform3D.class);
-        if (transform.isEmpty() || transform.get().parent().isEmpty()) {
+        if (!hasParent(target)) {
             return;
         }
         history().execute(new ReparentCommand(target, Optional.empty()));
     }
 
     private static boolean hasParent(GameObject gameObject) {
-        return gameObject.getComponent(Transform3D.class)
-                .flatMap(Transform3D::parent)
-                .isPresent();
+        if (gameObject.getComponent(Transform3D.class).flatMap(Transform3D::parent).isPresent()) {
+            return true;
+        }
+        return gameObject.getComponent(Transform2D.class).flatMap(Transform2D::parent).isPresent();
+    }
+
+    private static boolean isPlanarDescendantOf(Transform2D candidate, Transform2D ancestor) {
+        Transform2D walker = candidate;
+        while (walker != null) {
+            if (walker == ancestor) {
+                return true;
+            }
+            walker = walker.parent().orElse(null);
+        }
+        return false;
     }
 
     private boolean isFiltering() {

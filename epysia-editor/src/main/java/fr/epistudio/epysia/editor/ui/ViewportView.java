@@ -729,15 +729,18 @@ public final class ViewportView {
         SmartSnap.Result result = SmartSnap.align(activeDocument.get().scene(), dragged.get(), transform,
                 SMART_SNAP_TOLERANCE_FRACTION * editorCamera.orthographicSize());
         smartSnapGuides = result.guides();
-        transform.setPosition(transform.position().x + result.correction().x,
-                transform.position().y + result.correction().y);
+        Vector2f snapped = transform.worldPosition(new Vector2f());
+        transform.setWorldPosition(snapped.x + result.correction().x,
+                snapped.y + result.correction().y);
     }
 
     private static Matrix4f planarWorldMatrix(Transform2D transform) {
+        Vector2f world = transform.worldPosition(new Vector2f());
+        Vector2f scale = transform.worldScale(new Vector2f());
         return new Matrix4f()
-                .translation(transform.position().x, transform.position().y, 0.0f)
-                .rotateZ(transform.rotationRadians())
-                .scale(transform.scale().x, transform.scale().y, 1.0f);
+                .translation(world.x, world.y, 0.0f)
+                .rotateZ(transform.worldRotationRadians())
+                .scale(scale.x, scale.y, 1.0f);
     }
 
     private static int planarOperation(int operation) {
@@ -776,9 +779,9 @@ public final class ViewportView {
         Matrix4f orthonormal = world.normalize3x3(new Matrix4f());
         float rotation = (float) Math.atan2(orthonormal.m01(), orthonormal.m00());
         Vector3f scale = world.getScale(new Vector3f());
-        transform.setPosition(position.x, position.y);
-        transform.setRotationRadians(rotation);
-        transform.setScale(scale.x, scale.y);
+        transform.setWorldPosition(position.x, position.y);
+        transform.setWorldRotationRadians(rotation);
+        transform.setWorldScale(scale.x, scale.y);
         transform.markDirty();
     }
 
@@ -1153,7 +1156,7 @@ public final class ViewportView {
     private int[] cellAtMouse(Transform2D transform, SpriteTilemap tilemap,
                               float imageX, float imageY, int width, int height) {
         Vector3f world = viewportWorldOnPlane(imageX, imageY, width, height);
-        Vector2f local = new Matrix3x2f(transform.localMatrix()).invert()
+        Vector2f local = new Matrix3x2f(transform.worldMatrix()).invert()
                 .transformPosition(new Vector2f(world.x, world.y));
         int cellX = (int) Math.floor(local.x / tilemap.cellWidth());
         int cellY = (int) Math.floor(local.y / tilemap.cellHeight());
@@ -1250,7 +1253,7 @@ public final class ViewportView {
 
     private Vector2f localToScreen(Transform2D transform, float localX, float localY,
                                    float imageX, float imageY, int width, int height) {
-        Vector2f world = transform.localMatrix().transformPosition(new Vector2f(localX, localY));
+        Vector2f world = transform.worldMatrix().transformPosition(new Vector2f(localX, localY));
         Vector4f clip = editorCamera.camera().viewProjection()
                 .transform(new Vector4f(world.x, world.y, 0.0f, 1.0f));
         float screenX = imageX + (clip.x / clip.w * 0.5f + 0.5f) * width;

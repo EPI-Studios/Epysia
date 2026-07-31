@@ -38,7 +38,8 @@ public final class PivotHandle {
     public Optional<EditorCommand> render(Transform2D transform, Vector2f halfExtents,
                                           WorldToScreen projection, Vector2f mouseWorld,
                                           boolean viewportHovered) {
-        Vector2f handleScreen = projection.screenOf(transform.position().x, transform.position().y);
+        Vector2f anchor = transform.worldPosition(new Vector2f());
+        Vector2f handleScreen = projection.screenOf(anchor.x, anchor.y);
         drawBounds(transform, halfExtents, projection);
         boolean active = dragged.isPresent();
         drawHandle(ImGui.getWindowDrawList(), handleScreen, active || withinGrab(handleScreen));
@@ -73,14 +74,15 @@ public final class PivotHandle {
         if (basis.isEmpty()) {
             return;
         }
+        Vector2f anchor = transform.worldPosition(new Vector2f());
         Vector2f delta = basis.get().transformDirection(
-                new Vector2f(mouseWorld.x - transform.position().x, mouseWorld.y - transform.position().y));
+                new Vector2f(mouseWorld.x - anchor.x, mouseWorld.y - anchor.y));
         Vector2f pivot = new Vector2f(transform.pivot()).add(delta);
         snap(pivot, halfExtents);
         Vector2f offset = new Vector2f(pivot).sub(transform.pivot());
         Vector2f worldOffset = basisOf(transform).transformDirection(offset);
         transform.setPivot(pivot.x, pivot.y);
-        transform.setPosition(transform.position().x + worldOffset.x, transform.position().y + worldOffset.y);
+        transform.setWorldPosition(anchor.x + worldOffset.x, anchor.y + worldOffset.y);
         transform.markDirty();
     }
 
@@ -149,7 +151,7 @@ public final class PivotHandle {
         if (halfExtents.x <= 0.0f || halfExtents.y <= 0.0f) {
             return;
         }
-        Matrix3x2f matrix = transform.localMatrix();
+        Matrix3x2f matrix = transform.worldMatrix();
         Vector2f cornerA = cornerScreen(matrix, projection, -halfExtents.x, -halfExtents.y);
         Vector2f cornerB = cornerScreen(matrix, projection, halfExtents.x, -halfExtents.y);
         Vector2f cornerC = cornerScreen(matrix, projection, halfExtents.x, halfExtents.y);

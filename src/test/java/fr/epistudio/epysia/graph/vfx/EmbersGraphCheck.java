@@ -17,7 +17,10 @@ class EmbersGraphCheck {
 
     @Test
     void embersExampleCompiles() throws Exception {
-        String json = Files.readString(Path.of("examples/resources/vfx/Embers.epygraph"));
+        String json;
+        try (InputStream graph = EmbersGraphCheck.class.getResourceAsStream("/vfx/Embers.epygraph")) {
+            json = new String(graph.readAllBytes(), StandardCharsets.UTF_8);
+        }
         GraphAsset asset = new GraphJsonCodec().read(json);
         String common;
         try (InputStream stream = EmbersGraphCheck.class

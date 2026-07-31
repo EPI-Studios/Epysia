@@ -23,6 +23,7 @@ import fr.epistudio.epysia.physics.components.TilemapCollider2D;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Vector3f;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 public final class GameObjectFactory {
@@ -31,10 +32,13 @@ public final class GameObjectFactory {
 
     private final Supplier<SceneDocument> activeDocument;
     private final EngineServices services;
+    private final BooleanSupplier twoDimensional;
 
-    public GameObjectFactory(Supplier<SceneDocument> activeDocument, EngineServices services) {
+    public GameObjectFactory(Supplier<SceneDocument> activeDocument, EngineServices services,
+                             BooleanSupplier twoDimensional) {
         this.activeDocument = activeDocument;
         this.services = services;
+        this.twoDimensional = twoDimensional;
     }
 
     public GameObject createPrimitive(Primitive primitive, Vector3f position) {
@@ -116,7 +120,11 @@ public final class GameObjectFactory {
 
     public GameObject createEmpty(Vector3f position) {
         GameObject gameObject = new GameObject(uniqueName("GameObject"));
-        gameObject.addComponent(new Transform3D().setPosition(position.x, position.y, position.z));
+        if (twoDimensional.getAsBoolean()) {
+            gameObject.addComponent(new Transform2D().setPosition(position.x, position.y));
+        } else {
+            gameObject.addComponent(new Transform3D().setPosition(position.x, position.y, position.z));
+        }
         commit(gameObject);
         return gameObject;
     }

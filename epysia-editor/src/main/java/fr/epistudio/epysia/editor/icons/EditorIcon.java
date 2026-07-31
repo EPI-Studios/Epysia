@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.icons;
 
 public enum EditorIcon {
+    EPYSIA_LOGO("EpysiaLogo"),
     ACTION_COPY("ActionCopy"),
     ACTION_PASTE("ActionPaste"),
     ADD("Add"),
