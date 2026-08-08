@@ -18,6 +18,11 @@ java {
 repositories {
     mavenLocal()
     mavenCentral()
+    maven {
+        name = 'henkelmax.public'
+        url = 'https://maven.maxhenkel.de/repository/public'
+        content { includeGroupByRegex 'de\\.maxhenkel.*' }
+    }
 }
 
 if (rootProject == project) {
@@ -113,4 +118,25 @@ tasks.register('editorJar', ShadowJar) {
     }
     mergeServiceFiles()
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register('exportGame', JavaExec) {
+    group = 'distribution'
+    description = 'Exports a project to a runnable game folder without opening the editor.'
+    classpath = files(rootProject.sourceSets.main.output) + sourceSets.main.runtimeClasspath
+    mainClass = 'fr.epistudio.epysia.editor.EditorMain'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    doFirst {
+        def gameProject = project.findProperty('exportProject')
+        def output = project.findProperty('exportOutput')
+        if (!gameProject || !output) {
+            throw new GradleException('exportGame needs -PexportProject=<directory> and '
+                    + '-PexportOutput=<directory>.')
+        }
+        args = ['--export', output.toString(), '--project', gameProject.toString(),
+                '--title', (project.findProperty('exportTitle') ?: 'Epysia Game').toString(),
+                '--platform', (project.findProperty('exportPlatform') ?: 'linux-x64').toString()]
+        def icon = project.findProperty('exportIcon')
+        if (icon) args += ['--icon', icon.toString()]
+    }
 }
