@@ -5,6 +5,7 @@ public enum TextureFormat {
     SRGB8_ALPHA8,
     RGBA16F,
     R11G11B10F,
+    R16F,
     R32F,
     DEPTH32F,
     DEPTH32F_STENCIL8

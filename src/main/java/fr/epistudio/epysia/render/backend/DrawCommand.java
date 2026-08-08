@@ -9,16 +9,31 @@ public record DrawCommand(
         int indexCountOverride,
         BufferHandle instanceBuffer,
         BufferHandle indirectBuffer,
-        int indirectDrawCount
+        int indirectDrawCount,
+        int firstIndexOverride,
+        ScissorRect scissor
 ) {
-
     public static final int USE_MESH_INDEX_COUNT = -1;
+    public static final int USE_MESH_FIRST_INDEX = -1;
+
+    public DrawCommand(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey,
+                       int instanceCount, int indexCountOverride, BufferHandle instanceBuffer,
+                       BufferHandle indirectBuffer, int indirectDrawCount) {
+        this(pipeline, mesh, bindings, sortKey, instanceCount, indexCountOverride,
+                instanceBuffer, indirectBuffer, indirectDrawCount, USE_MESH_FIRST_INDEX, ScissorRect.disabled());
+    }
 
     public DrawCommand(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings, long sortKey,
                        int instanceCount, int indexCountOverride, BufferHandle instanceBuffer,
                        BufferHandle indirectBuffer) {
         this(pipeline, mesh, bindings, sortKey, instanceCount, indexCountOverride,
                 instanceBuffer, indirectBuffer, 1);
+    }
+
+    public static DrawCommand range(PipelineHandle pipeline, MeshHandle mesh, BindingSetHandle bindings,
+                                    long sortKey, int firstIndex, int indexCount, ScissorRect scissor) {
+        return new DrawCommand(pipeline, mesh, bindings, sortKey, 1, indexCount,
+                null, null, 1, firstIndex, scissor);
     }
 
     public boolean isMultiDraw() {

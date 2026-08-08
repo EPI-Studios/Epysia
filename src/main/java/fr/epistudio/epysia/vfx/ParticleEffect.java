@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.vfx;
 
 import fr.epistudio.epysia.components.Component;
+import fr.epistudio.epysia.components.EditorAction;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import org.joml.Vector3fc;
@@ -10,7 +11,6 @@ import java.util.List;
 
 @EpysiaComponent(name = "Particle Effect", category = "Effects")
 public final class ParticleEffect extends Component {
-
     public enum SizeUnit {
         WORLD,
         PIXELS
@@ -66,6 +66,7 @@ public final class ParticleEffect extends Component {
     private List<ParticleBurst> decodedBursts = List.of();
     private String decodedBurstsSource = "";
     private boolean prewarmDone;
+    private boolean poolResetRequested;
     private int settleFrames;
     private long totalSpawned;
 
@@ -185,7 +186,15 @@ public final class ParticleEffect extends Component {
         return this;
     }
 
+    public boolean hasFinished() {
+        return !looping && emission.elapsedSeconds() >= durationSeconds();
+    }
+
     public ParticleEffect setPlaying(boolean value) {
+        if (value && !playing && hasFinished()) {
+            restart();
+            return this;
+        }
         playing = value;
         return this;
     }
@@ -269,11 +278,20 @@ public final class ParticleEffect extends Component {
         return Math.min(deltaSeconds, PREWARM_STEP_SECONDS);
     }
 
+    @EditorAction(label = "Restart", tooltip = "Rewind the emitter and play the effect again")
     public void restart() {
         emission.restart();
         prewarmDone = false;
         settleFrames = 0;
         totalSpawned = 0L;
+        playing = true;
+        poolResetRequested = true;
+    }
+
+    public boolean consumePoolResetRequest() {
+        boolean requested = poolResetRequested;
+        poolResetRequested = false;
+        return requested;
     }
 
     public long totalSpawned() {

@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
 
 public final class ShaderLoader {
 
@@ -62,7 +63,7 @@ public final class ShaderLoader {
     public LoadedShader load(String relativePath) {
         Set<String> dependencies = new LinkedHashSet<>();
         String resolved = resolveIncludes(relativePath, dependencies);
-        return new LoadedShader(resolved, java.util.List.copyOf(dependencies));
+        return new LoadedShader(resolved, List.copyOf(dependencies));
     }
 
     private String resolveIncludes(String shaderPath, Set<String> alreadyIncluded) {

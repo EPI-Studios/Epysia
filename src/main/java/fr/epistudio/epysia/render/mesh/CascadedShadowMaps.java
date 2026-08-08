@@ -39,10 +39,10 @@ import java.util.List;
 import java.util.Set;
 
 final class CascadedShadowMaps {
-
     static final int CASCADE_COUNT = Integer.getInteger("epysia.shadow.cascades", 3);
-    private static final int SHADOW_MAP_SIZE = Integer.getInteger("epysia.shadow.size", 1024);
+    static final int SHADOW_MAP_SIZE = Integer.getInteger("epysia.shadow.size", 1024);
     private static final float SPLIT_LAMBDA = 0.75f;
+    private static final int DEPTH_SNAP_STEPS = Integer.getInteger("epysia.shadow.depthSteps", 64);
     private static final String SHADOW_VERTEX_PATH = "shadow.vert.glsl";
     private static final String SHADOW_FRAGMENT_PATH = "shadow.frag.glsl";
     private static final String MASKED_VERTEX_PATH = "shadow_masked.vert.glsl";
@@ -62,6 +62,7 @@ final class CascadedShadowMaps {
     private final SurfaceShadowVariants maskedSurfaceVariants;
 
     private final Matrix4f[] cascadeMatrices = createMatrices();
+    private boolean staticLayerReuse;
     private static final float CASTER_CULL_LIGHT_EXTENSION = 64.0f;
     private final Matrix4f[] cascadeCullMatrices = createMatrices();
     private final FrustumIntersection[] cascadeFrusta = createCascadeFrusta();
@@ -72,6 +73,8 @@ final class CascadedShadowMaps {
     private final ShadowStatistics statistics;
     private long sceneModificationCount;
     private static final int[] CASCADE_UPDATE_CADENCE = {1, 2, 4};
+    private static final boolean REFIT_THROTTLE_ENABLED =
+            Boolean.parseBoolean(System.getProperty("epysia.shadow.refitThrottle", "false"));
     private static final float CASCADE_REFIT_DRIFT_FRACTION = 0.25f;
     private final Vector3f[] frozenCenters = createCenters();
     private final float[] frozenRadii = new float[CASCADE_COUNT];
@@ -118,6 +121,7 @@ final class CascadedShadowMaps {
         this.statistics = statistics;
         this.splitRenderer = new ShadowSplitRenderer(statistics, SHADOW_MAP_SIZE, CASCADE_COUNT);
         this.splitRenderer.setLayerFilter(this::casterVisibleInCascade);
+        setStaticLayerReuse(Boolean.parseBoolean(System.getProperty("epysia.shadow.scroll", "false")));
         this.surfaceVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
                 SHADOW_VERTEX_PATH, SHADOW_FRAGMENT_PATH, CASTER_STATE, pipelineInvalidation);
         this.maskedSurfaceVariants = new SurfaceShadowVariants(shaderLoader, shaderWatcher, logger,
@@ -222,7 +226,6 @@ final class CascadedShadowMaps {
         return maskedSkinnedBindingLayout;
     }
 
-
     BufferHandle cascadeUbo() {
         return cascadeUbo;
     }
@@ -233,6 +236,21 @@ final class CascadedShadowMaps {
 
     int activeCascadeCount() {
         return cascadesActive ? CASCADE_COUNT : 0;
+    }
+
+    void setStaticLayerReuse(boolean enabled) {
+        if (enabled == staticLayerReuse) {
+            return;
+        }
+        staticLayerReuse = enabled;
+        splitRenderer.setStaticViews(enabled
+                ? new CascadeStaticViews(cascadeMatrices, SHADOW_MAP_SIZE)
+                : ShadowStaticViews.FIXED);
+        invalidateCache();
+    }
+
+    boolean staticLayerReuse() {
+        return staticLayerReuse;
     }
 
     Matrix4f cascadeMatrix(int cascade) {
@@ -341,6 +359,9 @@ final class CascadedShadowMaps {
     }
 
     private boolean consumeFarCascadeRefit() {
+        if (!REFIT_THROTTLE_ENABLED) {
+            return true;
+        }
         if (farCascadeRefitUsedThisFrame) {
             return false;
         }
@@ -383,9 +404,12 @@ final class CascadedShadowMaps {
         scratchOrigin.set(0.0f, 0.0f, 0.0f, 1.0f);
         matrix.transform(scratchOrigin);
         float halfSize = SHADOW_MAP_SIZE * 0.5f;
+        float halfDepthSteps = DEPTH_SNAP_STEPS * 0.5f;
         float snappedX = Math.round(scratchOrigin.x * halfSize) / halfSize;
         float snappedY = Math.round(scratchOrigin.y * halfSize) / halfSize;
-        scratchSnap.translation(snappedX - scratchOrigin.x, snappedY - scratchOrigin.y, 0.0f);
+        float snappedZ = Math.round(scratchOrigin.z * halfDepthSteps) / halfDepthSteps;
+        scratchSnap.translation(snappedX - scratchOrigin.x, snappedY - scratchOrigin.y,
+                snappedZ - scratchOrigin.z);
         scratchSnap.mul(matrix, matrix);
     }
 

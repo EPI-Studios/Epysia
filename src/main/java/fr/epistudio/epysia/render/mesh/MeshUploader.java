@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.Optional;
 
 public final class MeshUploader {
-
     private static final int MAX_SHORT_INDEXED_VERTICES = 65536;
 
     private MeshUploader() {
@@ -44,6 +43,7 @@ public final class MeshUploader {
                 arena.vertexBuffer(),
                 arena.indexBuffer(),
                 uploadedSubmeshes,
+                data.vertexCount(),
                 Aabb.fromPositions(data.positions()),
                 data.hasSkin(),
                 data.hasVertexColors(),
@@ -110,6 +110,7 @@ public final class MeshUploader {
                 vertexBuffer,
                 indexBuffer,
                 uploadedSubmeshes,
+                data.vertexCount(),
                 Aabb.fromPositions(data.positions()),
                 data.hasSkin(),
                 data.hasVertexColors(),

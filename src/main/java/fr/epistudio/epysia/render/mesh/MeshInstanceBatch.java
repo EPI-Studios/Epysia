@@ -9,7 +9,6 @@ import org.lwjgl.BufferUtils;
 import java.nio.ByteBuffer;
 
 final class MeshInstanceBatch {
-
     private static final int INITIAL_CAPACITY = 8;
     private static final int INSTANCE_FLOAT_COUNT = MeshShaderBindings.INSTANCE_TRANSFORM_BYTES / Float.BYTES;
 
@@ -30,6 +29,7 @@ final class MeshInstanceBatch {
     private long minDepthBits;
     private long transformHash;
     private long uploadHash;
+    private int slotsPending;
     private long lastUploadedHash;
 
     private static final BindingSetHandle[] NO_BINDINGS = new BindingSetHandle[0];
@@ -179,10 +179,11 @@ final class MeshInstanceBatch {
     }
 
     boolean uploadUnchangedSinceLastFrame() {
-        return uploadHash == lastUploadedHash;
+        return uploadHash == lastUploadedHash && slotsPending <= 0;
     }
 
-    void markUploaded() {
+    void markUploaded(int ringSlots) {
+        slotsPending = uploadHash == lastUploadedHash ? slotsPending - 1 : ringSlots - 1;
         lastUploadedHash = uploadHash;
     }
 

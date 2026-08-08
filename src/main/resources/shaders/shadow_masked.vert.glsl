@@ -32,6 +32,8 @@ vec3 skinPosition(vec3 position) {
 #endif
 
 out vec2 vertexUv;
+out vec3 vertexWorldPosition;
+out vec3 vertexWorldNormal;
 
 int surfaceInstanceIndex;
 
@@ -48,5 +50,7 @@ void main() {
     vec4 worldPosition = OBJECT_MODEL * vec4(localPosition, 1.0);
     surfaceInstanceIndex = OBJECT_INSTANCE_INDEX;
     // SURFACE_VERTEX_CALL
+    vertexWorldPosition = worldPosition.xyz;
+    vertexWorldNormal = normalize(mat3(OBJECT_NORMAL_MATRIX) * inNormal);
     gl_Position = frame.cascadeViewProjection[cascade.index.x] * worldPosition;
 }

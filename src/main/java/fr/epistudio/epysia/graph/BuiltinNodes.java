@@ -20,7 +20,6 @@ import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class BuiltinNodes {
-
     public static final String IN_PIN = "In";
     public static final String OUT_PIN = "Out";
     public static final String VALUE_PIN = "Value";
@@ -149,7 +148,7 @@ public final class BuiltinNodes {
         registry.register(dataNode(INPUT_ACTION_AXIS, "Action Axis", CATEGORY_INPUT, true,
                 List.of(),
                 List.of(new PinDefinition(VALUE_PIN, PinType.FLOAT)),
-                List.of(new NodeSetting(ACTION_SETTING, SettingKind.ACTION_NAME, InputActions.MOVE_RIGHT)),
+                List.of(new NodeSetting(ACTION_SETTING, SettingKind.ACTION_NAME, InputActions.UNNAMED_ACTION)),
                 context -> context.setOutput(VALUE_PIN, actionsOf(context)
                         .value(actionNameOf(context), context.inputState()))));
     }
@@ -158,7 +157,7 @@ public final class BuiltinNodes {
         return dataNode(typeKey, displayName, CATEGORY_INPUT, true,
                 List.of(),
                 List.of(new PinDefinition(VALUE_PIN, PinType.BOOLEAN)),
-                List.of(new NodeSetting(ACTION_SETTING, SettingKind.ACTION_NAME, InputActions.JUMP)),
+                List.of(new NodeSetting(ACTION_SETTING, SettingKind.ACTION_NAME, InputActions.UNNAMED_ACTION)),
                 context -> context.setOutput(VALUE_PIN,
                         test.matches(actionsOf(context), actionNameOf(context), context.inputState())));
     }
@@ -172,7 +171,7 @@ public final class BuiltinNodes {
     }
 
     private static String actionNameOf(NodeContext context) {
-        return context.settingString(ACTION_SETTING, InputActions.JUMP);
+        return context.settingString(ACTION_SETTING, InputActions.UNNAMED_ACTION);
     }
 
     private static void runInputAxis(NodeContext context) {

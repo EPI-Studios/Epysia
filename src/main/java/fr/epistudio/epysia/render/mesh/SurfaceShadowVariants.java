@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 
 final class SurfaceShadowVariants {
-
     private final ShaderLoader shaderLoader;
     private final ShaderWatcher shaderWatcher;
     private final Logger logger;
@@ -32,6 +31,7 @@ final class SurfaceShadowVariants {
     private final String fragmentPath;
     private final RenderState renderState;
     private final Runnable pipelineInvalidation;
+    private final boolean cutoutFragment;
     private record Variant(String surfacePath, boolean frozenTime, boolean skinned, boolean colored,
                            boolean doubleSided) {
     }
@@ -46,6 +46,13 @@ final class SurfaceShadowVariants {
     SurfaceShadowVariants(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger,
                           String vertexPath, String fragmentPath, RenderState renderState,
                           Runnable pipelineInvalidation) {
+        this(shaderLoader, shaderWatcher, logger, vertexPath, fragmentPath, renderState,
+                pipelineInvalidation, false);
+    }
+
+    SurfaceShadowVariants(ShaderLoader shaderLoader, ShaderWatcher shaderWatcher, Logger logger,
+                          String vertexPath, String fragmentPath, RenderState renderState,
+                          Runnable pipelineInvalidation, boolean cutoutFragment) {
         this.shaderLoader = shaderLoader;
         this.shaderWatcher = shaderWatcher;
         this.logger = logger;
@@ -53,6 +60,7 @@ final class SurfaceShadowVariants {
         this.fragmentPath = fragmentPath;
         this.renderState = renderState;
         this.pipelineInvalidation = pipelineInvalidation;
+        this.cutoutFragment = cutoutFragment;
     }
 
     void initialize(RenderBackend backend, BindingSetLayout bindingLayout, PipelineHandle basePipeline) {
@@ -128,7 +136,18 @@ final class SurfaceShadowVariants {
     }
 
     private ShaderSource loadShaderSource(Variant variant) {
-        return new ShaderSource(composeVertex(variant).source(), shaderLoader.load(fragmentPath).source());
+        return new ShaderSource(composeVertex(variant).source(), composeFragment(variant).source());
+    }
+
+    private LoadedShader composeFragment(Variant variant) {
+        LoadedShader fragment = shaderLoader.load(fragmentPath);
+        if (!cutoutFragment || variant.surfacePath().isEmpty()) {
+            return fragment;
+        }
+        LoadedShader surface = shaderLoader.load(variant.surfacePath());
+        return SurfaceShaderComposer.declaresCutout(surface)
+                ? SurfaceShaderComposer.composeCutoutFragment(fragment, surface)
+                : fragment;
     }
 
     private LoadedShader composeVertex(Variant variant) {

@@ -50,7 +50,6 @@ import java.nio.FloatBuffer;
 import java.util.List;
 
 public final class TextRenderSystem implements RenderSystem {
-
     private static final String VERTEX_PATH = "text.vert.glsl";
     private static final String FRAGMENT_PATH = "text.frag.glsl";
     private static final String FONT_RESOURCE = "fonts/AdwaitaMono-Regular.ttf";
@@ -159,11 +158,9 @@ public final class TextRenderSystem implements RenderSystem {
                     yPosition.put(0, yPosition.get(0) + lineHeight);
                     continue;
                 }
-                if (character < Font.FIRST_CHAR || character >= Font.FIRST_CHAR + Font.CHAR_COUNT) {
+                if (!font.appendQuad(character, xPosition, yPosition, quad)) {
                     continue;
                 }
-                STBTruetype.stbtt_GetBakedQuad(font.characterData(), Font.ATLAS_SIZE, Font.ATLAS_SIZE,
-                        character - Font.FIRST_CHAR, xPosition, yPosition, quad, true);
                 appendQuad(quad, quadCount);
                 quadCount++;
             }

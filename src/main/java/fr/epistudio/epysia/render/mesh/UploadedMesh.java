@@ -13,6 +13,7 @@ public record UploadedMesh(
         BufferHandle vertexBuffer,
         BufferHandle indexBuffer,
         List<UploadedSubmesh> submeshes,
+        int vertexCount,
         Aabb localBounds,
         boolean skinned,
         boolean vertexColored,
@@ -20,11 +21,10 @@ public record UploadedMesh(
         Optional<StorageBufferBinding> lightmapUvs,
         Optional<ArenaPlacement> arenaPlacement
 ) {
-
     public UploadedMesh(BufferHandle vertexBuffer, BufferHandle indexBuffer, List<UploadedSubmesh> submeshes,
-                        Aabb localBounds, boolean skinned, boolean vertexColored, Optional<Skeleton> skeleton,
-                        Optional<StorageBufferBinding> lightmapUvs) {
-        this(vertexBuffer, indexBuffer, submeshes, localBounds, skinned, vertexColored, skeleton,
+                        int vertexCount, Aabb localBounds, boolean skinned, boolean vertexColored,
+                        Optional<Skeleton> skeleton, Optional<StorageBufferBinding> lightmapUvs) {
+        this(vertexBuffer, indexBuffer, submeshes, vertexCount, localBounds, skinned, vertexColored, skeleton,
                 lightmapUvs, Optional.empty());
     }
 
@@ -40,8 +40,10 @@ public record UploadedMesh(
     }
 
     public UploadedMesh(BufferHandle vertexBuffer, BufferHandle indexBuffer, List<UploadedSubmesh> submeshes,
-                        Aabb localBounds, boolean skinned, boolean vertexColored, Optional<Skeleton> skeleton) {
-        this(vertexBuffer, indexBuffer, submeshes, localBounds, skinned, vertexColored, skeleton, Optional.empty());
+                        int vertexCount, Aabb localBounds, boolean skinned, boolean vertexColored,
+                        Optional<Skeleton> skeleton) {
+        this(vertexBuffer, indexBuffer, submeshes, vertexCount, localBounds, skinned, vertexColored, skeleton,
+                Optional.empty());
     }
 
     public boolean lightmapped() {

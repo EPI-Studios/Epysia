@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.render.mesh;
 
+import java.util.Arrays;
 public final class VertexCacheOptimizer {
 
     public static final int SIMULATED_CACHE_SIZE = 32;
@@ -19,7 +20,7 @@ public final class VertexCacheOptimizer {
             return 0.0f;
         }
         int[] cache = new int[cacheSize];
-        java.util.Arrays.fill(cache, -1);
+        Arrays.fill(cache, -1);
         int cursor = 0;
         int misses = 0;
         for (int index : indices) {
@@ -62,7 +63,7 @@ public final class VertexCacheOptimizer {
     }
 
     private static void optimizeRange(int[] indices, Submesh submesh, int vertexCount) {
-        int[] range = java.util.Arrays.copyOfRange(indices, submesh.indexOffset(),
+        int[] range = Arrays.copyOfRange(indices, submesh.indexOffset(),
                 submesh.indexOffset() + submesh.indexCount());
         int[] optimized = optimizeIndices(range, vertexCount);
         System.arraycopy(optimized, 0, indices, submesh.indexOffset(), optimized.length);
@@ -77,7 +78,7 @@ public final class VertexCacheOptimizer {
 
     public static int[] fetchOrderPermutation(int[] indices, int vertexCount) {
         int[] remap = new int[vertexCount];
-        java.util.Arrays.fill(remap, -1);
+        Arrays.fill(remap, -1);
         int next = 0;
         for (int index : indices) {
             if (remap[index] < 0) {
@@ -149,7 +150,7 @@ public final class VertexCacheOptimizer {
             this.trianglesByVertex = new int[triangleCount * 3];
             this.triangleScore = new float[triangleCount];
             this.emitted = new boolean[triangleCount];
-            java.util.Arrays.fill(cachePosition, NOT_IN_CACHE);
+            Arrays.fill(cachePosition, NOT_IN_CACHE);
         }
 
         private int[] solve() {

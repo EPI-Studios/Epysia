@@ -60,7 +60,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class SpriteRenderSystem implements RenderSystem {
-
     private static final String VERTEX_PATH = "sprite.vert.glsl";
     private static final String FRAGMENT_PATH = "sprite.frag.glsl";
     private static final String LIT_VERTEX_PATH = "sprite_lit.vert.glsl";
@@ -71,14 +70,13 @@ public final class SpriteRenderSystem implements RenderSystem {
     private static final int INITIAL_QUAD_CAPACITY = 1024;
 
     private record SpriteEntry(Transform2D transform, SpriteRenderer sprite, TextureHandle texture) {
-
         boolean lit() {
             return sprite.lit();
         }
 
         int effectiveOrder() {
             return sprite.sortByY()
-                    ? SpriteSortKeys.orderFromWorldY(transform.position().y)
+                    ? SpriteSortKeys.orderFromWorldY(transform.worldPosition(new Vector2f()).y)
                     : sprite.orderInLayer();
         }
     }
@@ -116,8 +114,8 @@ public final class SpriteRenderSystem implements RenderSystem {
     private final MeshRenderSystem meshRenderSystem;
     private final Logger logger;
     private final List<SpriteEntry> entries = new ArrayList<>();
-    private final Map<Long, BindingSetHandle> bindingsByTexture = new HashMap<>();
-    private final Map<TextureSet, BindingSetHandle> litBindingsByTextures = new HashMap<>();
+    private final Map<BindingKey, BindingSetHandle> bindingsByTexture = new HashMap<>();
+    private final Map<LitBindingKey, BindingSetHandle> litBindingsByTextures = new HashMap<>();
     private final Light2dStorage light2dStorage = new Light2dStorage();
     private final Map<PipelineKey, PipelineHandle> pipelinesByKey = new HashMap<>();
     private final Map<PipelineKey, ParsedSource> parsedByKey = new HashMap<>();
@@ -137,6 +135,7 @@ public final class SpriteRenderSystem implements RenderSystem {
     private BufferHandle vertexBuffer;
     private BufferHandle indexBuffer;
     private ByteBuffer vertexScratch;
+    private Object2dUniform identityObject;
     private int quadCapacity;
 
     public SpriteRenderSystem(ShaderLoader shaderLoader, MeshRenderSystem meshRenderSystem, Logger logger) {
@@ -157,7 +156,8 @@ public final class SpriteRenderSystem implements RenderSystem {
         this.backend = backend;
         bindingLayout = new BindingSetLayout(List.of(
                 new BindingSlot(0, BindingType.UNIFORM_BUFFER),
-                new BindingSlot(1, BindingType.SAMPLED_TEXTURE_2D)
+                new BindingSlot(1, BindingType.SAMPLED_TEXTURE_2D),
+                new BindingSlot(Object2dUniform.BINDING, BindingType.UNIFORM_BUFFER)
         ));
         litBindingLayout = new BindingSetLayout(List.of(
                 new BindingSlot(0, BindingType.UNIFORM_BUFFER),
@@ -165,8 +165,10 @@ public final class SpriteRenderSystem implements RenderSystem {
                 new BindingSlot(2, BindingType.SAMPLED_TEXTURE_2D),
                 new BindingSlot(3, BindingType.SAMPLED_TEXTURE_2D),
                 new BindingSlot(4, BindingType.SAMPLED_TEXTURE_2D),
+                new BindingSlot(Object2dUniform.BINDING, BindingType.UNIFORM_BUFFER),
                 new BindingSlot(6, BindingType.STORAGE_BUFFER)
         ));
+        identityObject = new Object2dUniform(backend);
         pipeline = backend.createPipeline(buildPipelineDescriptor());
         litPipeline = backend.createPipeline(buildLitPipelineDescriptor());
         light2dStorage.initialize(backend);
@@ -278,7 +280,7 @@ public final class SpriteRenderSystem implements RenderSystem {
         float topV = sprite.flipY() ? sprite.regionMinV() : sprite.regionMaxV();
         float centerX = mirroredCenter(sprite, sprite.flipX(), entry.transform().pivot().x);
         float centerY = mirroredCenter(sprite, sprite.flipY(), entry.transform().pivot().y);
-        Matrix3x2f matrix = entry.transform().localMatrix();
+        Matrix3x2f matrix = entry.transform().worldMatrix();
         appendVertex(matrix, centerX - halfWidth, centerY - halfHeight, leftU, bottomV, sprite);
         appendVertex(matrix, centerX + halfWidth, centerY - halfHeight, rightU, bottomV, sprite);
         appendVertex(matrix, centerX + halfWidth, centerY + halfHeight, rightU, topV, sprite);
@@ -409,7 +411,8 @@ public final class SpriteRenderSystem implements RenderSystem {
         ParsedSource parsed = parsedFor(first.sprite());
         BindingSetHandle bindings = parsed.hasBufferDeclarations()
                 ? uniformBindingsFor(first, parsed)
-                : (first.lit() ? litBindingsFor(textureSetOf(first)) : bindingsFor(first.texture()));
+                : (first.lit() ? litBindingsFor(textureSetOf(first), identityObject.handle())
+                        : bindingsFor(first.texture()));
         return new DrawCommand(selected, mesh, bindings, sortKey, 1, quadCount * INDICES_PER_QUAD);
     }
 
@@ -432,33 +435,56 @@ public final class SpriteRenderSystem implements RenderSystem {
 
     BindingSetHandle sharedLitBindings(TextureHandle albedo, TextureHandle normal,
                                        TextureHandle metallicRoughness, TextureHandle emissive) {
+        return sharedLitBindings(albedo, normal, metallicRoughness, emissive, identityObject.handle());
+    }
+
+    BindingSetHandle sharedLitBindings(TextureHandle albedo, TextureHandle normal,
+                                       TextureHandle metallicRoughness, TextureHandle emissive,
+                                       BufferHandle objectUniform) {
         return litBindingsFor(new TextureSet(albedo,
                 normal == null ? flatNormalTexture : normal,
                 metallicRoughness == null ? whiteTexture : metallicRoughness,
-                emissive == null ? blackTexture : emissive));
+                emissive == null ? blackTexture : emissive), objectUniform);
     }
 
     BindingSetHandle bindingsFor(TextureHandle texture) {
-        return bindingsByTexture.computeIfAbsent(texture.id(), id ->
+        return bindingsFor(texture, identityObject.handle());
+    }
+
+    BindingSetHandle bindingsFor(TextureHandle texture, BufferHandle objectUniform) {
+        return bindingsByTexture.computeIfAbsent(new BindingKey(texture.id(), objectUniform.id()), key ->
                 backend.createBindingSet(new BindingSetDescriptor(bindingLayout, List.of(
                         new Binding(0, UniformBufferBinding.whole(meshRenderSystem.frameUniformBuffer(),
                                 MeshShaderBindings.FRAME_UBO_SIZE)),
-                        new Binding(1, new SampledTextureBinding(texture))
+                        new Binding(1, new SampledTextureBinding(texture)),
+                        objectBinding(objectUniform)
                 ))));
     }
 
-    private BindingSetHandle litBindingsFor(TextureSet textures) {
-        return litBindingsByTextures.computeIfAbsent(textures, set ->
+    private BindingSetHandle litBindingsFor(TextureSet textures, BufferHandle objectUniform) {
+        return litBindingsByTextures.computeIfAbsent(new LitBindingKey(textures, objectUniform.id()), key ->
                 backend.createBindingSet(new BindingSetDescriptor(litBindingLayout, List.of(
                         new Binding(0, UniformBufferBinding.whole(meshRenderSystem.frameUniformBuffer(),
                                 MeshShaderBindings.FRAME_UBO_SIZE)),
-                        new Binding(1, new SampledTextureBinding(set.albedo())),
-                        new Binding(2, new SampledTextureBinding(set.normal())),
-                        new Binding(3, new SampledTextureBinding(set.metallicRoughness())),
-                        new Binding(4, new SampledTextureBinding(set.emissive())),
+                        new Binding(1, new SampledTextureBinding(textures.albedo())),
+                        new Binding(2, new SampledTextureBinding(textures.normal())),
+                        new Binding(3, new SampledTextureBinding(textures.metallicRoughness())),
+                        new Binding(4, new SampledTextureBinding(textures.emissive())),
+                        objectBinding(objectUniform),
                         new Binding(6, StorageBufferBinding.whole(light2dStorage.handle(),
                                 light2dStorage.byteSize()))
                 ))));
+    }
+
+    private static Binding objectBinding(BufferHandle objectUniform) {
+        return new Binding(Object2dUniform.BINDING,
+                UniformBufferBinding.whole(objectUniform, Object2dUniform.BYTE_SIZE));
+    }
+
+    private record BindingKey(long textureId, long objectId) {
+    }
+
+    private record LitBindingKey(TextureSet textures, long objectId) {
     }
 
     private BindingSetHandle uniformBindingsFor(SpriteEntry entry, ParsedSource parsed) {
@@ -476,7 +502,8 @@ public final class SpriteRenderSystem implements RenderSystem {
         Binding frameBinding = new Binding(0, UniformBufferBinding.whole(
                 meshRenderSystem.frameUniformBuffer(), MeshShaderBindings.FRAME_UBO_SIZE));
         if (!entry.lit()) {
-            return List.of(frameBinding, new Binding(1, new SampledTextureBinding(entry.texture())));
+            return List.of(frameBinding, new Binding(1, new SampledTextureBinding(entry.texture())),
+                    objectBinding(identityObject.handle()));
         }
         TextureSet textures = textureSetOf(entry);
         return List.of(frameBinding,
@@ -484,6 +511,7 @@ public final class SpriteRenderSystem implements RenderSystem {
                 new Binding(2, new SampledTextureBinding(textures.normal())),
                 new Binding(3, new SampledTextureBinding(textures.metallicRoughness())),
                 new Binding(4, new SampledTextureBinding(textures.emissive())),
+                objectBinding(identityObject.handle()),
                 new Binding(6, StorageBufferBinding.whole(light2dStorage.handle(), light2dStorage.byteSize())));
     }
 
@@ -498,6 +526,10 @@ public final class SpriteRenderSystem implements RenderSystem {
         bindingsByTexture.clear();
         litBindingsByTextures.values().forEach(backend::destroy);
         litBindingsByTextures.clear();
+        if (identityObject != null) {
+            identityObject.destroy(backend);
+            identityObject = null;
+        }
         light2dStorage.shutdown();
         surfaceUniforms.shutdown();
         uniformBindingsBySprite.values().forEach(backend::destroy);

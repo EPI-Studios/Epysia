@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class BuiltinMeshes {
-
     public static final String CUBE = "cube";
     public static final String PLANE = "plane";
     public static final String CAPSULE = "capsule";
@@ -21,7 +20,7 @@ public final class BuiltinMeshes {
 
     private static final float UNIT_QUAD_HALF_SIZE = 0.5f;
     private static final float UNIT_QUAD_UV_TILES = 1.0f;
-    private static final float PLANE_HALF_SIZE = 20.0f;
+    public static final float PLANE_HALF_SIZE = 20.0f;
     private static final float PLANE_UV_TILES = 20.0f;
     private static final float CUBE_HALF_SIZE = 0.5f;
     private static final int PLANE_DEFAULT_SEGMENTS = 64;

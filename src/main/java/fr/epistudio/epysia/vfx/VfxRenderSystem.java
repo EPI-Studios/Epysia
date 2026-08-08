@@ -67,7 +67,6 @@ import java.util.OptionalInt;
 import java.util.Set;
 
 public final class VfxRenderSystem implements RenderSystem {
-
     private static final int PARTICLE_BYTES = VfxEffectResources.PARTICLE_BYTES;
     private static final int EFFECT_UBO_BYTES = VfxEffectResources.EFFECT_UBO_BYTES;
     private static final int INDIRECT_BYTES = VfxEffectResources.INDIRECT_BYTES;
@@ -218,7 +217,7 @@ public final class VfxRenderSystem implements RenderSystem {
     }
 
     private static Matrix4f planarWorldMatrix(Transform2D planar) {
-        Matrix3x2f planarMatrix = planar.localMatrix();
+        Matrix3x2f planarMatrix = planar.worldMatrix();
         return new Matrix4f(
                 planarMatrix.m00(), planarMatrix.m01(), 0.0f, 0.0f,
                 planarMatrix.m10(), planarMatrix.m11(), 0.0f, 0.0f,
@@ -296,6 +295,9 @@ public final class VfxRenderSystem implements RenderSystem {
 
     private void simulateAndSubmit(ParticleEffect effect, EmitterPose pose, float delta, FrameBuilder frame) {
         VfxEffectResources resources = effectResources.computeIfAbsent(effect, this::createResources);
+        if (effect.consumePoolResetRequest()) {
+            resources.resetPool();
+        }
         resources.useOpaqueDepth(meshRenderSystem.opaqueDepthTexture());
         Optional<CompiledGraphPipelines> compiled = resolveGraphPipelines(effect);
         if (!effect.graphPath().isEmpty() && compiled.isEmpty()) {

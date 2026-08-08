@@ -19,7 +19,6 @@ import java.nio.ByteBuffer;
 import java.util.List;
 
 final class VfxEffectResources {
-
     static final int PARTICLE_BYTES = 96;
     static final int EFFECT_UBO_BYTES = 80;
     static final int INDIRECT_BYTES = 20;
@@ -72,6 +71,12 @@ final class VfxEffectResources {
     private BufferHandle storageBuffer(int byteSize) {
         return backend.createBuffer(new BufferDescriptor(BufferUsage.STORAGE,
                 BufferUtils.createByteBuffer(byteSize)));
+    }
+
+    void resetPool() {
+        backend.writeBuffer(freeList, initialFreeList(poolSize), 0L);
+        backend.writeBuffer(pool, BufferUtils.createByteBuffer(poolSize * PARTICLE_BYTES), 0L);
+        backend.writeBuffer(indirectBuffer, BufferUtils.createByteBuffer(INDIRECT_BYTES), 0L);
     }
 
     private static ByteBuffer initialFreeList(int poolSize) {

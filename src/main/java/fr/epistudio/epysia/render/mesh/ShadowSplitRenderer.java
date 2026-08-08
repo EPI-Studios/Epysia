@@ -13,15 +13,16 @@ import java.util.List;
 import java.util.function.IntConsumer;
 
 final class ShadowSplitRenderer {
-
     private final ShadowStatistics statistics;
     private final int size;
     private final int layerCount;
     private final ShadowTargetCache sampledCache;
     private final long[] cachedStaticSignatures;
+    private final long[] cachedCasterSignatures;
     private final boolean[] staticLayerReady;
 
     private ShadowLayerFilter layerFilter = ShadowLayerFilter.ACCEPT_ALL;
+    private ShadowStaticViews views = ShadowStaticViews.FIXED;
     private RenderBackend backend;
     private TextureHandle sampledTexture;
     private RenderTargetHandle[] sampledTargets;
@@ -34,6 +35,7 @@ final class ShadowSplitRenderer {
         this.layerCount = layerCount;
         this.sampledCache = new ShadowTargetCache(layerCount);
         this.cachedStaticSignatures = new long[layerCount];
+        this.cachedCasterSignatures = new long[layerCount];
         this.staticLayerReady = new boolean[layerCount];
     }
 
@@ -46,6 +48,10 @@ final class ShadowSplitRenderer {
 
     void setLayerFilter(ShadowLayerFilter filter) {
         this.layerFilter = filter;
+    }
+
+    void setStaticViews(ShadowStaticViews staticViews) {
+        this.views = staticViews;
     }
 
     void setCachingEnabled(boolean enabled) {
@@ -62,52 +68,104 @@ final class ShadowSplitRenderer {
     }
 
     void renderTarget(int target, long viewSignature, ShadowCasterSet casters, IntConsumer prepareLayer) {
-        long staticSignature = ShadowSignatures.mix(viewSignature, casters.staticSignature());
         long sampledSignature = ShadowSignatures.mix(viewSignature, casters.combinedSignature());
         boolean sampledDirty = sampledCache.needsRender(target, sampledSignature, casters.dynamicAnimated());
-        if (casters.dynamicCasters().isEmpty()) {
-            renderSingleLayer(target, casters.staticCasters(), prepareLayer, sampledDirty);
-            return;
-        }
-        ensureStaticLayer(target, staticSignature, casters.staticCasters(), prepareLayer);
         if (!sampledDirty) {
             statistics.recordTarget(false);
             return;
         }
-        backend.copyTextureLayer(staticTexture, target, sampledTexture, target);
-        statistics.recordDepthCopy();
-        drawInto(sampledTargets[target], PassClear.none(), casters.dynamicCasters(), target, prepareLayer);
+        if (casters.dynamicCasters().isEmpty()) {
+            renderSingleLayer(target, casters.staticCasters(), prepareLayer);
+            return;
+        }
+        ShadowLayerTranslation translation = ensureStaticLayer(target, viewSignature, casters, prepareLayer);
+        composeSampledLayer(target, casters, translation, prepareLayer);
         statistics.recordTarget(true);
         statistics.recordDynamicCasters(casters.dynamicCasters().size());
     }
 
-    private void renderSingleLayer(int target, List<ShadowCaster> staticCasters,
-                                   IntConsumer prepareLayer, boolean sampledDirty) {
-        if (!sampledDirty) {
-            statistics.recordTarget(false);
-            return;
-        }
+    private void renderSingleLayer(int target, List<ShadowCaster> staticCasters, IntConsumer prepareLayer) {
         drawInto(sampledTargets[target], PassClear.depthOnly(), staticCasters, target, prepareLayer);
         staticLayerReady[target] = false;
         statistics.recordTarget(true);
     }
 
-    private void ensureStaticLayer(int target, long staticSignature,
-                                   List<ShadowCaster> staticCasters, IntConsumer prepareLayer) {
-        if (staticLayerReady[target] && cachedStaticSignatures[target] == staticSignature) {
-            return;
+    private ShadowLayerTranslation ensureStaticLayer(int target, long viewSignature, ShadowCasterSet casters,
+                                                     IntConsumer prepareLayer) {
+        long casterSignature = casters.staticSignature();
+        long signature = ShadowSignatures.mix(viewSignature, casterSignature);
+        if (staticLayerReady[target] && cachedStaticSignatures[target] == signature) {
+            return ShadowLayerTranslation.of(0, 0);
+        }
+        ShadowLayerTranslation translation = translationFor(target, casterSignature);
+        if (translation.reusable()) {
+            statistics.recordStaticLayerScroll();
+            return translation;
         }
         createStaticResourcesIfAbsent();
-        drawInto(staticTargets[target], PassClear.depthOnly(), staticCasters, target, prepareLayer);
-        cachedStaticSignatures[target] = staticSignature;
+        drawInto(staticTargets[target], PassClear.depthOnly(), casters.staticCasters(), target, prepareLayer);
+        cachedStaticSignatures[target] = signature;
+        cachedCasterSignatures[target] = casterSignature;
         staticLayerReady[target] = true;
+        views.markBaked(target);
         statistics.recordStaticLayerRebuild();
+        return ShadowLayerTranslation.of(0, 0);
+    }
+
+    private ShadowLayerTranslation translationFor(int target, long casterSignature) {
+        if (!staticLayerReady[target] || cachedCasterSignatures[target] != casterSignature) {
+            return ShadowLayerTranslation.rebuild();
+        }
+        return views.translationSinceBake(target);
+    }
+
+    private void composeSampledLayer(int target, ShadowCasterSet casters,
+                                     ShadowLayerTranslation translation, IntConsumer prepareLayer) {
+        backend.beginPass(sampledTargets[target], PassClear.depthOnly());
+        backend.endPass();
+        copyRetainedRegion(target, translation);
+        statistics.recordDepthCopy();
+        prepareLayer.accept(target);
+        backend.beginPass(sampledTargets[target], PassClear.none());
+        drawExposedRegion(target, casters.staticCasters(), translation);
+        drawCasters(target, casters.dynamicCasters());
+        backend.endPass();
+    }
+
+    private void copyRetainedRegion(int layer, ShadowLayerTranslation translation) {
+        int offsetX = translation.texelX();
+        int offsetY = translation.texelY();
+        backend.copyTextureRegion(
+                staticTexture, layer, Math.max(0, -offsetX), Math.max(0, -offsetY),
+                sampledTexture, layer, Math.max(0, offsetX), Math.max(0, offsetY),
+                size - Math.abs(offsetX), size - Math.abs(offsetY));
+    }
+
+    private void drawExposedRegion(int layer, List<ShadowCaster> staticCasters,
+                                   ShadowLayerTranslation translation) {
+        if (translation.unchanged()) {
+            return;
+        }
+        for (int i = 0; i < staticCasters.size(); i++) {
+            ShadowCaster caster = staticCasters.get(i);
+            if (!layerFilter.visibleInLayer(layer, caster)
+                    || !views.casterTouchesExposedRegion(layer, translation, caster)) {
+                continue;
+            }
+            backend.execute(caster.command());
+            statistics.recordScrolledCaster();
+        }
     }
 
     private void drawInto(RenderTargetHandle target, PassClear clear, List<ShadowCaster> casters,
                           int layer, IntConsumer prepareLayer) {
         prepareLayer.accept(layer);
         backend.beginPass(target, clear);
+        drawCasters(layer, casters);
+        backend.endPass();
+    }
+
+    private void drawCasters(int layer, List<ShadowCaster> casters) {
         for (int i = 0; i < casters.size(); i++) {
             ShadowCaster caster = casters.get(i);
             if (!layerFilter.visibleInLayer(layer, caster)) {
@@ -116,7 +174,6 @@ final class ShadowSplitRenderer {
             }
             backend.execute(caster.command());
         }
-        backend.endPass();
     }
 
     private void createStaticResourcesIfAbsent() {
@@ -124,7 +181,7 @@ final class ShadowSplitRenderer {
             return;
         }
         staticTexture = backend.createTexture(
-                TextureDescriptor.depthArray(size, layerCount, TextureUsage.SAMPLED_DEPTH_SHADOW));
+                TextureDescriptor.depthArray(size, layerCount, TextureUsage.SAMPLED_DEPTH_ATTACHMENT));
         staticTargets = new RenderTargetHandle[layerCount];
         for (int layer = 0; layer < layerCount; layer++) {
             staticTargets[layer] = backend.createRenderTarget(

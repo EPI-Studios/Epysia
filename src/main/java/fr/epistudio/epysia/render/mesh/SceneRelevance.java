@@ -9,7 +9,6 @@ import org.joml.Vector3f;
 import java.util.List;
 
 final class SceneRelevance implements BoundsHierarchy.BoxTest {
-
     private static final int FLOATS_PER_BOX = 6;
 
     private final FrustumIntersection cameraFrustum = new FrustumIntersection();
@@ -83,8 +82,16 @@ final class SceneRelevance implements BoundsHierarchy.BoxTest {
 
     @Override
     public boolean overlaps(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        return overlaps(true, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    boolean overlaps(boolean castsShadows, float minX, float minY, float minZ,
+                     float maxX, float maxY, float maxZ) {
         if (cameraFrustum.testAab(minX, minY, minZ, maxX, maxY, maxZ)) {
             return true;
+        }
+        if (!castsShadows) {
+            return false;
         }
         for (int cascade = 0; cascade < activeCascades; cascade++) {
             if (cascadeFrusta[cascade].testAab(minX, minY, minZ, maxX, maxY, maxZ)) {

@@ -7,8 +7,10 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 public final class LitMaterial extends Material {
+    public static final int UV_MAPPING_MESH = 0;
+    public static final int UV_MAPPING_TRIPLANAR_WORLD = 1;
 
-    @Uniform
+    @Uniform(display = UniformDisplay.COLOR)
     public final Vector3f baseColor = new Vector3f(1.0f, 1.0f, 1.0f);
 
     @Uniform
@@ -37,6 +39,18 @@ public final class LitMaterial extends Material {
 
     @Uniform
     public float lightmapRgbmRange = 0.0f;
+
+    @Uniform(options = {"Mesh UV", "Triplanar world"})
+    public int uvMapping = UV_MAPPING_MESH;
+
+    @Uniform
+    public float triplanarSharpness = 4.0f;
+
+    @Uniform
+    public final Vector3f uvScale = new Vector3f(1.0f, 1.0f, 1.0f);
+
+    @Uniform
+    public final Vector3f uvOffset = new Vector3f();
 
     @Texture(colorSpace = ColorSpace.SRGB)
     public TextureHandle albedo;
@@ -173,6 +187,26 @@ public final class LitMaterial extends Material {
 
     public LitMaterial setOcclusionStrength(float value) {
         this.occlusionStrength = value;
+        return this;
+    }
+
+    public LitMaterial setUvMapping(int mapping) {
+        this.uvMapping = mapping;
+        return this;
+    }
+
+    public LitMaterial setUvScale(float scaleX, float scaleY, float scaleZ) {
+        this.uvScale.set(scaleX, scaleY, scaleZ);
+        return this;
+    }
+
+    public LitMaterial setUvOffset(float offsetX, float offsetY, float offsetZ) {
+        this.uvOffset.set(offsetX, offsetY, offsetZ);
+        return this;
+    }
+
+    public LitMaterial setTriplanarSharpness(float value) {
+        this.triplanarSharpness = value;
         return this;
     }
 

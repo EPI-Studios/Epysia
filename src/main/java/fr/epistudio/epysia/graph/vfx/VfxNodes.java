@@ -12,7 +12,6 @@ import fr.epistudio.epysia.vfx.lut.VfxGradient;
 import java.util.List;
 
 public final class VfxNodes {
-
     public static final String OUTPUT_SPAWN_RATE = "vfx.output.spawnRate";
     public static final String OUTPUT_PARTICLE = "vfx.output.particle";
     public static final String OUTPUT_UPDATE = "vfx.output.update";
@@ -59,6 +58,9 @@ public final class VfxNodes {
     public static final String LIFETIME_PIN = "Lifetime";
     public static final String COLOR_PIN = "Color";
     public static final String SIZE_PIN = "Size";
+    public static final String SIZE_Y_PIN = "Size Y";
+    public static final String ROTATION_PIN = "Rotation";
+    public static final String ANGULAR_VELOCITY_PIN = "Angular Velocity";
     public static final String KILL_PIN = "Kill";
     public static final String SOFT_EDGE_PIN = "Soft Edge";
     public static final String INTENSITY_PIN = "Intensity";
@@ -125,6 +127,9 @@ public final class VfxNodes {
     public static final String SHAPE_DOT = "Dot";
     public static final String SHAPE_EDGE = "Edge";
 
+    public static final String RENDER_SHAPE_ROUND = "Round";
+    public static final String RENDER_SHAPE_RECT = "Rect";
+
     public static final String PLANE_SETTING = "plane";
     public static final String PLANE_GROUND = "Ground XZ";
     public static final String PLANE_SCREEN = "Screen XY";
@@ -163,18 +168,22 @@ public final class VfxNodes {
                         new PinDefinition(VELOCITY_PIN, PinType.VECTOR3),
                         new PinDefinition(LIFETIME_PIN, PinType.FLOAT),
                         new PinDefinition(COLOR_PIN, PinType.VECTOR4),
-                        new PinDefinition(SIZE_PIN, PinType.FLOAT)),
+                        new PinDefinition(SIZE_PIN, PinType.FLOAT),
+                        new PinDefinition(SIZE_Y_PIN, PinType.FLOAT),
+                        new PinDefinition(ROTATION_PIN, PinType.FLOAT)),
                 List.of(), List.of()));
         registry.register(node(OUTPUT_UPDATE, "Particle Update Output", CATEGORY_OUTPUT,
                 List.of(new PinDefinition(VELOCITY_PIN, PinType.VECTOR3),
                         new PinDefinition(COLOR_PIN, PinType.VECTOR4),
                         new PinDefinition(SIZE_PIN, PinType.FLOAT),
+                        new PinDefinition(SIZE_Y_PIN, PinType.FLOAT),
+                        new PinDefinition(ANGULAR_VELOCITY_PIN, PinType.FLOAT),
                         new PinDefinition(KILL_PIN, PinType.FLOAT)),
                 List.of(), List.of()));
         registry.register(node(OUTPUT_RENDER, "Render Output", CATEGORY_OUTPUT,
                 List.of(new PinDefinition(SOFT_EDGE_PIN, PinType.FLOAT),
                         new PinDefinition(INTENSITY_PIN, PinType.FLOAT)),
-                List.of(), List.of()));
+                List.of(), List.of(new NodeSetting(SHAPE_SETTING, SettingKind.TEXT, RENDER_SHAPE_ROUND))));
     }
 
     private static void registerParticleInputs(GraphNodeRegistry registry) {

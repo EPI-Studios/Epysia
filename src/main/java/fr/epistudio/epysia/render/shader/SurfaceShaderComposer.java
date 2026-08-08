@@ -13,7 +13,6 @@ import java.util.regex.Pattern;
 import fr.epistudio.epysia.render.shader.ShaderUniformParser.ParsedSource;
 
 public final class SurfaceShaderComposer {
-
     public static final int USER_UNIFORM_BINDING = 24;
     public static final int FIRST_SAMPLER_BINDING = 16;
     public static final String SKINNED_DEFINE = "#define SKINNED\n";
@@ -27,6 +26,7 @@ public final class SurfaceShaderComposer {
     private static final String COLOR_CALL_MARKER = "// SURFACE_COLOR_CALL";
     private static final String NORMAL_CALL_MARKER = "// SURFACE_NORMAL_CALL";
     private static final String SHADE_CALL_MARKER = "// SURFACE_SHADE_CALL";
+    private static final String CUTOUT_CALL_MARKER = "// SURFACE_CUTOUT_CALL";
     private static final String PREPARE_CALL_MARKER = "// SURFACE_PREPARE_CALL";
     private static final String SPRITE_CALL_MARKER = "// SPRITE_SURFACE_CALL";
     private static final Pattern VERTEX_FUNCTION_PATTERN = Pattern.compile("void\\s+surfaceVertex\\s*\\(");
@@ -141,6 +141,10 @@ public final class SurfaceShaderComposer {
         return ShaderSnippets.line("surface/prepare_call.glsl");
     }
 
+    private static String cutoutCall() {
+        return ShaderSnippets.block("surface/cutout_call.glsl");
+    }
+
     public static LoadedShader composeVertex(LoadedShader base, LoadedShader surface) {
         return compose(base, surface, SurfaceSplit::vertexBlock, VERTEX_CALL_MARKER, litVertexCall(),
                 VERTEX_MODEL_EXPRESSION);
@@ -163,6 +167,17 @@ public final class SurfaceShaderComposer {
         source = replaceMarker(source, SHADE_CALL_MARKER, shadeCall());
         source = replaceMarker(source, PREPARE_CALL_MARKER, prepareCall());
         return new LoadedShader(source, composed.dependencyPaths());
+    }
+
+    public static boolean declaresCutout(LoadedShader surface) {
+        String masked = ShaderComments.mask(surface.source());
+        return COLOR_FUNCTION_PATTERN.matcher(masked).find()
+                || SHADE_FUNCTION_PATTERN.matcher(masked).find();
+    }
+
+    public static LoadedShader composeCutoutFragment(LoadedShader base, LoadedShader surface) {
+        return compose(base, surface, SurfaceSplit::cutoutBlock, CUTOUT_CALL_MARKER, cutoutCall(),
+                FRAGMENT_MODEL_EXPRESSION);
     }
 
     public static LoadedShader composeSpriteFragment(LoadedShader base, LoadedShader surface) {
@@ -353,7 +368,6 @@ public final class SurfaceShaderComposer {
     private record SurfaceSplit(String shared, String vertexFunction, String colorFunction,
                                 String lightFunction, String normalFunction, String shadeFunction,
                                 String prepareFunction) {
-
         String vertexBlock() {
             return shared + "\n" + vertexFunction;
         }
@@ -361,6 +375,10 @@ public final class SurfaceShaderComposer {
         String fragmentBlock() {
             return shared + "\n" + prepareFunction + "\n" + colorFunction + "\n" + normalFunction
                     + "\n" + shadeFunction + "\n" + lightFunction;
+        }
+
+        String cutoutBlock() {
+            return shared + "\n" + prepareFunction + "\n" + colorFunction + "\n" + shadeFunction;
         }
 
         String vertexBody() {

@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 
 final class MeshInstanceBatches {
-
     @FunctionalInterface
     interface InstanceBindingSetFactory {
         BindingSetHandle create(PerSubmesh representative, BufferHandle instanceBuffer, long byteOffset,
@@ -31,10 +30,41 @@ final class MeshInstanceBatches {
 
     private RenderBackend backend;
     private InstanceBindingSetFactory bindingSetFactory;
+    private boolean perFrameBuffers;
 
     void initialize(RenderBackend renderBackend, InstanceBindingSetFactory factory) {
         this.backend = renderBackend;
         this.bindingSetFactory = factory;
+    }
+
+    private int ringSlots() {
+        return perFrameBuffers ? backend.perFrameBufferSlots() : 1;
+    }
+
+    void setPerFrameBuffers(boolean value) {
+        if (value == perFrameBuffers) {
+            return;
+        }
+        perFrameBuffers = value;
+        releaseEveryBatch();
+    }
+
+    private void releaseEveryBatch() {
+        if (backend == null) {
+            return;
+        }
+        for (MeshInstanceBatch batch : batches) {
+            releaseResources(batch);
+        }
+        for (BulkInstances bulk : bulkInstances.values()) {
+            for (MeshInstanceBatch batch : bulk.batches()) {
+                releaseResources(batch);
+            }
+        }
+    }
+
+    boolean perFrameBuffers() {
+        return perFrameBuffers;
     }
 
     void beginFrame() {
@@ -124,14 +154,14 @@ final class MeshInstanceBatches {
             return;
         }
         backend.writeBuffer(batch.instanceBuffer(), batch.instancePayload(), 0L);
-        batch.markUploaded();
+        batch.markUploaded(ringSlots());
     }
 
     private void rebuildResources(MeshInstanceBatch batch) {
         releaseResources(batch);
         long byteSize = batch.requiredByteSize();
         BufferHandle buffer = backend.createBuffer(new BufferDescriptor(
-                BufferUsage.STORAGE, BufferUtils.createByteBuffer((int) byteSize)));
+                BufferUsage.STORAGE, BufferUtils.createByteBuffer((int) byteSize), perFrameBuffers));
         batch.adoptResources(buffer, createBindings(batch, buffer, false), createBindings(batch, buffer, true));
     }
 
@@ -188,7 +218,6 @@ final class MeshInstanceBatches {
     }
 
     static final class BulkInstances {
-
         private final List<MeshInstanceBatch> batches;
         private final InstanceTiles tiles = new InstanceTiles();
         private final Vector3f boundsMin = new Vector3f();

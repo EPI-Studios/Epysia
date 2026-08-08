@@ -26,8 +26,6 @@ import fr.epistudio.epysia.render.backend.MeshHandle;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.scene.Scene;
-import org.joml.Matrix3x2f;
-import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
@@ -45,7 +43,6 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class TilemapRenderSystem implements RenderSystem {
-
     static final int CHUNK_SIZE = 16;
 
     private static final float[] CORNERS_X = {0.0f, 1.0f, 1.0f, 0.0f};
@@ -56,8 +53,8 @@ public final class TilemapRenderSystem implements RenderSystem {
 
     private static final class RendererGeometry {
         private final List<ChunkMesh> chunks = new ArrayList<>();
-        private final Matrix3x2f builtMatrix = new Matrix3x2f();
         private final Vector3f builtTint = new Vector3f();
+        private Object2dUniform objectUniform;
         private BufferHandle vertexBuffer;
         private BufferHandle indexBuffer;
         private SpriteTilemap builtTilemap;
@@ -73,7 +70,6 @@ public final class TilemapRenderSystem implements RenderSystem {
     private final Set<TilemapRenderer> seenRenderers = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<TilemapRenderer> warnedEmptyRenderers = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Vector4f scratchModulate = new Vector4f();
-    private final Vector2f scratchCorner = new Vector2f();
 
     private RenderBackend backend;
     private long submitSequence;
@@ -139,8 +135,12 @@ public final class TilemapRenderSystem implements RenderSystem {
                                 SpriteTilemap tilemap, SpriteAtlas atlas, TextureHandle texture) {
         RendererGeometry geometry = geometryByRenderer.computeIfAbsent(renderer,
                 unused -> new RendererGeometry());
-        if (requiresRebuild(geometry, transform, renderer, tilemap, texture)) {
-            rebuildGeometry(geometry, transform, renderer, tilemap, atlas, texture);
+        if (geometry.objectUniform == null) {
+            geometry.objectUniform = new Object2dUniform(backend);
+        }
+        geometry.objectUniform.write(backend, transform.worldMatrix());
+        if (requiresRebuild(geometry, renderer, tilemap, texture)) {
+            rebuildGeometry(geometry, renderer, tilemap, atlas, texture);
         }
         boolean lit = renderer.lit();
         PipelineHandle pipeline = lit
@@ -149,8 +149,9 @@ public final class TilemapRenderSystem implements RenderSystem {
                 ? spriteRenderSystem.sharedLitBindings(texture,
                         renderer.normalMapRef().directOrNull(),
                         renderer.metallicRoughnessMapRef().directOrNull(),
-                        renderer.emissiveMapRef().directOrNull())
-                : spriteRenderSystem.bindingsFor(texture);
+                        renderer.emissiveMapRef().directOrNull(),
+                        geometry.objectUniform.handle())
+                : spriteRenderSystem.bindingsFor(texture, geometry.objectUniform.handle());
         for (ChunkMesh chunk : geometry.chunks) {
             long sortKey = SpriteSortKeys.compose(renderer.sortingLayer(), renderer.orderInLayer(),
                     SpriteSortKeys.KIND_TILEMAP, submitSequence++);
@@ -164,36 +165,34 @@ public final class TilemapRenderSystem implements RenderSystem {
                 renderer.normalStrength(), renderer.emissiveStrength(), renderer.lightLayers());
     }
 
-    private static boolean requiresRebuild(RendererGeometry geometry, Transform2D transform,
+    private static boolean requiresRebuild(RendererGeometry geometry,
                                            TilemapRenderer renderer, SpriteTilemap tilemap, TextureHandle texture) {
         return geometry.builtTilemap != tilemap
                 || geometry.builtVersion != tilemap.version()
                 || geometry.builtTextureId != texture.id()
                 || geometry.builtOpacity != renderer.opacity()
                 || geometry.builtSurfaceHash != surfaceHashOf(renderer)
-                || !geometry.builtTint.equals(renderer.tint())
-                || !geometry.builtMatrix.equals(transform.localMatrix());
+                || !geometry.builtTint.equals(renderer.tint());
     }
 
-    private void rebuildGeometry(RendererGeometry geometry, Transform2D transform, TilemapRenderer renderer,
+    private void rebuildGeometry(RendererGeometry geometry, TilemapRenderer renderer,
                                  SpriteTilemap tilemap, SpriteAtlas atlas, TextureHandle texture) {
-        destroyGeometry(geometry);
-        uploadChunks(geometry, transform, renderer, tilemap, atlas);
+        destroyChunks(geometry);
+        uploadChunks(geometry, renderer, tilemap, atlas);
         geometry.builtTilemap = tilemap;
         geometry.builtVersion = tilemap.version();
         geometry.builtTextureId = texture.id();
         geometry.builtOpacity = renderer.opacity();
         geometry.builtSurfaceHash = surfaceHashOf(renderer);
         geometry.builtTint.set(renderer.tint());
-        geometry.builtMatrix.set(transform.localMatrix());
         logger.info("[TilemapRenderSystem] rebuilt " + geometry.chunks.size() + " chunk(s) for tilemap version "
                 + tilemap.version());
     }
 
-    private void uploadChunks(RendererGeometry geometry, Transform2D transform, TilemapRenderer renderer,
+    private void uploadChunks(RendererGeometry geometry, TilemapRenderer renderer,
                               SpriteTilemap tilemap, SpriteAtlas atlas) {
         List<Integer> chunkQuadCounts = new ArrayList<>();
-        ByteBuffer vertices = buildChunkVertices(transform, renderer, tilemap, atlas, chunkQuadCounts);
+        ByteBuffer vertices = buildChunkVertices(renderer, tilemap, atlas, chunkQuadCounts);
         int totalQuads = vertices.limit() / (SpriteRenderSystem.VERTICES_PER_QUAD * SpriteRenderSystem.VERTEX_BYTES);
         if (totalQuads == 0) {
             return;
@@ -215,7 +214,7 @@ public final class TilemapRenderSystem implements RenderSystem {
         }
     }
 
-    private ByteBuffer buildChunkVertices(Transform2D transform, TilemapRenderer renderer,
+    private ByteBuffer buildChunkVertices(TilemapRenderer renderer,
                                           SpriteTilemap tilemap, SpriteAtlas atlas, List<Integer> chunkQuadCounts) {
         ByteBuffer vertices = BufferUtils.createByteBuffer(Math.max(1, countFilledCells(tilemap))
                 * SpriteRenderSystem.VERTICES_PER_QUAD * SpriteRenderSystem.VERTEX_BYTES);
@@ -228,7 +227,7 @@ public final class TilemapRenderSystem implements RenderSystem {
         for (int layerIndex : drawOrder(tilemap)) {
             for (int chunkY = 0; chunkY < chunkRows; chunkY++) {
                 for (int chunkX = 0; chunkX < chunkColumns; chunkX++) {
-                    int quadCount = appendChunk(vertices, transform, renderer, tilemap, atlas,
+                    int quadCount = appendChunk(vertices, renderer, tilemap, atlas,
                             layerIndex, bounds, chunkX, chunkY);
                     if (quadCount > 0) {
                         chunkQuadCounts.add(quadCount);
@@ -258,7 +257,7 @@ public final class TilemapRenderSystem implements RenderSystem {
         return filled;
     }
 
-    private int appendChunk(ByteBuffer vertices, Transform2D transform, TilemapRenderer renderer,
+    private int appendChunk(ByteBuffer vertices, TilemapRenderer renderer,
                             SpriteTilemap tilemap, SpriteAtlas atlas, int layerIndex,
                             CellBounds bounds, int chunkX, int chunkY) {
         int quadCount = 0;
@@ -268,7 +267,7 @@ public final class TilemapRenderSystem implements RenderSystem {
         int endY = Math.min(startY + CHUNK_SIZE, bounds.maxY() + 1);
         for (int cellY = startY; cellY < endY; cellY++) {
             for (int cellX = startX; cellX < endX; cellX++) {
-                if (appendCell(vertices, transform, renderer, tilemap, atlas, layerIndex, cellX, cellY)) {
+                if (appendCell(vertices, renderer, tilemap, atlas, layerIndex, cellX, cellY)) {
                     quadCount++;
                 }
             }
@@ -276,7 +275,7 @@ public final class TilemapRenderSystem implements RenderSystem {
         return quadCount;
     }
 
-    private boolean appendCell(ByteBuffer vertices, Transform2D transform, TilemapRenderer renderer,
+    private boolean appendCell(ByteBuffer vertices, TilemapRenderer renderer,
                                SpriteTilemap tilemap, SpriteAtlas atlas, int layerIndex, int cellX, int cellY) {
         int tileIndex = tilemap.tileIndex(layerIndex, cellX, cellY);
         if (tileIndex == SpriteTilemap.EMPTY_TILE_INDEX) {
@@ -287,22 +286,21 @@ public final class TilemapRenderSystem implements RenderSystem {
             return false;
         }
         TileData data = tilemap.existingTileData(tileIndex).orElseGet(TileData::new);
-        appendCellQuad(vertices, transform, renderer, tilemap, region.get(), data,
+        appendCellQuad(vertices, renderer, tilemap, region.get(), data,
                 tilemap.layer(layerIndex).modulate(), cellX, cellY);
         return true;
     }
 
-    private void appendCellQuad(ByteBuffer vertices, Transform2D transform, TilemapRenderer renderer,
+    private void appendCellQuad(ByteBuffer vertices, TilemapRenderer renderer,
                                 SpriteTilemap tilemap, SpriteAtlasRegion region, TileData data,
                                 Vector4f layerModulate, int cellX, int cellY) {
         float left = cellX * tilemap.cellWidth();
         float bottom = cellY * tilemap.cellHeight();
-        Matrix3x2f matrix = transform.localMatrix();
         scratchModulate.set(layerModulate).mul(data.modulate());
         for (int corner = 0; corner < CORNERS_X.length; corner++) {
             float cornerX = left + CORNERS_X[corner] * tilemap.cellWidth();
             float cornerY = bottom + CORNERS_Y[corner] * tilemap.cellHeight();
-            appendVertex(vertices, matrix, cornerX, cornerY,
+            appendVertex(vertices, cornerX, cornerY,
                     sampleU(region, data, corner), sampleV(region, data, corner), renderer);
         }
     }
@@ -317,12 +315,10 @@ public final class TilemapRenderSystem implements RenderSystem {
         return region.minV() + (data.flipVertical() ? 1.0f - unit : unit) * (region.maxV() - region.minV());
     }
 
-    private void appendVertex(ByteBuffer vertices, Matrix3x2f matrix, float cornerX, float cornerY,
+    private void appendVertex(ByteBuffer vertices, float cornerX, float cornerY,
                               float u, float v, TilemapRenderer renderer) {
-        scratchCorner.set(cornerX, cornerY);
-        matrix.transformPosition(scratchCorner);
         Vector3f tint = renderer.tint();
-        vertices.putFloat(scratchCorner.x).putFloat(scratchCorner.y);
+        vertices.putFloat(cornerX).putFloat(cornerY);
         vertices.putFloat(u).putFloat(v);
         vertices.putFloat(tint.x * scratchModulate.x)
                 .putFloat(tint.y * scratchModulate.y)
@@ -344,13 +340,21 @@ public final class TilemapRenderSystem implements RenderSystem {
         while (entries.hasNext()) {
             Map.Entry<TilemapRenderer, RendererGeometry> entry = entries.next();
             if (!seenRenderers.contains(entry.getKey())) {
-                destroyGeometry(entry.getValue());
+                releaseGeometry(entry.getValue());
                 entries.remove();
             }
         }
     }
 
-    private void destroyGeometry(RendererGeometry geometry) {
+    private void releaseGeometry(RendererGeometry geometry) {
+        destroyChunks(geometry);
+        if (geometry.objectUniform != null) {
+            geometry.objectUniform.destroy(backend);
+            geometry.objectUniform = null;
+        }
+    }
+
+    private void destroyChunks(RendererGeometry geometry) {
         for (ChunkMesh chunk : geometry.chunks) {
             backend.destroy(chunk.mesh());
         }
@@ -367,7 +371,7 @@ public final class TilemapRenderSystem implements RenderSystem {
 
     @Override
     public void shutdown(RenderBackend backend) {
-        geometryByRenderer.values().forEach(this::destroyGeometry);
+        geometryByRenderer.values().forEach(this::releaseGeometry);
         geometryByRenderer.clear();
     }
 }

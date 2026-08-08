@@ -1,7 +1,6 @@
 package fr.epistudio.epysia.render.backend;
 
 public final class DrawStatistics {
-
     private static final int TRIANGLE_VERTEX_COUNT = 3;
     private static final int STRIP_PRIMING_VERTEX_COUNT = 2;
 
@@ -10,6 +9,7 @@ public final class DrawStatistics {
     private int pipelineSwitches;
     private int bindingSetSwitches;
     private int passes;
+    private int droppedDraws;
     private long triangles;
     private long instances;
 
@@ -19,8 +19,17 @@ public final class DrawStatistics {
         pipelineSwitches = 0;
         bindingSetSwitches = 0;
         passes = 0;
+        droppedDraws = 0;
         triangles = 0L;
         instances = 0L;
+    }
+
+    public void recordDroppedDraw() {
+        droppedDraws++;
+    }
+
+    public int droppedDraws() {
+        return droppedDraws;
     }
 
     public void recordPass() {

@@ -12,7 +12,6 @@ public record TextureDescriptor(
         TextureWrap wrap,
         int anisotropy
 ) {
-
     public static final int NO_ANISOTROPY = 1;
 
     public TextureDescriptor(int width, int height, TextureFormat format, TextureUsage usage,
@@ -41,6 +40,16 @@ public record TextureDescriptor(
     public static TextureDescriptor cubemap(int size, TextureFormat format, int mipLevels) {
         return new TextureDescriptor(size, size, format, TextureUsage.SAMPLED, SamplerFilter.LINEAR,
                 TextureKind.CUBEMAP, mipLevels, 6, TextureWrap.CLAMP_TO_EDGE);
+    }
+
+    public static TextureDescriptor volume(int width, int height, int depth, TextureFormat format,
+                                           TextureUsage usage, SamplerFilter samplerFilter, TextureWrap wrap) {
+        return new TextureDescriptor(width, height, format, usage, samplerFilter,
+                TextureKind.TEXTURE_3D, 1, depth, wrap);
+    }
+
+    public int depth() {
+        return kind == TextureKind.TEXTURE_3D ? layers : 1;
     }
 
     public static TextureDescriptor depthArray(int size, int layers, TextureUsage usage) {

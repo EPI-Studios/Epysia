@@ -39,6 +39,7 @@ import static org.lwjgl.opengl.GL11.glStencilOp;
 import static org.lwjgl.opengl.GL14.GL_DECR_WRAP;
 import static org.lwjgl.opengl.GL14.GL_INCR_WRAP;
 import static org.lwjgl.opengl.GL11.glGetInteger;
+import static org.lwjgl.opengl.GL31.GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT;
 import static org.lwjgl.opengl.GL11.glTexParameterf;
 import static org.lwjgl.opengl.GL11.GL_BLEND;
 import static org.lwjgl.opengl.GL11.GL_COLOR_BUFFER_BIT;
@@ -179,9 +180,18 @@ import static org.lwjgl.opengl.GL43.glVertexAttribBinding;
 import static org.lwjgl.opengl.GL43.glVertexAttribFormat;
 import static org.lwjgl.opengl.GL43.glVertexBindingDivisor;
 import static org.lwjgl.opengl.GL31.glDrawElementsInstanced;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL40;
+import org.lwjgl.opengl.GL42;
+import org.lwjgl.opengl.GL43;
 
 public final class OpenGlRenderBackend implements RenderBackend {
-
     private int[] pendingViewport;
 
     private static final int VERTEX_BINDING_INDEX = 0;
@@ -218,6 +228,8 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private GLDebugMessageCallback debugCallback;
     private int screenWidth;
     private int screenHeight;
+    private int currentTargetHeight;
+    private ScissorRect appliedScissor = ScissorRect.disabled();
 
     private static final String DEBUG_PROPERTY = "epysia.gl.debug";
     private static final String GPU_PROFILING_PROPERTY = "epysia.gpu.profiling";
@@ -245,7 +257,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         installDebugCallback(capabilities);
         persistentMappingSupported = (capabilities.OpenGL44 || capabilities.GL_ARB_buffer_storage)
                 && !Boolean.getBoolean("epysia.ring.disabled");
-        glEnable(org.lwjgl.opengl.GL32.GL_TEXTURE_CUBE_MAP_SEAMLESS);
+        glEnable(GL32.GL_TEXTURE_CUBE_MAP_SEAMLESS);
         screenWidth = surface.framebufferWidth();
         screenHeight = surface.framebufferHeight();
         glViewport(0, 0, screenWidth, screenHeight);
@@ -381,12 +393,12 @@ public final class OpenGlRenderBackend implements RenderBackend {
     public void readBuffer(BufferHandle handle, ByteBuffer destination, long byteOffset) {
         BufferResource resource = requireBuffer(handle);
         glBindBuffer(resource.glTarget(), resource.bufferId());
-        org.lwjgl.opengl.GL15.glGetBufferSubData(resource.glTarget(), byteOffset, destination);
+        GL15.glGetBufferSubData(resource.glTarget(), byteOffset, destination);
     }
 
     @Override
     public PipelineHandle createComputePipeline(ComputePipelineDescriptor descriptor) {
-        int shader = compileShader(org.lwjgl.opengl.GL43.GL_COMPUTE_SHADER, descriptor.computeSource());
+        int shader = compileShader(GL43.GL_COMPUTE_SHADER, descriptor.computeSource());
         int program = glCreateProgram();
         glAttachShader(program, shader);
         glLinkProgram(program);
@@ -405,30 +417,30 @@ public final class OpenGlRenderBackend implements RenderBackend {
         currentPipeline = null;
         applyBindings(dispatch.bindings());
         currentBindingSetId = -1L;
-        org.lwjgl.opengl.GL43.glDispatchCompute(dispatch.groupCountX(), dispatch.groupCountY(),
+        GL43.glDispatchCompute(dispatch.groupCountX(), dispatch.groupCountY(),
                 dispatch.groupCountZ());
     }
 
     @Override
     public void computeBarrier(ComputeBarrier barrier) {
-        org.lwjgl.opengl.GL42.glMemoryBarrier(barrierBits(barrier));
+        GL42.glMemoryBarrier(barrierBits(barrier));
     }
 
     private static int storageImageAccess(StorageImageAccess access) {
         return switch (access) {
-            case READ_ONLY -> org.lwjgl.opengl.GL15.GL_READ_ONLY;
-            case WRITE_ONLY -> org.lwjgl.opengl.GL15.GL_WRITE_ONLY;
-            case READ_WRITE -> org.lwjgl.opengl.GL15.GL_READ_WRITE;
+            case READ_ONLY -> GL15.GL_READ_ONLY;
+            case WRITE_ONLY -> GL15.GL_WRITE_ONLY;
+            case READ_WRITE -> GL15.GL_READ_WRITE;
         };
     }
 
     private static int barrierBits(ComputeBarrier barrier) {
         return switch (barrier) {
-            case STORAGE_BUFFER -> org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BARRIER_BIT;
-            case STORAGE_IMAGE -> org.lwjgl.opengl.GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
-            case VERTEX_ATTRIBUTES -> org.lwjgl.opengl.GL42.GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT;
-            case TEXTURE_FETCH -> org.lwjgl.opengl.GL42.GL_TEXTURE_FETCH_BARRIER_BIT;
-            case ALL -> org.lwjgl.opengl.GL42.GL_ALL_BARRIER_BITS;
+            case STORAGE_BUFFER -> GL43.GL_SHADER_STORAGE_BARRIER_BIT;
+            case STORAGE_IMAGE -> GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
+            case VERTEX_ATTRIBUTES -> GL42.GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT;
+            case TEXTURE_FETCH -> GL42.GL_TEXTURE_FETCH_BARRIER_BIT;
+            case ALL -> GL42.GL_ALL_BARRIER_BITS;
         };
     }
 
@@ -454,12 +466,12 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     private void attributeFormat(VertexAttribute attribute) {
         if (attribute.format().integer()) {
-            org.lwjgl.opengl.GL43.glVertexAttribIFormat(
+            GL43.glVertexAttribIFormat(
                     attribute.location(),
                     attribute.format().componentCount(),
                     attribute.format().wideInteger()
-                            ? org.lwjgl.opengl.GL11.GL_UNSIGNED_INT
-                            : org.lwjgl.opengl.GL11.GL_UNSIGNED_SHORT,
+                            ? GL11.GL_UNSIGNED_INT
+                            : GL11.GL_UNSIGNED_SHORT,
                     attribute.byteOffset()
             );
         } else {
@@ -558,9 +570,9 @@ public final class OpenGlRenderBackend implements RenderBackend {
         int internalFormat = internalFormatToGl(descriptor.format());
         switch (descriptor.kind()) {
             case TEXTURE_2D -> allocateTexture2dStorage(descriptor, internalFormat);
-            case CUBEMAP -> org.lwjgl.opengl.GL42.glTexStorage2D(glTarget, descriptor.mipLevels(),
+            case CUBEMAP -> GL42.glTexStorage2D(glTarget, descriptor.mipLevels(),
                     internalFormat, descriptor.width(), descriptor.height());
-            case ARRAY_2D -> org.lwjgl.opengl.GL42.glTexStorage3D(glTarget, descriptor.mipLevels(),
+            case TEXTURE_3D, ARRAY_2D -> GL42.glTexStorage3D(glTarget, descriptor.mipLevels(),
                     internalFormat, descriptor.width(), descriptor.height(), descriptor.layers());
         }
     }
@@ -579,7 +591,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return switch (format) {
             case DEPTH32F -> GL_DEPTH_COMPONENT;
             case DEPTH32F_STENCIL8 -> GL_DEPTH_STENCIL;
-            case R32F -> org.lwjgl.opengl.GL11.GL_RED;
+            case R16F, R32F -> GL11.GL_RED;
             default -> GL_RGBA;
         };
     }
@@ -588,9 +600,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
         return switch (format) {
             case RGBA8 -> GL_RGBA8;
             case SRGB8_ALPHA8 -> GL_SRGB8_ALPHA8;
-            case RGBA16F -> org.lwjgl.opengl.GL30.GL_RGBA16F;
-            case R11G11B10F -> org.lwjgl.opengl.GL30.GL_R11F_G11F_B10F;
-            case R32F -> org.lwjgl.opengl.GL30.GL_R32F;
+            case RGBA16F -> GL30.GL_RGBA16F;
+            case R11G11B10F -> GL30.GL_R11F_G11F_B10F;
+            case R16F -> GL30.GL_R16F;
+            case R32F -> GL30.GL_R32F;
             case DEPTH32F -> GL_DEPTH_COMPONENT32F;
             case DEPTH32F_STENCIL8 -> GL_DEPTH32F_STENCIL8;
         };
@@ -599,7 +612,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private static int pixelTypeToGl(TextureFormat format) {
         return switch (format) {
             case RGBA8, SRGB8_ALPHA8 -> GL_UNSIGNED_BYTE;
-            case RGBA16F, R11G11B10F, R32F, DEPTH32F -> GL_FLOAT;
+            case RGBA16F, R11G11B10F, R16F, R32F, DEPTH32F -> GL_FLOAT;
             case DEPTH32F_STENCIL8 -> GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
         };
     }
@@ -607,16 +620,18 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private void configureTextureSamplerState(int glTarget, TextureDescriptor descriptor) {
         boolean nearest = descriptor.samplerFilter() == SamplerFilter.NEAREST;
         int magFilter = nearest ? GL_NEAREST : GL_LINEAR;
-        int mipmapMinFilter = nearest ? org.lwjgl.opengl.GL11.GL_NEAREST_MIPMAP_LINEAR
-                : org.lwjgl.opengl.GL11.GL_LINEAR_MIPMAP_LINEAR;
+        int mipmapMinFilter = nearest ? GL11.GL_NEAREST_MIPMAP_LINEAR
+                : GL11.GL_LINEAR_MIPMAP_LINEAR;
         int minFilter = descriptor.mipLevels() > 1 ? mipmapMinFilter : magFilter;
         int wrapMode = wrapToGl(descriptor.wrap());
         glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, minFilter);
         glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, magFilter);
         glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, wrapMode);
         glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, wrapMode);
-        if (descriptor.kind() != TextureKind.TEXTURE_2D) {
-            glTexParameteri(glTarget, org.lwjgl.opengl.GL12.GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        if (descriptor.kind() == TextureKind.TEXTURE_3D) {
+            glTexParameteri(glTarget, GL12.GL_TEXTURE_WRAP_R, wrapMode);
+        } else if (descriptor.kind() != TextureKind.TEXTURE_2D) {
+            glTexParameteri(glTarget, GL12.GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         }
         if (descriptor.format() == TextureFormat.DEPTH32F && descriptor.usage() == TextureUsage.SAMPLED_DEPTH_SHADOW) {
             glTexParameteri(glTarget, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
@@ -659,8 +674,9 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private static int textureTargetToGl(TextureKind kind) {
         return switch (kind) {
             case TEXTURE_2D -> GL_TEXTURE_2D;
-            case CUBEMAP -> org.lwjgl.opengl.GL13.GL_TEXTURE_CUBE_MAP;
-            case ARRAY_2D -> org.lwjgl.opengl.GL30.GL_TEXTURE_2D_ARRAY;
+            case TEXTURE_3D -> GL12.GL_TEXTURE_3D;
+            case CUBEMAP -> GL13.GL_TEXTURE_CUBE_MAP;
+            case ARRAY_2D -> GL30.GL_TEXTURE_2D_ARRAY;
         };
     }
 
@@ -706,9 +722,9 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case TEXTURE_2D -> glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentPoint,
                     GL_TEXTURE_2D, resource.textureId(), mipLevel);
             case CUBEMAP -> glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentPoint,
-                    org.lwjgl.opengl.GL13.GL_TEXTURE_CUBE_MAP_POSITIVE_X + Math.max(layer, 0),
+                    GL13.GL_TEXTURE_CUBE_MAP_POSITIVE_X + Math.max(layer, 0),
                     resource.textureId(), mipLevel);
-            case ARRAY_2D -> org.lwjgl.opengl.GL30.glFramebufferTextureLayer(GL_FRAMEBUFFER, attachmentPoint,
+            case ARRAY_2D -> GL30.glFramebufferTextureLayer(GL_FRAMEBUFFER, attachmentPoint,
                     resource.textureId(), mipLevel, Math.max(layer, 0));
         }
     }
@@ -764,6 +780,16 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     @Override
+    public int uniformBufferOffsetAlignment() {
+        return Math.max(1, glGetInteger(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT));
+    }
+
+    @Override
+    public int perFrameBufferSlots() {
+        return persistentMappingSupported ? BufferResource.RING_SLOTS : 1;
+    }
+
+    @Override
     public void writeTexture(TextureHandle handle, ByteBuffer rgbaPixels) {
         TextureResource resource = requireTexture(handle);
         glBindTexture(GL_TEXTURE_2D, resource.textureId());
@@ -782,15 +808,16 @@ public final class OpenGlRenderBackend implements RenderBackend {
     public void generateMipmaps(TextureHandle handle) {
         TextureResource resource = requireTexture(handle);
         glBindTexture(GL_TEXTURE_2D, resource.textureId());
-        org.lwjgl.opengl.GL30.glGenerateMipmap(GL_TEXTURE_2D);
+        GL30.glGenerateMipmap(GL_TEXTURE_2D);
     }
 
     @Override
     public void readTextureLevel(TextureHandle handle, int mipLevel, java.nio.FloatBuffer destination) {
         TextureResource resource = requireTexture(handle);
-        glBindTexture(GL_TEXTURE_2D, resource.textureId());
-        org.lwjgl.opengl.GL11.glGetTexImage(GL_TEXTURE_2D, mipLevel,
-                org.lwjgl.opengl.GL11.GL_RED, GL_FLOAT, destination);
+        int glTarget = textureTargetToGl(resource.kind());
+        glBindTexture(glTarget, resource.textureId());
+        GL11.glGetTexImage(glTarget, mipLevel,
+                pixelFormatToGl(resource.format()), GL_FLOAT, destination);
     }
 
     @Override
@@ -822,14 +849,23 @@ public final class OpenGlRenderBackend implements RenderBackend {
     public void copyTextureLayer(TextureHandle source, int sourceLayer,
                                  TextureHandle destination, int destinationLayer) {
         TextureResource from = requireTexture(source);
+        copyTextureRegion(source, sourceLayer, 0, 0, destination, destinationLayer, 0, 0,
+                from.width(), from.height());
+    }
+
+    @Override
+    public void copyTextureRegion(TextureHandle source, int sourceLayer, int sourceX, int sourceY,
+                                  TextureHandle destination, int destinationLayer,
+                                  int destinationX, int destinationY, int width, int height) {
+        TextureResource from = requireTexture(source);
         TextureResource to = requireTexture(destination);
         if (from.format() != to.format() || from.width() != to.width() || from.height() != to.height()) {
-            throw new EpysiaException("copyTextureLayer requires matching format and dimensions.");
+            throw new EpysiaException("copyTextureRegion requires matching format and dimensions.");
         }
         glCopyImageSubData(
-                from.textureId(), textureTargetToGl(from.kind()), 0, 0, 0, sourceLayer,
-                to.textureId(), textureTargetToGl(to.kind()), 0, 0, 0, destinationLayer,
-                from.width(), from.height(), 1);
+                from.textureId(), textureTargetToGl(from.kind()), 0, sourceX, sourceY, sourceLayer,
+                to.textureId(), textureTargetToGl(to.kind()), 0, destinationX, destinationY, destinationLayer,
+                width, height, 1);
     }
 
     @Override
@@ -1042,21 +1078,43 @@ public final class OpenGlRenderBackend implements RenderBackend {
     public void beginPass(RenderTargetHandle target, PassClear clear) {
         if (target.id() == 0L) {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            currentTargetHeight = screenHeight;
             applyPassViewport(screenWidth, screenHeight);
         } else {
             RenderTargetResource resource = requireRenderTarget(target);
             glBindFramebuffer(GL_FRAMEBUFFER, resource.fboId());
+            currentTargetHeight = resource.height();
             applyPassViewport(resource.width(), resource.height());
         }
+        disableScissor();
         currentPipeline = null;
         appliedRenderState = null;
         currentBindingSetId = 0L;
         currentVertexBufferId = 0;
         currentIndexBufferId = 0;
         drawStatistics.recordPass();
-        org.lwjgl.opengl.GL11.glDepthMask(true);
-        org.lwjgl.opengl.GL11.glColorMask(true, true, true, true);
+        GL11.glDepthMask(true);
+        GL11.glColorMask(true, true, true, true);
         applyClear(clear);
+    }
+
+    private void disableScissor() {
+        glDisable(GL11.GL_SCISSOR_TEST);
+        appliedScissor = ScissorRect.disabled();
+    }
+
+    private void applyScissor(ScissorRect rect) {
+        if (rect.equals(appliedScissor)) {
+            return;
+        }
+        if (!rect.enabled()) {
+            disableScissor();
+            return;
+        }
+        glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(rect.x(), currentTargetHeight - rect.y() - rect.height(),
+                rect.width(), rect.height());
+        appliedScissor = rect;
     }
 
     private void applyClear(PassClear clear) {
@@ -1082,8 +1140,12 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public void execute(DrawCommand command) {
-        PipelineResource pipeline = requirePipeline(command.pipeline());
-        MeshResource mesh = requireMesh(command.mesh());
+        PipelineResource pipeline = pipelines.get(command.pipeline().id());
+        MeshResource mesh = meshes.get(command.mesh().id());
+        if (pipeline == null || mesh == null) {
+            drawStatistics.recordDroppedDraw();
+            return;
+        }
         if (currentPipeline != pipeline) {
             applyPipeline(pipeline);
             currentPipeline = pipeline;
@@ -1104,10 +1166,14 @@ public final class OpenGlRenderBackend implements RenderBackend {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.indexBufferId());
             currentIndexBufferId = mesh.indexBufferId();
         }
+        applyScissor(command.scissor());
         int indexCount = command.indexCountOverride() == DrawCommand.USE_MESH_INDEX_COUNT
                 ? mesh.indexCount()
                 : command.indexCountOverride();
-        long indexOffset = (long) mesh.firstIndex() * mesh.indexFormat().byteSize();
+        int firstIndex = command.firstIndexOverride() == DrawCommand.USE_MESH_FIRST_INDEX
+                ? mesh.firstIndex()
+                : command.firstIndexOverride();
+        long indexOffset = (long) firstIndex * mesh.indexFormat().byteSize();
         if (command.indirectBuffer() != null) {
             executeIndirect(command, pipeline, mesh, indexCount);
             return;
@@ -1140,11 +1206,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private void executeIndirect(DrawCommand command, PipelineResource pipeline,
                                  MeshResource mesh, int indexCount) {
         BufferResource indirectBuffer = requireBuffer(command.indirectBuffer());
-        glBindBuffer(org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER, indirectBuffer.bufferId());
+        glBindBuffer(GL40.GL_DRAW_INDIRECT_BUFFER, indirectBuffer.bufferId());
         bindPerDrawBuffer(command, pipeline);
         if (!command.isMultiDraw()) {
             drawStatistics.recordDraw(pipeline.state().topology(), indexCount, 1, true);
-            org.lwjgl.opengl.GL40.glDrawElementsIndirect(
+            GL40.glDrawElementsIndirect(
                     topologyToGl(pipeline.state().topology()),
                     indexFormatToGl(mesh.indexFormat()),
                     0L
@@ -1152,7 +1218,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
             return;
         }
         drawStatistics.recordDraw(pipeline.state().topology(), indexCount, command.indirectDrawCount(), true);
-        org.lwjgl.opengl.GL43.glMultiDrawElementsIndirect(
+        GL43.glMultiDrawElementsIndirect(
                 topologyToGl(pipeline.state().topology()),
                 indexFormatToGl(mesh.indexFormat()),
                 0L,
@@ -1187,8 +1253,8 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public int readPixelArgb(RenderTargetHandle target, int x, int y) {
         int previousReadFbo = beginPixelRead(target);
-        java.nio.ByteBuffer pixel = org.lwjgl.BufferUtils.createByteBuffer(4);
-        org.lwjgl.opengl.GL11.glReadPixels(x, y, 1, 1, GL_RGBA, org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, pixel);
+        java.nio.ByteBuffer pixel = BufferUtils.createByteBuffer(4);
+        GL11.glReadPixels(x, y, 1, 1, GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
         endPixelRead(target, previousReadFbo);
         int r = pixel.get(0) & 0xFF;
         int g = pixel.get(1) & 0xFF;
@@ -1200,19 +1266,19 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public PixelColor readPixelFloat(RenderTargetHandle target, int x, int y) {
         int previousReadFbo = beginPixelRead(target);
-        java.nio.FloatBuffer pixel = org.lwjgl.BufferUtils.createFloatBuffer(4);
-        org.lwjgl.opengl.GL11.glReadPixels(x, y, 1, 1, GL_RGBA, org.lwjgl.opengl.GL11.GL_FLOAT, pixel);
+        java.nio.FloatBuffer pixel = BufferUtils.createFloatBuffer(4);
+        GL11.glReadPixels(x, y, 1, 1, GL_RGBA, GL11.GL_FLOAT, pixel);
         endPixelRead(target, previousReadFbo);
         return new PixelColor(pixel.get(0), pixel.get(1), pixel.get(2), pixel.get(3));
     }
 
     private int beginPixelRead(RenderTargetHandle target) {
-        int previousReadFbo = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING);
+        int previousReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         if (target.id() == RenderTargetHandle.SCREEN.id()) {
-            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, 0);
-            org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_FRONT);
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+            GL11.glReadBuffer(GL11.GL_FRONT);
         } else {
-            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, requireRenderTarget(target).fboId());
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, requireRenderTarget(target).fboId());
         }
         return previousReadFbo;
     }
@@ -1221,17 +1287,17 @@ public final class OpenGlRenderBackend implements RenderBackend {
     public void readPixelsRgba(RenderTargetHandle target, int x, int y, int width, int height,
                                java.nio.ByteBuffer destination) {
         int previousReadFbo = beginPixelRead(target);
-        org.lwjgl.opengl.GL11.glPixelStorei(org.lwjgl.opengl.GL11.GL_PACK_ALIGNMENT, 1);
-        org.lwjgl.opengl.GL11.glReadPixels(x, y, width, height, GL_RGBA,
-                org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, destination);
+        GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+        GL11.glReadPixels(x, y, width, height, GL_RGBA,
+                GL11.GL_UNSIGNED_BYTE, destination);
         endPixelRead(target, previousReadFbo);
     }
 
     private void endPixelRead(RenderTargetHandle target, int previousReadFbo) {
         if (target.id() == RenderTargetHandle.SCREEN.id()) {
-            org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_BACK);
+            GL11.glReadBuffer(GL11.GL_BACK);
         }
-        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
     }
 
     private void applyPipeline(PipelineResource pipeline) {
@@ -1249,16 +1315,16 @@ public final class OpenGlRenderBackend implements RenderBackend {
         }
         if (appliedRenderState == null || appliedRenderState.colorWrite() != state.colorWrite()) {
             boolean write = state.colorWrite();
-            org.lwjgl.opengl.GL11.glColorMask(write, write, write, write);
+            GL11.glColorMask(write, write, write, write);
         }
         if (appliedRenderState == null || appliedRenderState.depthWrite() != state.depthWrite()) {
-            org.lwjgl.opengl.GL11.glDepthMask(state.depthWrite());
+            GL11.glDepthMask(state.depthWrite());
         }
         if (appliedRenderState == null || appliedRenderState.depthClamp() != state.depthClamp()) {
             if (state.depthClamp()) {
-                glEnable(org.lwjgl.opengl.GL32.GL_DEPTH_CLAMP);
+                glEnable(GL32.GL_DEPTH_CLAMP);
             } else {
-                glDisable(org.lwjgl.opengl.GL32.GL_DEPTH_CLAMP);
+                glDisable(GL32.GL_DEPTH_CLAMP);
             }
         }
         applyStencilState(state.stencil());
@@ -1329,7 +1395,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
                             ubo.buffer().bufferId(ringFrameSlot), ubo.offset(), ubo.size());
                 }
             }
-            case ResolvedStorageImage image -> org.lwjgl.opengl.GL42.glBindImageTexture(
+            case ResolvedStorageImage image -> GL42.glBindImageTexture(
                     image.slot(), image.textureId(), image.mipLevel(), true, 0, image.access(), image.format());
             case ResolvedStorage storage -> glBindBufferRange(GL_SHADER_STORAGE_BUFFER, storage.slot(),
                     storage.buffer().bufferId(ringFrameSlot), storage.offset(), storage.size());
@@ -1363,8 +1429,8 @@ public final class OpenGlRenderBackend implements RenderBackend {
             }
             case ADDITIVE -> {
                 glEnable(GL_BLEND);
-                glBlendFuncSeparate(org.lwjgl.opengl.GL11.GL_ONE, org.lwjgl.opengl.GL11.GL_ONE,
-                        org.lwjgl.opengl.GL11.GL_ONE, org.lwjgl.opengl.GL11.GL_ONE);
+                glBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE,
+                        GL11.GL_ONE, GL11.GL_ONE);
             }
         }
     }
@@ -1389,7 +1455,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
             case INDEX -> GL_ELEMENT_ARRAY_BUFFER;
             case UNIFORM -> GL_UNIFORM_BUFFER;
             case STORAGE -> GL_SHADER_STORAGE_BUFFER;
-            case INDIRECT -> org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER;
+            case INDIRECT -> GL40.GL_DRAW_INDIRECT_BUFFER;
         };
     }
 
@@ -1507,7 +1573,6 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private record PipelineResource(int programId, int vaoId, RenderState state, int vertexStride, int instanceStride) {
-
         static PipelineResource compute(int programId) {
             return new PipelineResource(programId, 0, null, 0, 0);
         }
@@ -1517,8 +1582,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private static final class BufferResource {
-
-        private static final int RING_SLOTS = 3;
+        static final int RING_SLOTS = 3;
 
         private final int[] bufferIds;
         private final ByteBuffer[] mappings;

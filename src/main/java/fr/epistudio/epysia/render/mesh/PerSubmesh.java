@@ -9,7 +9,7 @@ import fr.epistudio.epysia.render.material.Material;
 import java.util.Optional;
 
 record PerSubmesh(
-        BufferHandle modelUbo,
+        ObjectUniformSlot modelSlot,
         BindingSetHandle shadowBindings,
         BindingSetHandle litBindings,
         MaterialClassResources classResources,

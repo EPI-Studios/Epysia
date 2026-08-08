@@ -22,7 +22,7 @@ void main() {
     particles[slot].positionAge = vec4(effect.emitterPositionDelta.xyz, 0.0);
     particles[slot].velocityLifetime = vec4(direction * (2.0 + hashFloat(spawnKey * 7u)), lifetime);
     particles[slot].color = vec4(1.0, 0.45, 0.12, 1.0);
-    particles[slot].sizeRotation = vec4(0.08, 0.0, 0.0, 0.0);
+    particles[slot].sizeRotation = vec4(0.08, 0.08, 0.0, 0.0);
     particles[slot].seedUser = vec4(hashFloat(spawnKey), 0.0, 0.0, 0.0);
     particles[slot].userExtra = vec4(0.0);
 }

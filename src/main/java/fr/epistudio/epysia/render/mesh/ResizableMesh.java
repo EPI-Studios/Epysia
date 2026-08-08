@@ -7,7 +7,6 @@ import fr.epistudio.epysia.render.backend.RenderBackend;
 import java.nio.ByteBuffer;
 
 public final class ResizableMesh {
-
     private final IndexFormat indexFormat;
     private final int vertexCapacityBytes;
     private final int indexCapacityBytes;
@@ -57,7 +56,7 @@ public final class ResizableMesh {
                     submesh.indexOffset(), submesh.indexCount());
         }
         mesh = new UploadedMesh(mesh.vertexBuffer(), mesh.indexBuffer(), mesh.submeshes(),
-                Aabb.fromPositions(data.positions()), mesh.skinned(), mesh.vertexColored(),
+                data.vertexCount(), Aabb.fromPositions(data.positions()), mesh.skinned(), mesh.vertexColored(),
                 mesh.skeleton(), mesh.lightmapUvs());
     }
 

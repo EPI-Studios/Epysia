@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import fr.epistudio.epysia.render.backend.TextureHandle;
 
 public final class LightmapBaker implements LightBaker {
 
@@ -295,7 +296,7 @@ public final class LightmapBaker implements LightBaker {
             return (byte) Math.clamp(Math.round(value * 255.0f), 0, 255);
         }
 
-        private void assignTexture(fr.epistudio.epysia.render.backend.TextureHandle texture) {
+        private void assignTexture(TextureHandle texture) {
             for (Target target : targets) {
                 for (Material material : target.renderer().materials()) {
                     if (material instanceof LitMaterial lit) {

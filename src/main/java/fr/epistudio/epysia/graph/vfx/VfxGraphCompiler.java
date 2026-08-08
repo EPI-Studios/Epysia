@@ -4,12 +4,12 @@ import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.graph.GraphAsset;
 import fr.epistudio.epysia.graph.GraphKind;
 import fr.epistudio.epysia.graph.GraphNode;
+import fr.epistudio.epysia.graph.GraphValues;
 
 import java.util.Arrays;
 import java.util.Optional;
 
 public final class VfxGraphCompiler {
-
     private final String commonSource;
     private final String shapeSource;
     private final String noiseSource;
@@ -40,7 +40,6 @@ public final class VfxGraphCompiler {
     public record VfxCompiledSources(String spawnCompute, String updateCompute,
                                      String fragmentBody, float spawnRatePerSecond,
                                      float[] spawnRateSamples) {
-
         public float spawnRateAt(float normalizedTime) {
             if (spawnRateSamples.length == 0) {
                 return spawnRatePerSecond;
@@ -75,6 +74,8 @@ public final class VfxGraphCompiler {
         String lifetime = "2.0";
         String color = "vec4(1.0, 1.0, 1.0, 1.0)";
         String size = "0.1";
+        String sizeY = size;
+        String rotation = "0.0";
         if (output.isPresent()) {
             GraphNode node = output.get();
             position = emitter.pinExpression(node, VfxNodes.POSITION_PIN, VfxExpression.vector3(position));
@@ -82,12 +83,17 @@ public final class VfxGraphCompiler {
             lifetime = emitter.pinExpression(node, VfxNodes.LIFETIME_PIN, VfxExpression.scalar(lifetime));
             color = emitter.pinExpression(node, VfxNodes.COLOR_PIN, VfxExpression.vector4(color));
             size = emitter.pinExpression(node, VfxNodes.SIZE_PIN, VfxExpression.scalar(size));
+            sizeY = emitter.pinExpression(node, VfxNodes.SIZE_Y_PIN, VfxExpression.scalar(size));
+            rotation = emitter.pinExpression(node, VfxNodes.ROTATION_PIN, VfxExpression.scalar(rotation));
         }
-        return spawnSource(position, velocity, lifetime, color, size);
+        return spawnSource(position, velocity, lifetime, color, new ParticleShape(size, sizeY, rotation));
+    }
+
+    private record ParticleShape(String size, String sizeY, String rotation) {
     }
 
     private String spawnSource(String position, String velocity, String lifetime,
-                               String color, String size) {
+                               String color, ParticleShape shape) {
         return """
                 #version 430 core
                 %s
@@ -109,11 +115,12 @@ public final class VfxGraphCompiler {
                     particles[slot].positionAge = vec4(emitterSpawnPosition(%s), 0.0);
                     particles[slot].velocityLifetime = vec4(%s, %s);
                     particles[slot].color = %s;
-                    particles[slot].sizeRotation = vec4(%s, 0.0, 0.0, 0.0);
+                    particles[slot].sizeRotation = vec4(%s, %s, %s, 0.0);
                     particles[slot].seedUser = vec4(particleSeed, 0.0, 0.0, 0.0);
                     particles[slot].userExtra = particles[slot].color;
                 }
-                """.formatted(preamble(), position, velocity, lifetime, color, size);
+                """.formatted(preamble(), position, velocity, lifetime, color,
+                shape.size(), shape.sizeY(), shape.rotation());
     }
 
     private String compileUpdate(GraphAsset asset) {
@@ -123,18 +130,23 @@ public final class VfxGraphCompiler {
         String color = "vec4(mix(particle.userExtra.rgb * 1.3 + vec3(0.25, 0.12, 0.02), particle.userExtra.rgb * 0.35, "
                 + "smoothstep(0.0, 0.85, ageNormalized)), 1.0 - ageNormalized * ageNormalized)";
         String size = "particle.sizeRotation.x";
+        String sizeY = "particle.sizeRotation.y";
+        String angularVelocity = "0.0";
         String kill = "0.0";
         if (output.isPresent()) {
             GraphNode node = output.get();
             velocity = emitter.pinExpression(node, VfxNodes.VELOCITY_PIN, VfxExpression.vector3(velocity));
             color = emitter.pinExpression(node, VfxNodes.COLOR_PIN, VfxExpression.vector4(color));
             size = emitter.pinExpression(node, VfxNodes.SIZE_PIN, VfxExpression.scalar(size));
+            sizeY = emitter.pinExpression(node, VfxNodes.SIZE_Y_PIN, VfxExpression.scalar(sizeY));
+            angularVelocity = emitter.pinExpression(node, VfxNodes.ANGULAR_VELOCITY_PIN,
+                    VfxExpression.scalar(angularVelocity));
             kill = emitter.pinExpression(node, VfxNodes.KILL_PIN, VfxExpression.scalar(kill));
         }
-        return updateSource(velocity, color, size, kill);
+        return updateSource(velocity, color, new ParticleShape(size, sizeY, angularVelocity), kill);
     }
 
-    private String updateSource(String velocity, String color, String size, String kill) {
+    private String updateSource(String velocity, String color, ParticleShape shape, String kill) {
         return """
                 #version 430 core
                 %s
@@ -164,11 +176,13 @@ public final class VfxGraphCompiler {
                             + simulationSpaceOffset(), age);
                     particles[slot].velocityLifetime.xyz = velocity;
                     particles[slot].color = %s;
-                    particles[slot].sizeRotation.x = %s;
+                    particles[slot].sizeRotation = vec4(%s, %s,
+                            particle.sizeRotation.z + (%s) * deltaTime, 0.0);
                     uint drawIndex = atomicAdd(instanceCount, 1u);
                     aliveIndices[drawIndex] = slot;
                 }
-                """.formatted(preamble(), kill, velocity, color, size);
+                """.formatted(preamble(), kill, velocity, color,
+                shape.size(), shape.sizeY(), shape.rotation());
     }
 
     private String compileRender(GraphAsset asset) {
@@ -183,14 +197,25 @@ public final class VfxGraphCompiler {
                     VfxExpression.scalar(intensity));
         }
         return """
-                    float distanceFromCenter = length(particleCorner);
+                    float distanceFromCenter = %s;
                     float softEdge = %s;
                     float intensity = %s;
                     float falloff = smoothstep(1.0, 1.0 - clamp(softEdge, 0.05, 1.0), distanceFromCenter);
                     float core = smoothstep(0.45, 0.0, distanceFromCenter) * 0.6;
                     vec3 hdrColor = particleColor.rgb * intensity * (falloff + core);
                     fragmentColor = vec4(hdrColor * particleColor.a * particleDepthFade(), 1.0);
-                """.formatted(softEdge, intensity);
+                """.formatted(cornerDistance(output), softEdge, intensity);
+    }
+
+    private static String cornerDistance(Optional<GraphNode> output) {
+        boolean rectangular = output
+                .map(node -> GraphValues.asString(node.values().getOrDefault(
+                        VfxNodes.SHAPE_SETTING, VfxNodes.RENDER_SHAPE_ROUND)))
+                .filter(VfxNodes.RENDER_SHAPE_RECT::equals)
+                .isPresent();
+        return rectangular
+                ? "max(abs(particleCorner.x), abs(particleCorner.y))"
+                : "length(particleCorner)";
     }
 
     private VfxExpressionEmitter emitterFor(GraphAsset asset, VfxStage stage) {

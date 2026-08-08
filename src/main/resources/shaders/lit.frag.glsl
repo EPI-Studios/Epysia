@@ -44,6 +44,10 @@ layout(std140, binding = 2) uniform MaterialUbo {
     vec4 lightmapScaleOffset;
     float lightmapStrength;
     float lightmapRgbmRange;
+    int uvMapping;
+    float triplanarSharpness;
+    vec3 uvScale;
+    vec3 uvOffset;
 } material;
 
 layout(binding = 4) uniform sampler2D albedo;
@@ -59,6 +63,8 @@ flat in int surfaceInstanceIndex;
 
 layout(binding = 14) uniform sampler2D opaqueSceneColor;
 layout(binding = 15) uniform sampler2D opaqueSceneDepth;
+
+#include "lib/uv_mapping.glsl"
 
 vec2 screenUv() {
     vec4 clip = frame.cameraViewProjection * vec4(vertexWorldPosition, 1.0);
@@ -165,11 +171,29 @@ vec3 imageBasedAmbient(vec3 normal, vec3 viewDirection, vec3 albedoColor,
     return environment;
 }
 
+vec3 triplanarWorldNormal(vec3 geometricNormal) {
+    vec3 position = triplanarPosition();
+    vec3 weights = triplanarWeights();
+    vec3 axisX = texture(normalMap, position.zy).rgb * 2.0 - 1.0;
+    vec3 axisY = texture(normalMap, position.xz).rgb * 2.0 - 1.0;
+    vec3 axisZ = texture(normalMap, position.xy).rgb * 2.0 - 1.0;
+    axisX.xy *= material.normalScale;
+    axisY.xy *= material.normalScale;
+    axisZ.xy *= material.normalScale;
+    axisX = vec3(axisX.xy + geometricNormal.zy, abs(axisX.z) * geometricNormal.x);
+    axisY = vec3(axisY.xy + geometricNormal.xz, abs(axisY.z) * geometricNormal.y);
+    axisZ = vec3(axisZ.xy + geometricNormal.xy, abs(axisZ.z) * geometricNormal.z);
+    return normalize(axisX.zyx * weights.x + axisY.xzy * weights.y + axisZ.xyz * weights.z);
+}
+
 vec3 computeWorldNormal() {
 #ifdef MATERIAL_HAS_NORMALMAP
-    vec3 sampledNormal = texture(normalMap, vertexUv).rgb * 2.0 - 1.0;
-    sampledNormal *= vec3(material.normalScale, material.normalScale, 1.0);
     vec3 normal = normalize(vertexWorldNormal) * (gl_FrontFacing ? 1.0 : -1.0);
+    if (material.uvMapping != UV_MAPPING_MESH) {
+        return triplanarWorldNormal(normal);
+    }
+    vec3 sampledNormal = texture(normalMap, mappedUv(vertexUv)).rgb * 2.0 - 1.0;
+    sampledNormal *= vec3(material.normalScale, material.normalScale, 1.0);
     vec3 tangent = normalize(vertexWorldTangent - normal * dot(normal, vertexWorldTangent));
     vec3 bitangent = cross(normal, tangent);
     mat3 tangentToWorld = mat3(tangent, bitangent, normal);
@@ -243,7 +267,7 @@ vec3 shadeLight(int lightIndex, int shadowIndex, vec3 worldNormal, vec3 viewDire
 void main() {
     // SURFACE_PREPARE_CALL
 #ifdef MATERIAL_HAS_ALBEDO
-    vec4 albedoSample = texture(albedo, vertexUv);
+    vec4 albedoSample = materialTexture(albedo, vertexUv);
 #else
     vec4 albedoSample = vec4(1.0);
 #endif
@@ -252,14 +276,14 @@ void main() {
     albedoColor *= vertexColor;
 #endif
 #ifdef MATERIAL_HAS_METALLICROUGHNESSMAP
-    vec4 metallicRoughnessSample = texture(metallicRoughnessMap, vertexUv);
+    vec4 metallicRoughnessSample = materialTexture(metallicRoughnessMap, vertexUv);
 #else
     vec4 metallicRoughnessSample = vec4(1.0);
 #endif
     float metallic = clamp(metallicRoughnessSample.b * material.metallic, 0.0, 1.0);
     float roughness = clamp(metallicRoughnessSample.g * material.roughness, 0.04, 1.0);
 #ifdef MATERIAL_HAS_EMISSIVEMAP
-    vec3 emissive = texture(emissiveMap, vertexUv).rgb * material.emissiveStrength;
+    vec3 emissive = materialTexture(emissiveMap, vertexUv).rgb * material.emissiveStrength;
 #else
     vec3 emissive = vec3(material.emissiveStrength);
 #endif
@@ -281,7 +305,7 @@ void main() {
     roughness = clamp(filteredRoughness(worldNormal, roughness), 0.04, 1.0);
     metallic = clamp(metallic, 0.0, 1.0);
 #ifdef MATERIAL_HAS_OCCLUSIONMAP
-    float occlusion = mix(1.0, texture(occlusionMap, vertexUv).r, material.occlusionStrength);
+    float occlusion = mix(1.0, materialTexture(occlusionMap, vertexUv).r, material.occlusionStrength);
 #else
     float occlusion = 1.0;
 #endif

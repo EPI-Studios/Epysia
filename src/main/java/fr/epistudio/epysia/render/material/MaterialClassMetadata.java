@@ -10,12 +10,12 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class MaterialClassMetadata {
-
     private static final Pattern SAMPLER_BINDING_PATTERN = Pattern.compile(
             "layout\\s*\\(\\s*binding\\s*=\\s*(\\d+)\\s*\\)\\s*uniform\\s+sampler(?:2D|2DShadow|Cube)\\s+(\\w+)\\s*;"
     );
@@ -75,7 +75,7 @@ public final class MaterialClassMetadata {
         if (slot == null) {
             throw new EpysiaException("@Texture field '" + field.getName() + "' has no matching sampler declaration in fragment shader.");
         }
-        fields.add(new TextureFieldDescriptor(field, varHandleFor(field), slot));
+        fields.add(new TextureFieldDescriptor(field, varHandleFor(field), slot, normalMapLike(field)));
     }
 
     private static VarHandle varHandleFor(Field field) {
@@ -106,11 +106,9 @@ public final class MaterialClassMetadata {
     }
 
     public void writeUniformBuffer(Material instance, ByteBuffer destination) {
-        for (UniformFieldDescriptor descriptor : uniformFields) {
-            Object value = descriptor.accessor().get(instance);
-            if (value != null) {
-                descriptor.type().write(destination, descriptor.byteOffset(), value);
-            }
+        for (int index = 0; index < uniformFields.size(); index++) {
+            UniformFieldDescriptor descriptor = uniformFields.get(index);
+            descriptor.type().read(destination, descriptor.byteOffset(), descriptor.accessor(), instance);
         }
     }
 
@@ -135,9 +133,15 @@ public final class MaterialClassMetadata {
         return result;
     }
 
+    private static boolean normalMapLike(Field field) {
+        String name = field.getName().toLowerCase(Locale.ROOT);
+        return name.contains("normal") || name.contains("bump");
+    }
+
     public record UniformFieldDescriptor(Field reflectField, VarHandle accessor, UniformType type, int byteOffset) {
     }
 
-    public record TextureFieldDescriptor(Field reflectField, VarHandle accessor, int slotIndex) {
+    public record TextureFieldDescriptor(Field reflectField, VarHandle accessor, int slotIndex,
+                                         boolean normalMapLike) {
     }
 }

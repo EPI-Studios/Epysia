@@ -8,14 +8,15 @@ import java.util.Optional;
 
 public record RenderContext(List<Camera3D> activeCameras,
                             RenderTargetHandle primaryTarget,
-                            float interpolationAlpha) {
-
+                            float interpolationAlpha,
+                            long animationGeneration) {
     public RenderContext {
         activeCameras = List.copyOf(activeCameras);
     }
 
-    public static RenderContext of(List<Camera3D> cameras, RenderTargetHandle target, float interpolationAlpha) {
-        return new RenderContext(cameras, target, interpolationAlpha);
+    public static RenderContext of(List<Camera3D> cameras, RenderTargetHandle target,
+                                   float interpolationAlpha, long animationGeneration) {
+        return new RenderContext(cameras, target, interpolationAlpha, animationGeneration);
     }
 
     public Optional<Camera3D> primaryCamera() {

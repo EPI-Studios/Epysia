@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+import java.util.Locale;
 
 public final class MeshDataSource {
 
@@ -23,7 +24,7 @@ public final class MeshDataSource {
         if (path.startsWith(BuiltinMeshes.PRESET_PREFIX)) {
             return BuiltinMeshes.presetData(path.substring(BuiltinMeshes.PRESET_PREFIX.length()));
         }
-        if (path.toLowerCase(java.util.Locale.ROOT).endsWith(OBJ_EXTENSION)) {
+        if (path.toLowerCase(Locale.ROOT).endsWith(OBJ_EXTENSION)) {
             return readText(path).map(ObjMesh::parseFromSource);
         }
         return Optional.empty();

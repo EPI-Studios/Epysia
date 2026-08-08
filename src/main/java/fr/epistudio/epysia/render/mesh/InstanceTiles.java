@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.render.mesh;
 
 import org.joml.Vector3f;
+import java.util.Arrays;
 
 final class InstanceTiles {
 
@@ -80,7 +81,7 @@ final class InstanceTiles {
         if (cellCounts.length < cells + 1) {
             cellCounts = new int[cells + 1];
         }
-        java.util.Arrays.fill(cellCounts, 0, cells + 1, 0);
+        Arrays.fill(cellCounts, 0, cells + 1, 0);
         for (int instance = 0; instance < count; instance++) {
             cellCounts[cellOfInstance[instance] + 1]++;
         }

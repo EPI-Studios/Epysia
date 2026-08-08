@@ -38,29 +38,32 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Locale;
 
 final class MaterialPipelineCache {
-
     public static final int MULTI_DRAW_INDEX_LOCATION = 7;
 
     private final ShaderLoader shaderLoader;
     private final ShaderWatcher shaderWatcher;
     private final Logger logger;
-    private final ByteBuffer scratchMaterialUbo = BufferUtils.createByteBuffer(1024);
+    private static final int MATERIAL_UBO_SCRATCH_BYTES = 1024;
+    private final ByteBuffer scratchMaterialUbo = BufferUtils.createByteBuffer(MATERIAL_UBO_SCRATCH_BYTES);
     private final Map<String, MaterialClassResources> classCache = new HashMap<>();
     private final Map<Class<? extends Material>, MaterialClassMetadata> reflectionCache = new HashMap<>();
     private final Map<Material, ResolvedClass> resolvedClasses = new IdentityHashMap<>();
     private static final byte[] NO_UNIFORM_BYTES = new byte[0];
 
-    private final Map<Material, BufferHandle> materialUbos = new IdentityHashMap<>();
-    private final Map<Material, byte[]> uniformSnapshots = new IdentityHashMap<>();
-    private final Set<Material> writtenThisFrame = new HashSet<>();
+    private final Map<Material, MaterialUniformState> uniformStates = new IdentityHashMap<>();
+    private static final byte[] ZERO_BYTES = new byte[MATERIAL_UBO_SCRATCH_BYTES];
+    private byte[] scratchUniformBytes = new byte[256];
+    private long uniformFrameCounter;
     private final List<BufferHandle> ownedBuffers = new ArrayList<>();
 
     private RenderBackend backend;
@@ -81,11 +84,14 @@ final class MaterialPipelineCache {
     }
 
     void beginFrame() {
-        writtenThisFrame.clear();
-        frameTexturePresenceMasks.clear();
+        uniformFrameCounter++;
+        frameTextures.clear();
     }
 
-    private final Map<Material, Long> frameTexturePresenceMasks = new IdentityHashMap<>();
+    private final Map<Material, FrameTextures> frameTextures = new IdentityHashMap<>();
+
+    private record FrameTextures(TextureHandle[] resolved, long presenceMask) {
+    }
 
     void setProbeLightingActive(boolean active) {
         this.probeLightingActive = active;
@@ -98,7 +104,6 @@ final class MaterialPipelineCache {
     private record ResolvedClass(String vertexShader, String fragmentShader, String surfaceShader,
                                  boolean transparent, boolean doubleSided, long textureMask,
                                  MaterialClassResources resources) {
-
         boolean matches(Material material, long currentTextureMask) {
             return transparent == material.blended()
                     && doubleSided == material.doubleSided()
@@ -145,26 +150,42 @@ final class MaterialPipelineCache {
     }
 
     private long texturePresenceMask(Material material) {
-        Long cached = frameTexturePresenceMasks.get(material);
+        return frameTexturesFor(material).presenceMask;
+    }
+
+    TextureHandle[] resolvedTextures(Material material) {
+        return frameTexturesFor(material).resolved;
+    }
+
+    private FrameTextures frameTexturesFor(Material material) {
+        FrameTextures cached = frameTextures.get(material);
         if (cached != null) {
             return cached;
         }
-        long computed = computeTexturePresenceMask(material);
-        frameTexturePresenceMasks.put(material, computed);
+        FrameTextures computed = readTextures(material);
+        frameTextures.put(material, computed);
         return computed;
     }
 
-    private long computeTexturePresenceMask(Material material) {
+    private FrameTextures readTextures(Material material) {
         MaterialClassMetadata metadata = reflectionCache.computeIfAbsent(material.getClass(),
                 materialClass -> MaterialClassMetadata.reflect(materialClass,
                         shaderLoader.load(material.fragmentShaderPath()).source()));
-        long mask = 0L;
         List<TextureFieldDescriptor> fields = metadata.textureFields();
+        TextureHandle[] resolved = new TextureHandle[fields.size()];
+        long mask = 0L;
         for (int index = 0; index < fields.size(); index++) {
-            if (metadata.readTexture(material, fields.get(index)) != null) {
+            TextureHandle handle = metadata.readTexture(material, fields.get(index));
+            if (handle != null) {
                 mask |= 1L << index;
             }
+            resolved[index] = handle != null ? handle : defaultFor(fields.get(index));
         }
+        return new FrameTextures(resolved, maskWithMaterialBits(material, mask));
+    }
+
+    private long maskWithMaterialBits(Material material, long textureBits) {
+        long mask = textureBits;
         if (material instanceof LitMaterial lit && lit.alphaCutoff > 0.0f) {
             mask |= ALPHA_MASKED_BIT;
         }
@@ -192,7 +213,7 @@ final class MaterialPipelineCache {
         for (int index = 0; index < fields.size(); index++) {
             if ((textureMask & (1L << index)) != 0L) {
                 defines.append("#define MATERIAL_HAS_")
-                        .append(fields.get(index).reflectField().getName().toUpperCase(java.util.Locale.ROOT))
+                        .append(fields.get(index).reflectField().getName().toUpperCase(Locale.ROOT))
                         .append('\n');
             }
         }
@@ -287,66 +308,92 @@ final class MaterialPipelineCache {
         if (!classResources.metadata().hasUniformBuffer()) {
             return null;
         }
-        BufferHandle existing = materialUbos.get(material);
+        MaterialUniformState state = stateFor(material);
+        if (state.buffer != null) {
+            return state.buffer;
+        }
+        ByteBuffer empty = BufferUtils.createByteBuffer(classResources.metadata().uniformBufferSize());
+        state.buffer = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, empty));
+        ownedBuffers.add(state.buffer);
+        return state.buffer;
+    }
+
+    private MaterialUniformState stateFor(Material material) {
+        MaterialUniformState existing = uniformStates.get(material);
         if (existing != null) {
             return existing;
         }
-        ByteBuffer empty = BufferUtils.createByteBuffer(classResources.metadata().uniformBufferSize());
-        BufferHandle ubo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM, empty));
-        ownedBuffers.add(ubo);
-        materialUbos.put(material, ubo);
-        return ubo;
+        MaterialUniformState created = new MaterialUniformState();
+        uniformStates.put(material, created);
+        return created;
     }
 
     BufferHandle materialUboFor(Material material) {
-        return materialUbos.get(material);
+        MaterialUniformState state = uniformStates.get(material);
+        return state == null ? null : state.buffer;
     }
 
     void writeMaterialUboIfNeeded(Material material, MaterialClassResources classResources) {
         if (material == null || !classResources.metadata().hasUniformBuffer()) {
             return;
         }
-        if (!writtenThisFrame.add(material)) {
+        MaterialUniformState state = uniformStates.get(material);
+        if (state == null || state.buffer == null || state.lastPackedFrame == uniformFrameCounter) {
             return;
         }
-        BufferHandle materialUbo = materialUbos.get(material);
-        if (materialUbo == null) {
+        state.lastPackedFrame = uniformFrameCounter;
+        int size = classResources.metadata().uniformBufferSize();
+        packUniforms(material, classResources, size);
+        if (state.matches(scratchUniformBytes, size)) {
             return;
         }
-        scratchMaterialUbo.clear();
-        scratchMaterialUbo.limit(classResources.metadata().uniformBufferSize());
-        for (int i = 0; i < classResources.metadata().uniformBufferSize(); i++) {
-            scratchMaterialUbo.put(i, (byte) 0);
-        }
-        classResources.metadata().writeUniformBuffer(material, scratchMaterialUbo);
-        scratchMaterialUbo.position(0);
-        scratchMaterialUbo.limit(classResources.metadata().uniformBufferSize());
-        captureUniformSnapshot(material, classResources.metadata().uniformBufferSize());
-        backend.writeBuffer(materialUbo, scratchMaterialUbo, 0L);
+        state.adopt(scratchUniformBytes, size);
+        backend.writeBuffer(state.buffer, scratchMaterialUbo, 0L);
     }
 
-    private void captureUniformSnapshot(Material material, int size) {
-        byte[] snapshot = uniformSnapshots.get(material);
-        if (snapshot == null || snapshot.length != size) {
-            snapshot = new byte[size];
-            uniformSnapshots.put(material, snapshot);
+    private void packUniforms(Material material, MaterialClassResources classResources, int size) {
+        ensureScratchUniformBytes(size);
+        scratchMaterialUbo.clear();
+        scratchMaterialUbo.limit(size);
+        scratchMaterialUbo.put(ZERO_BYTES, 0, size);
+        scratchMaterialUbo.position(0);
+        classResources.metadata().writeUniformBuffer(material, scratchMaterialUbo);
+        scratchMaterialUbo.position(0);
+        scratchMaterialUbo.limit(size);
+        scratchMaterialUbo.get(scratchUniformBytes, 0, size);
+        scratchMaterialUbo.position(0);
+    }
+
+    private void ensureScratchUniformBytes(int size) {
+        if (scratchUniformBytes.length < size) {
+            scratchUniformBytes = new byte[size];
         }
-        for (int index = 0; index < size; index++) {
-            snapshot[index] = scratchMaterialUbo.get(index);
+    }
+
+    private static final class MaterialUniformState {
+        private BufferHandle buffer;
+        private byte[] snapshot = NO_UNIFORM_BYTES;
+        private long lastPackedFrame = -1L;
+
+        private boolean matches(byte[] candidate, int size) {
+            return snapshot.length == size && Arrays.equals(snapshot, 0, size, candidate, 0, size);
+        }
+
+        private void adopt(byte[] candidate, int size) {
+            if (snapshot.length != size) {
+                snapshot = new byte[size];
+            }
+            System.arraycopy(candidate, 0, snapshot, 0, size);
         }
     }
 
     byte[] uniformSnapshotOf(Material material) {
-        byte[] snapshot = uniformSnapshots.get(material);
-        return snapshot != null ? snapshot : NO_UNIFORM_BYTES;
+        MaterialUniformState state = uniformStates.get(material);
+        return state == null ? NO_UNIFORM_BYTES : state.snapshot;
     }
 
     TextureHandle defaultFor(TextureFieldDescriptor field) {
-        String name = field.reflectField().getName().toLowerCase();
-        if (name.contains("normal") || name.contains("bump")) {
-            return defaultNormalMap;
-        }
-        return defaultAlbedo;
+        return field.normalMapLike() ? defaultNormalMap : defaultAlbedo;
     }
 
     void shutdown() {
@@ -362,10 +409,9 @@ final class MaterialPipelineCache {
         if (defaultAlbedo != null) backend.destroy(defaultAlbedo);
         if (defaultNormalMap != null) backend.destroy(defaultNormalMap);
         ownedBuffers.clear();
-        materialUbos.clear();
+        uniformStates.clear();
         classCache.clear();
         resolvedClasses.clear();
-        writtenThisFrame.clear();
     }
 
     private MaterialClassResources buildClassResources(Material material, boolean skinned, boolean colored, long textureMask) {
@@ -453,7 +499,6 @@ final class MaterialPipelineCache {
         }
         return new LoadedPrograms(vertex, fragment);
     }
-
 
     private BindingSetLayout buildLitBindingLayout(MaterialClassMetadata metadata, ParsedSource surfaceUniforms,
                                                    boolean skinned, boolean probeLit) {
@@ -591,7 +636,6 @@ final class MaterialPipelineCache {
     }
 
     private record LoadedPrograms(LoadedShader vertex, LoadedShader fragment) {
-
         ShaderSource shaderSource() {
             return new ShaderSource(vertex.source(), fragment.source());
         }

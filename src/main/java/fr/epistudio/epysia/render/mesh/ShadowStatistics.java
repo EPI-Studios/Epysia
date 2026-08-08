@@ -1,13 +1,14 @@
 package fr.epistudio.epysia.render.mesh;
 
 public final class ShadowStatistics {
-
     private int targetsRendered;
     private int targetsSkipped;
     private int castersSubmitted;
     private int animatedCasters;
     private int culledCasters;
     private int staticLayersRebuilt;
+    private int staticLayersScrolled;
+    private int scrolledCastersDrawn;
     private int dynamicCastersDrawn;
     private int depthCopies;
 
@@ -18,12 +19,30 @@ public final class ShadowStatistics {
         animatedCasters = 0;
         culledCasters = 0;
         staticLayersRebuilt = 0;
+        staticLayersScrolled = 0;
+        scrolledCastersDrawn = 0;
         dynamicCastersDrawn = 0;
         depthCopies = 0;
     }
 
     void recordStaticLayerRebuild() {
         staticLayersRebuilt++;
+    }
+
+    void recordStaticLayerScroll() {
+        staticLayersScrolled++;
+    }
+
+    void recordScrolledCaster() {
+        scrolledCastersDrawn++;
+    }
+
+    public int staticLayersScrolled() {
+        return staticLayersScrolled;
+    }
+
+    public int scrolledCastersDrawn() {
+        return scrolledCastersDrawn;
     }
 
     void recordDynamicCasters(int count) {

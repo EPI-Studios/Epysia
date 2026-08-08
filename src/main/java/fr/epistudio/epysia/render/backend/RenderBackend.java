@@ -4,7 +4,6 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 public interface RenderBackend {
-
     void initialize(RenderSurface surface);
 
     void shutdown();
@@ -20,6 +19,14 @@ public interface RenderBackend {
     MeshHandle createMesh(MeshDescriptor descriptor);
 
     BufferHandle createBuffer(BufferDescriptor descriptor);
+
+    default int perFrameBufferSlots() {
+        return 1;
+    }
+
+    default int uniformBufferOffsetAlignment() {
+        return 256;
+    }
 
     TextureHandle createTexture(TextureDescriptor descriptor);
 
@@ -56,6 +63,10 @@ public interface RenderBackend {
     int textureHeight(TextureHandle handle);
 
     void copyTextureLayer(TextureHandle source, int sourceLayer, TextureHandle destination, int destinationLayer);
+
+    void copyTextureRegion(TextureHandle source, int sourceLayer, int sourceX, int sourceY,
+                           TextureHandle destination, int destinationLayer, int destinationX, int destinationY,
+                           int width, int height);
 
     void updatePipelineShaders(PipelineHandle handle, ShaderSource shaders);
 

@@ -34,6 +34,8 @@ import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Optional;
 
 final class EnvironmentMaps {
 
@@ -176,7 +178,7 @@ final class EnvironmentMaps {
     }
 
     private static BindingSetLayout skyCaptureLayout(SkySource source) {
-        List<BindingSlot> slots = new java.util.ArrayList<>(
+        List<BindingSlot> slots = new ArrayList<>(
                 List.of(new BindingSlot(0, BindingType.UNIFORM_BUFFER)));
         if (source.needsTexture()) {
             slots.add(new BindingSlot(1, BindingType.SAMPLED_TEXTURE_2D));
@@ -185,7 +187,7 @@ final class EnvironmentMaps {
     }
 
     private List<Binding> skyCaptureBindings(SkySource source) {
-        List<Binding> list = new java.util.ArrayList<>(
+        List<Binding> list = new ArrayList<>(
                 List.of(new Binding(0, UniformBufferBinding.whole(captureUbo, CAPTURE_UBO_SIZE))));
         source.texture().ifPresent(texture -> list.add(new Binding(1, new SampledTextureBinding(texture))));
         return list;
@@ -230,7 +232,7 @@ final class EnvironmentMaps {
             prefilterTargets[mip] = createCubeTargets(prefilteredCubemap, PREFILTER_SIZE >> mip, mip);
         }
         brdfTarget = backend.createRenderTarget(new RenderTargetDescriptor(
-                BRDF_LUT_SIZE, BRDF_LUT_SIZE, List.of(brdfLut), java.util.Optional.empty()));
+                BRDF_LUT_SIZE, BRDF_LUT_SIZE, List.of(brdfLut), Optional.empty()));
     }
 
     private RenderTargetHandle[] createCubeTargets(TextureHandle cubemap, int size, int mipLevel) {
