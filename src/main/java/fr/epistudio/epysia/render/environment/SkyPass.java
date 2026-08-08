@@ -36,7 +36,7 @@ import java.util.List;
 
 final class SkyPass {
 
-    private static final int SKY_UBO_SIZE = 96;
+    private static final int SKY_UBO_SIZE = 112;
     private static final RenderState SKY_STATE = new RenderState(
             Topology.TRIANGLES, DepthTest.LESS_EQUAL, BlendMode.OPAQUE, CullMode.NONE);
 
@@ -44,6 +44,7 @@ final class SkyPass {
     private final FullscreenQuad quad;
     private final ByteBuffer uboScratch = BufferUtils.createByteBuffer(SKY_UBO_SIZE);
     private final Matrix4f scratchInverseViewProjection = new Matrix4f();
+    private final long startNanos = System.nanoTime();
     private final Vector3f scratchCameraPosition = new Vector3f();
 
     private RenderBackend backend;
@@ -114,6 +115,8 @@ final class SkyPass {
                 .putFloat(scratchCameraPosition.z).putFloat(0.0f);
         uboScratch.putFloat(sunDirection.x).putFloat(sunDirection.y)
                 .putFloat(sunDirection.z).putFloat(skyIntensity);
+        float elapsed = (System.nanoTime() - startNanos) / 1.0e9f;
+        uboScratch.putFloat(elapsed).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
         uboScratch.flip();
         backend.writeBuffer(skyUbo, uboScratch, 0L);
     }

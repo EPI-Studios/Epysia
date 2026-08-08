@@ -1,5 +1,4 @@
 #version 430 core
-// SKY_BODY
 
 in vec2 vertexUv;
 
@@ -7,7 +6,10 @@ layout(std140, binding = 0) uniform SkyUbo {
     mat4 inverseViewProjection;
     vec4 cameraPosition;
     vec4 sunDirectionAndIntensity;
+    vec4 sceneTime;
 } sky;
+
+// SKY_BODY
 
 out vec4 outColor;
 
