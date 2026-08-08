@@ -1,57 +1,75 @@
 package fr.epistudio.epysia.ui;
 
-public final class UiButton extends UiNode {
+import fr.epistudio.epysia.components.EpysiaComponent;
+import fr.epistudio.epysia.components.Export;
+import org.joml.Vector4f;
 
-    private UiColor idleColor = UiColor.rgba(0.18f, 0.18f, 0.22f, 0.95f);
-    private UiColor hoverColor = UiColor.rgba(0.28f, 0.28f, 0.34f, 0.95f);
-    private UiColor pressedColor = UiColor.rgba(0.4f, 0.4f, 0.5f, 0.95f);
+import java.util.function.Consumer;
+
+@EpysiaComponent(name = "Ui Button", category = "UI")
+public final class UiButton extends UiElement {
+    @Export(label = "Idle", color = true)
+    private final Vector4f idleColor = new Vector4f(0.18f, 0.18f, 0.22f, 0.95f);
+    @Export(label = "Hover", color = true)
+    private final Vector4f hoverColor = new Vector4f(0.28f, 0.28f, 0.34f, 0.95f);
+    @Export(label = "Pressed", color = true)
+    private final Vector4f pressedColor = new Vector4f(0.4f, 0.4f, 0.5f, 0.95f);
+
     private boolean hovered;
     private boolean pressed;
-    private Runnable onClick = () -> {};
+    private Runnable onClick = () -> {
+    };
 
-    public UiButton setIdleColor(UiColor color) {
-        this.idleColor = color;
+    public UiButton setOnClick(Runnable listener) {
+        this.onClick = listener == null ? () -> {
+        } : listener;
         return this;
-    }
-
-    public UiButton setHoverColor(UiColor color) {
-        this.hoverColor = color;
-        return this;
-    }
-
-    public UiButton setPressedColor(UiColor color) {
-        this.pressedColor = color;
-        return this;
-    }
-
-    public UiButton setOnClick(Runnable onClick) {
-        this.onClick = onClick;
-        return this;
-    }
-
-    public UiColor currentColor() {
-        if (pressed) {
-            return pressedColor;
-        }
-        if (hovered) {
-            return hoverColor;
-        }
-        return idleColor;
-    }
-
-    public void setHovered(boolean hovered) {
-        this.hovered = hovered;
-    }
-
-    public void setPressed(boolean pressed) {
-        this.pressed = pressed;
     }
 
     public boolean pressed() {
         return pressed;
     }
 
-    public void fireClick() {
-        onClick.run();
+    public void setHovered(boolean value) {
+        this.hovered = value;
+    }
+
+    public void setPressed(boolean value) {
+        this.pressed = value;
+    }
+
+    public UiColor currentColor() {
+        if (pressed) {
+            return UiColors.of(pressedColor);
+        }
+        return hovered ? UiColors.of(hoverColor) : UiColors.of(idleColor);
+    }
+
+    @Override
+    public boolean interactive() {
+        return true;
+    }
+
+    @Override
+    protected void paint(UiPainter painter) {
+        painter.fillRect(computedRect(), currentColor());
+    }
+
+    @Override
+    protected void onHoverChanged(boolean value) {
+        hovered = value;
+    }
+
+    @Override
+    protected void onPointerDown(float localX, float localY) {
+        pressed = true;
+    }
+
+    @Override
+    protected void onPointerUp(float localX, float localY, boolean inside) {
+        pressed = false;
+        if (inside) {
+            onClick.run();
+        }
     }
 }
