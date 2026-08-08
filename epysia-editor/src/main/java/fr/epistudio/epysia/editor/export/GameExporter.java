@@ -24,6 +24,7 @@ public final class GameExporter {
 
     private static final String TEMPLATE_LAUNCHER_NAME = "EpysiaGame";
     private static final String CONTENT_DIRECTORY = "content";
+    private static final String ENGINE_JAR_NAME = "epysia-engine.jar";
     private static final String SCRIPTS_OUTPUT = ".epysia/scripts-out";
     private static final Set<String> EXCLUDED_PROJECT_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", "scripts");
@@ -51,6 +52,7 @@ public final class GameExporter {
         Path gameRoot = request.outputDirectory().resolve(name);
         copyDirectory(template, gameRoot, progress, ExportStage.COPYING_TEMPLATE);
         TemplateLayout layout = request.platform().layout(gameRoot, TEMPLATE_LAUNCHER_NAME);
+        refreshEngineJar(layout.applicationDirectory(), request.platform());
         injectContent(layout.applicationDirectory().resolve(CONTENT_DIRECTORY), progress);
         Optional<String> icon = installIcon(request, layout, gameRoot, name);
         finalizeLauncher(request, layout, name, icon);
@@ -80,12 +82,68 @@ public final class GameExporter {
         }
     }
 
+    private void refreshEngineJar(Path applicationDirectory, TargetPlatform platform) throws IOException {
+        if (platform != hostPlatform()) {
+            return;
+        }
+        Path target = applicationDirectory.resolve(ENGINE_JAR_NAME);
+        Optional<Path> current = currentEngineJar();
+        if (current.isPresent()) {
+            Files.createDirectories(applicationDirectory);
+            Files.copy(current.get(), target, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+        throw new IOException("Cannot find a current epysia-engine.jar to ship. The template's copy is "
+                + "from an older build and would fail at launch. Run the engineRuntimeJar task first.");
+    }
+
+    static TargetPlatform hostPlatform() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
+                ? TargetPlatform.WINDOWS
+                : TargetPlatform.LINUX;
+    }
+
+    static Optional<Path> currentEngineJar() {
+        Path location = engineCodeSource().orElse(null);
+        if (location == null) {
+            return Optional.empty();
+        }
+        if (Files.isRegularFile(location) && location.toString().endsWith(".jar")) {
+            return Optional.of(location);
+        }
+        return builtEngineJarNear(location);
+    }
+
+    private static Optional<Path> builtEngineJarNear(Path classesDirectory) {
+        for (Path parent = classesDirectory; parent != null; parent = parent.getParent()) {
+            Path candidate = parent.resolve("libs").resolve(ENGINE_JAR_NAME);
+            if (Files.isRegularFile(candidate)) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<Path> engineCodeSource() {
+        try {
+            return Optional.of(Path.of(fr.epistudio.epysia.EpysiaEngine.class
+                    .getProtectionDomain().getCodeSource().getLocation().toURI()));
+        } catch (RuntimeException | java.net.URISyntaxException ignored) {
+            return Optional.empty();
+        }
+    }
+
     private void copyProjectContent(Path content, ExportProgress progress) throws IOException {
         Path root = project.rootDirectory();
+        Set<String> reachable = ProjectAssetReachability.collect(root);
         try (Stream<Path> walk = Files.walk(root)) {
             List<Path> sources = walk.toList();
             for (int index = 0; index < sources.size(); index++) {
-                copyProjectPath(root, sources.get(index), content);
+                Path source = sources.get(index);
+                if (!ProjectAssetReachability.shipsWith(root, source, reachable)) {
+                    continue;
+                }
+                copyProjectPath(root, source, content);
                 progress.report(ExportStage.COPYING_PROJECT, (index + 1) / (float) sources.size());
             }
         }
@@ -114,6 +172,7 @@ public final class GameExporter {
         return EXCLUDED_PROJECT_DIRECTORIES.contains(first)
                 || (relative.getNameCount() == 1 && EXCLUDED_PROJECT_FILES.contains(first));
     }
+
 
     private Optional<String> installIcon(ExportRequest request, TemplateLayout layout, Path gameRoot, String name)
             throws IOException {
