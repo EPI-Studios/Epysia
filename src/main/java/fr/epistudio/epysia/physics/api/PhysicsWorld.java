@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface PhysicsWorld extends AutoCloseable {
-
     BodyHandle addStaticBody(ShapeDescriptor shape, RigidBodyPose pose, CollisionMask mask);
 
     BodyHandle addDynamicBody(ShapeDescriptor shape, RigidBodyPose pose, DynamicProperties properties, CollisionMask mask);
@@ -26,11 +25,46 @@ public interface PhysicsWorld extends AutoCloseable {
 
     void applyImpulse(BodyHandle body, Vector3fc impulse);
 
+    void applyImpulseAt(BodyHandle body, Vector3fc impulse, Vector3fc worldPoint);
+
+    void applyTorque(BodyHandle body, Vector3fc torque);
+
+    void applyAngularImpulse(BodyHandle body, Vector3fc impulse);
+
     void setLinearVelocity(BodyHandle body, Vector3fc velocity);
+
+    Vector3fc getLinearVelocity(BodyHandle body);
+
+    void setAngularVelocity(BodyHandle body, Vector3fc velocity);
+
+    Vector3fc getAngularVelocity(BodyHandle body);
+
+    default ContactImpulseSnapshot saveContactImpulses(BodyHandle body) {
+        return ContactImpulseSnapshot.EMPTY;
+    }
+
+    default SleepState getSleepState(BodyHandle body) {
+        return SleepState.AWAKE;
+    }
+
+    default void setSleepState(BodyHandle body, SleepState state) {
+    }
+
+    void setMotionLocks(BodyHandle body, MotionLocks locks);
 
     void lockToPlane(BodyHandle body, boolean freezeRotation);
 
-    Vector3fc getLinearVelocity(BodyHandle body);
+    void setBodyKind(BodyHandle body, RigidBodyKind kind);
+
+    void setCenterOfMass(BodyHandle body, float mass, Vector3fc localCenter);
+
+    Vector3fc getCenterOfMass(BodyHandle body);
+
+    float getMass(BodyHandle body);
+
+    void setSleepEnabled(BodyHandle body, boolean enabled);
+
+    void setSleepThreshold(BodyHandle body, float speed);
 
     void sleepBody(BodyHandle body);
 
@@ -38,9 +72,7 @@ public interface PhysicsWorld extends AutoCloseable {
 
     boolean isBodyAwake(BodyHandle body);
 
-    JointHandle addFixedJoint(BodyHandle first, BodyHandle second, RigidBodyPose localPoseFirst, RigidBodyPose localPoseSecond, boolean contactsEnabled);
-
-    JointHandle addSphericalJoint(BodyHandle first, BodyHandle second, Vector3fc localAnchorFirst, Vector3fc localAnchorSecond, boolean contactsEnabled);
+    JointHandle addJoint(BodyHandle first, BodyHandle second, JointDescriptor descriptor);
 
     void removeJoint(JointHandle joint);
 
@@ -63,5 +95,8 @@ public interface PhysicsWorld extends AutoCloseable {
 
     static RigidBodyPose poseOf(Vector3fc position, Quaternionfc rotation) {
         return new RigidBodyPose(position, rotation);
+    }
+
+    default void drawDebug(PhysicsDebugLines lines) {
     }
 }

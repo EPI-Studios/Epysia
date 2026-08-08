@@ -10,7 +10,6 @@ import org.joml.Vector3fc;
 import java.util.Optional;
 
 public abstract class Collider extends Component {
-
     @Export(label = "Offset", step = 0.05f)
     private final Vector3f offset = new Vector3f(0.0f, 0.0f, 0.0f);
 
@@ -48,8 +47,23 @@ public abstract class Collider extends Component {
         return offset;
     }
 
+    public Collider setOffset(float x, float y, float z) {
+        offset.set(x, y, z);
+        return this;
+    }
+
     public boolean isTrigger() {
         return isTrigger;
+    }
+
+    public Collider setTrigger(boolean trigger) {
+        this.isTrigger = trigger;
+        return this;
+    }
+
+    public Collider setCollisionLayer(int layer) {
+        this.collisionLayer = Math.clamp(layer, 0, 15);
+        return this;
     }
 
     public int collisionLayer() {

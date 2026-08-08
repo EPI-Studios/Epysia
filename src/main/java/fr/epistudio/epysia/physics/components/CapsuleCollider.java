@@ -6,7 +6,6 @@ import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 
 @EpysiaComponent(name = "Capsule Collider", category = "Physics")
 public final class CapsuleCollider extends Collider {
-
     @Export(label = "Radius", min = 0.01f, step = 0.05f)
     private float radius = 0.5f;
 
@@ -19,6 +18,12 @@ public final class CapsuleCollider extends Collider {
 
     public float halfHeight() {
         return halfHeight;
+    }
+
+    public CapsuleCollider setCapsule(float newRadius, float newHalfHeight) {
+        this.radius = newRadius;
+        this.halfHeight = newHalfHeight;
+        return this;
     }
 
     @Override

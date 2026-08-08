@@ -1,29 +1,8 @@
 package fr.epistudio.epysia.physics.box3d;
 
-import com.meekdev.box3d.B3Body;
-import com.meekdev.box3d.B3BodyType;
-import com.meekdev.box3d.B3Events;
-import com.meekdev.box3d.B3Filter;
-import com.meekdev.box3d.B3Joint;
-import com.meekdev.box3d.B3Shape;
-import com.meekdev.box3d.B3ShapeConfig;
-import com.meekdev.box3d.B3World;
-import com.meekdev.box3d.Quat;
-import com.meekdev.box3d.Vec3;
+import com.meekdev.box3d.*;
+import fr.epistudio.epysia.physics.api.*;
 import fr.epistudio.epysia.exceptions.EpysiaException;
-import fr.epistudio.epysia.physics.api.AreaEvent;
-import fr.epistudio.epysia.physics.api.BodyHandle;
-import fr.epistudio.epysia.physics.api.CollisionMask;
-import fr.epistudio.epysia.physics.api.ContactEvent;
-import fr.epistudio.epysia.physics.api.DynamicProperties;
-import fr.epistudio.epysia.physics.api.JointHandle;
-import fr.epistudio.epysia.physics.api.PhysicsWorld;
-import fr.epistudio.epysia.physics.api.QueryFilter;
-import fr.epistudio.epysia.physics.api.RaycastHit;
-import fr.epistudio.epysia.physics.api.RigidBodyKind;
-import fr.epistudio.epysia.physics.api.RigidBodyPose;
-import fr.epistudio.epysia.physics.api.ShapeCastHit;
-import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.components.PhysicsMaterial;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
@@ -37,6 +16,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class Box3dPhysicsWorld implements PhysicsWorld {
+    private static final com.meekdev.box3d.B3DebugFlags DEBUG_FLAGS =
+            com.meekdev.box3d.B3DebugFlags.shapesAndJoints();
 
     private static final int SUBSTEP_COUNT = 4;
     private static final float DEFAULT_FRICTION = 0.5f;
@@ -138,7 +119,22 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
     @Override
     public void applyImpulse(BodyHandle body, Vector3fc impulse) {
         B3Body nativeBody = body(body);
-        nativeBody.applyImpulseAt(Box3dShapeAttacher.toVec(impulse), nativeBody.position());
+        nativeBody.applyImpulseAt(Box3dShapeAttacher.toVec(impulse), nativeBody.worldCenterOfMass());
+    }
+
+    @Override
+    public void applyImpulseAt(BodyHandle body, Vector3fc impulse, Vector3fc worldPoint) {
+        body(body).applyImpulseAt(Box3dShapeAttacher.toVec(impulse), Box3dShapeAttacher.toVec(worldPoint));
+    }
+
+    @Override
+    public void applyTorque(BodyHandle body, Vector3fc torque) {
+        body(body).applyTorque(Box3dShapeAttacher.toVec(torque));
+    }
+
+    @Override
+    public void applyAngularImpulse(BodyHandle body, Vector3fc impulse) {
+        body(body).applyAngularImpulse(Box3dShapeAttacher.toVec(impulse));
     }
 
     @Override
@@ -147,13 +143,87 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
     }
 
     @Override
+    public SleepState getSleepState(BodyHandle handle) {
+        B3Body body = body(handle);
+        if (body == null) {
+            return SleepState.AWAKE;
+        }
+        return new SleepState(body.isAwake(), body.sleepTime());
+    }
+
+    @Override
+    public void setSleepState(BodyHandle handle, SleepState state) {
+        B3Body body = body(handle);
+        if (body == null) {
+            return;
+        }
+        body.setSleepTime(state.sleepTimeSeconds());
+        body.setAwake(state.awake());
+    }
+
+    @Override
+    public ContactImpulseSnapshot saveContactImpulses(BodyHandle handle) {
+        B3Body body = body(handle);
+        if (body == null) {
+            return ContactImpulseSnapshot.EMPTY;
+        }
+        return new Box3dContactImpulses(body.saveContactImpulses());
+    }
+
+    @Override
     public Vector3fc getLinearVelocity(BodyHandle body) {
         return toVector(body(body).linearVelocity());
     }
 
     @Override
+    public void setAngularVelocity(BodyHandle body, Vector3fc velocity) {
+        body(body).setAngularVelocity(Box3dShapeAttacher.toVec(velocity));
+    }
+
+    @Override
+    public Vector3fc getAngularVelocity(BodyHandle body) {
+        return toVector(body(body).angularVelocity());
+    }
+
+    @Override
+    public void setMotionLocks(BodyHandle body, MotionLocks locks) {
+        body(body).setMotionLocks(locks.linearX(), locks.linearY(), locks.linearZ(),
+                locks.angularX(), locks.angularY(), locks.angularZ());
+    }
+
+    @Override
     public void lockToPlane(BodyHandle body, boolean freezeRotation) {
-        body(body).setMotionLocks(false, false, true, true, true, freezeRotation);
+        setMotionLocks(body, MotionLocks.planeXY(freezeRotation));
+    }
+
+    @Override
+    public void setBodyKind(BodyHandle body, RigidBodyKind kind) {
+        body(body).setType(bodyTypeOf(kind));
+    }
+
+    @Override
+    public void setCenterOfMass(BodyHandle body, float mass, Vector3fc localCenter) {
+        body(body).setMass(mass, Box3dShapeAttacher.toVec(localCenter));
+    }
+
+    @Override
+    public Vector3fc getCenterOfMass(BodyHandle body) {
+        return toVector(body(body).worldCenterOfMass());
+    }
+
+    @Override
+    public float getMass(BodyHandle body) {
+        return body(body).mass();
+    }
+
+    @Override
+    public void setSleepEnabled(BodyHandle body, boolean enabled) {
+        body(body).enableSleep(enabled);
+    }
+
+    @Override
+    public void setSleepThreshold(BodyHandle body, float speed) {
+        body(body).setSleepThreshold(speed);
     }
 
     @Override
@@ -172,23 +242,69 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
     }
 
     @Override
-    public JointHandle addFixedJoint(BodyHandle first, BodyHandle second,
-                                     RigidBodyPose localPoseFirst, RigidBodyPose localPoseSecond,
-                                     boolean contactsEnabled) {
+    public JointHandle addJoint(BodyHandle first, BodyHandle second, JointDescriptor descriptor) {
         B3Body firstBody = body(first);
         B3Body secondBody = body(second);
-        Vec3 worldPivot = worldPointOf(firstBody, localPoseFirst.position());
-        return registerJoint(world.createWeldJoint(firstBody, secondBody, worldPivot));
+        return switch (descriptor) {
+            case JointDescriptor.Hinge hinge -> registerJoint(createHinge(firstBody, secondBody, hinge));
+            case JointDescriptor.Ball ball -> registerJoint(createBall(firstBody, secondBody, ball));
+            case JointDescriptor.Weld weld -> registerJoint(createWeld(firstBody, secondBody, weld));
+            case JointDescriptor.Distance distance ->
+                    registerJoint(createDistance(firstBody, secondBody, distance));
+            case JointDescriptor.Slider slider -> registerJoint(createSlider(firstBody, secondBody, slider));
+            case JointDescriptor.CollisionFilter ignored ->
+                    registerJoint(world.createFilterJoint(firstBody, secondBody));
+        };
     }
 
-    @Override
-    public JointHandle addSphericalJoint(BodyHandle first, BodyHandle second,
-                                         Vector3fc localAnchorFirst, Vector3fc localAnchorSecond,
-                                         boolean contactsEnabled) {
-        B3Body firstBody = body(first);
-        B3Body secondBody = body(second);
-        Vec3 worldPivot = worldPointOf(firstBody, localAnchorFirst);
-        return registerJoint(world.createSphericalJoint(firstBody, secondBody, worldPivot));
+    private B3RevoluteJoint createHinge(B3Body first, B3Body second, JointDescriptor.Hinge hinge) {
+        B3RevoluteJoint joint = world.createRevoluteJoint(first, second,
+                Box3dShapeAttacher.toVec(hinge.worldPivot()), Box3dShapeAttacher.toVec(hinge.worldAxis()));
+        joint.enableLimit(hinge.angleLimits().enabled());
+        joint.setLimits(hinge.angleLimits().lower(), hinge.angleLimits().upper());
+        joint.enableMotor(hinge.motorEnabled());
+        joint.setMotor(hinge.motorSpeed(), hinge.maxMotorTorque());
+        return joint;
+    }
+
+    private B3SphericalJoint createBall(B3Body first, B3Body second, JointDescriptor.Ball ball) {
+        B3SphericalJoint joint = world.createSphericalJoint(first, second,
+                Box3dShapeAttacher.toVec(ball.worldPivot()));
+        joint.enableConeLimit(ball.coneLimitEnabled());
+        joint.setConeLimit(ball.coneLimitRadians());
+        joint.enableTwistLimit(ball.twistLimits().enabled());
+        joint.setTwistLimits(ball.twistLimits().lower(), ball.twistLimits().upper());
+        joint.enableSpring(ball.springEnabled());
+        joint.setSpring(ball.springHertz(), ball.springDampingRatio());
+        return joint;
+    }
+
+    private B3WeldJoint createWeld(B3Body first, B3Body second, JointDescriptor.Weld weld) {
+        B3WeldJoint joint = world.createWeldJoint(first, second, Box3dShapeAttacher.toVec(weld.worldPivot()));
+        joint.setLinearSpring(weld.linearHertz(), weld.linearDampingRatio());
+        joint.setAngularSpring(weld.angularHertz(), weld.angularDampingRatio());
+        return joint;
+    }
+
+    private B3DistanceJoint createDistance(B3Body first, B3Body second, JointDescriptor.Distance distance) {
+        B3DistanceJoint joint = world.createDistanceJoint(first, second,
+                Box3dShapeAttacher.toVec(distance.worldAnchorFirst()),
+                Box3dShapeAttacher.toVec(distance.worldAnchorSecond()), distance.length());
+        joint.enableLimit(distance.lengthLimits().enabled());
+        joint.setLengthRange(distance.lengthLimits().lower(), distance.lengthLimits().upper());
+        joint.enableSpring(distance.springEnabled());
+        joint.setSpring(distance.springHertz(), distance.springDampingRatio());
+        return joint;
+    }
+
+    private B3PrismaticJoint createSlider(B3Body first, B3Body second, JointDescriptor.Slider slider) {
+        B3PrismaticJoint joint = world.createPrismaticJoint(first, second,
+                Box3dShapeAttacher.toVec(slider.worldPivot()), Box3dShapeAttacher.toVec(slider.worldAxis()));
+        joint.enableLimit(slider.translationLimits().enabled());
+        joint.setLimits(slider.translationLimits().lower(), slider.translationLimits().upper());
+        joint.enableMotor(slider.motorEnabled());
+        joint.setMotor(slider.motorSpeed(), slider.maxMotorForce());
+        return joint;
     }
 
     @Override
@@ -455,5 +571,21 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
         static BodyPair of(long first, long second) {
             return first <= second ? new BodyPair(first, second) : new BodyPair(second, first);
         }
+    }
+
+    @Override
+    public void drawDebug(PhysicsDebugLines lines) {
+        world.drawDebug(new B3DebugDraw() {
+            @Override
+            public void segment(float startX, float startY, float startZ,
+                                float endX, float endY, float endZ, int color) {
+                lines.segment(startX, startY, startZ, endX, endY, endZ, color);
+            }
+
+            @Override
+            public com.meekdev.box3d.B3DebugFlags flags() {
+                return DEBUG_FLAGS;
+            }
+        });
     }
 }

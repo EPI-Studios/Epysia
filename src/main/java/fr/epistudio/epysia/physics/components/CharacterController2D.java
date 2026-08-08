@@ -17,7 +17,6 @@ import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 @EpysiaComponent(name = "Character Controller 2D", category = "Physics")
 @RequiresComponent(Transform2D.class)
 public final class CharacterController2D extends Component {
-
     private static final float BASE_GRAVITY = -9.81f;
 
     @Export(label = "Capsule Radius", min = 0.05f, max = 2.0f, step = 0.05f)
@@ -47,6 +46,9 @@ public final class CharacterController2D extends Component {
     @Export(label = "Snap To Ground")
     private boolean snapToGround = true;
 
+    @Export(label = "Carried By Platforms")
+    private boolean carriedByPlatforms = true;
+
     private static final float MINIMUM_TOUCH_TOLERANCE = -1.0f;
 
     private List<CharacterContact> contacts = List.of();
@@ -56,6 +58,7 @@ public final class CharacterController2D extends Component {
     private boolean jumpRequested;
     private float jumpRequestSpeed;
     private BodyHandle bodyHandle = BodyHandle.NONE;
+    private BodyHandle groundBody = BodyHandle.NONE;
     private Box3dCharacterController nativeController;
 
     public Vector2f capsuleOffset() {
@@ -239,6 +242,23 @@ public final class CharacterController2D extends Component {
 
     public BodyHandle bodyHandle() {
         return bodyHandle;
+    }
+
+    public boolean carriedByPlatforms() {
+        return carriedByPlatforms;
+    }
+
+    public CharacterController2D setCarriedByPlatforms(boolean value) {
+        this.carriedByPlatforms = value;
+        return this;
+    }
+
+    public BodyHandle groundBody() {
+        return groundBody;
+    }
+
+    public void setGroundBody(BodyHandle body) {
+        this.groundBody = body == null ? BodyHandle.NONE : body;
     }
 
     public Box3dCharacterController nativeController() {

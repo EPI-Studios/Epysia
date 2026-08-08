@@ -10,6 +10,7 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.physics.api.AreaEvent;
 import fr.epistudio.epysia.physics.api.BodyHandle;
+import fr.epistudio.epysia.physics.api.CharacterContact;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
 import fr.epistudio.epysia.physics.api.CollisionMask;
 import fr.epistudio.epysia.physics.api.ContactEvent;
@@ -28,12 +29,14 @@ import fr.epistudio.epysia.physics.components.CharacterController2D;
 import fr.epistudio.epysia.physics.components.CharacterControllerComponent;
 import fr.epistudio.epysia.physics.components.Collider;
 import fr.epistudio.epysia.physics.components.Collider2D;
+import fr.epistudio.epysia.physics.components.JointComponent;
 import fr.epistudio.epysia.physics.components.MeshCollider;
 import fr.epistudio.epysia.physics.components.PhysicsMaterial;
 import fr.epistudio.epysia.physics.components.RigidBody2D;
 import fr.epistudio.epysia.physics.components.RigidBodyComponent;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.PhysicsEventListener;
+import org.joml.Matrix3x2f;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 import org.joml.Vector2f;
@@ -45,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.IdentityHashMap;
@@ -54,11 +58,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import fr.epistudio.epysia.physics.api.PhysicsDebugLines;
 
 public final class PhysicsSystem implements IPhysicsSystem {
-
     private static final float DEFAULT_WORLD_FLOOR_Y = -500.0f;
+    private static final float GROUND_CONTACT_MINIMUM_UPWARD = 0.5f;
     private static final float RESTING_DISPLACEMENT_SQUARED = 1.0e-8f;
+    private static final int MINIMUM_STEP_HERTZ = 10;
+    private static final int MAXIMUM_STEP_HERTZ = 240;
+    private static final int MAXIMUM_CATCHUP_STEPS = 5;
+    private static final float DEFAULT_STEP_SECONDS = 1.0f / 60.0f;
 
     private final Vector3f defaultGravity = new Vector3f(0.0f, -9.81f, 0.0f);
     private Set<GameObject> residentSnapshot;
@@ -68,12 +77,21 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private final Quaternionf scratchRotation = new Quaternionf();
     private final Vector3f scratchHorizontal = new Vector3f();
     private final Vector3f scratchDisplacement = new Vector3f();
+    private final Map<Long, Matrix3x2f> platformPoses = new HashMap<>();
+    private final Set<Long> platformsThisStep = new HashSet<>();
+    private final Matrix3x2f scratchPlatformPose = new Matrix3x2f();
+    private final Vector2f scratchCarry = new Vector2f();
     private final List<Box3dCharacterController> ownedControllers = new ArrayList<>();
     private final Map<Long, GameObject> bodyOwners = new HashMap<>();
     private CollisionLayers collisionLayers = CollisionLayers.allColliding();
     private final Map<BodyPair, ContactEvent> activeContacts = new LinkedHashMap<>();
     private final Set<BodyPair> activeTriggers = new LinkedHashSet<>();
     private final Set<GameObject> warnedMixedPhysics = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<Long, RigidBodyPose> previousPoses = new HashMap<>();
+    private final Map<Long, RigidBodyPose> currentPoses = new HashMap<>();
+    private float fixedStepSeconds = DEFAULT_STEP_SECONDS;
+    private float stepAccumulator;
+    private BodyHandle worldAnchor = BodyHandle.NONE;
     private EngineServices services;
     private Box3dPhysicsWorld world;
 
@@ -91,6 +109,15 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
     }
 
+    public void setFixedTimestepHertz(int hertz) {
+        fixedStepSeconds = 1.0f / Math.clamp(hertz, MINIMUM_STEP_HERTZ, MAXIMUM_STEP_HERTZ);
+        stepAccumulator = 0.0f;
+    }
+
+    public float fixedStepSeconds() {
+        return fixedStepSeconds;
+    }
+
     public void setCollisionLayers(CollisionLayers layers) {
         this.collisionLayers = layers;
     }
@@ -104,6 +131,10 @@ public final class PhysicsSystem implements IPhysicsSystem {
         activeContacts.clear();
         activeTriggers.clear();
         warnedMixedPhysics.clear();
+        previousPoses.clear();
+        currentPoses.clear();
+        stepAccumulator = 0.0f;
+        worldAnchor = BodyHandle.NONE;
         if (world != null) {
             world.close();
         }
@@ -146,11 +177,117 @@ public final class PhysicsSystem implements IPhysicsSystem {
         syncKinematicBodiesToPhysics(scene);
         ensureCharacterControllers(scene);
         destroyOrphanBodies(scene);
-        world.step(deltaTimeSeconds);
-        pullDynamicTransforms(scene);
+        registerSceneJoints(scene);
+        advanceFixedSteps(scene, deltaTimeSeconds);
+        writeInterpolatedTransforms(scene);
         removeBodiesBelowWorldFloor(scene);
-        stepCharacterControllers(scene, deltaTimeSeconds);
         dispatchPhysicsEvents();
+    }
+
+    private void registerSceneJoints(Scene scene) {
+        for (JointComponent joint : scene.componentsOf(JointComponent.class)) {
+            if (joint.requiresRebuild()) {
+                releaseJoint(joint);
+            }
+            if (!joint.isRegistered()) {
+                tryRegisterJoint(joint);
+            }
+        }
+    }
+
+    private void releaseJoint(JointComponent joint) {
+        if (joint.handle().isValid()) {
+            world.removeJoint(joint.handle());
+        }
+        joint.clearRegistered();
+    }
+
+    private void tryRegisterJoint(JointComponent joint) {
+        GameObject owner = joint.ownerOrNull();
+        if (owner == null) {
+            return;
+        }
+        Optional<BodyHandle> ownerBody = bodyOf(owner);
+        Optional<BodyHandle> otherBody = joint.connectedBody().isEmpty()
+                ? Optional.of(worldAnchorBody()) : bodyOf(joint.connectedBody().get());
+        if (ownerBody.isEmpty() || otherBody.isEmpty()) {
+            return;
+        }
+        Vector3f ownerAnchor = worldAnchorOf(owner, joint.anchor());
+        Vector3f otherAnchor = joint.connectedBody()
+                .map(other -> worldAnchorOf(other, new Vector3f()))
+                .orElseGet(() -> new Vector3f(ownerAnchor));
+        joint.markRegistered(world.addJoint(ownerBody.get(), otherBody.get(),
+                joint.describe(ownerAnchor, otherAnchor)));
+    }
+
+    private static Vector3f worldAnchorOf(GameObject gameObject, Vector3f localAnchor) {
+        return gameObject.getComponent(Transform3D.class)
+                .map(transform -> transform.worldMatrix().transformPosition(new Vector3f(localAnchor)))
+                .orElseGet(() -> new Vector3f(localAnchor));
+    }
+
+    private BodyHandle worldAnchorBody() {
+        if (!worldAnchor.isValid()) {
+            worldAnchor = world.createBody(RigidBodyKind.STATIC,
+                    new RigidBodyPose(new Vector3f(), new Quaternionf()),
+                    DynamicProperties.defaults(), false);
+        }
+        return worldAnchor;
+    }
+
+    private void advanceFixedSteps(Scene scene, float deltaTimeSeconds) {
+        stepAccumulator += Math.max(0.0f, deltaTimeSeconds);
+        int steps = 0;
+        while (stepAccumulator >= fixedStepSeconds && steps < MAXIMUM_CATCHUP_STEPS) {
+            capturePreviousPoses(scene);
+            world.step(fixedStepSeconds);
+            capturePoses(scene, currentPoses);
+            stepCharacterControllers(scene, fixedStepSeconds);
+            stepAccumulator -= fixedStepSeconds;
+            steps++;
+        }
+        if (stepAccumulator >= fixedStepSeconds) {
+            stepAccumulator = 0.0f;
+        }
+        if (steps == 0 && currentPoses.isEmpty()) {
+            capturePoses(scene, currentPoses);
+            previousPoses.putAll(currentPoses);
+        }
+    }
+
+    public void stepOnce(Scene scene, float deltaTimeSeconds) {
+        capturePreviousPoses(scene);
+        world.step(deltaTimeSeconds);
+        capturePoses(scene, currentPoses);
+        stepCharacterControllers(scene, deltaTimeSeconds);
+    }
+
+    private void capturePreviousPoses(Scene scene) {
+        previousPoses.clear();
+        if (currentPoses.isEmpty()) {
+            capturePoses(scene, previousPoses);
+            return;
+        }
+        previousPoses.putAll(currentPoses);
+    }
+
+    private void capturePoses(Scene scene, Map<Long, RigidBodyPose> destination) {
+        destination.clear();
+        for (RigidBodyComponent rigidBody : scene.componentsOf(RigidBodyComponent.class)) {
+            if (rigidBody.kind() == RigidBodyKind.DYNAMIC && rigidBody.handle().isValid()) {
+                destination.put(rigidBody.handle().id(), world.getBodyPose(rigidBody.handle()));
+            }
+        }
+        for (RigidBody2D rigidBody : scene.componentsOf(RigidBody2D.class)) {
+            if (rigidBody.kind() == RigidBodyKind.DYNAMIC && rigidBody.handle().isValid()) {
+                destination.put(rigidBody.handle().id(), world.getBodyPose(rigidBody.handle()));
+            }
+        }
+    }
+
+    private float interpolationAlpha() {
+        return Math.clamp(stepAccumulator / fixedStepSeconds, 0.0f, 1.0f);
     }
 
     private void registerSceneBodies(Scene scene) {
@@ -208,19 +345,34 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
     }
 
-    private void pullDynamicTransforms(Scene scene) {
+    private void writeInterpolatedTransforms(Scene scene) {
+        float alpha = interpolationAlpha();
         for (RigidBodyComponent rigidBody : scene.componentsOf(RigidBodyComponent.class)) {
             GameObject owner = rigidBody.ownerOrNull();
             if (owner != null) {
-                pullDynamicTransform(owner, rigidBody);
+                pullDynamicTransform(owner, rigidBody, alpha);
             }
         }
         for (RigidBody2D rigidBody : scene.componentsOf(RigidBody2D.class)) {
             GameObject owner = rigidBody.ownerOrNull();
             if (owner != null) {
-                pullDynamicTransform2D(owner, rigidBody);
+                pullDynamicTransform2D(owner, rigidBody, alpha);
             }
         }
+    }
+
+    private RigidBodyPose displayedPose(BodyHandle handle, boolean interpolate, float alpha) {
+        RigidBodyPose current = currentPoses.get(handle.id());
+        if (current == null) {
+            return world.getBodyPose(handle);
+        }
+        RigidBodyPose previous = previousPoses.get(handle.id());
+        if (!interpolate || previous == null) {
+            return current;
+        }
+        Vector3f position = new Vector3f(previous.position()).lerp(current.position(), alpha);
+        Quaternionf rotation = new Quaternionf(previous.rotation()).slerp(current.rotation(), alpha);
+        return new RigidBodyPose(position, rotation);
     }
 
     private void stepCharacterControllers(Scene scene, float deltaTimeSeconds) {
@@ -230,12 +382,14 @@ public final class PhysicsSystem implements IPhysicsSystem {
                 stepCharacterController(owner, controller, deltaTimeSeconds);
             }
         }
+        platformsThisStep.clear();
         for (CharacterController2D controller : scene.componentsOf(CharacterController2D.class)) {
             GameObject owner = controller.ownerOrNull();
             if (owner != null) {
                 stepCharacterController2D(owner, controller, deltaTimeSeconds);
             }
         }
+        platformPoses.keySet().retainAll(platformsThisStep);
     }
 
     private void ensureCharacterController(GameObject gameObject, CharacterControllerComponent controller) {
@@ -367,8 +521,22 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
         attachColliders(gameObject, transform, kind, handle, colliders);
         colliders.forEach(Collider::markRegistered);
-        rigidBodyOptional.ifPresent(rigidBody -> rigidBody.markRegistered(handle));
+        rigidBodyOptional.ifPresent(rigidBody -> activate(rigidBody, handle));
         bodyOwners.put(handle.id(), gameObject);
+    }
+
+    private void activate(RigidBodyComponent rigidBody, BodyHandle handle) {
+        rigidBody.attachWorld(world);
+        rigidBody.markRegistered(handle);
+        world.setSleepEnabled(handle, rigidBody.canSleep());
+        world.setSleepThreshold(handle, rigidBody.sleepThreshold());
+        if (rigidBody.kind() != RigidBodyKind.DYNAMIC) {
+            return;
+        }
+        world.setMotionLocks(handle, rigidBody.motionLocks());
+        if (rigidBody.overrideCenterOfMass()) {
+            world.setCenterOfMass(handle, world.getMass(handle), rigidBody.centerOfMass());
+        }
     }
 
     private void attachColliders(GameObject gameObject, Transform3D transform, RigidBodyKind kind,
@@ -379,8 +547,16 @@ public final class PhysicsSystem implements IPhysicsSystem {
             ShapeDescriptor shape = scaledShape(collider.shape(), transform);
             int group = collisionLayers.groupFor(collider.collisionLayer());
             int mask = collisionLayers.maskFor(collider.collisionLayer());
-            world.addCollider(body, shape, collider.offset(), collider.isTrigger(), material, group, mask);
+            Vector3f offset = scaledOffset(collider.offset(), transform);
+            world.addCollider(body, shape, offset, collider.isTrigger(), material, group, mask);
         }
+    }
+
+    private static Vector3f scaledOffset(Vector3fc offset, Transform3D transform) {
+        Vector3fc scale = transform.scale();
+        return new Vector3f(offset.x() * Math.abs(scale.x()),
+                offset.y() * Math.abs(scale.y()),
+                offset.z() * Math.abs(scale.z()));
     }
 
     private static ShapeDescriptor scaledShape(ShapeDescriptor shape, Transform3D transform) {
@@ -481,21 +657,23 @@ public final class PhysicsSystem implements IPhysicsSystem {
     }
 
     private void attachColliders2D(BodyHandle body, Transform2D transform, List<Collider2D> colliders) {
+        Vector2f scale = transform.worldScale(new Vector2f());
         for (Collider2D collider : colliders) {
             int group = collisionLayers.groupFor(collider.collisionLayer());
             int mask = collisionLayers.maskFor(collider.collisionLayer());
             for (Collider2D.ShapePlacement placement : collider.shapePlacements()) {
-                ShapeDescriptor shape = scaledShape2D(placement.shape(), transform);
+                ShapeDescriptor shape = scaledShape2D(placement.shape(), scale);
                 Vector2f offset = placement.offset();
-                world.addCollider(body, shape, new Vector3f(offset.x, offset.y, 0.0f),
+                world.addCollider(body, shape,
+                        new Vector3f(offset.x * scale.x, offset.y * scale.y, 0.0f),
                         collider.isTrigger(), PhysicsMaterial.DEFAULT, group, mask);
             }
         }
     }
 
-    private static ShapeDescriptor scaledShape2D(ShapeDescriptor shape, Transform2D transform) {
-        float scaleX = Math.abs(transform.scale().x);
-        float scaleY = Math.abs(transform.scale().y);
+    private static ShapeDescriptor scaledShape2D(ShapeDescriptor shape, Vector2f scale) {
+        float scaleX = scale.x;
+        float scaleY = scale.y;
         return switch (shape) {
             case ShapeDescriptor.Box box -> new ShapeDescriptor.Box(new Vector3f(
                     box.halfExtents().x() * scaleX,
@@ -523,15 +701,16 @@ public final class PhysicsSystem implements IPhysicsSystem {
 
     private static RigidBodyPose controllerPoseOf(Transform2D transform, CharacterController2D controller) {
         Vector2f offset = controller.capsuleOffset();
+        Vector2f worldPosition = transform.worldOrigin(new Vector2f());
         return new RigidBodyPose(
-                new Vector3f(transform.position().x + offset.x, transform.position().y + offset.y, 0.0f),
-                new Quaternionf().rotationZ(transform.rotationRadians()));
+                new Vector3f(worldPosition.x + offset.x, worldPosition.y + offset.y, 0.0f),
+                new Quaternionf().rotationZ(transform.worldRotationRadians()));
     }
 
     private static RigidBodyPose planePoseOf(Transform2D transform) {
-        Vector3f position = new Vector3f(transform.position().x, transform.position().y, 0.0f);
-        Quaternionf rotation = new Quaternionf().rotationZ(transform.rotationRadians());
-        return new RigidBodyPose(position, rotation);
+        Vector2f worldPosition = transform.worldOrigin(new Vector2f());
+        Quaternionf rotation = new Quaternionf().rotationZ(transform.worldRotationRadians());
+        return new RigidBodyPose(new Vector3f(worldPosition.x, worldPosition.y, 0.0f), rotation);
     }
 
     private static float planeAngleOf(Quaternionfc rotation) {
@@ -548,7 +727,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
     }
 
-    private void pullDynamicTransform2D(GameObject gameObject, RigidBody2D rigidBody) {
+    private void pullDynamicTransform2D(GameObject gameObject, RigidBody2D rigidBody, float alpha) {
         if (rigidBody.kind() != RigidBodyKind.DYNAMIC || !rigidBody.handle().isValid()) {
             return;
         }
@@ -556,9 +735,9 @@ public final class PhysicsSystem implements IPhysicsSystem {
             return;
         }
         Transform2D transform = gameObject.getComponent(Transform2D.class).orElseThrow();
-        RigidBodyPose pose = world.getBodyPose(rigidBody.handle());
-        transform.setPosition(pose.position().x(), pose.position().y());
-        transform.setRotationRadians(planeAngleOf(pose.rotation()));
+        RigidBodyPose pose = displayedPose(rigidBody.handle(), rigidBody.interpolate(), alpha);
+        transform.setWorldOrigin(pose.position().x(), pose.position().y());
+        transform.setWorldRotationRadians(planeAngleOf(pose.rotation()));
     }
 
     private void ensureCharacterController2D(GameObject gameObject, CharacterController2D controller) {
@@ -584,7 +763,9 @@ public final class PhysicsSystem implements IPhysicsSystem {
         Transform2D transform = gameObject.getComponent(Transform2D.class).orElseThrow();
         float horizontal = controller.consumeDesiredMove();
         float vertical = verticalVelocityFor2D(controller, deltaTimeSeconds);
-        scratchDisplacement.set(horizontal * deltaTimeSeconds, vertical * deltaTimeSeconds, 0.0f);
+        carryWithPlatform(controller, transform, scratchCarry);
+        scratchDisplacement.set(horizontal * deltaTimeSeconds + scratchCarry.x,
+                vertical * deltaTimeSeconds + scratchCarry.y, 0.0f);
         boolean snap = controller.snapToGround() && vertical <= 0.0f;
         controller.nativeController().setBodyFilter(
                 bodyKey -> !isPassable(bodyKey, horizontal, vertical));
@@ -594,6 +775,57 @@ public final class PhysicsSystem implements IPhysicsSystem {
         controller.setGrounded(result.grounded());
         controller.setContacts(result.contacts());
         controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
+        rememberGroundPlatform(controller, result);
+    }
+
+    private void carryWithPlatform(CharacterController2D controller, Transform2D transform, Vector2f carry) {
+        carry.set(0.0f, 0.0f);
+        if (!controller.carriedByPlatforms() || !controller.groundBody().isValid()) {
+            return;
+        }
+        Matrix3x2f previous = platformPoses.get(controller.groundBody().id());
+        GameObject platform = bodyOwners.get(controller.groundBody().id());
+        if (previous == null || platform == null) {
+            return;
+        }
+        Transform2D platformTransform = platform.getComponentOrNull(Transform2D.class);
+        if (platformTransform == null) {
+            return;
+        }
+        Vector2f worldPosition = transform.worldOrigin(new Vector2f());
+        PlatformCarry.delta(previous, platformTransform.worldMatrix(),
+                worldPosition.x, worldPosition.y, scratchPlatformPose, carry);
+    }
+
+    private void rememberGroundPlatform(CharacterController2D controller,
+                                        Box3dCharacterController.MoveResult result) {
+        BodyHandle ground = result.grounded() ? groundBodyOf(result) : BodyHandle.NONE;
+        controller.setGroundBody(ground);
+        if (!ground.isValid()) {
+            return;
+        }
+        GameObject platform = bodyOwners.get(ground.id());
+        Transform2D platformTransform = platform == null
+                ? null : platform.getComponentOrNull(Transform2D.class);
+        if (platformTransform == null) {
+            return;
+        }
+        platformsThisStep.add(ground.id());
+        platformPoses.computeIfAbsent(ground.id(), key -> new Matrix3x2f())
+                .set(platformTransform.worldMatrix());
+    }
+
+    private static BodyHandle groundBodyOf(Box3dCharacterController.MoveResult result) {
+        BodyHandle best = BodyHandle.NONE;
+        float bestUpward = GROUND_CONTACT_MINIMUM_UPWARD;
+        for (CharacterContact contact : result.contacts()) {
+            float upward = contact.normal().y();
+            if (upward > bestUpward) {
+                bestUpward = upward;
+                best = contact.body();
+            }
+        }
+        return best;
     }
 
     private boolean isPassable(long bodyKey, float horizontal, float vertical) {
@@ -615,9 +847,10 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (corrected.lengthSquared() <= RESTING_DISPLACEMENT_SQUARED) {
             return;
         }
-        float newX = transform.position().x + corrected.x();
-        float newY = transform.position().y + corrected.y();
-        transform.setPosition(newX, newY);
+        Vector2f worldPosition = transform.worldOrigin(new Vector2f());
+        float newX = worldPosition.x + corrected.x();
+        float newY = worldPosition.y + corrected.y();
+        transform.setWorldOrigin(newX, newY);
         Vector2f offset = controller.capsuleOffset();
         world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(
                 new Vector3f(newX + offset.x, newY + offset.y, 0.0f), new Quaternionf()));
@@ -694,7 +927,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
     }
 
-    private void pullDynamicTransform(GameObject gameObject, RigidBodyComponent rigidBody) {
+    private void pullDynamicTransform(GameObject gameObject, RigidBodyComponent rigidBody, float alpha) {
         if (rigidBody.kind() != RigidBodyKind.DYNAMIC || !rigidBody.handle().isValid()) {
             return;
         }
@@ -702,7 +935,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
             return;
         }
         Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
-        RigidBodyPose pose = world.getBodyPose(rigidBody.handle());
+        RigidBodyPose pose = displayedPose(rigidBody.handle(), rigidBody.interpolate(), alpha);
         transform.setPosition(pose.position().x(), pose.position().y(), pose.position().z());
         scratchRotation.set(pose.rotation());
         transform.setRotation(scratchRotation);
@@ -898,6 +1131,12 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (world != null) {
             world.close();
             world = null;
+        }
+    }
+
+    public void drawDebug(PhysicsDebugLines lines) {
+        if (world != null) {
+            world.drawDebug(lines);
         }
     }
 }

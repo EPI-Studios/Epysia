@@ -9,7 +9,6 @@ import fr.epistudio.epysia.physics.api.RigidBodyKind;
 
 @EpysiaComponent(name = "Rigid Body 2D", category = "Physics")
 public final class RigidBody2D extends Component {
-
     @Export(label = "Kind")
     private RigidBodyKind kind = RigidBodyKind.DYNAMIC;
 
@@ -21,6 +20,9 @@ public final class RigidBody2D extends Component {
 
     @Export(label = "Fixed Rotation")
     private boolean fixedRotation = false;
+
+    @Export(label = "Interpolate")
+    private boolean interpolate = false;
 
     private BodyHandle handle = BodyHandle.NONE;
     private boolean registered;
@@ -54,6 +56,15 @@ public final class RigidBody2D extends Component {
 
     public boolean fixedRotation() {
         return fixedRotation;
+    }
+
+    public boolean interpolate() {
+        return interpolate;
+    }
+
+    public RigidBody2D setInterpolate(boolean value) {
+        this.interpolate = value;
+        return this;
     }
 
     public RigidBody2D setFixedRotation(boolean fixedRotation) {
