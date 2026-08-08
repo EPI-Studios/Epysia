@@ -30,7 +30,10 @@ import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.vfx.ParticleEffect;
 import fr.epistudio.epysia.reflection.ExportedProperty;
+import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.reflection.ComponentAction;
 import fr.epistudio.epysia.reflection.Reflection;
+import fr.epistudio.epysia.physics.components.RigidBodyComponent;
 import imgui.ImGui;
 import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImString;
@@ -44,6 +47,9 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import javax.lang.model.SourceVersion;
+import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
+import fr.epistudio.epysia.editor.scene.GameObjectFactory;
+import fr.epistudio.epysia.ui.UiElement;
 
 public final class InspectorView {
 
@@ -68,7 +74,9 @@ public final class InspectorView {
             I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_CONFIRM));
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final MaterialsSection materialsSection;
+    private final UiElementSection uiElementSection;
     private final PopulateSection populateSection;
+    private final RigidBodyLiveSection rigidBodyLiveSection = new RigidBodyLiveSection();
     private boolean playModeActive;
     private final AnimatorSection animatorSection;
     private final VfxSection vfxSection;
@@ -80,7 +88,9 @@ public final class InspectorView {
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
     private final Runnable openTilemapDock;
+    private final EngineServices engineServices;
     private final SpriteColliderFitSection spriteColliderFit;
+    private final MeshColliderFitSection meshColliderFit = new MeshColliderFitSection();
     private final SpriteTextureLookup spriteTextures;
     private final SurfaceUniformRows spriteUniformRows;
 
@@ -90,9 +100,11 @@ public final class InspectorView {
                          BiConsumer<String, GameObject> onCreateScriptForObject,
                          Consumer<Path> onOpenGraph,
                          Supplier<Optional<Path>> selectedAssetPath,
+                         GameObjectFactory objectFactory,
                          AtlasInspectorSection atlasSection,
                          TextureInspectorSection textureSection,
-                         Runnable openTilemapDock) {
+                         Runnable openTilemapDock,
+                         EngineServices engineServices) {
         this.activeDocument = activeDocument;
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
@@ -104,6 +116,8 @@ public final class InspectorView {
         this.spriteUniformRows = new SurfaceUniformRows(projectShaderLoader(project), this::history,
                 new AssetFilePicker(project, thumbnails), project.locator());
         this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project, notifier);
+        this.uiElementSection = new UiElementSection(objectFactory,
+                () -> activeDocument.get().scene(), () -> activeDocument.get().history());
         this.populateSection = new PopulateSection(activeDocument, notifier, project);
         this.animatorSection = new AnimatorSection(activeDocument, project);
         this.vfxSection = new VfxSection(activeDocument, project);
@@ -114,6 +128,7 @@ public final class InspectorView {
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
         this.openTilemapDock = openTilemapDock;
+        this.engineServices = engineServices;
     }
 
     private static ShaderLoader projectShaderLoader(Project project) {
@@ -299,6 +314,9 @@ public final class InspectorView {
             }
             propertyRows.renderProperty(component, property, keyPrefix + "." + property.fieldName());
         }
+        if (component instanceof UiElement element) {
+            uiElementSection.render(gameObject, element);
+        }
         if (component instanceof MeshRenderer renderer) {
             materialsSection.render(renderer);
         }
@@ -321,8 +339,41 @@ public final class InspectorView {
         if (spriteColliderFit.render(gameObject, component)) {
             activeDocument.get().markDirty();
         }
+        meshColliderFit.render(gameObject, component).ifPresent(command -> history().execute(command));
         if (component instanceof TilemapRenderer tilemapRenderer) {
             renderTilemapSummary(tilemapRenderer);
+        }
+        if (component instanceof RigidBodyComponent rigidBody) {
+            rigidBodyLiveSection.render(rigidBody, playModeActive);
+        }
+        renderComponentActions(component);
+    }
+
+    private void renderComponentActions(IComponent component) {
+        List<ComponentAction> actions = Reflection.actionsOf(component);
+        if (actions.isEmpty()) {
+            return;
+        }
+        ImGui.separator();
+        for (ComponentAction action : actions) {
+            if (ImGui.button(action.label())) {
+                runComponentAction(component, action);
+            }
+            if (!action.tooltip().isBlank() && ImGui.isItemHovered()) {
+                ImGui.setTooltip(action.tooltip());
+            }
+            ImGui.sameLine();
+        }
+        ImGui.newLine();
+    }
+
+    private void runComponentAction(IComponent component, ComponentAction action) {
+        try {
+            action.invoke(component, engineServices);
+            activeDocument.get().markDirty();
+            notifier.show(action.label() + " ran");
+        } catch (RuntimeException error) {
+            notifier.show(action.label() + " failed: " + error.getMessage());
         }
     }
 
@@ -339,7 +390,7 @@ public final class InspectorView {
         }
     }
 
-    private static void renderTilemapFacts(fr.epistudio.epysia.assets.epytilemap.SpriteTilemap tilemap) {
+    private static void renderTilemapFacts(SpriteTilemap tilemap) {
         ImGui.textDisabled(tilemap.width() + " x " + tilemap.height() + " cells");
         ImGui.textDisabled(tilemap.layerCount() + " layer(s), " + tilemap.terrains().size() + " terrain(s)");
         ImGui.textDisabled(tilemap.solidTiles().size() + " solid tile(s)");

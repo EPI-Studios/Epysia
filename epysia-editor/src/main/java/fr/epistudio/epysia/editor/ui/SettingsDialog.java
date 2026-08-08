@@ -2,6 +2,8 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.gpu.GpuPreference;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MouseButton;
 import fr.epistudio.epysia.input.action.InputAction;
@@ -10,6 +12,7 @@ import fr.epistudio.epysia.input.action.InputBinding;
 import fr.epistudio.epysia.project.EditorSettings;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectQuality;
+import fr.epistudio.epysia.project.RenderTuning;
 import fr.epistudio.epysia.render.environment.SkySettings;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.render.postfx.PostEffectStack;
@@ -22,6 +25,8 @@ import imgui.type.ImInt;
 import imgui.type.ImString;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -46,6 +51,7 @@ public final class SettingsDialog {
     private static final float MAX_EXPOSURE = 4.0f;
     private static final float MIN_OCCLUSION_RADIUS = 0.1f;
     private static final float MAX_OCCLUSION_RADIUS = 3.0f;
+    private static final float MAX_ANIMATION_DISTANCE = 500.0f;
     private static final float MIN_SHADOW_DISTANCE = 10.0f;
     private static final float MAX_SHADOW_DISTANCE = 500.0f;
     private static final float DEFAULT_SHADOW_DISTANCE = 60.0f;
@@ -80,7 +86,11 @@ public final class SettingsDialog {
     private boolean verticalSync;
     private boolean nearestTextureFilter;
     private boolean depthPrepass;
+    private RenderTuning renderTuning = RenderTuning.defaults();
     private final ImInt shadowFilterSamples = new ImInt();
+    private final ImInt shadowDepthSteps = new ImInt();
+    private final float[] animationFullRateDistance =
+            {RenderTuning.DEFAULT_ANIMATION_FULL_RATE_DISTANCE};
     private final ImInt filteredCascades = new ImInt();
     private final float[] fogColor = new float[3];
     private final float[] fogDistanceStart = new float[1];
@@ -131,14 +141,19 @@ public final class SettingsDialog {
     private Optional<Supplier<PostEffectStack>> globalPostEffectStack = Optional.empty();
     private Runnable onPostEffectsChanged = () -> {
     };
+    private static final int ACTION_NAME_CAPACITY = 64;
+    private static final float ACTION_NAME_FIELD_WIDTH = 200.0f;
     private final ImString searchFilter = new ImString(SEARCH_CAPACITY);
     private final List<Category> categories = buildCategories();
-    private List<InputAction> inputActions = InputActions.defaultActions();
+    private List<InputAction> inputActions = new ArrayList<>(InputActions.defaultActions());
+    private final ImString newActionName = new ImString(ACTION_NAME_CAPACITY);
+    private final Map<Integer, ImString> actionNameEditors = new HashMap<>();
     private int listeningAction = -1;
     private boolean listeningNegative;
     private int selectedCategory;
     private int matchedRows;
     private String captionPending = "";
+    private String currentCaption = "";
     private Project project;
     private boolean openRequested;
 
@@ -252,6 +267,9 @@ public final class SettingsDialog {
         depthPrepass = quality.depthPrepass();
         shadowFilterSamples.set(quality.shadowFilterSamples());
         filteredCascades.set(quality.filteredCascades());
+        shadowDepthSteps.set(quality.shadowDepthSteps());
+        renderTuning = quality.renderTuning();
+        animationFullRateDistance[0] = renderTuning.animationFullRateDistance();
     }
 
     public ProjectQuality buildQuality() {
@@ -259,7 +277,7 @@ public final class SettingsDialog {
                 shadowMapSize.get(), cascadeCount.get(), windowTitle.get().trim(),
                 windowWidth.get(), windowHeight.get(), verticalSync, maximumFrameRate.get(),
                 nearestTextureFilter, depthPrepass, shadowFilterSamples.get(),
-                filteredCascades.get()).clamped();
+                filteredCascades.get(), shadowDepthSteps.get(), renderTuning).clamped();
     }
 
     private void loadFog(PostProcessSettings postProcess) {
@@ -317,7 +335,8 @@ public final class SettingsDialog {
                 ImGui.textDisabled(lastGroup);
             }
             ImGui.indent(CATEGORY_INDENT);
-            if (ImGui.selectable(category.name(), index == selectedCategory && !filtering())) {
+            String label = category.name() + "###category-" + category.group() + "-" + category.name();
+            if (ImGui.selectable(label, index == selectedCategory && !filtering())) {
                 selectedCategory = index;
                 searchFilter.set("");
             }
@@ -340,16 +359,45 @@ public final class SettingsDialog {
         matchedRows = 0;
         for (Category category : categories) {
             int before = matchedRows;
-            captionPending = category.group() + "  /  " + category.name();
+            currentCaption = category.group() + "  /  " + category.name();
+            captionPending = currentCaption;
             category.body().run();
             if (matchedRows > before) {
                 ImGui.separator();
             }
         }
         captionPending = "";
+        currentCaption = "";
         if (matchedRows == 0) {
             ImGui.textDisabled("No setting matches \"" + searchFilter.get() + "\".");
         }
+    }
+
+    private boolean contains(String text) {
+        return text.toLowerCase(Locale.ROOT).contains(searchFilter.get().trim().toLowerCase(Locale.ROOT));
+    }
+
+    private boolean categoryMatchesSearch() {
+        return filtering() && contains(currentCaption);
+    }
+
+    private void noteMatch() {
+        matchedRows++;
+        if (!captionPending.isEmpty()) {
+            ImGui.textDisabled(captionPending);
+            captionPending = "";
+        }
+    }
+
+    private boolean skipWhileFiltering() {
+        if (!filtering()) {
+            return false;
+        }
+        if (!categoryMatchesSearch()) {
+            return true;
+        }
+        noteMatch();
+        return false;
     }
 
     private boolean filtering() {
@@ -360,14 +408,10 @@ public final class SettingsDialog {
         if (!filtering()) {
             return true;
         }
-        if (!label.toLowerCase(Locale.ROOT).contains(searchFilter.get().trim().toLowerCase(Locale.ROOT))) {
+        if (!categoryMatchesSearch() && !contains(label)) {
             return false;
         }
-        matchedRows++;
-        if (!captionPending.isEmpty()) {
-            ImGui.textDisabled(captionPending);
-            captionPending = "";
-        }
+        noteMatch();
         return true;
     }
 
@@ -397,11 +441,18 @@ public final class SettingsDialog {
         return clicked ? !value : value;
     }
 
-    private void hint(String text) {
+    private void hint(TextKey key) {
         if (filtering()) {
             return;
         }
-        ImGui.textDisabled(text);
+        ImGui.textDisabled(I18n.translate(key));
+    }
+
+    private void hint(TextKey key, Object... arguments) {
+        if (filtering()) {
+            return;
+        }
+        ImGui.textDisabled(I18n.translate(key, arguments));
     }
 
     private List<Category> buildCategories() {
@@ -424,12 +475,13 @@ public final class SettingsDialog {
         built.add(new Category("Rendering", "Post processing", this::renderPostCategory));
         built.add(new Category("Rendering", "Textures", this::renderTextureCategory));
         built.add(new Category("Rendering", "Post effects", this::renderPostEffectsCategory));
+        built.add(new Category("Rendering", "Performance", this::renderPerformanceCategory));
         return built;
     }
 
     private void renderApplicationCategory() {
         row("Window title", () -> ImGui.inputText("##value", windowTitle));
-        hint("Shown on the exported game window and written into its launcher configuration.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_WINDOW_TITLE_HELP);
     }
 
     private void renderLibrariesCategory() {
@@ -437,7 +489,7 @@ public final class SettingsDialog {
             return;
         }
         if (project == null) {
-            hint("No project is open.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_NO_PROJECT);
             return;
         }
         librariesSection.get().render(project);
@@ -445,7 +497,7 @@ public final class SettingsDialog {
 
     private void renderProjectIdentity() {
         if (project == null) {
-            hint("No project is open.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_NO_PROJECT);
             return;
         }
         row("Name", () -> ImGui.textUnformatted(project.name()));
@@ -462,25 +514,24 @@ public final class SettingsDialog {
         verticalSync = toggleRow("Vertical sync", verticalSync);
         row("Max frame rate", () -> ImGui.dragInt("##value", maximumFrameRate.getData(), 1.0f, 0,
                 ProjectQuality.MAX_FRAME_RATE_LIMIT));
-        hint("Max frame rate 0 runs unlimited. Both apply to the launched and exported game.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_FRAME_RATE_HELP);
     }
 
     private void renderStretchCategory() {
         if (postProcessSettings.isEmpty()) {
-            hint("Open a scene viewport to edit stretch settings.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_STRETCH_UNAVAILABLE);
             return;
         }
         pixelPerfectEnabled = toggleRow("Pixel perfect", pixelPerfectEnabled);
         if (!pixelPerfectEnabled && !filtering()) {
-            hint("Render the scene at a reference resolution, then scale it up to the window.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_PIXEL_PERFECT_HELP);
             return;
         }
         row("Reference width", () -> ImGui.dragInt("##value", pixelPerfectBaseWidth.getData(), 1.0f, 32, 7680));
         row("Reference height", () -> ImGui.dragInt("##value", pixelPerfectBaseHeight.getData(), 1.0f, 32, 4320));
         row("Aspect", this::renderAspectCombo);
         pixelPerfectIntegerScale = toggleRow("Integer scale", pixelPerfectIntegerScale);
-        hint("KEEP letterboxes to hold the reference aspect. Integer scale forbids fractional"
-                + " upscales, which is what removes uneven pixel rows.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_INTEGER_SCALE_HELP);
     }
 
     private void renderAspectCombo() {
@@ -496,29 +547,78 @@ public final class SettingsDialog {
     }
 
     private void renderInputActionsCategory() {
-        if (filtering()) {
+        if (skipWhileFiltering()) {
             return;
         }
-        hint("Bind an action, then read it from a script with services.inputActions().");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_INPUT_ACTIONS_HELP);
         for (int index = 0; index < inputActions.size(); index++) {
             renderActionRows(index);
         }
-        if (ImGui.button("Restore defaults")) {
-            inputActions = InputActions.defaultActions();
-            listeningAction = -1;
+        ImGui.separator();
+        renderAddActionRow();
+        if (inputActions.isEmpty()) {
+            ImGui.textDisabled("No action yet. Name one above and bind it.");
         }
+    }
+
+    private void renderAddActionRow() {
+        ImGui.setNextItemWidth(ACTION_NAME_FIELD_WIDTH);
+        boolean submitted = TextFields.inputSubmitted("##new-action", newActionName);
+        ImGui.sameLine();
+        if ((ImGui.button("Add action") || submitted) && !newActionName.get().isBlank()) {
+            addAction(newActionName.get());
+            newActionName.set("");
+        }
+    }
+
+    private void addAction(String desiredName) {
+        inputActions.add(InputAction.button(InputActions.uniqueNameAmong(inputActions, desiredName)));
+        actionNameEditors.clear();
+        listeningAction = -1;
     }
 
     private void renderActionRows(int index) {
         InputAction action = inputActions.get(index);
         ImGui.pushID(index);
         ImGui.separator();
-        ImGui.textUnformatted(action.name());
+        renderActionHeader(index, action);
         renderBindingRow(index, action, false);
-        if (!action.negative().isEmpty() || !action.positive().isEmpty()) {
-            renderBindingRow(index, action, true);
-        }
+        renderBindingRow(index, action, true);
         ImGui.popID();
+    }
+
+    private void renderActionHeader(int index, InputAction action) {
+        ImString editor = actionNameEditors.computeIfAbsent(index, key -> {
+            ImString value = new ImString(ACTION_NAME_CAPACITY);
+            value.set(action.name());
+            return value;
+        });
+        ImGui.setNextItemWidth(ACTION_NAME_FIELD_WIDTH);
+        if (ImGui.inputText("##name", editor)) {
+            renameAction(index, editor.get());
+        }
+        ImGui.sameLine();
+        if (ImGui.smallButton("Remove")) {
+            removeAction(index);
+        }
+    }
+
+    private void renameAction(int index, String requestedName) {
+        InputAction action = inputActions.get(index);
+        String trimmed = requestedName.trim();
+        if (trimmed.isEmpty() || trimmed.equals(action.name())) {
+            return;
+        }
+        List<InputAction> others = new ArrayList<>(inputActions);
+        others.remove(index);
+        inputActions.set(index, new InputAction(InputActions.uniqueNameAmong(others, trimmed),
+                action.positive(), action.negative()));
+    }
+
+    private void removeAction(int index) {
+        inputActions.remove(index);
+        actionNameEditors.clear();
+        listeningAction = -1;
     }
 
     private void renderBindingRow(int index, InputAction action, boolean negative) {
@@ -598,7 +698,7 @@ public final class SettingsDialog {
         row("Field of view", () -> ImGui.dragFloat("##value", sceneFieldOfView, 0.5f,
                 EditorPreferences.MIN_SCENE_FIELD_OF_VIEW, EditorPreferences.MAX_SCENE_FIELD_OF_VIEW, "%.1f"));
         if (sceneFar[0] / Math.max(sceneNear[0], EditorPreferences.MIN_SCENE_NEAR) > DEPTH_RATIO_WARNING) {
-            hint("Far divided by near is very high. Raise the near plane to avoid depth fighting.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_NEAR_PLANE_HELP);
         }
     }
 
@@ -637,7 +737,7 @@ public final class SettingsDialog {
         }
         detachableWindows = toggleRow("Detachable windows", detachableWindows);
         row("Preferred GPU", this::renderGpuCombo);
-        hint("Detachable windows and the GPU choice take effect after restarting the editor.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_RESTART_HELP);
     }
 
     private void renderGpuCombo() {
@@ -656,14 +756,14 @@ public final class SettingsDialog {
         row("Gravity", () -> ImGui.dragFloat3("##value", gravity, 0.05f, -200.0f, 200.0f));
         row("Fixed timestep (Hz)", () -> ImGui.dragInt("##value", fixedTimestepHertz.getData(), 1.0f,
                 ProjectQuality.MIN_FIXED_TIMESTEP_HERTZ, ProjectQuality.MAX_FIXED_TIMESTEP_HERTZ));
-        hint("Applies on the next Play and to the exported game.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_PHYSICS_HELP);
     }
 
     private void renderLayersCategory() {
-        if (filtering()) {
+        if (skipWhileFiltering()) {
             return;
         }
-        hint("Rows are layers. Tick a cell to let two layers collide.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_LAYERS_HELP);
         ImGui.beginChild("##collision-grid", 0.0f, 0.0f);
         for (int row = 0; row < EditorSettings.LAYER_COUNT; row++) {
             renderCollisionRow(row);
@@ -703,7 +803,7 @@ public final class SettingsDialog {
 
     private void renderEnvironmentCategory() {
         if (postProcessSettings.isEmpty()) {
-            hint("Open a scene viewport to edit rendering settings.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_RENDERING_UNAVAILABLE);
             return;
         }
         row("Sky intensity", () -> ImGui.dragFloat("##value", skyIntensity, 0.02f, MIN_INTENSITY, MAX_INTENSITY));
@@ -711,12 +811,12 @@ public final class SettingsDialog {
                 MIN_INTENSITY, MAX_INTENSITY));
         row("Exposure", () -> ImGui.dragFloat("##value", exposure, 0.02f, MIN_EXPOSURE, MAX_EXPOSURE));
         row("Vignette", () -> ImGui.dragFloat("##value", vignette, 0.01f, 0.0f, 1.0f));
-        hint("Sky and ambient come from the Skybox component when the scene has one.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_ENVIRONMENT_HELP);
     }
 
     private void renderFogCategory() {
         if (postProcessSettings.isEmpty()) {
-            hint("Open a scene viewport to edit fog.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_FOG_UNAVAILABLE);
             return;
         }
         fogEnabled = toggleRow("Fog", fogEnabled);
@@ -730,8 +830,7 @@ public final class SettingsDialog {
         row("Height falloff", () -> ImGui.dragFloat("##value", fogHeightFalloff, 0.01f, 0.0f, 10.0f, "%.3f"));
         row("Height density", () -> ImGui.dragFloat("##value", fogHeightDensity, 0.01f, 0.0f, 4.0f, "%.3f"));
         row("Fog shader", () -> ImGui.inputText("##value", fogShaderPath));
-        hint("Leave the shader empty to use the built-in fog. A " + FogShaderComposer.EXTENSION
-                + " file defines vec4 fogShade(vec3 worldPosition, float viewDistance, vec2 uv, float time).");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_FOG_SHADER_HELP, FogShaderComposer.EXTENSION);
     }
 
     private void renderShadowCategory() {
@@ -746,13 +845,14 @@ public final class SettingsDialog {
         row("Soft filter samples", () -> ImGui.dragInt("##value", shadowFilterSamples.getData(), 1.0f, 1, 32));
         row("Filtered cascades", () -> ImGui.dragInt("##value", filteredCascades.getData(), 1.0f, 0,
                 ProjectQuality.MAX_CASCADE_COUNT));
-        hint("Map size is rounded to a power of two. Size, cascades and filtering apply after"
-                + " reopening the project.");
+        row("Depth snap steps", () -> ImGui.dragInt("##value", shadowDepthSteps.getData(), 8.0f,
+                ProjectQuality.MIN_SHADOW_DEPTH_STEPS, ProjectQuality.MAX_SHADOW_DEPTH_STEPS));
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_SHADOW_HELP);
     }
 
     private void renderPostCategory() {
         if (postProcessSettings.isEmpty()) {
-            hint("Open a scene viewport to edit post processing.");
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_POST_UNAVAILABLE);
             return;
         }
         bloomEnabled = toggleRow("Bloom", bloomEnabled);
@@ -772,16 +872,44 @@ public final class SettingsDialog {
         depthPrepass = toggleRow("Depth prepass", depthPrepass);
     }
 
+    private float animationDistanceRow() {
+        row("Animation full rate distance", () -> ImGui.dragFloat("##value", animationFullRateDistance,
+                0.5f, 0.0f, MAX_ANIMATION_DISTANCE));
+        return animationFullRateDistance[0];
+    }
+
+    private void renderPerformanceCategory() {
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_PERFORMANCE_HELP);
+        renderTuning = new RenderTuning(
+                toggleRow("GPU occlusion culling", renderTuning.gpuCulling()),
+                toggleRow("Scene render index", renderTuning.sceneIndex()),
+                toggleRow("Multi draw batching", renderTuning.multiDraw()),
+                toggleRow("Instancing", renderTuning.instancing()),
+                toggleRow("Pipeline memoisation", renderTuning.pipelineMemo()),
+                toggleRow("Cached transform lookup", renderTuning.cachedTransformLookup()),
+                toggleRow("Shared material digest", renderTuning.sharedMaterialDigest()),
+                toggleRow("Skin once per frame", renderTuning.skinOnce()),
+                toggleRow("Animation culling", renderTuning.animationCulling()),
+                animationDistanceRow(),
+                toggleRow("Front to back opaque sorting", renderTuning.frontToBackOpaque()),
+                toggleRow("Shadow static layer reuse", renderTuning.shadowLayerReuse()),
+                toggleRow("Ring buffered instance data", renderTuning.ringInstanceBuffers()),
+                toggleRow("Ring buffered object transforms", renderTuning.ringObjectUniforms()),
+                toggleRow("Parallel pose sampling", renderTuning.parallelAnimation()));
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_GPU_CULLING_HELP);
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_ANIMATION_CULLING_HELP);
+    }
+
     private void renderTextureCategory() {
         nearestTextureFilter = toggleRow("Nearest filter by default", nearestTextureFilter);
-        hint("Per-texture filters set in the inspector still win. Applies after reopening the project.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_TEXTURE_FILTER_HELP);
     }
 
     private void renderPostEffectsCategory() {
         if (filtering() || postEffectsSection.isEmpty() || globalPostEffectStack.isEmpty()) {
             return;
         }
-        hint("Scene-wide stack, applied live. Cameras can override it in the Inspector.");
+        hint(TextKey.EDITOR_SETTINGS_DIALOG_POST_EFFECTS_HELP);
         postEffectsSection.get().render(globalPostEffectStack.get().get(), onPostEffectsChanged);
     }
 
@@ -825,6 +953,8 @@ public final class SettingsDialog {
         applyPostProcess(postProcessSettings.get());
         meshRenderSystem.get().setShadowDistance(shadowDistance[0]);
         meshRenderSystem.get().setClusteringEnabled(lightCullingEnabled);
+        meshRenderSystem.get().setDepthPrepassEnabled(depthPrepass);
+        meshRenderSystem.get().applyTuning(renderTuning);
     }
 
     private void applyPostProcess(PostProcessSettings postProcess) {

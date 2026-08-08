@@ -38,10 +38,9 @@ public final class JavaSymbols {
             "this", "throw", "throws", "transient", "try", "var", "void", "volatile", "while",
             "yield", "true", "false", "null");
 
-    private static final List<Class<?>> EXTRA_CLASSES = List.of(
+    private static final List<Class<?>> MATH_CLASSES = List.of(
             Vector2f.class, Vector3f.class, Vector4f.class,
-            Matrix3f.class, Matrix4f.class, Quaternionf.class,
-            String.class, Math.class, Optional.class, List.class, Map.class);
+            Matrix3f.class, Matrix4f.class, Quaternionf.class);
 
     private final Map<String, Class<?>> typesBySimpleName = new TreeMap<>();
     private final Map<String, String> qualifiedBySimpleName = new TreeMap<>();
@@ -56,12 +55,13 @@ public final class JavaSymbols {
 
     private static List<Class<?>> discoverTypes(ComponentRegistry registry, ProjectLibraries libraries,
                                                 Path compiledScriptsDirectory) {
-        List<Class<?>> classes = new ArrayList<>(EXTRA_CLASSES);
+        List<Class<?>> classes = new ArrayList<>(MATH_CLASSES);
         classes.addAll(ClasspathTypeScanner.typesUnder(Behaviour.class, ENGINE_PACKAGE));
         classes.addAll(ClasspathTypeScanner.typesUnder(EngineServices.class, ENGINE_PACKAGE));
         classes.addAll(ClasspathTypeScanner.typesIn(projectRoots(libraries, compiledScriptsDirectory),
                 JavaSymbols.class.getClassLoader()));
         registry.entries().forEach(entry -> classes.add(entry.componentClass()));
+        classes.addAll(JdkTypes.publicApi());
         return classes;
     }
 

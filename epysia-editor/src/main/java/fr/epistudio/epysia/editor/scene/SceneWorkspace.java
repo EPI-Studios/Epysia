@@ -231,8 +231,7 @@ public final class SceneWorkspace {
         sun.addComponent(new Transform3D().lookAt(-0.4f, -1.0f, -0.3f, 0.0f, 1.0f, 0.0f));
         sun.addComponent(new DirectionalLight()
                 .setColor(1.0f, 0.95f, 0.85f)
-                .setAmbient(0.22f, 0.24f, 0.28f)
-                .setShadowExtent(8.0f, 0.5f, 30.0f));
+                .setAmbient(0.22f, 0.24f, 0.28f));
         scene.addGameObject(sun);
         scene.advanceTick();
     }

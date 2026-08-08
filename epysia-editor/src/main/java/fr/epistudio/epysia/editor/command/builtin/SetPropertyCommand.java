@@ -55,7 +55,7 @@ public final class SetPropertyCommand implements EditorCommand {
 
     @Override
     public String coalesceKey() {
-        return "set:" + System.identityHashCode(owner) + "." + property.fieldName();
+        return "set:" + System.identityHashCode(property.owner()) + "." + property.fieldName();
     }
 
     @Override

@@ -2,6 +2,8 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.animation.AnimationBlendMode;
 import fr.epistudio.epysia.animation.AnimationLayer;
+import fr.epistudio.epysia.animation.BlendSample;
+import fr.epistudio.epysia.animation.BlendSpaceShape;
 import fr.epistudio.epysia.animation.Clip;
 import fr.epistudio.epysia.animation.Skeleton;
 import fr.epistudio.epysia.assets.epyclip.EpyClipReader;
@@ -32,6 +34,7 @@ public final class AnimatorSection {
     private final Supplier<SceneDocument> activeDocument;
     private final ClipCatalog catalog;
     private final ImString maskRootBuffer = new ImString(JOINT_NAME_CAPACITY);
+    private final float[] blendPosition = new float[1];
     private List<ClipCatalog.ClipEntry> cachedEntries = List.of();
     private long cachedChecksumKey = NO_SKELETON_KEY;
     private long cacheExpiryNanos;
@@ -45,6 +48,7 @@ public final class AnimatorSection {
         OptionalLong skeletonChecksum = skeletonChecksum(gameObject);
         List<ClipCatalog.ClipEntry> entries = entriesFor(skeletonChecksum);
         renderBaseClipCombo(animator, entries);
+        renderBlendSpace(animator, entries);
         renderLayers(animator, entries);
     }
 
@@ -58,6 +62,107 @@ public final class AnimatorSection {
             renderEntryOption(animator, entry);
         }
         ImGui.endCombo();
+    }
+
+    private void renderBlendSpace(Animator animator, List<ClipCatalog.ClipEntry> entries) {
+        ImGui.separator();
+        ImGui.text("Blend space");
+        renderBlendShape(animator);
+        renderBlendPositions(animator);
+        for (int sampleIndex = 0; sampleIndex < animator.blendSamples().size(); sampleIndex++) {
+            if (renderBlendSample(animator, sampleIndex, entries)) {
+                return;
+            }
+        }
+        if (ImGui.button("Add blend sample##animator-add-blend")) {
+            animator.addBlendSample();
+            activeDocument.get().markDirty();
+        }
+    }
+
+    private void renderBlendShape(Animator animator) {
+        if (!ImGui.beginCombo("Shape##animator-blend-shape", animator.blendShape().name())) {
+            return;
+        }
+        for (BlendSpaceShape shape : BlendSpaceShape.values()) {
+            boolean selected = shape == animator.blendShape();
+            if (ImGui.selectable(shape.name(), selected) && !selected) {
+                animator.setBlendShape(shape);
+                activeDocument.get().markDirty();
+            }
+        }
+        ImGui.endCombo();
+    }
+
+    private void renderBlendPositions(Animator animator) {
+        blendPosition[0] = animator.blendPositionX();
+        if (ImGui.dragFloat("Blend X##animator-blend-x", blendPosition, 0.01f)) {
+            animator.setBlendPositionX(blendPosition[0]);
+            activeDocument.get().markDirty();
+        }
+        if (animator.blendShape() != BlendSpaceShape.PLANE) {
+            return;
+        }
+        blendPosition[0] = animator.blendPositionY();
+        if (ImGui.dragFloat("Blend Y##animator-blend-y", blendPosition, 0.01f)) {
+            animator.setBlendPositionY(blendPosition[0]);
+            activeDocument.get().markDirty();
+        }
+    }
+
+    private boolean renderBlendSample(Animator animator, int sampleIndex,
+                                      List<ClipCatalog.ClipEntry> entries) {
+        BlendSample sample = animator.blendSamples().get(sampleIndex);
+        ImGui.pushID(1000 + sampleIndex);
+        boolean removed = renderBlendSampleBody(animator, sample, sampleIndex, entries);
+        ImGui.popID();
+        return removed;
+    }
+
+    private boolean renderBlendSampleBody(Animator animator, BlendSample sample, int sampleIndex,
+                                          List<ClipCatalog.ClipEntry> entries) {
+        if (!ImGui.treeNodeEx("Sample " + (sampleIndex + 1))) {
+            return false;
+        }
+        renderBlendSampleClip(sample, entries);
+        renderBlendSamplePosition(animator, sample);
+        boolean removed = ImGui.button("Remove sample##animator-remove-blend");
+        if (removed) {
+            animator.removeBlendSample(sampleIndex);
+            activeDocument.get().markDirty();
+        }
+        ImGui.treePop();
+        return removed;
+    }
+
+    private void renderBlendSampleClip(BlendSample sample, List<ClipCatalog.ClipEntry> entries) {
+        if (!ImGui.beginCombo("Clip##animator-blend-clip", previewLabel(sample.clipPath(), entries))) {
+            return;
+        }
+        for (ClipCatalog.ClipEntry entry : entries) {
+            boolean selected = entry.path().toString().equals(sample.clipPath());
+            if (ImGui.selectable(entry.name(), selected) && !selected) {
+                sample.assignClip(entry.path().toString(), EpyClipReader.readFile(entry.path()));
+                activeDocument.get().markDirty();
+            }
+        }
+        ImGui.endCombo();
+    }
+
+    private void renderBlendSamplePosition(Animator animator, BlendSample sample) {
+        blendPosition[0] = sample.positionX();
+        if (ImGui.dragFloat("Position X##animator-blend-sample-x", blendPosition, 0.01f)) {
+            sample.setPositionX(blendPosition[0]);
+            activeDocument.get().markDirty();
+        }
+        if (animator.blendShape() != BlendSpaceShape.PLANE) {
+            return;
+        }
+        blendPosition[0] = sample.positionY();
+        if (ImGui.dragFloat("Position Y##animator-blend-sample-y", blendPosition, 0.01f)) {
+            sample.setPositionY(blendPosition[0]);
+            activeDocument.get().markDirty();
+        }
     }
 
     private void renderLayers(Animator animator, List<ClipCatalog.ClipEntry> entries) {

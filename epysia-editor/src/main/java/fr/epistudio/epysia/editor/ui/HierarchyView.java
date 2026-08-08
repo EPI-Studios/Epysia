@@ -21,6 +21,7 @@ import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.ui.LabelFitCache.LabelFit;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.net.replication.NetworkObject;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
@@ -59,6 +60,10 @@ public final class HierarchyView {
     private static final int RENAME_CAPACITY = 256;
     private static final int FILTER_CAPACITY = 128;
     private static final String ELLIPSIS = "...";
+    private static final String NETWORK_BADGE = "[net]";
+    private static final String NETWORK_BADGE_OWNED = "[net*]";
+    private static final int BADGE_NETWORKED_COLOR = 0xFFB0A060;
+    private static final int BADGE_OWNED_COLOR = 0xFF70D0A0;
     private static final int MAXIMUM_CACHED_WIDGET_IDS = 8192;
     private static final float INDENT_GUIDE_OFFSET = 6.0f;
     private static final int INDENT_GUIDE_COLOR = EditorStyle.rgba(255, 255, 255, 26);
@@ -71,6 +76,7 @@ public final class HierarchyView {
     private final Consumer<GameObject> onSaveAsPrefab;
     private final Consumer<GameObject> onFrameRequested;
     private final GameObjectFactory objectFactory;
+    private final GameObjectCreationMenu creationMenu;
     private final Supplier<Vector3f> spawnPoint;
     private final ConfirmDialog deleteConfirm = new ConfirmDialog(
             I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_DELETE_SELECTED_TITLE),
@@ -95,6 +101,7 @@ public final class HierarchyView {
         this.onSaveAsPrefab = onSaveAsPrefab;
         this.onFrameRequested = onFrameRequested;
         this.objectFactory = objectFactory;
+        this.creationMenu = new GameObjectCreationMenu(objectFactory);
         this.spawnPoint = spawnPoint;
     }
 
@@ -199,12 +206,28 @@ public final class HierarchyView {
         if (fit.truncated() && ImGui.isItemHovered()) {
             ImGui.setTooltip(name);
         }
+        renderNetworkBadge(row.gameObject());
         if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
             onFrameRequested.accept(row.gameObject());
         }
         renderRowDragSource(row);
         renderRowDropTarget(row);
         renderRowContextMenu(row);
+    }
+
+    private void renderNetworkBadge(GameObject gameObject) {
+        NetworkObject networkObject = gameObject.getComponentOrNull(NetworkObject.class);
+        if (networkObject == null) {
+            return;
+        }
+        ImGui.sameLine();
+        boolean ownedHere = networkObject.ownerPeer() != NetworkObject.SERVER_PEER;
+        ImGui.textColored(ownedHere ? BADGE_OWNED_COLOR : BADGE_NETWORKED_COLOR,
+                ownedHere ? NETWORK_BADGE_OWNED : NETWORK_BADGE);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("network id " + networkObject.networkId()
+                    + ", owner " + networkObject.ownerPeer());
+        }
     }
 
     private static void drawIndentGuides(int depth) {
@@ -332,40 +355,7 @@ public final class HierarchyView {
     }
 
     private void renderCreateItems() {
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_CUBE, "hierarchy-create-cube"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.CUBE, spawnPoint.get());
-        }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_PLANE, "hierarchy-create-plane"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.PLANE, spawnPoint.get());
-        }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_CAPSULE, "hierarchy-create-capsule"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawnPoint.get());
-        }
-        ImGui.separator();
-        renderCreateLightAndCameraItems();
-    }
-
-    private void renderCreateLightAndCameraItems() {
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_POINT_LIGHT,
-                "hierarchy-create-point-light"))) {
-            objectFactory.createPointLight(spawnPoint.get());
-        }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_SPOT_LIGHT,
-                "hierarchy-create-spot-light"))) {
-            objectFactory.createSpotLight(spawnPoint.get());
-        }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_DIRECTIONAL_LIGHT,
-                "hierarchy-create-directional-light"))) {
-            objectFactory.createDirectionalLight(spawnPoint.get());
-        }
-        ImGui.separator();
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_CAMERA, "hierarchy-create-camera"))) {
-            objectFactory.createCamera(spawnPoint.get());
-        }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_OBJECT,
-                "hierarchy-create-empty"))) {
-            objectFactory.createEmpty(spawnPoint.get());
-        }
+        creationMenu.renderItems(spawnPoint.get());
     }
 
     private void handleShortcuts() {
@@ -493,12 +483,25 @@ public final class HierarchyView {
             return;
         }
         for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {
-            Optional<Transform3D> transform = gameObject.getComponent(Transform3D.class);
-            if (transform.isEmpty()) {
-                rows.add(new Row(gameObject, 0));
-            } else if (transform.get().parent().isEmpty()) {
-                appendDescendants(gameObject, transform.get(), 0);
+            appendRootRow(gameObject);
+        }
+    }
+
+    private void appendRootRow(GameObject gameObject) {
+        Optional<Transform3D> spatial = gameObject.getComponent(Transform3D.class);
+        if (spatial.isPresent()) {
+            if (spatial.get().parent().isEmpty()) {
+                appendDescendants(gameObject, spatial.get(), 0);
             }
+            return;
+        }
+        Optional<Transform2D> planar = gameObject.getComponent(Transform2D.class);
+        if (planar.isEmpty()) {
+            rows.add(new Row(gameObject, 0));
+            return;
+        }
+        if (planar.get().parent().isEmpty()) {
+            appendPlanarDescendants(gameObject, planar.get(), 0);
         }
     }
 
@@ -514,6 +517,13 @@ public final class HierarchyView {
         rows.add(new Row(gameObject, depth));
         for (Transform3D child : transform.children()) {
             child.owner().ifPresent(childOwner -> appendDescendants(childOwner, child, depth + 1));
+        }
+    }
+
+    private void appendPlanarDescendants(GameObject gameObject, Transform2D transform, int depth) {
+        rows.add(new Row(gameObject, depth));
+        for (Transform2D child : transform.children()) {
+            child.owner().ifPresent(childOwner -> appendPlanarDescendants(childOwner, child, depth + 1));
         }
     }
 

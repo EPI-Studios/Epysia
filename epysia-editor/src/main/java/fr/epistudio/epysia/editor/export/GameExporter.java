@@ -12,7 +12,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
@@ -25,6 +27,8 @@ public final class GameExporter {
     private static final String SCRIPTS_OUTPUT = ".epysia/scripts-out";
     private static final Set<String> EXCLUDED_PROJECT_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", "scripts");
+    private static final Set<String> EXCLUDED_PROJECT_FILES =
+            Set.of("build.gradle", "settings.gradle", "gradle.properties", "gradlew", "gradlew.bat");
 
     private final Project project;
     private final BuildInfo buildInfo;
@@ -40,16 +44,18 @@ public final class GameExporter {
         this.templates = templates;
     }
 
-    public Path export(ExportRequest request) throws IOException {
+    public Path export(ExportRequest request, ExportProgress progress) throws IOException {
         requireOutsideProject(request.outputDirectory());
-        Path template = templates.resolve(request.platform(), buildInfo.version(), buildInfo.repository());
+        Path template = templates.resolve(request.platform(), buildInfo.version(), buildInfo.repository(), progress);
         String name = sanitizeFileName(request.title());
         Path gameRoot = request.outputDirectory().resolve(name);
-        copyDirectory(template, gameRoot);
+        copyDirectory(template, gameRoot, progress, ExportStage.COPYING_TEMPLATE);
         TemplateLayout layout = request.platform().layout(gameRoot, TEMPLATE_LAUNCHER_NAME);
-        injectContent(layout.applicationDirectory().resolve(CONTENT_DIRECTORY));
-        finalizeLauncher(request, layout, name);
-        archive(gameRoot, request.platform(), name);
+        injectContent(layout.applicationDirectory().resolve(CONTENT_DIRECTORY), progress);
+        Optional<String> icon = installIcon(request, layout, gameRoot, name);
+        finalizeLauncher(request, layout, name, icon);
+        progress.report(ExportStage.WRITING_LAUNCHER, 1.0f);
+        archive(gameRoot, request.platform(), name, progress);
         return gameRoot;
     }
 
@@ -59,8 +65,8 @@ public final class GameExporter {
         }
     }
 
-    private void injectContent(Path content) throws IOException {
-        copyProjectContent(content);
+    private void injectContent(Path content, ExportProgress progress) throws IOException {
+        copyProjectContent(content, progress);
         Files.createDirectories(content.resolve(SCRIPTS_OUTPUT));
         verifyLibraries(content);
     }
@@ -74,11 +80,13 @@ public final class GameExporter {
         }
     }
 
-    private void copyProjectContent(Path content) throws IOException {
+    private void copyProjectContent(Path content, ExportProgress progress) throws IOException {
         Path root = project.rootDirectory();
         try (Stream<Path> walk = Files.walk(root)) {
-            for (Path source : walk.toList()) {
-                copyProjectPath(root, source, content);
+            List<Path> sources = walk.toList();
+            for (int index = 0; index < sources.size(); index++) {
+                copyProjectPath(root, sources.get(index), content);
+                progress.report(ExportStage.COPYING_PROJECT, (index + 1) / (float) sources.size());
             }
         }
     }
@@ -103,13 +111,44 @@ public final class GameExporter {
 
     private static boolean isExcluded(Path relative) {
         String first = relative.getName(0).toString().toLowerCase(Locale.ROOT);
-        return EXCLUDED_PROJECT_DIRECTORIES.contains(first);
+        return EXCLUDED_PROJECT_DIRECTORIES.contains(first)
+                || (relative.getNameCount() == 1 && EXCLUDED_PROJECT_FILES.contains(first));
     }
 
-    private void finalizeLauncher(ExportRequest request, TemplateLayout layout, String name) throws IOException {
+    private Optional<String> installIcon(ExportRequest request, TemplateLayout layout, Path gameRoot, String name)
+            throws IOException {
+        if (request.iconFile().isEmpty()) {
+            return Optional.empty();
+        }
+        Path source = request.iconFile().get();
+        if (!Files.isRegularFile(source)) {
+            return Optional.empty();
+        }
+        String fileName = "icon.png";
+        Path content = layout.applicationDirectory().resolve(CONTENT_DIRECTORY);
+        Files.createDirectories(content);
+        Files.copy(source, content.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+        replacePackagedIcon(request, gameRoot, name, source);
+        return Optional.of(fileName);
+    }
+
+    private void replacePackagedIcon(ExportRequest request, Path gameRoot, String name, Path source)
+            throws IOException {
+        if (request.platform() != TargetPlatform.LINUX) {
+            return;
+        }
+        Path packaged = gameRoot.resolve("lib").resolve(name + ".png");
+        Files.createDirectories(packaged.getParent());
+        Files.copy(source, packaged, StandardCopyOption.REPLACE_EXISTING);
+        Path templateIcon = gameRoot.resolve("lib").resolve(TEMPLATE_LAUNCHER_NAME + ".png");
+        Files.deleteIfExists(templateIcon);
+    }
+
+    private void finalizeLauncher(ExportRequest request, TemplateLayout layout, String name,
+                                  Optional<String> iconFileName) throws IOException {
         Path targetConfig = layout.config().resolveSibling(name + ".cfg");
         LauncherConfiguration.forGame(request.sceneFileName(), new ProjectStore().readQuality(project),
-                        request.gpuPreference())
+                        request.gpuPreference(), iconFileName, request.title())
                 .writeTo(layout.config(), targetConfig);
         Path targetLauncher = layout.launcher().resolveSibling(name + request.platform().launcherExtension());
         Files.move(layout.launcher(), targetLauncher, StandardCopyOption.REPLACE_EXISTING);
@@ -118,10 +157,13 @@ public final class GameExporter {
         }
     }
 
-    private static void copyDirectory(Path source, Path destination) throws IOException {
+    private static void copyDirectory(Path source, Path destination, ExportProgress progress, ExportStage stage)
+            throws IOException {
         try (Stream<Path> walk = Files.walk(source)) {
-            for (Path path : walk.toList()) {
-                copyInto(source, path, destination);
+            List<Path> paths = walk.toList();
+            for (int index = 0; index < paths.size(); index++) {
+                copyInto(source, paths.get(index), destination);
+                progress.report(stage, (index + 1) / (float) paths.size());
             }
         }
     }
@@ -136,12 +178,15 @@ public final class GameExporter {
         }
     }
 
-    private static void archive(Path gameRoot, TargetPlatform platform, String name) throws IOException {
+    private static void archive(Path gameRoot, TargetPlatform platform, String name, ExportProgress progress)
+            throws IOException {
         Path zip = gameRoot.resolveSibling(name + "-" + platform.identifier() + ".zip");
         try (ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(zip));
              Stream<Path> walk = Files.walk(gameRoot)) {
-            for (Path file : walk.filter(Files::isRegularFile).toList()) {
-                writeZipEntry(output, gameRoot.getParent(), file);
+            List<Path> files = walk.filter(Files::isRegularFile).toList();
+            for (int index = 0; index < files.size(); index++) {
+                writeZipEntry(output, gameRoot.getParent(), files.get(index));
+                progress.report(ExportStage.ARCHIVING, (index + 1) / (float) files.size());
             }
         }
     }

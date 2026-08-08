@@ -379,7 +379,9 @@ public final class ProfilerView {
                 + ", skipped: " + statistics.targetsSkipped());
         ImGui.textDisabled("Casters submitted: " + statistics.castersSubmitted());
         ImGui.textDisabled("Time animated casters: " + statistics.animatedCasters());
-        ImGui.textDisabled("Static layers rebuilt: " + statistics.staticLayersRebuilt());
+        ImGui.textDisabled("Static layers rebuilt: " + statistics.staticLayersRebuilt()
+                + ", scrolled: " + statistics.staticLayersScrolled());
+        ImGui.textDisabled("Casters redrawn after scroll: " + statistics.scrolledCastersDrawn());
         ImGui.textDisabled("Dynamic casters drawn: " + statistics.dynamicCastersDrawn());
         ImGui.textDisabled("Depth copies: " + statistics.depthCopies());
         ImGui.textDisabled(String.format("Cached static depth: %.1f MiB",
@@ -393,6 +395,9 @@ public final class ProfilerView {
         ImGui.textDisabled("Bounds cache: " + sceneHost.meshRenderSystem().boundsCacheHits()
                 + " hits, " + sceneHost.meshRenderSystem().boundsCacheMisses() + " recomputed");
         ImGui.textDisabled("Meshes culled: " + sceneHost.meshRenderSystem().culledMeshCount());
+        ImGui.textDisabled("Animation: " + sceneHost.meshRenderSystem().animationsCulledThisFrame()
+                + " culled, " + sceneHost.meshRenderSystem().animationsCadencedThisFrame() + " cadenced, "
+                + sceneHost.meshRenderSystem().skinnedDeformationsThisFrame() + " skinned");
         ImGui.textDisabled("Lights: " + countLights());
     }
 

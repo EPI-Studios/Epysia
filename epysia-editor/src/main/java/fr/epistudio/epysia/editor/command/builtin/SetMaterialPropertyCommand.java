@@ -10,6 +10,7 @@ import fr.epistudio.epysia.render.material.MaterialFields;
 import org.joml.Vector3f;
 
 import java.lang.reflect.Field;
+import java.util.Locale;
 
 public final class SetMaterialPropertyCommand implements EditorCommand {
 
@@ -83,6 +84,8 @@ public final class SetMaterialPropertyCommand implements EditorCommand {
         Object current = MaterialFields.read(material, field);
         if (current instanceof Vector3f vector && afterValue instanceof Vector3f source) {
             vector.set(source);
+        } else if (afterValue instanceof Integer number) {
+            MaterialFields.write(material, field, number);
         } else if (afterValue instanceof Number number) {
             MaterialFields.write(material, field, number.floatValue());
         }
@@ -108,7 +111,7 @@ public final class SetMaterialPropertyCommand implements EditorCommand {
 
     @Override
     public String label() {
-        return "Set Material " + (fieldName.isEmpty() ? target.name().toLowerCase(java.util.Locale.ROOT) : fieldName);
+        return "Set Material " + (fieldName.isEmpty() ? target.name().toLowerCase(Locale.ROOT) : fieldName);
     }
 
     private static Object snapshot(Object value) {

@@ -14,6 +14,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.components.EpysiaComponent;
+import fr.epistudio.epysia.components.Export;
+import fr.epistudio.epysia.input.InputState;
+import fr.epistudio.epysia.scripting.Behaviour;
 
 public final class KotlinScriptLanguage implements ScriptLanguage {
 

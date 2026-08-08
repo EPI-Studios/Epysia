@@ -32,6 +32,7 @@ import static org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING;
 import static org.lwjgl.opengl.GL30.GL_VERTEX_ARRAY_BINDING;
 import static org.lwjgl.opengl.GL30.glBindFramebuffer;
 import static org.lwjgl.opengl.GL30.glBindVertexArray;
+import org.lwjgl.opengl.GL15;
 
 public final class GlStateSnapshot {
 
@@ -80,7 +81,7 @@ public final class GlStateSnapshot {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
         glBindVertexArray(vao);
         glUseProgram(program);
-        org.lwjgl.opengl.GL15.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
+        GL15.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
         glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
         glScissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
         toggle(GL_DEPTH_TEST, depthTest);

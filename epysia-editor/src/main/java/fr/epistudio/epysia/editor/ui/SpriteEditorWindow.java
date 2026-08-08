@@ -7,6 +7,7 @@ import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasJsonCodec;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasRegion;
 import fr.epistudio.epysia.assets.AssetLocator;
 import fr.epistudio.epysia.assets.LegacyAssetReferences;
+import fr.epistudio.epysia.assets.NestedAssetPaths;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import imgui.ImDrawList;
@@ -300,8 +301,9 @@ public final class SpriteEditorWindow {
         if (storedTexturePath.isEmpty() || atlasPath.isEmpty()) {
             return Optional.empty();
         }
+        String rebased = NestedAssetPaths.rebase(locator.fromFile(atlasPath.get()), storedTexturePath);
         Optional<Path> texture = locator
-                .file(LegacyAssetReferences.interpretWithoutMigration(storedTexturePath, locator))
+                .file(LegacyAssetReferences.interpretWithoutMigration(rebased, locator))
                 .filter(Files::isRegularFile);
         if (texture.isEmpty()) {
             return Optional.empty();

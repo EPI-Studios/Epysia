@@ -15,7 +15,37 @@ public final class PlayProcessLauncher {
     }
 
     public static Process launch(Path scenePath, Path projectRoot, String windowTitle) throws IOException {
+        return start(buildCommand(scenePath, projectRoot, windowTitle));
+    }
+
+    public static Process launchClient(Path scenePath, Path projectRoot, String windowTitle,
+                                       String host, int port) throws IOException {
         List<String> command = buildCommand(scenePath, projectRoot, windowTitle);
+        command.add("--connect");
+        command.add(host);
+        command.add("--port");
+        command.add(Integer.toString(port));
+        return start(command);
+    }
+
+    public static Process launchListenServer(Path scenePath, Path projectRoot, String windowTitle,
+                                             int port) throws IOException {
+        List<String> command = buildCommand(scenePath, projectRoot, windowTitle);
+        command.add("--listen-server");
+        command.add("--port");
+        command.add(Integer.toString(port));
+        return start(command);
+    }
+
+    public static Process launchDedicatedServer(Path scenePath, Path projectRoot, int port) throws IOException {
+        List<String> command = buildCommand(scenePath, projectRoot, "Epysia - Server");
+        command.add("--server");
+        command.add("--port");
+        command.add(Integer.toString(port));
+        return start(command);
+    }
+
+    private static Process start(List<String> command) throws IOException {
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(false);
         return builder.start();

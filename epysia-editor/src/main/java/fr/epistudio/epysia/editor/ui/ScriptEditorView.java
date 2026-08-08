@@ -436,6 +436,9 @@ public final class ScriptEditorView {
             return;
         }
         TextEditor editor = script.editor();
+        if (editor.isHandleKeyboardInputsEnabled()) {
+            return;
+        }
         if (ImGui.getIO().getKeyShift()) {
             if (ImGui.isKeyPressed(ImGuiKey.Z)) {
                 editor.redo();

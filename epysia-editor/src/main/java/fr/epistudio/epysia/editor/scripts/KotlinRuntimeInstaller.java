@@ -47,7 +47,7 @@ public final class KotlinRuntimeInstaller {
         }
     }
 
-    private static boolean hasKotlinSources(Path scriptsDirectory) {
+    public static boolean hasKotlinSources(Path scriptsDirectory) {
         if (!Files.isDirectory(scriptsDirectory)) {
             return false;
         }

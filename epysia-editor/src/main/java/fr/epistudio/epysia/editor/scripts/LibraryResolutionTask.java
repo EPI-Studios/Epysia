@@ -5,6 +5,7 @@ import fr.epistudio.epysia.project.ProjectDependencies;
 
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.nio.file.Path;
 
 public final class LibraryResolutionTask {
 
@@ -39,8 +40,8 @@ public final class LibraryResolutionTask {
         }
     }
 
-    private static java.nio.file.Path sharedRepositoryRoot() {
-        return java.nio.file.Path.of(System.getProperty("user.home"), USER_DIRECTORY_NAME);
+    private static Path sharedRepositoryRoot() {
+        return Path.of(System.getProperty("user.home"), USER_DIRECTORY_NAME);
     }
 
     public Optional<MavenLibraryResolver.Outcome> drainOutcome() {

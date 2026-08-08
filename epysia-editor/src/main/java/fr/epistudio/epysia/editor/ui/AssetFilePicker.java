@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.assets.EditorAssetPaths;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
@@ -20,14 +21,18 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import fr.epistudio.epysia.assets.AssetDatabase;
+import java.util.Optional;
+import java.util.function.Supplier;
 
 public final class AssetFilePicker {
 
     private static final String POPUP_ID = "Select File";
     private static final int FILTER_CAPACITY = 128;
-    private static final float LIST_WIDTH = 460.0f;
-    private static final float LIST_HEIGHT = 300.0f;
-    private static final float PREVIEW_SIZE = 24.0f;
+    private static final float LIST_WIDTH = 720.0f;
+    private static final float LIST_HEIGHT = 440.0f;
+    private static final float PREVIEW_SIZE = 88.0f;
+    private static final float TILE_PADDING = 12.0f;
     private static final Set<String> PREVIEWABLE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
@@ -41,9 +46,17 @@ public final class AssetFilePicker {
     private boolean allowClear;
     private boolean openRequested;
 
+    private Supplier<Optional<AssetDatabase>> database =
+            Optional::empty;
+
     public AssetFilePicker(Project project, ThumbnailCache thumbnails) {
         this.project = project;
         this.thumbnails = thumbnails;
+    }
+
+    public void useDatabase(
+            Supplier<Optional<AssetDatabase>> source) {
+        this.database = source;
     }
 
     public void open(Set<String> extensions, boolean clearable, Consumer<String> pickedHandler) {
@@ -55,6 +68,23 @@ public final class AssetFilePicker {
     }
 
     private List<String> scanProject(Set<String> extensions) {
+        List<String> indexed = fromDatabase(extensions);
+        if (!indexed.isEmpty()) {
+            return indexed;
+        }
+        return walkProject(extensions);
+    }
+
+    private List<String> fromDatabase(Set<String> extensions) {
+        return database.get().map(index -> index.paths().stream()
+                        .filter(path -> matchesExtension(Path.of(path), extensions))
+                        .map(path -> AssetUri.project(path).toString())
+                        .sorted()
+                        .toList())
+                .orElse(List.of());
+    }
+
+    private List<String> walkProject(Set<String> extensions) {
         try (Stream<Path> walk = Files.walk(project.rootDirectory())) {
             return walk.filter(Files::isRegularFile)
                     .filter(path -> !isExcluded(path))
@@ -105,42 +135,52 @@ public final class AssetFilePicker {
             renderClearEntry();
         }
         String query = filterInput.get().toLowerCase(Locale.ROOT);
+        float available = ImGui.getContentRegionAvailX();
+        float used = 0.0f;
         for (String candidate : candidates) {
-            if (query.isEmpty() || candidate.toLowerCase(Locale.ROOT).contains(query)) {
-                renderCandidate(candidate);
+            if (!query.isEmpty() && !candidate.toLowerCase(Locale.ROOT).contains(query)) {
+                continue;
             }
+            if (used > 0.0f && used + PREVIEW_SIZE + TILE_PADDING < available) {
+                ImGui.sameLine();
+                used += PREVIEW_SIZE + TILE_PADDING;
+            } else {
+                used = PREVIEW_SIZE + TILE_PADDING;
+            }
+            renderCandidate(candidate);
         }
         ImGui.endChild();
     }
 
     private void renderClearEntry() {
-        ImGui.dummy(PREVIEW_SIZE, PREVIEW_SIZE);
-        ImGui.sameLine();
-        if (ImGui.selectable(I18n.label(TextKey.EDITOR_ASSET_FILE_PICKER_NONE, "asset-file-picker-none"))) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_ASSET_FILE_PICKER_NONE, "asset-file-picker-none"),
+                PREVIEW_SIZE, 0.0f)) {
             ImGui.closeCurrentPopup();
             onPicked.accept("");
         }
     }
 
     private void renderCandidate(String candidate) {
-        renderPreview(candidate);
-        ImGui.sameLine();
-        if (ImGui.selectable(displayNameFor(candidate))) {
+        ImGui.pushID(candidate);
+        ImGui.beginGroup();
+        if (renderPreviewButton(candidate)) {
             ImGui.closeCurrentPopup();
             onPicked.accept(candidate);
         }
+        ImGui.textUnformatted(shortNameFor(candidate));
+        ImGui.endGroup();
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(candidate);
+            ImGui.setTooltip(displayNameFor(candidate));
         }
+        ImGui.popID();
     }
 
-    private void renderPreview(String candidate) {
+    private boolean renderPreviewButton(String candidate) {
         OptionalInt preview = previewFor(candidate);
         if (preview.isPresent()) {
-            ImGui.image(preview.getAsInt(), PREVIEW_SIZE, PREVIEW_SIZE);
-        } else {
-            ImGui.dummy(PREVIEW_SIZE, PREVIEW_SIZE);
+            return ImGui.imageButton(preview.getAsInt(), PREVIEW_SIZE, PREVIEW_SIZE);
         }
+        return ImGui.button(fileExtensionOf(candidate), PREVIEW_SIZE, PREVIEW_SIZE);
     }
 
     private OptionalInt previewFor(String candidate) {
@@ -148,7 +188,17 @@ public final class AssetFilePicker {
         if (PREVIEWABLE_EXTENSIONS.stream().noneMatch(lower::endsWith)) {
             return OptionalInt.empty();
         }
-        return thumbnails.get(candidate);
+        return thumbnails.get(EditorAssetPaths.absolute(project.locator(), candidate));
+    }
+
+    private static String shortNameFor(String candidate) {
+        String name = candidate.substring(candidate.lastIndexOf('/') + 1);
+        return name.length() <= 13 ? name : name.substring(0, 12) + "\u2026";
+    }
+
+    private static String fileExtensionOf(String candidate) {
+        int dot = candidate.lastIndexOf('.');
+        return dot < 0 ? "?" : candidate.substring(dot + 1).toUpperCase(Locale.ROOT);
     }
 
     private String displayNameFor(String candidate) {

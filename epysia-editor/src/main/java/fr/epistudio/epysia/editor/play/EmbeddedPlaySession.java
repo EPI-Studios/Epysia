@@ -17,6 +17,7 @@ import fr.epistudio.epysia.project.ProjectQuality;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
+import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import fr.epistudio.epysia.scripting.ScriptDispatcherSystem;
@@ -222,8 +223,12 @@ public final class EmbeddedPlaySession {
     private void applyProjectQuality() {
         ProjectQuality quality = projectStore.readQuality(project);
         fixedTimestepSeconds = quality.fixedTimestepSeconds();
-        Optional.ofNullable(engine().systems().get(PhysicsSystem.class)).ifPresent(physics ->
-                physics.setGravity(quality.gravityX(), quality.gravityY(), quality.gravityZ()));
+        Optional.ofNullable(engine().systems().get(PhysicsSystem.class)).ifPresent(physics -> {
+            physics.setGravity(quality.gravityX(), quality.gravityY(), quality.gravityZ());
+            physics.setFixedTimestepHertz(quality.fixedTimestepHertz());
+        });
+        engine().renderSystem(MeshRenderSystem.class)
+                .applyTuning(quality.renderTuning());
         engine().inputActions().replaceAll(projectStore.readInputActions(project));
     }
 

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public final class LauncherConfiguration {
 
@@ -21,7 +22,8 @@ public final class LauncherConfiguration {
         this.arguments = arguments;
     }
 
-    public static LauncherConfiguration forGame(String sceneFileName, ProjectQuality quality, GpuPreference gpu) {
+    public static LauncherConfiguration forGame(String sceneFileName, ProjectQuality quality, GpuPreference gpu,
+                                                Optional<String> iconFileName, String windowTitle) {
         List<String> arguments = new ArrayList<>();
         arguments.add("--scene");
         arguments.add(CONTENT_DIRECTORY + "/" + Project.SCENES_DIRECTORY_NAME + "/" + sceneFileName);
@@ -32,7 +34,7 @@ public final class LauncherConfiguration {
         arguments.add("--gpu");
         arguments.add(gpu.id());
         arguments.add("--title");
-        arguments.add(quality.windowTitle());
+        arguments.add(windowTitle == null || windowTitle.isBlank() ? quality.windowTitle() : windowTitle);
         arguments.add("--width");
         arguments.add(Integer.toString(quality.windowWidth()));
         arguments.add("--height");
@@ -41,6 +43,10 @@ public final class LauncherConfiguration {
         arguments.add(Boolean.toString(quality.verticalSync()));
         arguments.add("--max-fps");
         arguments.add(Integer.toString(quality.maximumFrameRate()));
+        iconFileName.ifPresent(name -> {
+            arguments.add("--icon");
+            arguments.add(CONTENT_DIRECTORY + "/" + name);
+        });
         return new LauncherConfiguration(arguments);
     }
 

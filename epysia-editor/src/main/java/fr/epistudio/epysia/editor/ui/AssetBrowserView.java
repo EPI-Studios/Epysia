@@ -35,6 +35,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
+
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -92,6 +95,7 @@ public final class AssetBrowserView {
     private static final String EFFECTS_CATEGORY = "Effects";
     private static final String VFX_GRAPH_TEMPLATE_RESOURCE = "/templates/NewVfxGraph.epygraph";
 
+    private static final ScriptLanguages SCRIPT_LANGUAGES = ScriptLanguages.discover();
     private static final String VERTEX_SHADER_SUFFIX = ".vert.glsl";
     private static final String FRAGMENT_SHADER_SUFFIX = ".frag.glsl";
     private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
@@ -457,6 +461,50 @@ public final class AssetBrowserView {
     }
 
     private List<NewAssetDialog.AssetKind> assetKinds() {
+        List<NewAssetDialog.AssetKind> kinds = new ArrayList<>(fixedAssetKinds());
+        for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
+            kinds.add(kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SCRIPT,
+                            language.displayName()),
+                    I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SCRIPTING),
+                    I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SCRIPT_DESCRIPTION),
+                    EditorIcon.SCRIPT, "MyBehaviour", name -> createScript(language, name)));
+        }
+        return kinds;
+    }
+
+    private void createScript(ScriptLanguage language, String requestedName) {
+        String className = requestedName.trim();
+        if (!EditorView.isScriptClassName(className)) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_SCRIPT_NAME,
+                    requestedName));
+            return;
+        }
+        try {
+            Path directory = scriptTargetDirectory();
+            Files.createDirectories(directory);
+            Path file = directory.resolve(className + language.sourceExtension());
+            if (Files.exists(file)) {
+                notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SCRIPT_ALREADY_EXISTS,
+                        className));
+                onOpenScript.accept(file);
+                return;
+            }
+            Files.writeString(file, language.behaviourTemplate(className));
+            refresh();
+            onOpenScript.accept(file);
+        } catch (IOException | InvalidPathException error) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SCRIPT_CREATION_FAILED,
+                    error.getMessage()));
+        }
+    }
+
+    private Path scriptTargetDirectory() {
+        Path scripts = project.scriptsDirectory();
+        Path target = targetDirectory();
+        return target.toAbsolutePath().startsWith(scripts.toAbsolutePath()) ? target : scripts;
+    }
+
+    private List<NewAssetDialog.AssetKind> fixedAssetKinds() {
         return List.of(
                 kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_MATERIAL),
                         I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_MATERIALS),

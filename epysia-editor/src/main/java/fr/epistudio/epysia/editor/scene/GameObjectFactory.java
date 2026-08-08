@@ -20,19 +20,27 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.components.BoxCollider;
 import fr.epistudio.epysia.physics.components.CapsuleCollider;
 import fr.epistudio.epysia.physics.components.TilemapCollider2D;
+import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Vector3f;
 
+import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import fr.epistudio.epysia.ui.UiCanvas;
+import fr.epistudio.epysia.ui.UiElement;
+import java.util.Optional;
 
 public final class GameObjectFactory {
+
+    private static final float PLANE_COLLIDER_HALF_DEPTH = 0.02f;
 
     public enum Primitive { CUBE, PLANE, CAPSULE }
 
     private final Supplier<SceneDocument> activeDocument;
     private final EngineServices services;
     private final BooleanSupplier twoDimensional;
+    private final EditorPrimitives modulePrimitives = EditorPrimitives.fromModules();
 
     public GameObjectFactory(Supplier<SceneDocument> activeDocument, EngineServices services,
                              BooleanSupplier twoDimensional) {
@@ -50,6 +58,27 @@ public final class GameObjectFactory {
         gameObject.addComponent(colliderFor(primitive));
         commit(gameObject);
         return gameObject;
+    }
+
+    public List<EditorPrimitives.Entry> modulePrimitives() {
+        return modulePrimitives.entries();
+    }
+
+    public GameObject createModulePrimitive(EditorPrimitives.Entry entry, Vector3f position) {
+        GameObject gameObject = entry.factory().get();
+        gameObject.setName(uniqueName(entry.displayName()));
+        positionAt(gameObject, position);
+        commit(gameObject);
+        return gameObject;
+    }
+
+    private void positionAt(GameObject gameObject, Vector3f position) {
+        Transform3D transform = gameObject.getComponentOrNull(Transform3D.class);
+        if (transform == null) {
+            gameObject.addComponent(new Transform3D().setPosition(position.x, position.y, position.z));
+            return;
+        }
+        transform.setPosition(position.x, position.y, position.z);
     }
 
     public GameObject createMesh(String meshPath, String baseName, Vector3f position) {
@@ -118,6 +147,33 @@ public final class GameObjectFactory {
         return gameObject;
     }
 
+    public GameObject createUiCanvas() {
+        GameObject gameObject = new GameObject(uniqueName("Ui Canvas"));
+        gameObject.addComponent(new Transform3D());
+        gameObject.addComponent(new UiCanvas());
+        commit(gameObject);
+        return gameObject;
+    }
+
+    public GameObject createUiElement(String name, UiElement element) {
+        GameObject canvas = existingCanvas().orElseGet(this::createUiCanvas);
+        GameObject gameObject = new GameObject(uniqueName(name));
+        Transform3D transform = gameObject.addComponent(new Transform3D());
+        gameObject.addComponent(element);
+        commit(gameObject);
+        canvas.getComponent(Transform3D.class).ifPresent(transform::setParent);
+        return gameObject;
+    }
+
+    private Optional<GameObject> existingCanvas() {
+        for (GameObject gameObject : activeDocument.get().scene().gameObjects()) {
+            if (gameObject.getComponent(UiCanvas.class).isPresent()) {
+                return Optional.of(gameObject);
+            }
+        }
+        return Optional.empty();
+    }
+
     public GameObject createEmpty(Vector3f position) {
         GameObject gameObject = new GameObject(uniqueName("GameObject"));
         if (twoDimensional.getAsBoolean()) {
@@ -171,7 +227,8 @@ public final class GameObjectFactory {
 
     private static BoxCollider flatBoxCollider() {
         BoxCollider collider = new BoxCollider();
-        collider.halfExtents().set(0.5f, 0.02f, 0.5f);
+        collider.halfExtents().set(BuiltinMeshes.PLANE_HALF_SIZE, PLANE_COLLIDER_HALF_DEPTH,
+                BuiltinMeshes.PLANE_HALF_SIZE);
         return collider;
     }
 }

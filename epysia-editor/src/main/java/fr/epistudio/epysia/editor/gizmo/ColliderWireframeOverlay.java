@@ -4,10 +4,15 @@ import fr.epistudio.epysia.editor.gl.OverlayShader;
 import fr.epistudio.epysia.editor.gl.OverlayTarget;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.physics.PhysicsSystem;
+import fr.epistudio.epysia.physics.components.BoxCollider;
+import fr.epistudio.epysia.physics.components.CapsuleCollider;
 import fr.epistudio.epysia.physics.components.Collider;
+import fr.epistudio.epysia.physics.components.SphereCollider;
 import fr.epistudio.epysia.scene.Scene;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.lwjgl.BufferUtils;
 
 import java.nio.FloatBuffer;
@@ -22,7 +27,8 @@ import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_SCISSOR_TEST;
 import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
-import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
+import static org.lwjgl.opengl.GL11.GL_LINES;
+import static org.lwjgl.opengl.GL11.glLineWidth;
 import static org.lwjgl.opengl.GL11.glBlendFunc;
 import static org.lwjgl.opengl.GL11.glClear;
 import static org.lwjgl.opengl.GL11.glClearColor;
@@ -42,8 +48,17 @@ import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
 import static org.lwjgl.opengl.GL30.glBindVertexArray;
 import static org.lwjgl.opengl.GL30.glDeleteVertexArrays;
 import static org.lwjgl.opengl.GL30.glGenVertexArrays;
+import org.lwjgl.opengl.GL11;
 
 public final class ColliderWireframeOverlay implements AutoCloseable {
+
+    private PhysicsSystem simulated;
+    private final ColliderEdgeCache edgeCache = new ColliderEdgeCache();
+    private long lastSignature = Long.MIN_VALUE;
+
+    public void useSimulatedWorld(PhysicsSystem system) {
+        this.simulated = system;
+    }
 
     private static final Vector3f WIRE_COLOR = new Vector3f(0.30f, 0.95f, 0.45f);
     private static final float EDGE_HALF_WIDTH_PIXELS = 1.0f;
@@ -85,15 +100,79 @@ public final class ColliderWireframeOverlay implements AutoCloseable {
             vertexCount = 0;
             return;
         }
-        buildGeometry(scene, viewProjection, cameraPosition, pixelWidth, lineThicknessScale);
+        boolean rebuilt = rebuildIfChanged(scene, viewProjection, cameraPosition,
+                pixelWidth, lineThicknessScale);
         framebuffer.ensureSize(pixelWidth, pixelHeight);
         framebuffer.bind();
         glViewport(0, 0, pixelWidth, pixelHeight);
         configureState();
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        uploadBuffer();
+        if (rebuilt) {
+            uploadBuffer();
+        }
         draw(viewProjection);
+    }
+
+    private boolean rebuildIfChanged(Scene scene, Matrix4f viewProjection, Vector3f cameraPosition,
+                                     int pixelWidth, float lineThicknessScale) {
+        long signature = signatureOf(scene, cameraPosition, pixelWidth, lineThicknessScale);
+        if (signature == lastSignature && scratch != null) {
+            return false;
+        }
+        lastSignature = signature;
+        buildGeometry(scene, viewProjection, cameraPosition, pixelWidth, lineThicknessScale);
+        return true;
+    }
+
+    private long signatureOf(Scene scene, Vector3f cameraPosition, int pixelWidth,
+                             float lineThicknessScale) {
+        long signature = 17L;
+        signature = signature * 31L + Float.floatToIntBits(cameraPosition.x);
+        signature = signature * 31L + Float.floatToIntBits(cameraPosition.y);
+        signature = signature * 31L + Float.floatToIntBits(cameraPosition.z);
+        signature = signature * 31L + pixelWidth;
+        signature = signature * 31L + Float.floatToIntBits(lineThicknessScale);
+        signature = signature * 31L + (simulated != null ? 1L : 0L);
+        for (GameObject gameObject : scene.gameObjects()) {
+            for (var component : gameObject.components()) {
+                if (component instanceof Collider collider) {
+                    signature = signature * 31L + System.identityHashCode(collider);
+                    signature = signature * 31L + shapeSignature(collider);
+                    signature = signature * 31L + poseSignature(gameObject);
+                }
+            }
+        }
+        return signature;
+    }
+
+    private static long shapeSignature(Collider collider) {
+        Vector3fc offset = collider.offset();
+        long value = Float.floatToIntBits(offset.x());
+        value = value * 31L + Float.floatToIntBits(offset.y());
+        value = value * 31L + Float.floatToIntBits(offset.z());
+        return switch (collider) {
+            case BoxCollider box -> value * 31L + Float.floatToIntBits(box.halfExtents().x())
+                    + Float.floatToIntBits(box.halfExtents().y()) * 7L
+                    + Float.floatToIntBits(box.halfExtents().z()) * 13L;
+            case SphereCollider sphere -> value * 31L + Float.floatToIntBits(sphere.radius());
+            case CapsuleCollider capsule -> value * 31L + Float.floatToIntBits(capsule.radius())
+                    + Float.floatToIntBits(capsule.halfHeight()) * 7L;
+            default -> value;
+        };
+    }
+
+    private static long poseSignature(GameObject gameObject) {
+        return gameObject.getComponent(Transform3D.class)
+                .map(transform -> {
+                    Matrix4f world = transform.worldMatrix();
+                    long value = Float.floatToIntBits(world.m30());
+                    value = value * 31L + Float.floatToIntBits(world.m31());
+                    value = value * 31L + Float.floatToIntBits(world.m32());
+                    value = value * 31L + Float.floatToIntBits(world.m00());
+                    return value * 31L + Float.floatToIntBits(world.m11());
+                })
+                .orElse(0L);
     }
 
     private void configureState() {
@@ -101,7 +180,7 @@ public final class ColliderWireframeOverlay implements AutoCloseable {
         glDisable(GL_SCISSOR_TEST);
         glDisable(GL_DEPTH_TEST);
         glDepthMask(false);
-        org.lwjgl.opengl.GL11.glEnable(GL_BLEND);
+        GL11.glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
@@ -115,10 +194,13 @@ public final class ColliderWireframeOverlay implements AutoCloseable {
         glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
+    private static final float EDGE_LINE_WIDTH = 1.0f;
+
     private void draw(Matrix4f viewProjection) {
         shader.bind(viewProjection, WIRE_ALPHA, 1.0f);
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+        glLineWidth(EDGE_LINE_WIDTH);
+        glDrawArrays(GL_LINES, 0, vertexCount);
         glBindVertexArray(0);
         shader.unbind();
     }
@@ -126,9 +208,14 @@ public final class ColliderWireframeOverlay implements AutoCloseable {
     private void buildGeometry(Scene scene, Matrix4f viewProjection, Vector3f cameraPosition,
                                int pixelWidth, float lineThicknessScale) {
         EdgeWriter writer = new EdgeWriter(viewProjection, cameraPosition, pixelWidth, lineThicknessScale);
-        List<GameObject> gameObjects = scene.gameObjects();
-        for (GameObject gameObject : gameObjects) {
-            appendColliders(gameObject, writer);
+        if (simulated != null) {
+            simulated.drawDebug((startX, startY, startZ, endX, endY, endZ, color) ->
+                    writer.edge(new Vector3f(startX, startY, startZ), new Vector3f(endX, endY, endZ)));
+        } else {
+            List<GameObject> gameObjects = scene.gameObjects();
+            for (GameObject gameObject : gameObjects) {
+                appendColliders(gameObject, writer);
+            }
         }
         scratch = writer.finish();
         vertexCount = scratch.remaining() / 6;
@@ -142,7 +229,7 @@ public final class ColliderWireframeOverlay implements AutoCloseable {
         Matrix4f world = new Matrix4f(transform.get().worldMatrix());
         for (var component : gameObject.components()) {
             if (component instanceof Collider collider) {
-                ColliderShapeWriter.write(writer, world, collider);
+                ColliderShapeWriter.write(writer, world, collider, edgeCache);
             }
         }
     }
@@ -166,20 +253,19 @@ public final class ColliderWireframeOverlay implements AutoCloseable {
             this.screenSpaceWidth = new ScreenSpaceWidth(viewProjection, cameraPosition, pixelWidth, thicknessScale);
         }
 
+        private final Vector3f midpoint = new Vector3f();
+        private final Vector3f viewDirection = new Vector3f();
+        private final Vector3f along = new Vector3f();
+        private final Vector3f side = new Vector3f();
+        private final Vector3f corner = new Vector3f();
+
         void edge(Vector3f a, Vector3f b) {
-            Vector3f midpoint = new Vector3f(a).add(b).mul(0.5f);
-            Vector3f viewDirection = new Vector3f(cameraPosition).sub(midpoint);
-            if (viewDirection.lengthSquared() < 1e-8f) {
-                viewDirection.set(0, 0, 1);
-            }
-            Vector3f along = new Vector3f(b).sub(a);
-            Vector3f side = new Vector3f(along).cross(viewDirection);
-            if (side.lengthSquared() < 1e-10f) {
-                return;
-            }
-            side.normalize().mul(screenSpaceWidth.worldHalfWidthAt(midpoint, EDGE_HALF_WIDTH_PIXELS));
-            putQuad(new Vector3f(a).add(side), new Vector3f(a).sub(side),
-                    new Vector3f(b).sub(side), new Vector3f(b).add(side));
+            edge(a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+
+        void edge(float startX, float startY, float startZ, float endX, float endY, float endZ) {
+            putVertex(corner.set(startX, startY, startZ));
+            putVertex(corner.set(endX, endY, endZ));
         }
 
         private void putQuad(Vector3f a, Vector3f b, Vector3f c, Vector3f d) {

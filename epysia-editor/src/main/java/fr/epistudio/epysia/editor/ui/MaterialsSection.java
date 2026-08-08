@@ -26,9 +26,12 @@ import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialClassMetadata;
 import fr.epistudio.epysia.render.material.MaterialFields;
 import fr.epistudio.epysia.render.material.ShaderMaterial;
+import fr.epistudio.epysia.render.material.Uniform;
+import fr.epistudio.epysia.render.material.UniformDisplay;
 import fr.epistudio.epysia.render.mesh.UploadedMesh;
 import fr.epistudio.epysia.render.mesh.UploadedSubmesh;
 import imgui.ImGui;
+import imgui.type.ImInt;
 import imgui.flag.ImGuiHoveredFlags;
 import imgui.flag.ImGuiTreeNodeFlags;
 import org.joml.Vector3f;
@@ -60,18 +63,6 @@ public final class MaterialsSection {
     private static final Set<String> SURFACE_SHADER_EXTENSIONS = Set.of(".surf.glsl");
     private static final Set<String> MATERIAL_EXTENSIONS = Set.of(".epymaterial");
     private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
-    private static final String ANIMATED_SHADOW_TOOLTIP = """
-            Only affects materials with a time animated surface shader.
-            On: the shadow follows the animation, so it cannot be cached and is redrawn every frame.
-            Off: the shadow is frozen at time 0 while the lit mesh keeps animating, so it can be cached.""";
-    private static final String ALPHA_SCISSOR_TOOLTIP = """
-            An alpha cutoff above zero discards fragments instead of blending them.
-            The material stays in the opaque queue, keeps writing depth, can be
-            instanced and can cast shadows. Blending is only used when the cutoff is zero.""";
-    private static final String RECEIVE_SHADOWS_TOOLTIP = """
-            Off: the material never samples a shadow map, so the whole shadow lookup
-            disappears from the fragment shader. On dense foliage this is one of the
-            biggest fragment savings available.""";
     private static final String DEFAULT_CUSTOM_VERTEX = "custom_default.vert.glsl";
     private static final String DEFAULT_CUSTOM_FRAGMENT = "custom_default.frag.glsl";
     private static final int SLOT_HEADER_FLAGS = ImGuiTreeNodeFlags.DefaultOpen
@@ -425,7 +416,7 @@ public final class MaterialsSection {
                     SetMaterialPropertyCommand.Target.RECEIVE_SHADOWS, "", current, !current));
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(RECEIVE_SHADOWS_TOOLTIP);
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_RECEIVE_SHADOWS_TOOLTIP));
         }
     }
 
@@ -498,10 +489,35 @@ public final class MaterialsSection {
     private void renderUniformRow(Material material, Field field) {
         Object value = MaterialFields.read(material, field);
         switch (value) {
-            case Vector3f vector -> renderColorRow(material, field, vector);
+            case Vector3f vector -> renderVectorRow(material, field, vector);
             case Float number -> renderFloatRow(material, field, number);
+            case Integer number -> renderOptionRow(material, field, number);
             case null, default -> {
             }
+        }
+    }
+
+    private void renderVectorRow(Material material, Field field, Vector3f vector) {
+        if (field.getAnnotation(Uniform.class).display() == UniformDisplay.COLOR) {
+            renderColorRow(material, field, vector);
+            return;
+        }
+        float[] components = {vector.x, vector.y, vector.z};
+        if (ImGui.dragFloat3(labelFor(field), components, FLOAT_DRAG_STEP)
+                && (vector.x != components[0] || vector.y != components[1] || vector.z != components[2])) {
+            executeUniformChange(material, field, new Vector3f(vector),
+                    new Vector3f(components[0], components[1], components[2]));
+        }
+    }
+
+    private void renderOptionRow(Material material, Field field, int current) {
+        String[] options = field.getAnnotation(Uniform.class).options();
+        if (options.length == 0) {
+            return;
+        }
+        ImInt value = new ImInt(current);
+        if (ImGui.combo(labelFor(field), value, options) && value.get() != current) {
+            executeUniformChange(material, field, current, value.get());
         }
     }
 
@@ -539,7 +555,8 @@ public final class MaterialsSection {
     }
 
     private void renderTextureWell(Material material, Field field, String currentPath) {
-        OptionalInt thumbnail = currentPath.isEmpty() ? OptionalInt.empty() : thumbnails.get(currentPath);
+        OptionalInt thumbnail = currentPath.isEmpty() ? OptionalInt.empty()
+                : thumbnails.get(EditorAssetPaths.absolute(locator, currentPath));
         boolean clicked;
         if (thumbnail.isPresent()) {
             clicked = ImGui.imageButton(thumbnail.getAsInt(), TEXTURE_WELL_SIZE, TEXTURE_WELL_SIZE);
@@ -609,7 +626,7 @@ public final class MaterialsSection {
             ImGui.sameLine();
             ImGui.textDisabled("(alpha cutoff wins: drawn opaque)");
             if (ImGui.isItemHovered()) {
-                ImGui.setTooltip(ALPHA_SCISSOR_TOOLTIP);
+                ImGui.setTooltip(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_ALPHA_SCISSOR_TOOLTIP));
             }
         }
     }

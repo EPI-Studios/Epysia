@@ -23,6 +23,7 @@ import fr.epistudio.epysia.editor.importer.GltfAssetImporter;
 import fr.epistudio.epysia.editor.log.EditorConsole;
 import fr.epistudio.epysia.editor.notify.ToastCenter;
 import fr.epistudio.epysia.editor.play.EmbeddedPlaySession;
+import fr.epistudio.epysia.editor.play.NetworkPlaySettings;
 import fr.epistudio.epysia.editor.play.PlayController;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.preview.ShaderGraphPreviewService;
@@ -34,6 +35,8 @@ import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.scene.SceneWorkspace;
 import fr.epistudio.epysia.editor.scene.StarterSceneContent;
+import fr.epistudio.epysia.editor.scripts.IdeLauncher;
+import fr.epistudio.epysia.editor.scripts.IdeProjectWriter;
 import fr.epistudio.epysia.editor.scripts.ScriptService;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
@@ -55,6 +58,8 @@ import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
 import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
+import fr.epistudio.epysia.editor.gizmo.PhysicsDebugOverlay;
+import fr.epistudio.epysia.scripting.EditorTickable;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiCol;
@@ -127,6 +132,7 @@ public final class EditorView implements FrameView {
     private final PlayController playController;
     private final EmbeddedPlaySession playSession;
     private final GameObjectFactory objectFactory;
+    private final GameObjectCreationMenu creationMenu;
     private final AssetImportPipeline importPipeline;
     private final ScriptService scriptService;
     private final GizmoState gizmoState = new GizmoState();
@@ -191,6 +197,7 @@ public final class EditorView implements FrameView {
         this.playSession = new EmbeddedPlaySession(sceneHost, serializer, project, projectStore,
                 active, toasts, editorConsole);
         this.objectFactory = new GameObjectFactory(active, sceneHost.engine(), editorCamera::twoDimensional);
+        this.creationMenu = new GameObjectCreationMenu(objectFactory);
         this.importPipeline = new AssetImportPipeline(buildImporterRegistry(componentRegistry, sceneHost.backend()));
         this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::onScriptFileSaved);
         this.shaderGraphPreviews = new ShaderGraphPreviewService(sceneHost.window(), sceneHost.backend());
@@ -212,10 +219,10 @@ public final class EditorView implements FrameView {
                 viewportView::enablePainting, editorCamera::twoDimensional);
         this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
                 new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
-                graphEditorView::open, this::selectedBrowserAssetPath,
+                graphEditorView::open, this::selectedBrowserAssetPath, objectFactory,
                 new AtlasInspectorSection(spriteEditorWindow::open),
                 new TextureInspectorSection(imagePreview, this::onTextureFilterChanged),
-                tilemapDockView::focus);
+                tilemapDockView::focus, sceneHost.engine());
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
         this.meshBakeDialog = new MeshBakeDialog(toasts, this::onMeshBaked);
@@ -283,6 +290,8 @@ public final class EditorView implements FrameView {
     @Override
     public void render(float deltaSeconds) {
         requestRedrawOnInteraction();
+        advanceEditModeAnimation(deltaSeconds);
+        tickEditorComponents(deltaSeconds);
         pollBackgroundState(deltaSeconds);
         renderMainMenuBar();
         renderHostWindow();
@@ -290,6 +299,38 @@ public final class EditorView implements FrameView {
         renderDialogs();
         handleGlobalShortcuts();
         playSession.frame(deltaSeconds);
+    }
+
+    private void advanceEditModeAnimation(float deltaSeconds) {
+        if (playSession.isActive() || playController.isRunning()) {
+            return;
+        }
+        sceneHost.advanceAnimation(deltaSeconds);
+    }
+
+    private void tickEditorComponents(float deltaSeconds) {
+        if (playSession.isActive() || playController.isRunning()) {
+            return;
+        }
+        Scene scene = workspace.active().scene();
+        List<EditorTickable> tickables = List.copyOf(scene.componentsOf(EditorTickable.class));
+        if (tickables.isEmpty()) {
+            return;
+        }
+        sceneHost.engine().backgroundTasks().deliverCompleted();
+        for (EditorTickable tickable : tickables) {
+            tickEditorComponent(tickable, deltaSeconds);
+        }
+        scene.advanceTick();
+        sceneHost.requestViewportRedraw();
+    }
+
+    private void tickEditorComponent(EditorTickable tickable, float deltaSeconds) {
+        try {
+            tickable.onEditorUpdate(sceneHost.engine(), deltaSeconds);
+        } catch (RuntimeException error) {
+            toasts.show(tickable.getClass().getSimpleName() + " editor update failed: " + error.getMessage());
+        }
     }
 
     private void requestRedrawOnInteraction() {
@@ -450,16 +491,32 @@ public final class EditorView implements FrameView {
 
     private void renderFileScriptItems() {
         for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
-            String label = I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT, "menu-file-new-script")
-                    + " (" + language.displayName() + ")";
+            String label = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT)
+                    + " (" + language.displayName() + ")###menu-file-new-script-" + language.displayName();
             if (ImGui.menuItem(label)) {
-                createNewScript(language);
+                promptNewScript(language);
             }
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_RELOAD_SCRIPTS,
                 "menu-file-reload-scripts"))) {
             reloadScripts();
         }
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_OPEN_SCRIPTS_IN_IDE,
+                "menu-file-open-scripts-in-ide"))) {
+            openScriptsInIde();
+        }
+    }
+
+    private void openScriptsInIde() {
+        Optional<String> failure = IdeProjectWriter.write(project);
+        if (failure.isPresent()) {
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_IDE_PROJECT_FAILED, failure.get()));
+            return;
+        }
+        IdeLauncher.open(project.rootDirectory()).ifPresentOrElse(
+                error -> toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_IDE_PROJECT_FAILED, error)),
+                () -> toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_IDE_PROJECT_WRITTEN,
+                        project.rootDirectory())));
     }
 
     private void renderEditMenu() {
@@ -505,64 +562,39 @@ public final class EditorView implements FrameView {
             return;
         }
         ImGui.beginDisabled(playSession.isActive());
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CREATE_EMPTY,
-                "menu-gameobject-create-empty"))) {
-            objectFactory.createEmpty(spawnPositionInFront());
-        }
-        ImGui.separator();
-        renderPrimitiveItems();
-        ImGui.separator();
-        renderLightAndCameraItems();
+        creationMenu.renderItems(spawnPositionInFront());
         ImGui.endDisabled();
         ImGui.endMenu();
     }
 
-    private void renderPrimitiveItems() {
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CUBE, "menu-gameobject-cube"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.CUBE, spawnPositionInFront());
+    private void renderPhysicsDebugMenu() {
+        if (!ImGui.beginMenu(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_PHYSICS_DEBUG,
+                "menu-window-physics-debug"))) {
+            return;
         }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_PLANE, "menu-gameobject-plane"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.PLANE, spawnPositionInFront());
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_PHYSICS_DEBUG_ENABLED,
+                "menu-physics-debug-enabled"), "", viewportView.showPhysicsDebug())) {
+            viewportView.setShowPhysicsDebug(!viewportView.showPhysicsDebug());
         }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CAPSULE,
-                "menu-gameobject-capsule"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawnPositionInFront());
-        }
+        PhysicsDebugOverlay.Options options = viewportView.physicsDebugOptions();
         ImGui.separator();
-        if (ImGui.menuItem("2D Sprite")) {
-            objectFactory.createSprite(spawnPositionInFront());
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_PHYSICS_DEBUG_CENTER_OF_MASS,
+                "menu-physics-debug-center"), "", options.centerOfMass)) {
+            options.centerOfMass = !options.centerOfMass;
         }
-        if (ImGui.menuItem("Tilemap")) {
-            objectFactory.createTilemap(spawnPositionInFront());
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_PHYSICS_DEBUG_VELOCITIES,
+                "menu-physics-debug-velocities"), "", options.velocities)) {
+            options.velocities = !options.velocities;
         }
-        if (ImGui.menuItem("Point Light 2D")) {
-            objectFactory.createPointLight2D(spawnPositionInFront());
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_PHYSICS_DEBUG_SLEEP,
+                "menu-physics-debug-sleep"), "", options.sleepState)) {
+            options.sleepState = !options.sleepState;
         }
-        if (ImGui.menuItem("Spot Light 2D")) {
-            objectFactory.createSpotLight2D(spawnPositionInFront());
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_PHYSICS_DEBUG_JOINTS,
+                "menu-physics-debug-joints"), "", options.joints)) {
+            options.joints = !options.joints;
         }
-        if (ImGui.menuItem("Global Light 2D")) {
-            objectFactory.createGlobalLight2D(spawnPositionInFront());
-        }
-    }
-
-    private void renderLightAndCameraItems() {
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_DIRECTIONAL_LIGHT,
-                "menu-gameobject-directional-light"))) {
-            objectFactory.createDirectionalLight(spawnPositionInFront());
-        }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_POINT_LIGHT,
-                "menu-gameobject-point-light"))) {
-            objectFactory.createPointLight(spawnPositionInFront());
-        }
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_SPOT_LIGHT,
-                "menu-gameobject-spot-light"))) {
-            objectFactory.createSpotLight(spawnPositionInFront());
-        }
-        ImGui.separator();
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CAMERA, "menu-gameobject-camera"))) {
-            objectFactory.createCamera(spawnPositionInFront());
-        }
+        ImGui.endMenu();
     }
 
     private Vector3f spawnPositionInFront() {
@@ -588,6 +620,7 @@ public final class EditorView implements FrameView {
                 "menu-window-collider-wireframes"), "", viewportView.showColliderWireframes())) {
             viewportView.setShowColliderWireframes(!viewportView.showColliderWireframes());
         }
+        renderPhysicsDebugMenu();
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_PROFILER,
                 "menu-window-profiler"), "", profilerView.isVisible())) {
             profilerView.setVisible(!profilerView.isVisible());
@@ -851,6 +884,7 @@ public final class EditorView implements FrameView {
             startPlay();
         }
         ImGui.endDisabled();
+        renderNetworkPlayPopup();
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_RUN_GAME_TOOLTIP);
         if (subprocessRunning) {
             ImGui.sameLine();
@@ -858,6 +892,39 @@ public final class EditorView implements FrameView {
                 playController.stop();
             }
             tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_KILL_TOOLTIP);
+        }
+    }
+
+    private void renderNetworkPlayPopup() {
+        if (!ImGui.beginPopupContextItem("network-play-settings")) {
+            return;
+        }
+        NetworkPlaySettings settings = playController.networkSettings();
+        ImGui.text(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NETWORK_PLAY_TITLE));
+        ImGui.separator();
+        renderEditorRoleChoices(settings);
+        ImGui.separator();
+        renderNetworkPlayNumbers(settings);
+        ImGui.endPopup();
+    }
+
+    private static void renderEditorRoleChoices(NetworkPlaySettings settings) {
+        for (NetworkPlaySettings.EditorRole role : NetworkPlaySettings.EditorRole.values()) {
+            if (ImGui.radioButton(role.name(), settings.editorRole() == role)) {
+                settings.setEditorRole(role);
+            }
+        }
+    }
+
+    private static void renderNetworkPlayNumbers(NetworkPlaySettings settings) {
+        int[] extraClients = {settings.extraClients()};
+        if (ImGui.sliderInt(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NETWORK_PLAY_EXTRA_CLIENTS),
+                extraClients, 0, 7)) {
+            settings.setExtraClients(extraClients[0]);
+        }
+        int[] port = {settings.port()};
+        if (ImGui.dragInt(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NETWORK_PLAY_PORT), port, 1.0f, 1, 65_535)) {
+            settings.setPort(port[0]);
         }
     }
 
@@ -1254,11 +1321,26 @@ public final class EditorView implements FrameView {
         history().execute(new InstantiatePrefabCommand(prefabPath, new Vector3f()));
     }
 
-    private void createNewScript(ScriptLanguage language) {
+    private void promptNewScript(ScriptLanguage language) {
+        nameDialog.open(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NEW_SCRIPT_TITLE, language.displayName()),
+                I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCRIPT_DEFAULT_NAME),
+                requestedName -> createNewScript(language, requestedName));
+    }
+
+    private void createNewScript(ScriptLanguage language, String requestedName) {
+        String className = requestedName.trim();
+        if (!isScriptClassName(className)) {
+            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_INVALID_SCRIPT_NAME, requestedName));
+            return;
+        }
         try {
             Files.createDirectories(project.scriptsDirectory());
-            Path target = nextScriptFile(project.scriptsDirectory(), language.sourceExtension());
-            String className = SCRIPT_LANGUAGES.baseNameOf(target);
+            Path target = project.scriptsDirectory().resolve(className + language.sourceExtension());
+            if (Files.exists(target)) {
+                toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_ALREADY_EXISTS, className));
+                scriptEditorView.open(target);
+                return;
+            }
             Files.writeString(target, language.behaviourTemplate(className));
             scriptEditorView.open(target);
             reloadScripts();
@@ -1268,15 +1350,11 @@ public final class EditorView implements FrameView {
         }
     }
 
-    private static Path nextScriptFile(Path scriptsDirectory, String extension) {
-        String baseName = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCRIPT_DEFAULT_NAME);
-        Path target = scriptsDirectory.resolve(baseName + extension);
-        int suffix = 2;
-        while (Files.exists(target)) {
-            target = scriptsDirectory.resolve(baseName + suffix + extension);
-            suffix++;
+    static boolean isScriptClassName(String name) {
+        if (name.isEmpty() || !Character.isJavaIdentifierStart(name.charAt(0))) {
+            return false;
         }
-        return target;
+        return name.chars().allMatch(Character::isJavaIdentifierPart);
     }
 
     private void createScriptAndAttach(String className, GameObject target) {

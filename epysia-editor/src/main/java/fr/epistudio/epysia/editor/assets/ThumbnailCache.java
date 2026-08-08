@@ -131,7 +131,7 @@ public final class ThumbnailCache {
         TextureHandle handle = backend.createTexture(new TextureDescriptor(width, height,
                 TextureFormat.RGBA8, TextureUsage.SAMPLED, SamplerFilter.LINEAR));
         backend.writeTexture(handle, pixels);
-        return new Entry(handle, backend.glTextureName(handle));
+        return new Entry(handle, backend.glTextureName(handle), width, height);
     }
 
     private Optional<ByteBuffer> readFileToDirectBuffer(Path path) {
@@ -145,6 +145,12 @@ public final class ThumbnailCache {
         }
     }
 
-    private record Entry(TextureHandle handle, int glTextureName) {
+    public Optional<int[]> sizeOf(String absolutePath) {
+        get(absolutePath);
+        Entry entry = cache.get(absolutePath);
+        return entry == null ? Optional.empty() : Optional.of(new int[]{entry.width(), entry.height()});
+    }
+
+    private record Entry(TextureHandle handle, int glTextureName, int width, int height) {
     }
 }

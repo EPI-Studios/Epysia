@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.export.ExportRequest;
+import fr.epistudio.epysia.editor.export.ExportStage;
+import fr.epistudio.epysia.editor.export.ExportTask;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.export.GameExporter;
 import fr.epistudio.epysia.editor.export.TargetPlatform;
@@ -18,22 +20,27 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public final class ExportGameDialog {
 
     private static final String POPUP_ID = "Export Game";
     private static final int TITLE_CAPACITY = 128;
     private static final float FIELD_WIDTH = 360.0f;
+    private static final float PERCENT = 100.0f;
 
     private final Project project;
     private final Notifier notifier;
     private final ImString titleInput = new ImString(TITLE_CAPACITY);
+    private Path iconFile;
     private final List<String> sceneFileNames = new ArrayList<>();
     private final TargetPlatform[] platforms = TargetPlatform.values();
+    private final ExportTask exportTask = new ExportTask();
     private int selectedSceneIndex;
     private int selectedPlatformIndex;
     private Path outputDirectory;
     private boolean openRequested;
+    private boolean closeRequested;
 
     public ExportGameDialog(Project project, Notifier notifier) {
         this.project = project;
@@ -43,6 +50,7 @@ public final class ExportGameDialog {
     public void open(String activeSceneName) {
         titleInput.set(project.name());
         outputDirectory = null;
+        closeRequested = false;
         refreshScenes(activeSceneName);
         openRequested = true;
     }
@@ -69,6 +77,7 @@ public final class ExportGameDialog {
     }
 
     public void render() {
+        announceOutcome();
         if (openRequested) {
             ImGui.openPopup(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_TITLE, "export-game-dialog"));
             openRequested = false;
@@ -77,10 +86,40 @@ public final class ExportGameDialog {
                 ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
+        renderBody();
+        ImGui.endPopup();
+    }
+
+    private void renderBody() {
+        if (closeRequested) {
+            closeRequested = false;
+            ImGui.closeCurrentPopup();
+            return;
+        }
+        if (exportTask.isRunning()) {
+            renderProgress();
+            return;
+        }
         renderFields();
         ImGui.separator();
         renderButtons();
-        ImGui.endPopup();
+    }
+
+    private void renderProgress() {
+        ImGui.textUnformatted(I18n.translate(stageKey(exportTask.stage())));
+        float completion = exportTask.completion();
+        ImGui.progressBar(completion, FIELD_WIDTH, 0.0f, Math.round(completion * PERCENT) + "%");
+    }
+
+    private static TextKey stageKey(ExportStage stage) {
+        return switch (stage) {
+            case DOWNLOADING_TEMPLATE -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_DOWNLOADING_TEMPLATE;
+            case UNPACKING_TEMPLATE -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_UNPACKING_TEMPLATE;
+            case COPYING_TEMPLATE -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_COPYING_TEMPLATE;
+            case COPYING_PROJECT -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_COPYING_PROJECT;
+            case WRITING_LAUNCHER -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_WRITING_LAUNCHER;
+            case ARCHIVING -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_ARCHIVING;
+        };
     }
 
     private void renderFields() {
@@ -89,7 +128,23 @@ public final class ExportGameDialog {
                 "export-game-title"), titleInput);
         renderSceneCombo();
         renderPlatformCombo();
+        renderIconRow();
         renderOutputRow();
+    }
+
+    private void renderIconRow() {
+        if (ImGui.button("Choose icon...###export-game-icon")) {
+            FileDialogs.pickFile("Game icon", project.rootDirectory(), "*.png", "PNG image")
+                    .ifPresent(path -> iconFile = path);
+        }
+        ImGui.sameLine();
+        ImGui.textDisabled(iconFile == null ? "Default Epysia icon" : iconFile.getFileName().toString());
+        if (iconFile != null) {
+            ImGui.sameLine();
+            if (ImGui.button("Clear###export-game-icon-clear")) {
+                iconFile = null;
+            }
+        }
     }
 
     private void renderPlatformCombo() {
@@ -149,8 +204,7 @@ public final class ExportGameDialog {
                 && !titleInput.get().trim().isEmpty();
         ImGui.beginDisabled(!ready);
         if (ImGui.button(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_EXPORT, "export-game-export"))) {
-            runExport();
-            ImGui.closeCurrentPopup();
+            startExport();
         }
         ImGui.endDisabled();
         ImGui.sameLine();
@@ -159,16 +213,21 @@ public final class ExportGameDialog {
         }
     }
 
-    private void runExport() {
+    private void startExport() {
         ExportRequest request = new ExportRequest(outputDirectory, titleInput.get().trim(),
                 sceneFileNames.get(selectedSceneIndex), platforms[selectedPlatformIndex],
-                EditorPreferences.load(EditorPreferences.defaultFile()).gpuPreference());
-        try {
-            Path destination = new GameExporter(project).export(request);
-            notifier.show(I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_TOAST_GAME_EXPORTED, destination));
-        } catch (IOException error) {
-            notifier.show(I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_TOAST_EXPORT_FAILED,
-                    error.getMessage()));
-        }
+                EditorPreferences.load(EditorPreferences.defaultFile()).gpuPreference(),
+                Optional.ofNullable(iconFile));
+        exportTask.start(new GameExporter(project), request);
+    }
+
+    private void announceOutcome() {
+        exportTask.drainOutcome().ifPresent(outcome -> {
+            outcome.destination().ifPresent(destination -> notifier.show(
+                    I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_TOAST_GAME_EXPORTED, destination)));
+            outcome.failure().ifPresent(message -> notifier.show(
+                    I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_TOAST_EXPORT_FAILED, message)));
+            closeRequested = true;
+        });
     }
 }

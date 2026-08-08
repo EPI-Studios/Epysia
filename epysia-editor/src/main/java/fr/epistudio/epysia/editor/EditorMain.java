@@ -4,6 +4,7 @@ import fr.epistudio.epysia.editor.icons.IconAtlas;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.notify.ToastCenter;
 import fr.epistudio.epysia.editor.runtime.EditorCamera;
+import fr.epistudio.epysia.editor.scripts.IdeProjectWriter;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.editor.ui.EditorView;
@@ -24,8 +25,10 @@ import imgui.ImGui;
 import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 public final class EditorMain {
 
@@ -44,7 +47,21 @@ public final class EditorMain {
 
     public static void main(String[] arguments) {
         GpuLauncher.enforce(EditorPreferences.load(EditorPreferences.defaultFile()).gpuPreference());
+        Optional<ExportRun> export = ExportRun.parse(arguments);
+        if (export.isPresent()) {
+            runExport(export.get());
+            return;
+        }
         new EditorMain().run();
+    }
+
+    private static void runExport(ExportRun export) {
+        try {
+            export.run();
+        } catch (IOException failure) {
+            System.err.println("[export] failed: " + failure.getMessage());
+            throw new UncheckedIOException(failure);
+        }
     }
 
     private void run() {
@@ -116,6 +133,7 @@ public final class EditorMain {
 
     private void openProject(Project project) {
         ProjectQualityProperties.apply(projectStore.readQuality(project));
+        IdeProjectWriter.write(project).ifPresent(toasts::show);
         Window embeddedWindow = new Window("(editor-embedded)",
                 shell.framebufferWidth(), shell.framebufferHeight());
         EditorScene3DHost sceneHost = new EditorScene3DHost(embeddedWindow, new Scene(project.name()));

@@ -3,6 +3,7 @@ package fr.epistudio.epysia.editor.ui;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.editor.command.EditorHistory;
+import fr.epistudio.epysia.editor.command.builtin.SetObjectListCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetPropertyCommand;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.inspector.EulerCache;
@@ -12,6 +13,7 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.reflection.ExportedProperty;
+import fr.epistudio.epysia.reflection.Reflection;
 import imgui.ImGui;
 import imgui.flag.ImGuiColorEditFlags;
 import imgui.type.ImString;
@@ -20,9 +22,12 @@ import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -74,9 +79,79 @@ public final class PropertyRows {
             case QUATERNION -> renderQuaternion(owner, property, key);
             case ASSET_REF -> renderAssetRef(owner, property, key);
             case GAMEOBJECT_REF -> renderGameObjectRef(owner, property);
+            case OBJECT_LIST -> renderObjectList(owner, property, key);
             default -> ImGui.labelText(property.label(), I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_UNSUPPORTED));
         }
         ImGui.popID();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void renderObjectList(IComponent owner, ExportedProperty property, String key) {
+        List<Object> elements = (List<Object>) property.read();
+        if (!ImGui.collapsingHeader(property.label() + " (" + elements.size() + ")")) {
+            return;
+        }
+        ImGui.indent();
+        int removalIndex = renderListElements(owner, property, key, elements);
+        renderListControls(owner, property, elements, removalIndex);
+        ImGui.unindent();
+    }
+
+    private int renderListElements(IComponent owner, ExportedProperty property, String key,
+                                   List<Object> elements) {
+        int removalIndex = -1;
+        for (int index = 0; index < elements.size(); index++) {
+            ImGui.pushID(index);
+            ImGui.separator();
+            if (ImGui.smallButton(I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_REMOVE_ELEMENT))) {
+                removalIndex = index;
+            }
+            for (ExportedProperty nested : Reflection.scan(elements.get(index))) {
+                if (!nested.isHiddenInEditor()) {
+                    renderProperty(owner, nested, key + "." + index + "." + nested.fieldName());
+                }
+            }
+            ImGui.popID();
+        }
+        return removalIndex;
+    }
+
+    private void renderListControls(IComponent owner, ExportedProperty property,
+                                    List<Object> elements, int removalIndex) {
+        ImGui.separator();
+        if (ImGui.smallButton(I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_ADD_ELEMENT))) {
+            property.elementType().flatMap(PropertyRows::instantiate).ifPresent(created ->
+                    replaceList(owner, property, elements, withAppended(elements, created)));
+            return;
+        }
+        if (removalIndex >= 0) {
+            replaceList(owner, property, elements, withRemoved(elements, removalIndex));
+        }
+    }
+
+    private void replaceList(IComponent owner, ExportedProperty property,
+                             List<Object> before, List<Object> after) {
+        history().execute(new SetObjectListCommand(owner, property, new ArrayList<>(before), after));
+    }
+
+    private static List<Object> withAppended(List<Object> elements, Object created) {
+        List<Object> updated = new ArrayList<>(elements);
+        updated.add(created);
+        return updated;
+    }
+
+    private static List<Object> withRemoved(List<Object> elements, int index) {
+        List<Object> updated = new ArrayList<>(elements);
+        updated.remove(index);
+        return updated;
+    }
+
+    private static Optional<Object> instantiate(Class<?> elementType) {
+        try {
+            return Optional.of(elementType.getDeclaredConstructor().newInstance());
+        } catch (ReflectiveOperationException unavailable) {
+            return Optional.empty();
+        }
     }
 
     private void renderFloat(IComponent owner, ExportedProperty property) {

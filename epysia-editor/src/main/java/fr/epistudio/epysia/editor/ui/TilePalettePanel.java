@@ -7,6 +7,7 @@ import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.assets.LegacyAssetReferences;
+import fr.epistudio.epysia.assets.NestedAssetPaths;
 import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
@@ -25,6 +26,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.scene.Scene;
 
 public final class TilePalettePanel {
 
@@ -66,9 +69,9 @@ public final class TilePalettePanel {
         renderPalette(tilemap.get(), atlas.get());
     }
 
-    public int saveDirtyTilemaps(fr.epistudio.epysia.scene.Scene scene) {
+    public int saveDirtyTilemaps(Scene scene) {
         int written = 0;
-        for (fr.epistudio.epysia.gameobjects.GameObject gameObject : scene.gameObjects()) {
+        for (GameObject gameObject : scene.gameObjects()) {
             TilemapRenderer renderer = gameObject.getComponentOrNull(TilemapRenderer.class);
             if (renderer != null && saveIfDirty(renderer)) {
                 written++;
@@ -201,8 +204,11 @@ public final class TilePalettePanel {
         if (atlas.texturePath().isEmpty() || tilemap.atlasPath().isEmpty()) {
             return Optional.empty();
         }
+        String rebased = NestedAssetPaths.rebase(
+                LegacyAssetReferences.interpret(tilemap.atlasPath(), services.assets()),
+                atlas.texturePath());
         return services.assets().locator()
-                .file(LegacyAssetReferences.interpret(atlas.texturePath(), services.assets()))
+                .file(LegacyAssetReferences.interpret(rebased, services.assets()))
                 .filter(Files::isRegularFile);
     }
 

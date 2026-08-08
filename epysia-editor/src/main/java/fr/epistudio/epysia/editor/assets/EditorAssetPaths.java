@@ -11,4 +11,8 @@ public final class EditorAssetPaths {
     public static String stored(AssetLocator locator, String droppedPath) {
         return LegacyAssetReferences.interpretWithoutMigration(droppedPath, locator).toString();
     }
+
+    public static String absolute(AssetLocator locator, String storedPath) {
+        return locator.resolvedPath(LegacyAssetReferences.interpretWithoutMigration(storedPath, locator));
+    }
 }

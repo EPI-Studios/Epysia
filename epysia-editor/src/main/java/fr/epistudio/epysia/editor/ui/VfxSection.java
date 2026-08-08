@@ -39,6 +39,7 @@ public final class VfxSection {
     }
 
     public void render(ParticleEffect effect) {
+        renderRestart(effect);
         renderBurstFit(effect);
         List<Path> graphs = projectGraphs();
         if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_VFX_SECTION_EFFECT_GRAPH, "vfx-effect-graph"),
@@ -50,6 +51,12 @@ public final class VfxSection {
             renderGraphOption(effect, graph);
         }
         ImGui.endCombo();
+    }
+
+    private static void renderRestart(ParticleEffect effect) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_VFX_SECTION_RESTART, "vfx-section-restart"))) {
+            effect.restart();
+        }
     }
 
     private static void renderBurstFit(ParticleEffect effect) {

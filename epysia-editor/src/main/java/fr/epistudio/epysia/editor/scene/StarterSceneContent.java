@@ -6,6 +6,7 @@ import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.components.BoxCollider;
+import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.scene.Scene;
 
 public final class StarterSceneContent {
@@ -29,7 +30,8 @@ public final class StarterSceneContent {
         ground.addComponent(renderer);
         renderer.onLoad(services);
         BoxCollider collider = new BoxCollider();
-        collider.halfExtents().set(0.5f, GROUND_COLLIDER_HALF_HEIGHT, 0.5f);
+        collider.halfExtents().set(BuiltinMeshes.PLANE_HALF_SIZE, GROUND_COLLIDER_HALF_HEIGHT,
+                BuiltinMeshes.PLANE_HALF_SIZE);
         ground.addComponent(collider);
         return ground;
     }

@@ -11,6 +11,8 @@ import imgui.type.ImFloat;
 import imgui.type.ImString;
 
 import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 public final class TileDataSection {
 
@@ -117,7 +119,7 @@ public final class TileDataSection {
     }
 
     private static boolean orientationToggle(String label, boolean current, String tooltip,
-                                             java.util.function.Consumer<Boolean> assign) {
+                                             Consumer<Boolean> assign) {
         boolean clicked = ImGui.checkbox(label, current);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(tooltip);
@@ -280,7 +282,7 @@ public final class TileDataSection {
         return renderBitButton("bitCenter", data.terrain(), data::setTerrain);
     }
 
-    private boolean renderBitButton(String id, int currentTerrain, java.util.function.IntConsumer assign) {
+    private boolean renderBitButton(String id, int currentTerrain, IntConsumer assign) {
         ImGui.pushID(id);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,
                 currentTerrain == TileData.NO_TERRAIN ? 0xFF303030 : 0xFF4CAF50);

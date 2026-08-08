@@ -17,6 +17,8 @@ import fr.epistudio.epysia.editor.command.builtin.TransformDragCommand;
 import fr.epistudio.epysia.editor.command.CompositeCommand;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.editor.gizmo.ColliderWireframeOverlay;
+import org.joml.Vector3fc;
+import fr.epistudio.epysia.editor.gizmo.PhysicsDebugOverlay;
 import fr.epistudio.epysia.editor.gizmo.GizmoFollowers;
 import fr.epistudio.epysia.editor.gizmo.LightDirectionOverlay;
 import fr.epistudio.epysia.editor.gizmo.GridOverlay;
@@ -141,6 +143,9 @@ public final class ViewportView {
     private float dragStartPlanarRotation;
     private GridOverlay gridOverlay;
     private ColliderWireframeOverlay colliderOverlay;
+    private final UiViewportEditor uiEditor = new UiViewportEditor();
+    private boolean uiEditingEnabled = true;
+    private boolean uiDragBusy;
     private SelectionOutlineOverlay selectionOverlay;
     private SelectionSilhouetteOverlay selectionSilhouette;
     private Transform3D dragTransform;
@@ -148,6 +153,8 @@ public final class ViewportView {
     private Transform2D dragPlanarTransform;
     private boolean showGrid = true;
     private boolean showColliderWireframes;
+    private boolean showPhysicsDebug;
+    private final PhysicsDebugOverlay.Options physicsDebugOptions = new PhysicsDebugOverlay.Options();
     private boolean showTileCollision;
     private float overlayThicknessMultiplier = 1.0f;
     private float gridFadeDistance = GridOverlay.DEFAULT_MINOR_FADE_DISTANCE;
@@ -295,6 +302,10 @@ public final class ViewportView {
             return;
         }
         timings.measure("overlays", () -> drawOverlays(imageX, imageY, width, height));
+        uiDragBusy = renderUiEditing(imageX, imageY);
+        if (uiDragBusy) {
+            sceneHost.requestViewportRedraw();
+        }
         Optional<TilemapRenderer> paintTarget = activePaintTarget();
         paintingActiveThisFrame = paintTarget.isPresent();
         boolean gizmoBusy = renderGizmoUnlessPainting(paintTarget, imageX, imageY, width, height);
@@ -310,7 +321,25 @@ public final class ViewportView {
                 paintController::cancel);
         updateCamera(deltaSeconds, imageX, imageY, width, height);
         handleFrameShortcut();
-        handlePicking(gizmoBusy || pivotBusy || paintTarget.isPresent(), imageX, imageY, width, height);
+        handlePicking(gizmoBusy || pivotBusy || uiDragBusy || paintTarget.isPresent(),
+                imageX, imageY, width, height);
+    }
+
+    private boolean renderUiEditing(float imageX, float imageY) {
+        if (!uiEditingEnabled || playSession.isActive()) {
+            return false;
+        }
+        return uiEditor.render(activeDocument.get().scene(),
+                activeDocument.get().selection().get().orElse(null),
+                activeDocument.get().history(), imageX, imageY, viewportHoveredThisFrame);
+    }
+
+    public boolean uiEditingEnabled() {
+        return uiEditingEnabled;
+    }
+
+    public void setUiEditingEnabled(boolean value) {
+        this.uiEditingEnabled = value;
     }
 
     private boolean renderPivotHandle(float imageX, float imageY, int width, int height) {
@@ -404,6 +433,44 @@ public final class ViewportView {
         }
         drawSelectionOutline(imageX, imageY, width, height);
         drawTileCollisionOverlay(imageX, imageY, width, height);
+        drawPhysicsDebugOverlay(imageX, imageY, width, height);
+    }
+
+    public PhysicsDebugOverlay.Options physicsDebugOptions() {
+        return physicsDebugOptions;
+    }
+
+    public boolean showPhysicsDebug() {
+        return showPhysicsDebug;
+    }
+
+    public void setShowPhysicsDebug(boolean show) {
+        showPhysicsDebug = show;
+    }
+
+    private void drawPhysicsDebugOverlay(float imageX, float imageY, int width, int height) {
+        if (!showPhysicsDebug) {
+            return;
+        }
+        Matrix4f viewProjection = new Matrix4f(editorCamera.camera().projection())
+                .mul(editorCamera.camera().view());
+        PhysicsDebugOverlay.draw(activeDocument.get().scene(), ImGui.getWindowDrawList(),
+                worldPoint -> projectToScreen(worldPoint, viewProjection, imageX, imageY, width, height),
+                physicsDebugOptions);
+    }
+
+    private static Optional<float[]> projectToScreen(Vector3fc worldPoint, Matrix4f viewProjection,
+                                                     float imageX, float imageY, int width, int height) {
+        Vector4f clip = viewProjection.transform(
+                new Vector4f(worldPoint.x(), worldPoint.y(), worldPoint.z(), 1.0f));
+        if (clip.w <= 1.0e-4f) {
+            return Optional.empty();
+        }
+        float normalizedX = clip.x / clip.w;
+        float normalizedY = clip.y / clip.w;
+        return Optional.of(new float[]{
+                imageX + (normalizedX * 0.5f + 0.5f) * width,
+                imageY + (0.5f - normalizedY * 0.5f) * height});
     }
 
     private void drawTileCollisionOverlay(float imageX, float imageY, int width, int height) {
@@ -464,6 +531,10 @@ public final class ViewportView {
             if (colliderOverlay == null) {
                 colliderOverlay = new ColliderWireframeOverlay();
             }
+            colliderOverlay.useSimulatedWorld(playSession.isActive()
+                    ? sceneHost.engine().gameSystem(PhysicsSystem.class)
+                            .orElse(null)
+                    : null);
             colliderOverlay.render(activeDocument.get().scene(), editorCamera.camera().viewProjection(),
                     editorCamera.camera().position(new Vector3f()),
                     width * supersampleFactor, height * supersampleFactor, overlayThicknessScale());
@@ -991,7 +1062,7 @@ public final class ViewportView {
         float deltaX = ImGui.getMousePosX() - screenX;
         float deltaY = ImGui.getMousePosY() - screenY;
         if (deltaX * deltaX + deltaY * deltaY <= BILLBOARD_CLICK_RADIUS * BILLBOARD_CLICK_RADIUS) {
-            activeDocument.get().selection().select(gameObject);
+            applyPick(gameObject);
             billboardClickConsumed = true;
         }
     }
@@ -1125,10 +1196,33 @@ public final class ViewportView {
         if (rightHeld || !ImGui.isMouseClicked(ImGuiMouseButton.Left)) {
             return;
         }
+        if (uiEditingEnabled && !playSession.isActive()) {
+            Optional<GameObject> overlay = uiEditor.pick(activeDocument.get().scene(), imageX, imageY,
+                    ImGui.getMousePosX(), ImGui.getMousePosY());
+            if (overlay.isPresent()) {
+                applyPick(overlay.get());
+                return;
+            }
+        }
         int localX = (int) (ImGui.getMousePosX() - imageX);
         int localY = (int) (ImGui.getMousePosY() - imageY);
         Optional<GameObject> hit = sceneHost.pickAt(editorCamera, localX, localY, width, height);
-        hit.ifPresentOrElse(activeDocument.get().selection()::select, activeDocument.get().selection()::clear);
+        hit.ifPresentOrElse(this::applyPick, this::clearUnlessAdditive);
+    }
+
+    private void applyPick(GameObject gameObject) {
+        if (ImGui.getIO().getKeyCtrl()) {
+            activeDocument.get().selection().toggle(gameObject);
+            return;
+        }
+        activeDocument.get().selection().select(gameObject);
+    }
+
+    private void clearUnlessAdditive() {
+        if (ImGui.getIO().getKeyCtrl()) {
+            return;
+        }
+        activeDocument.get().selection().clear();
     }
 
     private Optional<TilemapRenderer> activePaintTarget() {

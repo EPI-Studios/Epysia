@@ -7,6 +7,7 @@ import org.joml.Vector2f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 public final class TileShapeOperations {
 
@@ -37,7 +38,7 @@ public final class TileShapeOperations {
         return transformShapes(data, point -> new Vector2f(1.0f - point.y, point.x));
     }
 
-    private static boolean transformShapes(TileData data, java.util.function.UnaryOperator<Vector2f> mapping) {
+    private static boolean transformShapes(TileData data, UnaryOperator<Vector2f> mapping) {
         List<TileCollisionShape> shapes = data.collisionShapes();
         if (shapes.isEmpty()) {
             return false;
@@ -49,7 +50,7 @@ public final class TileShapeOperations {
     }
 
     private static TileCollisionShape mapPoints(TileCollisionShape shape,
-                                                java.util.function.UnaryOperator<Vector2f> mapping) {
+                                                UnaryOperator<Vector2f> mapping) {
         List<Vector2f> points = new ArrayList<>();
         for (Vector2f point : shape.points()) {
             points.add(mapping.apply(point));

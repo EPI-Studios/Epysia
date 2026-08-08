@@ -39,8 +39,11 @@ import fr.epistudio.epysia.render.sprite.TilemapRenderSystem;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
+import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
+import fr.epistudio.epysia.ui.UiInputSystem;
+import fr.epistudio.epysia.ui.UiRenderSystem;
 import fr.epistudio.epysia.window.Window;
 import org.joml.Vector3f;
 
@@ -77,6 +80,8 @@ public final class EditorScene3DHost {
     private TilemapRenderSystem tilemapRenderSystem;
     private PostProcessSystem postProcessSystem;
     private TextRenderSystem textRenderSystem;
+    private UiRenderSystem uiRenderSystem;
+    private final List<RenderSystem> baselineSystems = new ArrayList<>();
     private ShaderLoader shaderLoader;
     private ShaderWatcher shaderWatcher;
     private int currentWidth;
@@ -164,12 +169,16 @@ public final class EditorScene3DHost {
         spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         tilemapRenderSystem = new TilemapRenderSystem(spriteRenderSystem, engine.logger());
         textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());
+        uiRenderSystem = new UiRenderSystem(shaderLoader, renderSurface, engine);
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(vfxRenderSystem);
+        engine.addRenderSystem(new VolumetricRenderSystem(shaderLoader, renderSurface, engine.logger()));
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(tilemapRenderSystem);
         engine.addRenderSystem(postProcessSystem);
         engine.addRenderSystem(textRenderSystem);
+        engine.addRenderSystem(uiRenderSystem);
+        baselineSystems.addAll(engine.renderSystems());
         engine.initialize();
         BuiltinMeshes builtins = BuiltinMeshes.uploadAll(backend);
         engine.assets().register(new MeshAssetLoader(builtins));
@@ -207,11 +216,9 @@ public final class EditorScene3DHost {
     }
 
     private void restoreBaselineRenderSystems() {
-        List<RenderSystem> current = engine.renderSystems();
+        List<RenderSystem> current = List.copyOf(engine.renderSystems());
         for (RenderSystem system : current) {
-            if (system != meshRenderSystem && system != vfxRenderSystem && system != spriteRenderSystem
-                    && system != tilemapRenderSystem && system != postProcessSystem
-                    && system != textRenderSystem) {
+            if (!baselineSystems.contains(system)) {
                 engine.removeRenderSystem(system);
             }
         }
@@ -241,9 +248,14 @@ public final class EditorScene3DHost {
             textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());
             engine.addRenderSystem(textRenderSystem);
         }
+        if (!engine.renderSystems().contains(uiRenderSystem)) {
+            uiRenderSystem = new UiRenderSystem(shaderLoader, renderSurface, engine);
+            engine.addRenderSystem(uiRenderSystem);
+        }
     }
 
     private void loadEngineModules() {
+        engine.addSystem(new UiInputSystem());
         SystemRegistryImpl registry = new SystemRegistryImpl();
         List<EngineModule> modules = new ArrayList<>();
         for (EngineModule module : ServiceLoader.load(EngineModule.class)) {
@@ -338,6 +350,13 @@ public final class EditorScene3DHost {
         frameStepNanos[1] = renderStart - captureStart;
         frameStepNanos[2] = restoreStart - renderStart;
         frameStepNanos[3] = System.nanoTime() - restoreStart;
+    }
+
+    public void advanceAnimation(float deltaSeconds) {
+        if (!initialized) {
+            return;
+        }
+        engine.advanceAnimators(deltaSeconds);
     }
 
     public void requestViewportRedraw() {

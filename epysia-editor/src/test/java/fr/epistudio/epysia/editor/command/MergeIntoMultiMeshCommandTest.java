@@ -109,7 +109,7 @@ class MergeIntoMultiMeshCommandTest {
     }
 
     private static UploadedMesh dummyMesh() {
-        return new UploadedMesh(new BufferHandle(1L), new BufferHandle(2L), List.of(),
+        return new UploadedMesh(new BufferHandle(1L), new BufferHandle(2L), List.of(), 2,
                 Aabb.fromPositions(new float[]{0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f}),
                 false, false, Optional.empty());
     }

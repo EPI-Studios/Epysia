@@ -17,6 +17,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class PlayController {
 
@@ -35,6 +37,9 @@ public final class PlayController {
 
     private Scene playingScene;
     private State state = State.IDLE;
+    private static final String LOCAL_HOST = "127.0.0.1";
+    private final NetworkPlaySettings networkSettings = new NetworkPlaySettings();
+    private final List<Process> companions = new ArrayList<>();
     private Process process;
     private Path tempScenePath;
     private String snapshot;
@@ -74,18 +79,81 @@ public final class PlayController {
         snapshot = serializer.serialize(scene, gameObject -> true);
         tempScenePath = Files.createTempFile(TEMP_PREFIX, TEMP_SUFFIX);
         Files.writeString(tempScenePath, snapshot);
-        process = PlayProcessLauncher.launch(tempScenePath, project.rootDirectory(), playWindowTitle());
+        process = launchEditorInstance();
         stdoutReader = startReader(process.getInputStream(), "epysia-play-stdout", false);
         stderrReader = startReader(process.getErrorStream(), "epysia-play-stderr", true);
         state = State.RUNNING;
         registerCleanupHook();
         emit(PlayLogLine.Level.SYSTEM, "Play started (pid " + process.pid() + ")");
+        launchCompanionInstances();
+    }
+
+    public NetworkPlaySettings networkSettings() {
+        return networkSettings;
+    }
+
+    private Process launchEditorInstance() throws IOException {
+        Path root = project.rootDirectory();
+        return switch (networkSettings.editorRole()) {
+            case SINGLE_PLAYER -> PlayProcessLauncher.launch(tempScenePath, root, playWindowTitle());
+            case LISTEN_SERVER -> PlayProcessLauncher.launchListenServer(tempScenePath, root,
+                    playWindowTitle() + " (host)", networkSettings.port());
+            case CLIENT, DEDICATED_SERVER -> PlayProcessLauncher.launchClient(tempScenePath, root,
+                    playWindowTitle() + " (client 1)", LOCAL_HOST, networkSettings.port());
+        };
+    }
+
+    private void launchCompanionInstances() {
+        if (!networkSettings.networked()) {
+            return;
+        }
+        launchDedicatedServerIfRequested();
+        for (int index = 0; index < networkSettings.extraClients(); index++) {
+            launchExtraClient(index + 2);
+        }
+    }
+
+    private void launchDedicatedServerIfRequested() {
+        if (!networkSettings.needsDedicatedServerProcess()) {
+            return;
+        }
+        trackCompanion("server", () -> PlayProcessLauncher.launchDedicatedServer(
+                tempScenePath, project.rootDirectory(), networkSettings.port()));
+    }
+
+    private void launchExtraClient(int ordinal) {
+        trackCompanion("client " + ordinal, () -> PlayProcessLauncher.launchClient(
+                tempScenePath, project.rootDirectory(),
+                playWindowTitle() + " (client " + ordinal + ")", LOCAL_HOST, networkSettings.port()));
+    }
+
+    private void trackCompanion(String label, ProcessFactory factory) {
+        try {
+            Process companion = factory.start();
+            companions.add(companion);
+            emit(PlayLogLine.Level.SYSTEM, "Started " + label + " (pid " + companion.pid() + ")");
+        } catch (IOException failure) {
+            emit(PlayLogLine.Level.ERROR, "Could not start " + label + ": " + failure.getMessage());
+        }
+    }
+
+    private void stopCompanions() {
+        for (Process companion : companions) {
+            companion.destroy();
+        }
+        companions.clear();
+    }
+
+    @FunctionalInterface
+    private interface ProcessFactory {
+        Process start() throws IOException;
     }
 
     public void stop() {
         if (state != State.RUNNING) {
             return;
         }
+        stopCompanions();
         terminateProcess();
         joinReaders();
         restoreSnapshot();
@@ -100,6 +168,7 @@ public final class PlayController {
             return;
         }
         joinReaders();
+        stopCompanions();
         emit(PlayLogLine.Level.SYSTEM, "Subprocess exited with code " + process.exitValue());
         restoreSnapshot();
         deleteTempScene();

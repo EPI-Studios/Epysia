@@ -38,6 +38,7 @@ import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
 import static org.lwjgl.opengl.GL30.glBindVertexArray;
 import static org.lwjgl.opengl.GL30.glDeleteVertexArrays;
 import static org.lwjgl.opengl.GL30.glGenVertexArrays;
+import org.lwjgl.opengl.GL11;
 
 public final class GridOverlay implements AutoCloseable {
 
@@ -190,7 +191,7 @@ public final class GridOverlay implements AutoCloseable {
         glDisable(GL_SCISSOR_TEST);
         glDisable(GL_DEPTH_TEST);
         glDepthMask(false);
-        org.lwjgl.opengl.GL11.glEnable(GL_BLEND);
+        GL11.glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 

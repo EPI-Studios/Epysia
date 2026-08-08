@@ -19,6 +19,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.stream.Stream;
 
 public final class ScriptService {
 
@@ -57,15 +61,15 @@ public final class ScriptService {
         }
     }
 
-    private long latestModified(java.nio.file.Path scriptsDirectory) {
-        if (scriptsDirectory == null || !java.nio.file.Files.isDirectory(scriptsDirectory)) {
+    private long latestModified(Path scriptsDirectory) {
+        if (scriptsDirectory == null || !Files.isDirectory(scriptsDirectory)) {
             return 0L;
         }
-        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(scriptsDirectory)) {
+        try (Stream<Path> walk = Files.walk(scriptsDirectory)) {
             return walk.filter(languages::isSource)
                     .mapToLong(path -> path.toFile().lastModified())
                     .max().orElse(0L);
-        } catch (java.io.IOException exception) {
+        } catch (IOException exception) {
             return 0L;
         }
     }
