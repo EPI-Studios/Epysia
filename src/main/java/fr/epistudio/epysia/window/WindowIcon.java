@@ -7,6 +7,8 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -20,7 +22,6 @@ import static org.lwjgl.glfw.GLFW.glfwSetWindowIcon;
 import static org.lwjgl.glfw.GLFW.glfwWindowHintString;
 
 public final class WindowIcon {
-
     private static final String RESOURCE_PREFIX = "/branding/epysia-icon-";
     private static final int[] SIZES = {16, 24, 32, 48, 64, 128, 256};
 
@@ -38,8 +39,20 @@ public final class WindowIcon {
         glfwWindowHintString(GLFW_WAYLAND_APP_ID, APPLICATION_CLASS);
     }
 
+    public static void applyFromFile(long handle, Path file) {
+        Optional<Decoded> custom = decodeFile(file);
+        if (custom.isEmpty()) {
+            applyDefault(handle);
+            return;
+        }
+        upload(handle, List.of(custom.get()));
+    }
+
     public static void applyDefault(long handle) {
-        List<Decoded> decoded = decodeAll();
+        upload(handle, decodeAll());
+    }
+
+    private static void upload(long handle, List<Decoded> decoded) {
         if (decoded.isEmpty()) {
             return;
         }
@@ -56,6 +69,20 @@ public final class WindowIcon {
         }
     }
 
+    private static Optional<Decoded> decodeFile(Path file) {
+        if (file == null || !Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        try {
+            byte[] bytes = Files.readAllBytes(file);
+            ByteBuffer encoded = MemoryUtil.memAlloc(bytes.length);
+            encoded.put(bytes).flip();
+            return decodeBuffer(encoded);
+        } catch (IOException unreadable) {
+            return Optional.empty();
+        }
+    }
+
     private static List<Decoded> decodeAll() {
         List<Decoded> decoded = new ArrayList<>();
         for (int size : SIZES) {
@@ -66,15 +93,16 @@ public final class WindowIcon {
 
     private static Optional<Decoded> decode(String resource) {
         Optional<ByteBuffer> encoded = readResource(resource);
-        if (encoded.isEmpty()) {
-            return Optional.empty();
-        }
+        return encoded.isEmpty() ? Optional.empty() : decodeBuffer(encoded.get());
+    }
+
+    private static Optional<Decoded> decodeBuffer(ByteBuffer encoded) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer width = stack.mallocInt(1);
             IntBuffer height = stack.mallocInt(1);
             IntBuffer channels = stack.mallocInt(1);
-            ByteBuffer pixels = STBImage.stbi_load_from_memory(encoded.get(), width, height, channels, 4);
-            MemoryUtil.memFree(encoded.get());
+            ByteBuffer pixels = STBImage.stbi_load_from_memory(encoded, width, height, channels, 4);
+            MemoryUtil.memFree(encoded);
             return pixels == null
                     ? Optional.empty()
                     : Optional.of(new Decoded(width.get(0), height.get(0), pixels));

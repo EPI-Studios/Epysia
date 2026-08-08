@@ -1,14 +1,19 @@
 package fr.epistudio.epysia;
 
+import fr.epistudio.epysia.animation.AnimationClock;
+import fr.epistudio.epysia.components.transforms.TransformResolver;
 import fr.epistudio.epysia.assets.AssetRegistry;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.concurrent.BackgroundTasks;
+import fr.epistudio.epysia.concurrent.MainThread;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.logging.Logger;
+import fr.epistudio.epysia.net.NetworkReceiveSystem;
+import fr.epistudio.epysia.net.NetworkService;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.Frame;
 import fr.epistudio.epysia.render.RenderContext;
@@ -49,9 +54,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import fr.epistudio.epysia.render.ProfiledRenderSystem;
 
 public final class EpysiaEngine implements StageConfigurer, EngineServices, SceneCapture {
-
     private static final float ASSET_SWEEP_INTERVAL_SECONDS = 5.0f;
 
     private PassClear defaultClear = PassClear.color(0.10f, 0.12f, 0.18f);
@@ -75,10 +80,13 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private final AssetRegistry assetRegistry = new AssetRegistry(this);
     private final long[] cpuTimingsNanosArray = new long[CpuTimings.values().length];
     private final FrameProfiler profiler = new FrameProfiler();
+    private final AnimationClock animationClock = new AnimationClock();
+    private final TransformResolver transformResolver = new TransformResolver();
     private final DefaultScheduler scheduler = new DefaultScheduler();
     private final DefaultHud hud = new DefaultHud();
     private final PostProcessSettings detachedPostProcessSettings = new PostProcessSettings();
     private final PostEffects postEffectsAccess = new ScenePostEffects(this::scene, this::resolvePostProcessSettings);
+    private NetworkService networkService;
     private RuntimeChannel runtimeChannel = new NullRuntimeChannel();
     private Logger logger = new ConsoleLogger();
     private FontRegistry fontRegistry;
@@ -129,7 +137,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     }
 
     public void addRenderSystem(RenderSystem renderSystem) {
-        if (renderSystem instanceof fr.epistudio.epysia.render.ProfiledRenderSystem profiled) {
+        if (renderSystem instanceof ProfiledRenderSystem profiled) {
             profiled.setProfiler(profiler);
         }
         if (initialized) {
@@ -208,6 +216,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     }
 
     public void initialize() {
+        MainThread.adopt();
         fontRegistry = new FontRegistry(renderBackend);
         fontRegistry.load(FontRegistry.DEFAULT_NAME, "fonts/AdwaitaMono-Regular.ttf", 24.0f);
         for (RenderSystem system : renderSystems) {
@@ -231,6 +240,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
             dispatchDeactivations(activeScene);
             dispatchActivations(activeScene);
             captureTransformInterpolationSnapshots(activeScene);
+            animationClock.advance(activeScene, deltaTimeSeconds);
             updateGameSystems(input, deltaTimeSeconds);
         }
         sweepUnusedAssets(deltaTimeSeconds);
@@ -348,6 +358,21 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
         preRenderPasses.remove(pass);
     }
 
+    private void resolveTransforms(float interpolationAlpha) {
+        if (activeScene == null) {
+            return;
+        }
+        long start = System.nanoTime();
+        transformResolver.resolve(activeScene.componentsOf(Transform3D.class), interpolationAlpha);
+        profiler.record("transforms/resolve", System.nanoTime() - start);
+    }
+
+    public void advanceAnimators(float deltaSeconds) {
+        if (activeScene != null) {
+            animationClock.advance(activeScene, deltaSeconds);
+        }
+    }
+
     @Override
     public void renderTo(List<Camera3D> cameras, RenderTargetHandle target, float interpolationAlpha) {
         render(cameras, target, interpolationAlpha);
@@ -370,9 +395,11 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     public void render(List<Camera3D> activeCameras, RenderTargetHandle screenTarget, float interpolationAlpha) {
         runPreRenderPasses(interpolationAlpha);
         long renderStart = System.nanoTime();
+        resolveTransforms(interpolationAlpha);
         frame.reset();
         renderBackend.beginFrame();
-        collectRenderSystems(RenderContext.of(activeCameras, screenTarget, interpolationAlpha));
+        collectRenderSystems(RenderContext.of(activeCameras, screenTarget, interpolationAlpha,
+                animationClock.generation()));
         long drainStart = System.nanoTime();
         drainStages(screenTarget);
         renderBackend.endFrame();
@@ -511,6 +538,25 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     @Override
     public PostEffects postEffects() {
         return postEffectsAccess;
+    }
+
+    @Override
+    public NetworkService network() {
+        if (networkService == null) {
+            networkService = resolveNetworkService();
+        }
+        return networkService;
+    }
+
+    private NetworkService resolveNetworkService() {
+        for (GameSystem system : gameSystems) {
+            if (system instanceof NetworkReceiveSystem network) {
+                return network.service();
+            }
+        }
+        NetworkReceiveSystem fallback = new NetworkReceiveSystem();
+        addSystem(fallback);
+        return fallback.service();
     }
 
     private PostProcessSettings resolvePostProcessSettings() {

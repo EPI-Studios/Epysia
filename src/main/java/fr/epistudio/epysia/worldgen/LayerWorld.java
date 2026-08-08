@@ -16,17 +16,22 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class LayerWorld {
-
     private static final int DEFAULT_MAXIMUM_IN_FLIGHT = 12;
 
     private static final class ChunkSlot {
         private Optional<Object> data = Optional.empty();
         private Optional<BackgroundTask<Object>> pending = Optional.empty();
+        private boolean attached;
+    }
+
+    private record Requirements(Map<GenerationLayer<?>, Set<ChunkCoordinate>> visible,
+                                Map<GenerationLayer<?>, Set<ChunkCoordinate>> all) {
     }
 
     private final Map<GenerationLayer<?>, LayerGrid> grids = new LinkedHashMap<>();
     private final Map<GenerationLayer<?>, Map<ChunkCoordinate, ChunkSlot>> slots = new LinkedHashMap<>();
     private final Map<GenerationLayer<?>, Float> topLevelRadius = new LinkedHashMap<>();
+    private final Map<GenerationLayer<?>, Set<ChunkCoordinate>> visibleChunks = new LinkedHashMap<>();
     private final List<GenerationLayer<?>> order = new ArrayList<>();
     private int maximumInFlight = DEFAULT_MAXIMUM_IN_FLIGHT;
     private int inFlight;
@@ -61,9 +66,34 @@ public final class LayerWorld {
     }
 
     public void update(EngineServices services, float focusX, float focusZ) {
-        Map<GenerationLayer<?>, Set<ChunkCoordinate>> required = computeRequired(focusX, focusZ);
-        releaseUnrequired(services, required);
-        scheduleMissing(services, required, focusX, focusZ);
+        Requirements requirements = computeRequired(focusX, focusZ);
+        visibleChunks.clear();
+        visibleChunks.putAll(requirements.visible());
+        releaseUnrequired(services, requirements.all());
+        reconcileAttachments(services);
+        scheduleMissing(services, requirements.all(), focusX, focusZ);
+    }
+
+    private void reconcileAttachments(EngineServices services) {
+        for (GenerationLayer<?> layer : order) {
+            Set<ChunkCoordinate> visible = visibleChunks.getOrDefault(layer, Set.of());
+            for (Map.Entry<ChunkCoordinate, ChunkSlot> entry : slots.get(layer).entrySet()) {
+                reconcileSlot(services, layer, entry.getKey(), entry.getValue(),
+                        visible.contains(entry.getKey()));
+            }
+        }
+    }
+
+    private void reconcileSlot(EngineServices services, GenerationLayer<?> layer,
+                               ChunkCoordinate coordinate, ChunkSlot slot, boolean visible) {
+        if (slot.data.isEmpty() || visible == slot.attached) {
+            return;
+        }
+        if (visible) {
+            attach(services, layer, coordinate, slot);
+        } else {
+            detach(services, layer, coordinate, slot);
+        }
     }
 
     private void rebuildOrder() {
@@ -99,19 +129,22 @@ public final class LayerWorld {
         slots.put(layer, new HashMap<>());
     }
 
-    private Map<GenerationLayer<?>, Set<ChunkCoordinate>> computeRequired(float focusX, float focusZ) {
-        Map<GenerationLayer<?>, Set<ChunkCoordinate>> required = new LinkedHashMap<>();
+    private Requirements computeRequired(float focusX, float focusZ) {
+        Map<GenerationLayer<?>, Set<ChunkCoordinate>> visible = new LinkedHashMap<>();
+        Map<GenerationLayer<?>, Set<ChunkCoordinate>> all = new LinkedHashMap<>();
         for (GenerationLayer<?> layer : order) {
-            required.put(layer, new LinkedHashSet<>());
+            visible.put(layer, new LinkedHashSet<>());
+            all.put(layer, new LinkedHashSet<>());
         }
         for (Map.Entry<GenerationLayer<?>, Float> entry : topLevelRadius.entrySet()) {
             WorldRect area = WorldRect.around(focusX, focusZ, entry.getValue());
-            required.get(entry.getKey()).addAll(grids.get(entry.getKey()).covering(area));
+            visible.get(entry.getKey()).addAll(grids.get(entry.getKey()).covering(area));
         }
+        order.forEach(layer -> all.get(layer).addAll(visible.get(layer)));
         for (int index = order.size() - 1; index >= 0; index--) {
-            propagateRequirements(order.get(index), required);
+            propagateRequirements(order.get(index), all);
         }
-        return required;
+        return new Requirements(visible, all);
     }
 
     private void propagateRequirements(GenerationLayer<?> layer,
@@ -147,13 +180,27 @@ public final class LayerWorld {
             task.cancel();
             inFlight--;
         });
-        slot.data.ifPresent(data -> detach(services, layer, coordinate, data));
+        detach(services, layer, coordinate, slot);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> void attach(EngineServices services, GenerationLayer<T> layer,
+                            ChunkCoordinate coordinate, ChunkSlot slot) {
+        if (slot.attached || slot.data.isEmpty()) {
+            return;
+        }
+        slot.attached = true;
+        layer.attach(coordinate, (T) slot.data.get(), services);
     }
 
     @SuppressWarnings("unchecked")
     private <T> void detach(EngineServices services, GenerationLayer<T> layer,
-                            ChunkCoordinate coordinate, Object data) {
-        layer.detach(coordinate, (T) data, services);
+                            ChunkCoordinate coordinate, ChunkSlot slot) {
+        if (!slot.attached || slot.data.isEmpty()) {
+            return;
+        }
+        slot.attached = false;
+        layer.detach(coordinate, (T) slot.data.get(), services);
     }
 
     private void scheduleMissing(EngineServices services,
@@ -239,7 +286,9 @@ public final class LayerWorld {
         inFlight--;
         slot.pending = Optional.empty();
         slot.data = Optional.of(data);
-        layer.attach(coordinate, data, services);
+        if (visibleChunks.getOrDefault(layer, Set.of()).contains(coordinate)) {
+            attach(services, layer, coordinate, slot);
+        }
     }
 
     private void failGeneration(EngineServices services, GenerationLayer<?> layer,

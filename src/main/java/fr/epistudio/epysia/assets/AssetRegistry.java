@@ -2,6 +2,7 @@ package fr.epistudio.epysia.assets;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.source.AssetResolvers;
+import fr.epistudio.epysia.concurrent.MainThread;
 import fr.epistudio.epysia.logging.Logger;
 
 import java.nio.file.Path;
@@ -16,7 +17,6 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public final class AssetRegistry {
-
     private final Map<Class<?>, AssetLoader<?>> loadersByType = new HashMap<>();
     private final Map<String, Entry> cache = new HashMap<>();
     private final EngineServices services;
@@ -50,6 +50,7 @@ public final class AssetRegistry {
     }
 
     public <T> void register(AssetLoader<T> loader) {
+        MainThread.require("AssetRegistry.register");
         loadersByType.put(loader.assetType(), loader);
     }
 
@@ -87,6 +88,7 @@ public final class AssetRegistry {
     }
 
     public void release(Class<?> type, AssetUri uri, AssetVariant variant) {
+        MainThread.require("AssetRegistry.release");
         if (uri.isEmpty()) {
             return;
         }
@@ -97,6 +99,7 @@ public final class AssetRegistry {
     }
 
     public void invalidate(AssetUri uri) {
+        MainThread.require("AssetRegistry.invalidate");
         String marker = "::" + uri + "|";
         Iterator<Map.Entry<String, Entry>> entries = cache.entrySet().iterator();
         while (entries.hasNext()) {
@@ -110,6 +113,7 @@ public final class AssetRegistry {
 
     @SuppressWarnings("unchecked")
     private <T> Optional<T> lookup(Class<T> type, AssetUri uri, AssetVariant variant, boolean owning) {
+        MainThread.require("AssetRegistry.resolve");
         if (uri.isEmpty()) {
             return Optional.empty();
         }
@@ -156,6 +160,7 @@ public final class AssetRegistry {
 
     @SuppressWarnings("unchecked")
     public <T> T resolveOrCompute(Class<T> type, String key, Supplier<T> producer) {
+        MainThread.require("AssetRegistry.resolveOrCompute");
         String computedKey = type.getName() + "::" + key;
         Entry entry = cache.get(computedKey);
         if (entry != null) {
@@ -181,6 +186,7 @@ public final class AssetRegistry {
     }
 
     public void unloadUnused() {
+        MainThread.require("AssetRegistry.unloadUnused");
         Iterator<Entry> entries = cache.values().iterator();
         while (entries.hasNext()) {
             Entry entry = entries.next();
@@ -192,6 +198,7 @@ public final class AssetRegistry {
     }
 
     public void clear() {
+        MainThread.require("AssetRegistry.clear");
         for (Entry entry : cache.values()) {
             dispose(entry);
         }
@@ -217,7 +224,6 @@ public final class AssetRegistry {
     }
 
     private static final class Entry {
-
         private final Object value;
         private final AssetLoader<?> loader;
         private int refCount;

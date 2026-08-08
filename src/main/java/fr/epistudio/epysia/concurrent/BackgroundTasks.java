@@ -13,14 +13,16 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public final class BackgroundTasks {
-
     private static final int MAXIMUM_WORKERS = 8;
     private static final long SHUTDOWN_GRACE_SECONDS = 2L;
+    private static final float DEFAULT_DELIVERY_BUDGET_SECONDS = 0.002f;
+    private static final long NANOSECONDS_PER_SECOND = 1_000_000_000L;
 
     private final ExecutorService workers;
     private final ConcurrentLinkedQueue<Settled<?>> settled = new ConcurrentLinkedQueue<>();
     private final AtomicInteger pending = new AtomicInteger();
     private final Supplier<Logger> loggerSource;
+    private long deliveryBudgetNanos = budgetNanosOf(DEFAULT_DELIVERY_BUDGET_SECONDS);
 
     private record Settled<T>(BackgroundTask<T> task, T result, Throwable failure,
                               Consumer<T> onCompleted, Consumer<Throwable> onFailed) {
@@ -93,7 +95,33 @@ public final class BackgroundTasks {
         return settled.size();
     }
 
+    public void setDeliveryBudgetSeconds(float seconds) {
+        this.deliveryBudgetNanos = budgetNanosOf(seconds);
+    }
+
+    public float deliveryBudgetSeconds() {
+        return deliveryBudgetNanos / (float) NANOSECONDS_PER_SECOND;
+    }
+
+    private static long budgetNanosOf(float seconds) {
+        return Math.max(0L, (long) (seconds * NANOSECONDS_PER_SECOND));
+    }
+
     public void deliverCompleted() {
+        MainThread.require("BackgroundTasks.deliverCompleted");
+        long deadline = System.nanoTime() + deliveryBudgetNanos;
+        Settled<?> outcome = settled.poll();
+        while (outcome != null) {
+            deliver(outcome);
+            if (System.nanoTime() >= deadline) {
+                return;
+            }
+            outcome = settled.poll();
+        }
+    }
+
+    public void deliverAll() {
+        MainThread.require("BackgroundTasks.deliverAll");
         Settled<?> outcome = settled.poll();
         while (outcome != null) {
             deliver(outcome);

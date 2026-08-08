@@ -7,9 +7,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class SystemRegistryImpl implements SystemRegistry {
-
     private final Map<Class<? extends GameSystem>, GameSystem> systemsByType = new LinkedHashMap<>();
     private final List<GameSystem> registrationOrder = new ArrayList<>();
 
@@ -48,6 +48,12 @@ public final class SystemRegistryImpl implements SystemRegistry {
             current = current.getSuperclass();
         }
         return types;
+    }
+
+    @Override
+    public <T extends GameSystem> Optional<T> find(Class<T> type) {
+        GameSystem system = systemsByType.get(type);
+        return system == null ? Optional.empty() : Optional.of(type.cast(system));
     }
 
     @Override

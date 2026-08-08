@@ -4,3 +4,5 @@ fr.epistudio.epysia.physics.PhysicsModule
 fr.epistudio.epysia.audio.AudioModule
 fr.epistudio.epysia.components.SpriteModule
 fr.epistudio.epysia.render.lighting.LightingModule
+fr.epistudio.epysia.net.NetworkModule
+fr.epistudio.epysia.net.NetworkSendModule

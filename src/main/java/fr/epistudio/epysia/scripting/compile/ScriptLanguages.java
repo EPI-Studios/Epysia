@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.stream.Stream;
+import java.io.File;
+import java.util.Optional;
 
 public final class ScriptLanguages {
 
@@ -98,7 +100,7 @@ public final class ScriptLanguages {
 
     private static String classpathFor(Path outputDirectory, ProjectLibraries libraries) {
         return System.getProperty("java.class.path")
-                + java.io.File.pathSeparator + outputDirectory.toAbsolutePath()
+                + File.pathSeparator + outputDirectory.toAbsolutePath()
                 + libraries.classpathSuffix();
     }
 
@@ -111,7 +113,7 @@ public final class ScriptLanguages {
         return grouped;
     }
 
-    private java.util.Optional<ScriptLanguage> languageFor(Path source) {
+    private Optional<ScriptLanguage> languageFor(Path source) {
         String name = source.getFileName().toString();
         return languages.stream()
                 .filter(language -> language.sourceExtensions().stream().anyMatch(name::endsWith))

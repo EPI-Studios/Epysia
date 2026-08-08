@@ -2,6 +2,7 @@ package fr.epistudio.epysia.scene;
 
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.transforms.Transform3D;
+import fr.epistudio.epysia.concurrent.MainThread;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.postfx.PostEffectStack;
 import fr.epistudio.epysia.render.postfx.PostProcessSettings;
@@ -21,7 +22,6 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 public final class Scene implements IScene {
-
     private static final float DEFAULT_CLEAR_RED = 0.10f;
     private static final float DEFAULT_CLEAR_GREEN = 0.12f;
     private static final float DEFAULT_CLEAR_BLUE = 0.18f;
@@ -62,11 +62,13 @@ public final class Scene implements IScene {
 
     @Override
     public void addGameObject(GameObject gameObject) {
+        MainThread.require("Scene.addGameObject");
         pendingAdditions.add(gameObject);
     }
 
     @Override
     public void removeGameObject(GameObject gameObject) {
+        MainThread.require("Scene.removeGameObject");
         pendingRemovals.add(gameObject);
     }
 

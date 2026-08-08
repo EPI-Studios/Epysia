@@ -1,6 +1,9 @@
 package fr.epistudio.epysia.window;
 
 import fr.epistudio.epysia.exceptions.EpysiaException;
+
+import java.nio.file.Path;
+import java.util.Optional;
 import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MouseButton;
 import fr.epistudio.epysia.input.MutableInputState;
@@ -63,9 +66,9 @@ import static org.lwjgl.glfw.GLFW.glfwSwapInterval;
 import static org.lwjgl.glfw.GLFW.glfwTerminate;
 import static org.lwjgl.glfw.GLFW.glfwWindowHint;
 import static org.lwjgl.glfw.GLFW.glfwWindowShouldClose;
+import org.lwjgl.glfw.GLFW;
 
 public final class Window implements RenderSurface {
-
     private static final String NATIVE_WAYLAND_PROPERTY = "epysia.window.nativeWayland";
     private static final String WIDTH_PROPERTY = "epysia.window.width";
     private static final String HEIGHT_PROPERTY = "epysia.window.height";
@@ -78,6 +81,8 @@ public final class Window implements RenderSurface {
     private int framebufferHeight;
     private boolean vsyncEnabled = Boolean.parseBoolean(System.getProperty("epysia.vsync", "true"));
     private boolean framebufferResized;
+    private boolean headless;
+    private volatile boolean stopRequested;
     private MutableInputState attachedInput;
     private GLFWCharCallback charCallback;
     private GLFWKeyCallback keyCallback;
@@ -87,10 +92,28 @@ public final class Window implements RenderSurface {
     private GLFWFramebufferSizeCallback framebufferSizeCallback;
     private GLFWWindowSizeCallback windowSizeCallback;
 
+    private static Optional<Path> iconFile = Optional.empty();
+
+    public static void setIconFile(Path file) {
+        iconFile = Optional.ofNullable(file);
+    }
+
     public Window(String title, int width, int height) {
         this.title = title;
         this.width = Integer.getInteger(WIDTH_PROPERTY, width);
         this.height = Integer.getInteger(HEIGHT_PROPERTY, height);
+    }
+
+    public static Window headless(String title, int width, int height) {
+        Window window = new Window(title, width, height);
+        window.headless = true;
+        window.framebufferWidth = window.width;
+        window.framebufferHeight = window.height;
+        return window;
+    }
+
+    public boolean isHeadless() {
+        return headless;
     }
 
     public static boolean offscreenRequested() {
@@ -99,6 +122,9 @@ public final class Window implements RenderSurface {
     }
 
     public void open() {
+        if (headless) {
+            return;
+        }
         applyPlatformHint();
         if (!glfwInit()) {
             glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
@@ -113,7 +139,8 @@ public final class Window implements RenderSurface {
             glfwTerminate();
             throw new EpysiaException("GLFW failed to create a window.");
         }
-        WindowIcon.applyDefault(handle);
+        iconFile.ifPresentOrElse(file -> WindowIcon.applyFromFile(handle, file),
+                () -> WindowIcon.applyDefault(handle));
         glfwMakeContextCurrent(handle);
         glfwSwapInterval(vsyncEnabled && !offscreenRequested() ? 1 : 0);
         if (!offscreenRequested()) {
@@ -157,6 +184,9 @@ public final class Window implements RenderSurface {
     }
 
     public void attachInput(MutableInputState input) {
+        if (headless) {
+            return;
+        }
         attachedInput = input;
         keyCallback = GLFWKeyCallback.create((window, glfwKey, scancode, action, mods) ->
                 KeyCode.fromGlfw(glfwKey).ifPresent(key -> forwardKey(input, key, action, mods)));
@@ -260,22 +290,32 @@ public final class Window implements RenderSurface {
     }
 
     public boolean shouldClose() {
-        return glfwWindowShouldClose(handle);
+        return headless ? stopRequested : glfwWindowShouldClose(handle);
     }
 
     public void requestClose() {
-        org.lwjgl.glfw.GLFW.glfwSetWindowShouldClose(handle, true);
+        stopRequested = true;
+        if (!headless) {
+            GLFW.glfwSetWindowShouldClose(handle, true);
+        }
     }
 
     public void pollEvents() {
-        glfwPollEvents();
+        if (!headless) {
+            glfwPollEvents();
+        }
     }
 
     public void swapBuffers() {
-        glfwSwapBuffers(handle);
+        if (!headless) {
+            glfwSwapBuffers(handle);
+        }
     }
 
     public void close() {
+        if (headless) {
+            return;
+        }
         freeCallbacks();
         if (handle != 0L) {
             glfwDestroyWindow(handle);

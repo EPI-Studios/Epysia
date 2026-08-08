@@ -10,6 +10,9 @@ import org.joml.Vector3f;
 import fr.epistudio.epysia.render.shader.ShaderUniformValues;
 import org.joml.Vector4f;
 
+import fr.epistudio.epysia.EngineServices;
+import fr.epistudio.epysia.components.EditorAction;
+import java.lang.reflect.Method;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -18,7 +21,6 @@ import java.util.List;
 import java.util.Optional;
 
 public final class Reflection {
-
     private Reflection() {
     }
 
@@ -41,6 +43,33 @@ public final class Reflection {
             currentClass = currentClass.getSuperclass();
         }
         return properties;
+    }
+
+    public static List<ComponentAction> actionsOf(Object owner) {
+        List<ComponentAction> actions = new ArrayList<>();
+        Class<?> currentClass = owner.getClass();
+        while (currentClass != null && currentClass != Object.class) {
+            for (Method method : currentClass.getDeclaredMethods()) {
+                EditorAction annotation = method.getAnnotation(EditorAction.class);
+                if (annotation != null && acceptsAction(method)) {
+                    actions.add(new ComponentAction(labelOf(annotation, method), annotation.tooltip(), method));
+                }
+            }
+            currentClass = currentClass.getSuperclass();
+        }
+        return actions;
+    }
+
+    private static boolean acceptsAction(Method method) {
+        if (method.getParameterCount() == 0) {
+            return true;
+        }
+        return method.getParameterCount() == 1
+                && method.getParameterTypes()[0] == EngineServices.class;
+    }
+
+    private static String labelOf(EditorAction annotation, Method method) {
+        return annotation.label().isBlank() ? method.getName() : annotation.label();
     }
 
     private static ExportedProperty.Kind classifyField(Field field) {
@@ -69,6 +98,10 @@ public final class Reflection {
         } catch (NoSuchMethodException absent) {
             return false;
         }
+    }
+
+    public static ExportedProperty.Kind kindOf(Class<?> type) {
+        return classifyKind(type);
     }
 
     private static ExportedProperty.Kind classifyKind(Class<?> type) {

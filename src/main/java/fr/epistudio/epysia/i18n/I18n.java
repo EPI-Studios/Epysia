@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.ResourceBundle;
 
 public final class I18n {
+    public static final String IDENTIFIER_SEPARATOR = "###";
 
     private static final String BUNDLE_BASE_NAME = "i18n.messages";
 
@@ -157,7 +158,7 @@ public final class I18n {
         }
 
         return translate(key, arguments)
-                + "###"
+                + IDENTIFIER_SEPARATOR
                 + stableId;
     }
 
@@ -206,7 +207,6 @@ public final class I18n {
             Locale locale,
             Map<String, String> translations
     ) {
-
         private TranslationState {
             Objects.requireNonNull(
                     language,

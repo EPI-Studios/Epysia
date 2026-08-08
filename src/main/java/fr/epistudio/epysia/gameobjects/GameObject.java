@@ -15,7 +15,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 public final class GameObject implements IGameObject {
-
     private static final Runnable NO_LISTENER = () -> {
     };
 
@@ -23,6 +22,7 @@ public final class GameObject implements IGameObject {
     private String name;
     private String tag = "";
     private boolean active = true;
+    private boolean persistent = true;
     private final Map<Class<?>, IComponent> componentsByType = new HashMap<>();
     private Transform3D cachedTransform3D;
     private final List<IComponent> attachedComponents = new ArrayList<>();
@@ -67,6 +67,15 @@ public final class GameObject implements IGameObject {
         return active;
     }
 
+    public boolean persistent() {
+        return persistent;
+    }
+
+    public GameObject setPersistent(boolean value) {
+        this.persistent = value;
+        return this;
+    }
+
     public GameObject setActive(boolean active) {
         this.active = active;
         return this;
@@ -92,6 +101,41 @@ public final class GameObject implements IGameObject {
 
     public Transform3D transform3DOrNull() {
         return cachedTransform3D;
+    }
+
+    public boolean setParent(GameObject parent) {
+        if (cachedTransform3D == null || parent.cachedTransform3D == null) {
+            return false;
+        }
+        return cachedTransform3D.setParent(parent.cachedTransform3D);
+    }
+
+    public boolean addChild(GameObject child) {
+        return child.setParent(this);
+    }
+
+    public void detachFromParent() {
+        if (cachedTransform3D != null) {
+            cachedTransform3D.detachFromParent();
+        }
+    }
+
+    public Optional<GameObject> parent() {
+        if (cachedTransform3D == null) {
+            return Optional.empty();
+        }
+        return cachedTransform3D.parent().flatMap(Transform3D::owner);
+    }
+
+    public List<GameObject> children() {
+        if (cachedTransform3D == null) {
+            return List.of();
+        }
+        List<GameObject> found = new ArrayList<>();
+        for (Transform3D child : cachedTransform3D.children()) {
+            child.owner().ifPresent(found::add);
+        }
+        return List.copyOf(found);
     }
 
     @Override

@@ -27,6 +27,9 @@ import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.render.sprite.SpriteRenderSystem;
 import fr.epistudio.epysia.render.sprite.TilemapRenderSystem;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
+import fr.epistudio.epysia.ui.UiInputSystem;
+import fr.epistudio.epysia.ui.UiRenderSystem;
+import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.runtime.RuntimeCommand;
 import fr.epistudio.epysia.scene.Scene;
@@ -42,7 +45,6 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 
 public final class StandaloneRunner {
-
     private static final long PROFILE_REPORT_INTERVAL_NANOS = 1_000_000_000L;
     private static final double NANOS_PER_MILLI = 1_000_000.0;
     private static double fixedTimestepSeconds = 1.0 / 60.0;
@@ -101,10 +103,13 @@ public final class StandaloneRunner {
         VfxRenderSystem vfxRenderSystem = new VfxRenderSystem(shaderLoader, meshRenderSystem, engine.logger());
         vfxRenderSystem.useProject(() -> engine.assets().locator());
         engine.addRenderSystem(vfxRenderSystem);
+        engine.addRenderSystem(new VolumetricRenderSystem(shaderLoader, window, engine.logger()));
         SpriteRenderSystem spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(new TilemapRenderSystem(spriteRenderSystem, engine.logger()));
         engine.addRenderSystem(new TextRenderSystem(shaderLoader, window, engine, engine.logger()));
+        engine.addRenderSystem(new UiRenderSystem(shaderLoader, window, engine));
+        engine.addSystem(new UiInputSystem());
         window.open();
         MutableInputState inputState = new MutableInputState();
         window.attachInput(inputState);

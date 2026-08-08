@@ -6,7 +6,6 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import java.util.Optional;
 
 public interface IComponent {
-
     void attachTo(GameObject gameObject);
 
     Optional<GameObject> owner();
@@ -19,6 +18,12 @@ public interface IComponent {
     }
 
     default void copyStateFrom(IComponent source) {
+    }
+
+    default void onReplicatedStateCapture() {
+    }
+
+    default void onReplicatedStateApplied() {
     }
 
     default void onPlayStart(EngineServices services) {

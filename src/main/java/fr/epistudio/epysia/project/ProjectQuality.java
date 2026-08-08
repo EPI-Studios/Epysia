@@ -5,8 +5,9 @@ public record ProjectQuality(float gravityX, float gravityY, float gravityZ,
                              String windowTitle, int windowWidth, int windowHeight,
                              boolean verticalSync, int maximumFrameRate,
                              boolean nearestTextureFilter, boolean depthPrepass,
-                             int shadowFilterSamples, int filteredCascades) {
-
+                             int shadowFilterSamples, int filteredCascades,
+                             int shadowDepthSteps,
+                             RenderTuning renderTuning) {
     public static final int MIN_FIXED_TIMESTEP_HERTZ = 10;
     public static final int MAX_FIXED_TIMESTEP_HERTZ = 480;
     public static final int MIN_SHADOW_MAP_SIZE = 256;
@@ -16,6 +17,8 @@ public record ProjectQuality(float gravityX, float gravityY, float gravityZ,
     public static final int MIN_WINDOW_SIZE = 160;
     public static final int MAX_WINDOW_SIZE = 16384;
     public static final int MAX_FRAME_RATE_LIMIT = 1000;
+    public static final int MIN_SHADOW_DEPTH_STEPS = 8;
+    public static final int MAX_SHADOW_DEPTH_STEPS = 4096;
 
     private static final float DEFAULT_GRAVITY_Y = -9.81f;
     private static final int DEFAULT_FIXED_TIMESTEP_HERTZ = 60;
@@ -24,11 +27,13 @@ public record ProjectQuality(float gravityX, float gravityY, float gravityZ,
     private static final String DEFAULT_WINDOW_TITLE = "Epysia - Game";
     private static final int DEFAULT_WINDOW_WIDTH = 1280;
     private static final int DEFAULT_WINDOW_HEIGHT = 720;
+    private static final int DEFAULT_SHADOW_DEPTH_STEPS = 64;
 
     public static ProjectQuality defaults() {
         return new ProjectQuality(0.0f, DEFAULT_GRAVITY_Y, 0.0f, DEFAULT_FIXED_TIMESTEP_HERTZ,
                 DEFAULT_SHADOW_MAP_SIZE, DEFAULT_CASCADE_COUNT, DEFAULT_WINDOW_TITLE,
-                DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, true, 0, false, false, 4, 2);
+                DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, true, 0, false, false, 4, 2,
+                DEFAULT_SHADOW_DEPTH_STEPS, RenderTuning.defaults());
     }
 
     public ProjectQuality clamped() {
@@ -41,7 +46,9 @@ public record ProjectQuality(float gravityX, float gravityY, float gravityZ,
                 clampInt(windowHeight, MIN_WINDOW_SIZE, MAX_WINDOW_SIZE),
                 verticalSync, clampInt(maximumFrameRate, 0, MAX_FRAME_RATE_LIMIT),
                 nearestTextureFilter, depthPrepass,
-                clampInt(shadowFilterSamples, 1, 32), clampInt(filteredCascades, 0, MAX_CASCADE_COUNT));
+                clampInt(shadowFilterSamples, 1, 32), clampInt(filteredCascades, 0, MAX_CASCADE_COUNT),
+                nextPowerOfTwo(clampInt(shadowDepthSteps, MIN_SHADOW_DEPTH_STEPS, MAX_SHADOW_DEPTH_STEPS)),
+                renderTuning == null ? RenderTuning.defaults() : renderTuning);
     }
 
     public float fixedTimestepSeconds() {

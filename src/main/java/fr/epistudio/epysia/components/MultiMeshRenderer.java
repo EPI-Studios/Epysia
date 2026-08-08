@@ -11,6 +11,8 @@ import org.joml.Matrix4f;
 
 import java.util.List;
 import java.util.Optional;
+import fr.epistudio.epysia.render.material.LitMaterial;
+import fr.epistudio.epysia.render.texture.Texture2D;
 
 @EpysiaComponent(name = "Multi Mesh Renderer", category = "Rendering")
 public final class MultiMeshRenderer extends Component implements MeshRenderSource {
@@ -199,8 +201,8 @@ public final class MultiMeshRenderer extends Component implements MeshRenderSour
 
     private void attachDefaultMaterial(EngineServices services) {
         try {
-            material.setDirect(new fr.epistudio.epysia.render.material.LitMaterial()
-                    .setAlbedo(fr.epistudio.epysia.render.texture.Texture2D
+            material.setDirect(new LitMaterial()
+                    .setAlbedo(Texture2D
                             .whitePixel(services.renderBackend()))
                     .setBaseColor(0.85f, 0.85f, 0.95f));
         } catch (RuntimeException error) {

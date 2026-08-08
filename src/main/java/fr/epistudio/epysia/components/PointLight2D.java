@@ -8,7 +8,6 @@ import java.util.Optional;
 @EpysiaComponent(name = "Point Light 2D", category = "Rendering")
 @RequiresComponent(Transform2D.class)
 public final class PointLight2D extends Light2D {
-
     @Export(label = "Range", min = 0.0f, max = 500.0f, step = 0.1f)
     private float range = 5.0f;
     @Export(label = "Inner Radius", min = 0.0f, max = 500.0f, step = 0.1f)
@@ -46,6 +45,6 @@ public final class PointLight2D extends Light2D {
     public Optional<Vector2f> position() {
         return owner()
                 .map(gameObject -> gameObject.getComponentOrNull(Transform2D.class))
-                .map(Transform2D::position);
+                .map(transform -> transform.worldPosition(new Vector2f()));
     }
 }

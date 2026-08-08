@@ -13,7 +13,6 @@ import java.util.Optional;
 
 @EpysiaComponent(name = "Transform 3D", category = "Core")
 public final class Transform3D extends Component {
-
     @Export(label = "Position")
     private final Vector3f position = new Vector3f();
     @Export(label = "Rotation")
@@ -31,8 +30,6 @@ public final class Transform3D extends Component {
     private final Matrix4f blendedWorldMatrix = new Matrix4f();
     private final List<Transform3D> children = new ArrayList<>();
     private Transform3D parent;
-    @Export(label = "Render Layer", step = 1.0f)
-    private int renderLayer;
     @Export(label = "Visible")
     private boolean visible = true;
     private boolean localDirty = true;
@@ -105,6 +102,11 @@ public final class Transform3D extends Component {
         return this;
     }
 
+    @Override
+    public void onReplicatedStateApplied() {
+        markDirty();
+    }
+
     public void markDirty() {
         localDirty = true;
         markWorldDirty();
@@ -130,15 +132,6 @@ public final class Transform3D extends Component {
 
     public Transform3D setUniformScale(float value) {
         return setScale(value, value, value);
-    }
-
-    public int renderLayer() {
-        return renderLayer;
-    }
-
-    public Transform3D setRenderLayer(int renderLayer) {
-        this.renderLayer = renderLayer;
-        return this;
     }
 
     public boolean visible() {

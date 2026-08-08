@@ -14,13 +14,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class ProjectStore {
-
     private List<InputAction> pendingInputActions;
 
-    private static final java.util.Set<String> MARKER_KEYS =
-            java.util.Set.of("name", "engineVersion", "layerNames", "collisionMatrix", "quality", "inputActions");
+    private static final Set<String> MARKER_KEYS =
+            Set.of("name", "engineVersion", "layerNames", "collisionMatrix", "quality", "inputActions");
 
     public static final String CURRENT_ENGINE_VERSION = "0.1";
     private static final String RECENTS_FILENAME = "recents.json";
@@ -228,8 +228,24 @@ public final class ProjectStore {
                 .key("maximumFrameRate").valueNumber(quality.maximumFrameRate())
                 .key("nearestTextureFilter").valueBoolean(quality.nearestTextureFilter())
                 .key("depthPrepass").valueBoolean(quality.depthPrepass())
+                .key("gpuCulling").valueBoolean(quality.renderTuning().gpuCulling())
+                .key("sceneIndex").valueBoolean(quality.renderTuning().sceneIndex())
+                .key("multiDraw").valueBoolean(quality.renderTuning().multiDraw())
+                .key("instancing").valueBoolean(quality.renderTuning().instancing())
+                .key("pipelineMemo").valueBoolean(quality.renderTuning().pipelineMemo())
+                .key("cachedTransformLookup").valueBoolean(quality.renderTuning().cachedTransformLookup())
+                .key("sharedMaterialDigest").valueBoolean(quality.renderTuning().sharedMaterialDigest())
+                .key("skinOnce").valueBoolean(quality.renderTuning().skinOnce())
+                .key("animationCulling").valueBoolean(quality.renderTuning().animationCulling())
+                .key("animationFullRateDistance").valueNumber(quality.renderTuning().animationFullRateDistance())
+                .key("frontToBackOpaque").valueBoolean(quality.renderTuning().frontToBackOpaque())
+                .key("shadowLayerReuse").valueBoolean(quality.renderTuning().shadowLayerReuse())
+                .key("ringInstanceBuffers").valueBoolean(quality.renderTuning().ringInstanceBuffers())
+                .key("ringObjectUniforms").valueBoolean(quality.renderTuning().ringObjectUniforms())
+                .key("parallelAnimation").valueBoolean(quality.renderTuning().parallelAnimation())
                 .key("shadowFilterSamples").valueNumber(quality.shadowFilterSamples())
                 .key("filteredCascades").valueNumber(quality.filteredCascades())
+                .key("shadowDepthSteps").valueNumber(quality.shadowDepthSteps())
                 .endObject();
     }
 
@@ -277,7 +293,36 @@ public final class ProjectStore {
                 quality.get("depthPrepass") instanceof Boolean prepass
                         ? prepass : defaults.depthPrepass(),
                 intMember(quality, "shadowFilterSamples", defaults.shadowFilterSamples()),
-                intMember(quality, "filteredCascades", defaults.filteredCascades())).clamped();
+                intMember(quality, "filteredCascades", defaults.filteredCascades()),
+                intMember(quality, "shadowDepthSteps", defaults.shadowDepthSteps()),
+                readRenderTuning(quality, defaults.renderTuning())).clamped();
+    }
+
+    private static RenderTuning readRenderTuning(Map<?, ?> quality, RenderTuning defaults) {
+        return new RenderTuning(
+                booleanMember(quality, "gpuCulling", defaults.gpuCulling()),
+                booleanMember(quality, "sceneIndex", defaults.sceneIndex()),
+                booleanMember(quality, "multiDraw", defaults.multiDraw()),
+                booleanMember(quality, "instancing", defaults.instancing()),
+                booleanMember(quality, "pipelineMemo", defaults.pipelineMemo()),
+                booleanMember(quality, "cachedTransformLookup", defaults.cachedTransformLookup()),
+                booleanMember(quality, "sharedMaterialDigest", defaults.sharedMaterialDigest()),
+                booleanMember(quality, "skinOnce", defaults.skinOnce()),
+                booleanMember(quality, "animationCulling", defaults.animationCulling()),
+                floatMember(quality, "animationFullRateDistance", defaults.animationFullRateDistance()),
+                booleanMember(quality, "frontToBackOpaque", defaults.frontToBackOpaque()),
+                booleanMember(quality, "shadowLayerReuse", defaults.shadowLayerReuse()),
+                booleanMember(quality, "ringInstanceBuffers", defaults.ringInstanceBuffers()),
+                booleanMember(quality, "ringObjectUniforms", defaults.ringObjectUniforms()),
+                booleanMember(quality, "parallelAnimation", defaults.parallelAnimation()));
+    }
+
+    private static float floatMember(Map<?, ?> source, String key, float fallback) {
+        return source.get(key) instanceof Number value ? value.floatValue() : fallback;
+    }
+
+    private static boolean booleanMember(Map<?, ?> source, String key, boolean fallback) {
+        return source.get(key) instanceof Boolean value ? value : fallback;
     }
 
     public void writeQuality(Project project, ProjectQuality quality) throws IOException {

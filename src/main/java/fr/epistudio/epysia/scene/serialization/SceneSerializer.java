@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 public final class SceneSerializer {
-
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMembers(Map<?, ?> members) {
         return (Map<String, Object>) members;
@@ -30,7 +29,7 @@ public final class SceneSerializer {
     }
 
     public void save(Scene scene, Path path) throws IOException {
-        save(scene, path, gameObject -> true);
+        save(scene, path, GameObject::persistent);
     }
 
     public void save(Scene scene, Path path, Predicate<GameObject> include) throws IOException {
@@ -40,7 +39,7 @@ public final class SceneSerializer {
     public String serialize(Scene scene, Predicate<GameObject> include) {
         List<GameObject> exported = new ArrayList<>();
         for (GameObject gameObject : scene.gameObjects()) {
-            if (include.test(gameObject)) {
+            if (gameObject.persistent() && include.test(gameObject)) {
                 exported.add(gameObject);
             }
         }

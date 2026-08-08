@@ -9,6 +9,7 @@ import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.prefab.PrefabInstantiator;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.reflection.ComponentScanner;
 import org.joml.Vector2f;
 
 import java.io.IOException;
@@ -18,7 +19,6 @@ import java.util.Optional;
 @EpysiaComponent(name = "Tilemap Scene Spawner", category = "2D")
 @RequiresComponent(Transform2D.class)
 public final class TilemapSceneSpawner extends Component {
-
     @Export(label = "Tilemap")
     private final AssetRef<SpriteTilemap> tilemap = new AssetRef<>(SpriteTilemap.class);
 
@@ -58,10 +58,16 @@ public final class TilemapSceneSpawner extends Component {
         if (map.scenesByTile().isEmpty()) {
             return;
         }
-        PrefabInstantiator instantiator = new PrefabInstantiator(new ComponentRegistry());
+        PrefabInstantiator instantiator = createInstantiator();
         for (int layerIndex = 0; layerIndex < map.layerCount(); layerIndex++) {
             spawnLayer(services, map, instantiator, layerIndex);
         }
+    }
+
+    private PrefabInstantiator createInstantiator() {
+        ComponentRegistry registry = new ComponentRegistry();
+        registry.populateFromScan(ComponentScanner.scan());
+        return new PrefabInstantiator(registry);
     }
 
     private void spawnLayer(EngineServices services, SpriteTilemap map,

@@ -7,15 +7,10 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Stream;
 
 public final class AssetDatabase {
-
     private static final String INDEX_DIRECTORY = ".epysia";
     private static final String INDEX_FILE = "assets.json";
 
@@ -38,6 +33,12 @@ public final class AssetDatabase {
 
     public Optional<String> pathForGuid(String guid) {
         return Optional.ofNullable(pathByGuid.get(guid));
+    }
+
+    public List<String> paths() {
+        List<String> sorted = new ArrayList<>(guidByPath.keySet());
+        sorted.sort(String::compareTo);
+        return sorted;
     }
 
     public Optional<String> guidForPath(String path) {

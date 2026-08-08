@@ -7,6 +7,7 @@ import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.render.material.Material;
 import fr.epistudio.epysia.render.material.MaterialFields;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.ComponentException;
 import fr.epistudio.epysia.exceptions.EpysiaException;
@@ -26,7 +27,6 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 public final class GameObjectJsonCodec {
-
     public enum IdentityPolicy {
         PRESERVE_IDS,
         FRESH_IDS
@@ -76,6 +76,12 @@ public final class GameObjectJsonCodec {
     }
 
     private static int resolveParentIndex(GameObject gameObject, Map<GameObject, Integer> indexByGameObject) {
+        Optional<GameObject> planarParent = gameObject.getComponent(Transform2D.class)
+                .flatMap(Transform2D::parent)
+                .flatMap(Transform2D::owner);
+        if (planarParent.isPresent()) {
+            return indexByGameObject.getOrDefault(planarParent.get(), -1);
+        }
         return gameObject.getComponent(Transform3D.class)
                 .flatMap(Transform3D::parent)
                 .flatMap(Transform3D::owner)
@@ -197,7 +203,6 @@ public final class GameObjectJsonCodec {
     }
 
     private final class GraphReader implements ComponentFieldsCodec.ReferenceSink {
-
         private record PendingIndexReference(ExportedProperty property, int index) {
         }
 
@@ -397,6 +402,11 @@ public final class GameObjectJsonCodec {
             Optional<Transform3D> parentTransform = parentObject.getComponent(Transform3D.class);
             if (childTransform.isPresent() && parentTransform.isPresent()) {
                 childTransform.get().setParent(parentTransform.get());
+            }
+            Optional<Transform2D> childPlanar = childObject.getComponent(Transform2D.class);
+            Optional<Transform2D> parentPlanar = parentObject.getComponent(Transform2D.class);
+            if (childPlanar.isPresent() && parentPlanar.isPresent()) {
+                childPlanar.get().setParent(parentPlanar.get());
             }
         }
 

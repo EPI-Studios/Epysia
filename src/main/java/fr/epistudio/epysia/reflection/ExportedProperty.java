@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Optional;
 
 public final class ExportedProperty {
-
     public enum Kind {
         FLOAT,
         INT,
@@ -111,6 +110,10 @@ public final class ExportedProperty {
         } catch (IllegalAccessException exception) {
             throw new RuntimeException("Cannot write object " + field.getName(), exception);
         }
+    }
+
+    public Object owner() {
+        return owner;
     }
 
     public String fieldName() {

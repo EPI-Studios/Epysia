@@ -8,7 +8,6 @@ import java.util.Optional;
 @EpysiaComponent(name = "Spot Light 2D", category = "Rendering")
 @RequiresComponent(Transform2D.class)
 public final class SpotLight2D extends Light2D {
-
     @Export(label = "Range", min = 0.0f, max = 500.0f, step = 0.1f)
     private float range = 8.0f;
     @Export(label = "Inner Angle", min = 0.0f, max = 360.0f, step = 1.0f)
@@ -59,12 +58,12 @@ public final class SpotLight2D extends Light2D {
     }
 
     public Optional<Vector2f> position() {
-        return transform().map(Transform2D::position);
+        return transform().map(transform -> transform.worldPosition(new Vector2f()));
     }
 
     public Optional<Vector2f> direction() {
         return transform().map(transform -> new Vector2f(
-                (float) Math.cos(transform.rotationRadians()),
-                (float) Math.sin(transform.rotationRadians())));
+                (float) Math.cos(transform.worldRotationRadians()),
+                (float) Math.sin(transform.worldRotationRadians())));
     }
 }

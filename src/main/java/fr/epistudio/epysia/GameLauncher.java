@@ -8,7 +8,9 @@ import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.gpu.GpuPreference;
 import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.logging.Logger;
+import fr.epistudio.epysia.net.session.NetworkConfig;
 import fr.epistudio.epysia.physics.PhysicsSystem;
+import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.physics.api.CollisionLayers;
 import fr.epistudio.epysia.project.EditorSettings;
 import fr.epistudio.epysia.project.Project;
@@ -28,16 +30,15 @@ import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.scripting.compile.ScriptLoadResult;
 import fr.epistudio.epysia.scripting.compile.ScriptModule;
+import fr.epistudio.epysia.window.Window;
 
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.Optional;
 
 public final class GameLauncher {
-
-    private static final String DEFAULT_TITLE = "Epysia - Game";
-    private static final int DEFAULT_WIDTH = 1280;
-    private static final int DEFAULT_HEIGHT = 720;
+    /// One source of truth: the same defaults the project file falls back to when a key is absent.
+    private static final ProjectQuality DEFAULT_QUALITY = ProjectQuality.defaults();
 
     private GameLauncher() {
     }
@@ -48,17 +49,23 @@ public final class GameLauncher {
         Optional<Path> projectRoot = parseOptionalPath(args, "--project");
         projectRoot.ifPresent(GameLauncher::applyProjectQuality);
         Optional<Path> precompiledScripts = parseOptionalPath(args, "--precompiled-scripts");
-        String title = parseStringOr(args, "--title", DEFAULT_TITLE);
-        int width = parseIntOr(args, "--width", DEFAULT_WIDTH);
-        int height = parseIntOr(args, "--height", DEFAULT_HEIGHT);
+        String title = parseStringOr(args, "--title", DEFAULT_QUALITY.windowTitle());
+        parseOptionalPath(args, "--icon").ifPresent(Window::setIconFile);
+        int width = parseIntOr(args, "--width", DEFAULT_QUALITY.windowWidth());
+        int height = parseIntOr(args, "--height", DEFAULT_QUALITY.windowHeight());
         System.setProperty("epysia.vsync", parseStringOr(args, "--vsync", "true"));
         StandaloneRunner.setMaximumFrameRate(parseIntOr(args, "--max-fps", 0));
         boolean stdioChannel = hasFlag(args, "--runtime-channel=stdio");
         RuntimeChannel channel = stdioChannel ? new StdioRuntimeChannel() : new NullRuntimeChannel();
         Logger localFallback = new ConsoleLogger(System.err);
         Logger logger = stdioChannel ? new ChannelLogger(channel, localFallback) : localFallback;
-        channel.send(new RuntimeEvent.Ready(title, width, height));
-        StandaloneRunner.runStandalone(title, width, height, (engine, services) -> {
+        boolean serverMode = hasFlag(args, "--server");
+        boolean listenServerMode = hasFlag(args, "--listen-server");
+        String connectHost = parseStringOr(args, "--connect", "");
+        int port = parseIntOr(args, "--port", NetworkConfig.DEFAULT_PORT);
+        String metricsHost = parseStringOr(args, "--metrics-host", "127.0.0.1");
+        int metricsPort = parseIntOr(args, "--metrics-port", 0);
+        StandaloneRunner.ScenePopulator populator = (engine, services) -> {
             engine.setLogger(logger);
             engine.setRuntimeChannel(channel);
             ComponentRegistry registry = new ComponentRegistry();
@@ -69,18 +76,65 @@ public final class GameLauncher {
                     logger.info("[scripts] " + message);
                 }
                 registry.setUserComponents(scripts.components());
-                runRenderSetups(scripts, services, logger);
+                if (!serverMode) {
+                    runRenderSetups(scripts, services, logger);
+                }
             });
             projectRoot.ifPresent(root -> attachAssetDatabase(services, root, logger));
             SceneSerializer serializer = new SceneSerializer(registry);
             serializer.load(services.scene(), scenePath, services);
-            ensureCameraExists(services.scene());
-            projectRoot.ifPresent(root -> applyCollisionLayers(engine, services, root, logger));
+            if (!serverMode) {
+                ensureCameraExists(services.scene());
+            }
+            projectRoot.ifPresent(root -> applyProjectSettings(engine, services, root, logger, serverMode));
             logger.info("Loaded scene " + scenePath
                     + (projectRoot.isPresent() ? " (project " + projectRoot.get() + ")" : ""));
-        });
+            startNetworking(services, logger, new NetworkStartup(serverMode, listenServerMode,
+                    connectHost, port, metricsHost, metricsPort));
+        };
+        if (serverMode) {
+            logger.info("[server] starting a dedicated server on port " + port);
+            HeadlessRunner.run(populator);
+        } else {
+            channel.send(new RuntimeEvent.Ready(title, width, height));
+            StandaloneRunner.runStandalone(title, width, height, populator);
+        }
         channel.send(new RuntimeEvent.Stopped("normal"));
         channel.close();
+    }
+
+    private record NetworkStartup(boolean dedicatedServer, boolean listenServer,
+                                  String connectHost, int port, String metricsHost, int metricsPort) {
+        private boolean requested() {
+            return dedicatedServer || listenServer || !connectHost.isEmpty();
+        }
+    }
+
+    private static void startDiagnosticsIfRequested(EngineServices services, NetworkStartup startup) {
+        if (startup.metricsPort() <= 0) {
+            return;
+        }
+        services.network().startDiagnostics(startup.metricsHost(), startup.metricsPort());
+    }
+
+    private static void startNetworking(EngineServices services, Logger logger, NetworkStartup startup) {
+        if (!startup.requested()) {
+            return;
+        }
+        NetworkConfig config = new NetworkConfig().setPort(startup.port());
+        if (startup.dedicatedServer()) {
+            services.network().startServer(config);
+            logger.info("[server] listening on port " + startup.port());
+            startDiagnosticsIfRequested(services, startup);
+            return;
+        }
+        if (startup.listenServer()) {
+            services.network().startListenServer(config);
+            logger.info("[net] hosting a listen server on port " + startup.port());
+            return;
+        }
+        services.network().connect(config, startup.connectHost(), startup.port());
+        logger.info("[net] connecting to " + startup.connectHost() + ":" + startup.port());
     }
 
     private static void runRenderSetups(ScriptLoadResult scripts, EngineServices services, Logger logger) {
@@ -112,8 +166,8 @@ public final class GameLauncher {
         }
     }
 
-    private static void applyCollisionLayers(EpysiaEngine engine, EngineServices services,
-                                             Path projectRoot, Logger logger) {
+    private static void applyProjectSettings(EpysiaEngine engine, EngineServices services,
+                                             Path projectRoot, Logger logger, boolean serverMode) {
         ProjectStore store = new ProjectStore();
         store.readProjectFromDisk(projectRoot, 0L).ifPresent(project -> {
             EditorSettings settings = store.readSettings(project);
@@ -121,8 +175,14 @@ public final class GameLauncher {
             engine.gameSystem(PhysicsSystem.class).ifPresent(physics -> {
                 physics.setCollisionLayers(CollisionLayers.from(settings.collisionMatrix()));
                 physics.setGravity(quality.gravityX(), quality.gravityY(), quality.gravityZ());
-                logger.info("[physics] applied collision layer matrix and gravity");
+                physics.setFixedTimestepHertz(quality.fixedTimestepHertz());
+                logger.info("[physics] applied collision layers, gravity and fixed timestep");
             });
+            if (!serverMode) {
+                MeshRenderSystem meshes = engine.renderSystem(MeshRenderSystem.class);
+                meshes.applyTuning(quality.renderTuning());
+                meshes.setDepthPrepassEnabled(quality.depthPrepass());
+            }
             services.inputActions().replaceAll(store.readInputActions(project));
         });
     }
@@ -132,6 +192,7 @@ public final class GameLauncher {
         store.readProjectFromDisk(projectRoot, 0L).ifPresent(project -> {
             ProjectQuality quality = store.readQuality(project);
             StandaloneRunner.setFixedTimestepSeconds(quality.fixedTimestepSeconds());
+            HeadlessRunner.setFixedTimestepSeconds(quality.fixedTimestepSeconds());
             ProjectQualityProperties.apply(quality);
         });
     }

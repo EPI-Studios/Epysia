@@ -2,6 +2,9 @@ package fr.epistudio.epysia.components;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.animation.AnimationLayer;
+import fr.epistudio.epysia.animation.BlendSample;
+import fr.epistudio.epysia.animation.BlendSpaceShape;
+import fr.epistudio.epysia.animation.BlendSpaceWeights;
 import fr.epistudio.epysia.animation.Clip;
 
 import java.util.ArrayList;
@@ -11,7 +14,6 @@ import java.util.Optional;
 
 @EpysiaComponent(name = "Animator", category = "Animation")
 public final class Animator extends Component {
-
     @Export(label = "Clip")
     private String clipPath = "";
     @Export(label = "Playing")
@@ -23,8 +25,19 @@ public final class Animator extends Component {
     @Export(label = "Layers")
     @HiddenInEditor
     private final List<AnimationLayer> layers = new ArrayList<>();
+    @Export(label = "Blend Samples")
+    @HiddenInEditor
+    private final List<BlendSample> blendSamples = new ArrayList<>();
+    @Export(label = "Blend Shape")
+    private BlendSpaceShape blendShape = BlendSpaceShape.LINE;
+    @Export(label = "Blend X", min = -64.0f, max = 64.0f, step = 0.01f)
+    private float blendPositionX;
+    @Export(label = "Blend Y", min = -64.0f, max = 64.0f, step = 0.01f)
+    private float blendPositionY;
 
     private Optional<Clip> activeClip = Optional.empty();
+    private final BlendSpaceWeights blendWeights = new BlendSpaceWeights();
+    private float blendPhase;
     private float activeTimeSeconds;
     private Optional<Clip> previousClip = Optional.empty();
     private float previousTimeSeconds;
@@ -37,6 +50,82 @@ public final class Animator extends Component {
         for (AnimationLayer layer : layers) {
             resolveLayerClip(services, layer);
         }
+        for (BlendSample sample : blendSamples) {
+            resolveSampleClip(services, sample);
+        }
+    }
+
+    private static void resolveSampleClip(EngineServices services, BlendSample sample) {
+        if (sample.clipPath().isEmpty()) {
+            return;
+        }
+        services.assets().resolve(Clip.class, sample.clipPath())
+                .ifPresent(clip -> sample.assignClip(sample.clipPath(), clip));
+    }
+
+    public List<BlendSample> blendSamples() {
+        return Collections.unmodifiableList(blendSamples);
+    }
+
+    public BlendSample addBlendSample() {
+        BlendSample sample = new BlendSample();
+        blendSamples.add(sample);
+        return sample;
+    }
+
+    public Animator removeBlendSample(int sampleIndex) {
+        if (sampleIndex >= 0 && sampleIndex < blendSamples.size()) {
+            blendSamples.remove(sampleIndex);
+        }
+        return this;
+    }
+
+    public boolean blendSpaceActive() {
+        return !blendSamples.isEmpty();
+    }
+
+    public BlendSpaceShape blendShape() {
+        return blendShape;
+    }
+
+    public Animator setBlendShape(BlendSpaceShape shape) {
+        blendShape = shape;
+        return this;
+    }
+
+    public float blendPositionX() {
+        return blendPositionX;
+    }
+
+    public Animator setBlendPositionX(float value) {
+        blendPositionX = value;
+        return this;
+    }
+
+    public float blendPositionY() {
+        return blendPositionY;
+    }
+
+    public Animator setBlendPositionY(float value) {
+        blendPositionY = value;
+        return this;
+    }
+
+    public float blendPhase() {
+        return blendPhase;
+    }
+
+    public float[] currentBlendWeights() {
+        return blendWeights.compute(blendSamples, blendShape, blendPositionX, blendPositionY);
+    }
+
+    private void advanceBlendPhase(float deltaSeconds) {
+        float duration = BlendSpaceWeights.weightedDuration(blendSamples, currentBlendWeights());
+        if (duration <= 0.0f) {
+            return;
+        }
+        blendPhase += speed * deltaSeconds / duration;
+        blendPhase -= (float) Math.floor(blendPhase);
     }
 
     private static void resolveLayerClip(EngineServices services, AnimationLayer layer) {
@@ -156,6 +245,9 @@ public final class Animator extends Component {
     public void advance(float deltaSeconds) {
         for (AnimationLayer layer : layers) {
             layer.advance(deltaSeconds);
+        }
+        if (playing && blendSpaceActive()) {
+            advanceBlendPhase(deltaSeconds);
         }
         if (!playing || activeClip.isEmpty()) {
             return;

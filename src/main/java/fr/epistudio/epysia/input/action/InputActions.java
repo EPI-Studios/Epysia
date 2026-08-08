@@ -1,55 +1,44 @@
 package fr.epistudio.epysia.input.action;
 
 import fr.epistudio.epysia.input.InputState;
-import fr.epistudio.epysia.input.KeyCode;
-import fr.epistudio.epysia.input.MouseButton;
-import fr.epistudio.epysia.input.gamepad.GamepadAxis;
-import fr.epistudio.epysia.input.gamepad.GamepadButton;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 public final class InputActions {
-
-    public static final String MOVE_FORWARD = "MoveForward";
-    public static final String MOVE_RIGHT = "MoveRight";
-    public static final String JUMP = "Jump";
-    public static final String SPRINT = "Sprint";
-    public static final String FIRE = "Fire";
-    public static final String CANCEL = "Cancel";
+    public static final String UNNAMED_ACTION = "NewAction";
 
     private final Map<String, InputAction> byName = new LinkedHashMap<>();
 
     public static InputActions defaults() {
-        InputActions actions = new InputActions();
-        actions.replaceAll(defaultActions());
-        return actions;
+        return new InputActions();
     }
 
     public static List<InputAction> defaultActions() {
-        List<InputAction> actions = new ArrayList<>();
-        actions.add(InputAction.axis(MOVE_FORWARD,
-                List.of(InputBinding.key(KeyCode.W),
-                        InputBinding.gamepadAxis(GamepadAxis.LEFT_Y, 0, true)),
-                List.of(InputBinding.key(KeyCode.S),
-                        InputBinding.gamepadAxis(GamepadAxis.LEFT_Y, 0, false))));
-        actions.add(InputAction.axis(MOVE_RIGHT,
-                List.of(InputBinding.key(KeyCode.D),
-                        InputBinding.gamepadAxis(GamepadAxis.LEFT_X, 0, false)),
-                List.of(InputBinding.key(KeyCode.A),
-                        InputBinding.gamepadAxis(GamepadAxis.LEFT_X, 0, true))));
-        actions.add(InputAction.button(JUMP, InputBinding.key(KeyCode.SPACE),
-                InputBinding.gamepadButton(GamepadButton.SOUTH)));
-        actions.add(InputAction.button(SPRINT, InputBinding.key(KeyCode.LEFT_SHIFT),
-                InputBinding.gamepadButton(GamepadButton.LEFT_THUMB)));
-        actions.add(InputAction.button(FIRE, InputBinding.mouse(MouseButton.LEFT),
-                InputBinding.gamepadAxis(GamepadAxis.RIGHT_TRIGGER)));
-        actions.add(InputAction.button(CANCEL, InputBinding.key(KeyCode.ESCAPE),
-                InputBinding.gamepadButton(GamepadButton.START)));
-        return actions;
+        return List.of();
+    }
+
+    public static String uniqueNameAmong(List<InputAction> actions, String desiredName) {
+        String trimmed = desiredName.trim();
+        String base = trimmed.isEmpty() ? UNNAMED_ACTION : trimmed;
+        String candidate = base;
+        int suffix = 2;
+        while (containsName(actions, candidate)) {
+            candidate = base + suffix;
+            suffix++;
+        }
+        return candidate;
+    }
+
+    private static boolean containsName(List<InputAction> actions, String name) {
+        for (InputAction action : actions) {
+            if (action.name().equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void replaceAll(List<InputAction> actions) {

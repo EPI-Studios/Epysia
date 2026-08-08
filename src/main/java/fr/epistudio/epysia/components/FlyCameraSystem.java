@@ -11,6 +11,7 @@ import fr.epistudio.epysia.window.CursorMode;
 import fr.epistudio.epysia.window.Window;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import fr.epistudio.epysia.EngineServices;
 
 public final class FlyCameraSystem implements GameSystem {
 
@@ -27,7 +28,7 @@ public final class FlyCameraSystem implements GameSystem {
     }
 
     @Override
-    public void initialize(fr.epistudio.epysia.EngineServices services) {
+    public void initialize(EngineServices services) {
         this.window = services.window();
     }
 

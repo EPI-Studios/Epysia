@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.io.InputStream;
 
 public final class StdioRuntimeChannel implements RuntimeChannel {
 
@@ -23,7 +24,7 @@ public final class StdioRuntimeChannel implements RuntimeChannel {
         this(System.out, System.in);
     }
 
-    public StdioRuntimeChannel(PrintStream eventStream, java.io.InputStream commandStream) {
+    public StdioRuntimeChannel(PrintStream eventStream, InputStream commandStream) {
         this.eventStream = eventStream;
         this.readerThread = new Thread(() -> readLoop(commandStream), "epysia-runtime-stdio-reader");
         readerThread.setDaemon(true);
@@ -47,7 +48,7 @@ public final class StdioRuntimeChannel implements RuntimeChannel {
         readerThread.interrupt();
     }
 
-    private void readLoop(java.io.InputStream stream) {
+    private void readLoop(InputStream stream) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             String line;
             while (running && (line = reader.readLine()) != null) {
