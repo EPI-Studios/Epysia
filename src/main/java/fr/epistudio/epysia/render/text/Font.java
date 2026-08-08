@@ -71,13 +71,14 @@ public final class Font {
     private static List<GlyphRange> packRanges(ByteBuffer ttfData, float pixelHeight, ByteBuffer coverage) {
         List<GlyphRange> ranges = new ArrayList<>();
         for (int[] span : GlyphCoverage.SPANS) {
-            ranges.add(new GlyphRange(span[0], span[1], STBTTPackedchar.malloc(span[1])));
+            ranges.add(new GlyphRange(span[0], span[1], STBTTPackedchar.calloc(span[1])));
         }
-        STBTTPackContext context = STBTTPackContext.malloc();
+        STBTTPackContext context = STBTTPackContext.calloc();
         if (!STBTruetype.stbtt_PackBegin(context, coverage, ATLAS_SIZE, ATLAS_SIZE, 0, 1, NO_ALLOCATOR)) {
             context.free();
             throw new EpysiaException("Failed to begin font packing.");
         }
+        STBTruetype.stbtt_PackSetOversampling(context, 1, 1);
         STBTTPackRange.Buffer packRanges = describeRanges(ranges, pixelHeight);
         boolean packed = STBTruetype.stbtt_PackFontRanges(context, ttfData, 0, packRanges);
         STBTruetype.stbtt_PackEnd(context);
