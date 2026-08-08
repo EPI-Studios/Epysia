@@ -57,6 +57,11 @@ jobs:
           submodules: recursive
           path: box3d-java
 
+      - name: Graft rollback sources into box3d
+        shell: bash
+        working-directory: box3d-java
+        run: ./gradlew graftRollbackSources
+
       - name: Build box3d natives
         shell: bash
         run: |
