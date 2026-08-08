@@ -107,6 +107,8 @@ jobs:
         with:
           name: release-${{ matrix.target }}
           path: dist/*
+          retention-days: 1
+          if-no-files-found: error
 
   release:
     needs: build
