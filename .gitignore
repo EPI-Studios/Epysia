@@ -49,3 +49,8 @@ bin/
 /backup.zip
 /.../
 
+
+### Not published
+docs/
+.claude/
+.superpowers/
