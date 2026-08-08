@@ -21,6 +21,12 @@ application {
 
 tasks.named('test', Test) {
     testLogging.showStandardStreams = true
+    systemProperties System.getProperties().findAll {
+        it.key.toString().startsWith('epysia.')
+    }
+    if (System.getProperty('epysia.jfr') != null) {
+        jvmArgs "-XX:StartFlightRecording=settings=profile,dumponexit=true,filename=${System.getProperty('epysia.jfr')}"
+    }
 }
 
 tasks.register('runGame', JavaExec) {
@@ -38,8 +44,43 @@ tasks.register('runGame', JavaExec) {
     if (channel == 'stdio') args += ['--runtime-channel=stdio']
 }
 
+tasks.register('syncPhysicsNatives', Copy) {
+    group = 'build setup'
+    description = 'Copies freshly built box3d natives from the box3d-java checkout into src/main/resources'
+    def source = [
+            file('box3d-java/natives'),
+            file('../box3d-java/natives'),
+            System.getenv('BOX3D_JAVA_HOME') == null ? null : file("${System.getenv('BOX3D_JAVA_HOME')}/natives")
+    ].findAll { it != null }.find { it.isDirectory() }
+    onlyIf { source != null }
+    if (source != null) {
+        from source
+    }
+    into 'src/main/resources/natives'
+}
+
+tasks.register('runServer', JavaExec) {
+    group = 'application'
+    description = 'Runs a dedicated headless server.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'fr.epistudio.epysia.GameLauncher'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    def scene = project.findProperty('scene') ?: '/tmp/epysia-scene.epyscene'
+    def project_ = project.findProperty('projectRoot') ?: ''
+    def port = project.findProperty('port') ?: '7777'
+    def metricsPort = project.findProperty('metricsPort') ?: '0'
+    args = ['--scene', scene, '--server', '--port', port.toString(),
+            '--metrics-port', metricsPort.toString()]
+    if (project_) args += ['--project', project_]
+}
+
 repositories {
     mavenCentral()
+    maven {
+        name = 'henkelmax.public'
+        url = 'https://maven.maxhenkel.de/repository/public'
+        content { includeGroupByRegex 'de\\.maxhenkel.*' }
+    }
 }
 
 static String hostLwjglNatives() {
@@ -59,6 +100,7 @@ ext {
 }
 
 dependencies {
+    implementation 'com.meekdev:box3d-java:0.1.0'
     implementation 'org.joml:joml:1.10.8'
     implementation 'io.github.classgraph:classgraph:4.8.180'
 
@@ -69,12 +111,17 @@ dependencies {
     implementation 'org.lwjgl:lwjgl-stb'
     implementation 'org.lwjgl:lwjgl-tinyexr'
     implementation 'org.lwjgl:lwjgl-openal'
+    implementation 'org.lwjgl:lwjgl-opus'
+    implementation 'de.maxhenkel.speex4j:speex4j:1.0.3'
+    implementation 'de.maxhenkel.rnnoise4j:rnnoise4j:2.1.3'
+    implementation 'de.maxhenkel.lame4j:lame4j:2.1.5'
     runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-tinyexr::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-openal::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-opus::${lwjglNatives}"
 
 
     testImplementation platform('org.junit:junit-bom:6.0.0')
@@ -84,6 +131,7 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 tasks.register('engineRuntimeJar', ShadowJar) {
@@ -99,6 +147,14 @@ tasks.register('engineRuntimeJar', ShadowJar) {
     }
     mergeServiceFiles()
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    exclude 'models/magnusson/**'
+    def target = (project.findProperty('exportTarget') ?: 'linux-x64').toString()
+    if (target.startsWith('linux')) {
+        exclude 'windows/**', 'macos/**', 'macosx/**', 'natives/windows-x64/**', 'natives/macos*/**'
+    } else if (target.startsWith('windows')) {
+        exclude 'linux/**', 'macos/**', 'macosx/**', 'natives/linux-x64/**', 'natives/macos*/**'
+    }
 }
 
 tasks.withType(JavaExec).configureEach {

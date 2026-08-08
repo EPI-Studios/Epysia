@@ -1,3 +1,16 @@
 rootProject.name = 'Epysia'
 
 include 'epysia-editor'
+
+def box3dLocation = [
+        file('box3d-java'),
+        file('../box3d-java'),
+        System.getenv('BOX3D_JAVA_HOME') == null ? null : file(System.getenv('BOX3D_JAVA_HOME'))
+].findAll { it != null }.find { new File(it, 'settings.gradle').isFile() }
+
+if (box3dLocation == null) {
+    throw new GradleException('box3d-java not found. Clone it next to Epysia, inside it, '
+            + 'or point BOX3D_JAVA_HOME at it.')
+}
+
+includeBuild(box3dLocation)
