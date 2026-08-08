@@ -5,7 +5,6 @@ import org.lwjgl.openal.AL11;
 import org.lwjgl.openal.EXTEfx;
 
 public final class AudioSource {
-
     private final int sourceId;
 
     public AudioSource() {
@@ -22,6 +21,16 @@ public final class AudioSource {
         return this;
     }
 
+    public AudioSource setDirectFilter(int filterId) {
+        AL10.alSourcei(sourceId, EXTEfx.AL_DIRECT_FILTER, filterId);
+        return this;
+    }
+
+    public AudioSource clearDirectFilter() {
+        AL10.alSourcei(sourceId, EXTEfx.AL_DIRECT_FILTER, EXTEfx.AL_FILTER_NULL);
+        return this;
+    }
+
     public AudioSource resetForReuse() {
         stop();
         AL10.alSourcei(sourceId, AL10.AL_BUFFER, 0);
@@ -32,6 +41,7 @@ public final class AudioSource {
         AL10.alSource3f(sourceId, AL10.AL_VELOCITY, 0.0f, 0.0f, 0.0f);
         AL10.alSourcei(sourceId, AL10.AL_SOURCE_RELATIVE, AL10.AL_FALSE);
         AL11.alSource3i(sourceId, EXTEfx.AL_AUXILIARY_SEND_FILTER, 0, 0, EXTEfx.AL_FILTER_NULL);
+        AL10.alSourcei(sourceId, EXTEfx.AL_DIRECT_FILTER, EXTEfx.AL_FILTER_NULL);
         return this;
     }
 

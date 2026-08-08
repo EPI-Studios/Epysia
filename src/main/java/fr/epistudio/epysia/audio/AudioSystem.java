@@ -22,9 +22,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import fr.epistudio.epysia.EngineServices;
 
 public final class AudioSystem implements GameSystem {
-
     private static final Vector3f LOCAL_FORWARD = new Vector3f(0.0f, 0.0f, 1.0f);
     private static final Vector3f LOCAL_UP = new Vector3f(0.0f, 1.0f, 0.0f);
     private static final int POOL_CAPACITY = 48;
@@ -52,12 +52,16 @@ public final class AudioSystem implements GameSystem {
         return mixer;
     }
 
+    public Optional<Integer> reverbSlotId() {
+        return reverbZone == null ? Optional.empty() : Optional.of(reverbZone.slotId());
+    }
+
     public boolean efxAvailable() {
         return efxAvailable;
     }
 
     @Override
-    public void initialize(fr.epistudio.epysia.EngineServices services) {
+    public void initialize(EngineServices services) {
         openDevice();
         AL10.alDistanceModel(AL10.AL_INVERSE_DISTANCE_CLAMPED);
         pool = new AudioSourcePool(POOL_CAPACITY);

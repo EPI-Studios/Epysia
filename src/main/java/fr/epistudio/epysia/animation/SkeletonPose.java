@@ -6,7 +6,6 @@ import org.joml.Matrix4f;
 import java.util.List;
 
 public final class SkeletonPose {
-
     private final JointPose[] jointPoses;
     private final Matrix4f[] globalMatrices;
     private final Matrix4f localScratch = new Matrix4f();
@@ -30,6 +29,15 @@ public final class SkeletonPose {
 
     public JointPose jointPose(int index) {
         return jointPoses[index];
+    }
+
+    public void copyFrom(SkeletonPose source) {
+        if (source.jointPoses.length != jointPoses.length) {
+            throw new EpysiaException("Cannot copy poses with mismatched joint counts.");
+        }
+        for (int index = 0; index < jointPoses.length; index++) {
+            jointPoses[index].copyFrom(source.jointPoses[index]);
+        }
     }
 
     public void blendFrom(SkeletonPose from, float alpha) {

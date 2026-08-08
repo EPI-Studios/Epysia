@@ -1,11 +1,17 @@
 package fr.epistudio.epysia.audio;
 
+import de.maxhenkel.lame4j.DecodedAudio;
+import de.maxhenkel.lame4j.Mp3Decoder;
+import de.maxhenkel.lame4j.UnknownPlatformException;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBVorbis;
 import org.lwjgl.stb.STBVorbisInfo;
 import org.lwjgl.system.MemoryStack;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -16,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public final class AudioBufferLoader {
-
     private static final String RESOURCE_ROOT = "src/main/resources";
 
     private AudioBufferLoader() {
@@ -29,6 +34,9 @@ public final class AudioBufferLoader {
         }
         if (relativePath.endsWith(".wav")) {
             return loadWav(raw);
+        }
+        if (relativePath.endsWith(".mp3")) {
+            return loadMp3(raw);
         }
         throw new EpysiaException("Unsupported audio format: " + relativePath);
     }
@@ -58,6 +66,24 @@ public final class AudioBufferLoader {
             AudioFormat format = AudioFormat.forChannelCount(channels.get(0));
             return AudioBuffer.createFromPcm16(format, sampleRate.get(0), decoded);
         }
+    }
+
+    private static AudioBuffer loadMp3(ByteBuffer encoded) {
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.duplicate().get(bytes);
+        try (InputStream stream = new ByteArrayInputStream(bytes)) {
+            DecodedAudio decoded = Mp3Decoder.decode(stream);
+            return AudioBuffer.createFromPcm16(AudioFormat.forChannelCount(decoded.getChannelCount()),
+                    decoded.getSampleRate(), toShortBuffer(decoded.getSamples()));
+        } catch (IOException | UnknownPlatformException | RuntimeException failure) {
+            throw new EpysiaException("Failed to decode MP3 audio.", failure);
+        }
+    }
+
+    private static ShortBuffer toShortBuffer(short[] samples) {
+        ShortBuffer buffer = BufferUtils.createShortBuffer(samples.length);
+        buffer.put(samples).flip();
+        return buffer;
     }
 
     private static AudioBuffer loadWav(ByteBuffer data) {

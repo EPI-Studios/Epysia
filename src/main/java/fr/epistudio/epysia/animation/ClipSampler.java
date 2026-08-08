@@ -1,37 +1,27 @@
 package fr.epistudio.epysia.animation;
 
 import fr.epistudio.epysia.exceptions.EpysiaException;
-import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.List;
 
 public final class ClipSampler {
-
-    private final Matrix4f bindScratch = new Matrix4f();
     private final Quaternionf rotationLeft = new Quaternionf();
     private final Quaternionf rotationRight = new Quaternionf();
 
-    public void sample(Clip clip, Skeleton skeleton, float timeSeconds, SkeletonPose out) {
+    public void sample(Clip clip, BindPose bindPose, float timeSeconds, SkeletonPose out) {
+        Skeleton skeleton = bindPose.skeleton();
         if (clip.skeletonChecksum() != skeleton.nameChecksum()) {
             throw new EpysiaException("Clip skeletonChecksum " + clip.skeletonChecksum()
                     + " does not match skeleton nameChecksum " + skeleton.nameChecksum() + ".");
         }
-        List<Joint> joints = skeleton.joints();
-        for (int index = 0; index < joints.size(); index++) {
-            applyBindDefaults(joints.get(index), out.jointPose(index));
-        }
+        bindPose.copyInto(out);
         List<ClipChannel> channels = clip.channels();
         for (int index = 0; index < channels.size(); index++) {
             ClipChannel channel = channels.get(index);
             applyChannel(channel, timeSeconds, out.jointPose(channel.jointIndex()));
         }
-    }
-
-    private void applyBindDefaults(Joint joint, JointPose pose) {
-        bindScratch.set(joint.localBindTransform());
-        pose.setFromMatrix(bindScratch);
     }
 
     private void applyChannel(ClipChannel channel, float timeSeconds, JointPose pose) {

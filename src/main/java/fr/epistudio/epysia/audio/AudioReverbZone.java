@@ -2,6 +2,7 @@ package fr.epistudio.epysia.audio;
 
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import org.lwjgl.openal.EXTEfx;
+import org.lwjgl.openal.AL10;
 
 public final class AudioReverbZone {
 
@@ -27,8 +28,8 @@ public final class AudioReverbZone {
             applyBasicParameters(preset);
         }
         EXTEfx.alAuxiliaryEffectSloti(slotId, EXTEfx.AL_EFFECTSLOT_EFFECT, effectId);
-        int error = org.lwjgl.openal.AL10.alGetError();
-        if (error != org.lwjgl.openal.AL10.AL_NO_ERROR) {
+        int error = AL10.alGetError();
+        if (error != AL10.AL_NO_ERROR) {
             throw new EpysiaException("Failed to apply reverb preset (AL error " + error + ").");
         }
     }

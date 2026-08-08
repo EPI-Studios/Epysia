@@ -5,7 +5,6 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 public final class JointPose {
-
     private final Vector3f translation = new Vector3f(0.0f, 0.0f, 0.0f);
     private final Quaternionf rotation = new Quaternionf();
     private final Vector3f scale = new Vector3f(1.0f, 1.0f, 1.0f);
@@ -27,6 +26,12 @@ public final class JointPose {
         matrix.getUnnormalizedRotation(rotation);
         rotation.normalize();
         matrix.getScale(scale);
+    }
+
+    public void copyFrom(JointPose source) {
+        translation.set(source.translation);
+        rotation.set(source.rotation);
+        scale.set(source.scale);
     }
 
     public void blendFrom(JointPose from, float alpha) {
