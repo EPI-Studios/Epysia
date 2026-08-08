@@ -259,7 +259,20 @@ final class MeshInstanceBatch {
     }
 
     boolean needsBindingRebuild() {
-        return boundLitBindingsId != representative.litBindings().id();
+        return representative == null || boundLitBindingsId != representative.litBindings().id();
+    }
+
+    boolean represents(PerSubmesh candidate) {
+        return representative == candidate;
+    }
+
+    void forgetRepresentative() {
+        representative = null;
+        boundLitBindingsId = -1L;
+        litBindings = NO_BINDINGS;
+        shadowBindings = NO_BINDINGS;
+        visibleCount = 0;
+        culledCount = 0;
     }
 
     void adoptResources(BufferHandle buffer, BindingSetHandle[] lit, BindingSetHandle[] shadow) {

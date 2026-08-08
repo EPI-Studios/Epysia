@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.render.opengl;
 
+import fr.epistudio.epysia.render.Frame;
 import fr.epistudio.epysia.render.backend.*;
 
 import fr.epistudio.epysia.exceptions.EpysiaException;
@@ -211,7 +212,12 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private final Map<Long, BufferResource> buffers = new HashMap<>();
     private final Map<Long, TextureResource> textures = new HashMap<>();
     private final Map<Long, RenderTargetResource> renderTargets = new HashMap<>();
+    private static final boolean TRACK_BINDING_SETS =
+            Boolean.getBoolean("epysia.trackBindingSets");
+
     private final Map<Long, BindingSetResource> bindingSets = new HashMap<>();
+    private final Map<Long, String> bindingSetGraveyard = new HashMap<>();
+    private long frameIndex;
 
     private PipelineResource currentPipeline;
     private RenderState appliedRenderState;
@@ -945,7 +951,17 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public void destroy(BindingSetHandle handle) {
-        bindingSets.remove(handle.id());
+        if (bindingSets.remove(handle.id()) != null && TRACK_BINDING_SETS) {
+            bindingSetGraveyard.put(handle.id(), describeCurrentSite());
+        }
+    }
+
+    private String describeCurrentSite() {
+        StringBuilder site = new StringBuilder("frame ").append(frameIndex);
+        StackWalker.getInstance()
+                .walk(frames -> frames.skip(2).limit(8).map(StackWalker.StackFrame::toString).toList())
+                .forEach(frame -> site.append("\n        at ").append(frame));
+        return site.toString();
     }
 
     private void deletePipelineResource(PipelineResource resource) {
@@ -965,6 +981,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public void beginFrame() {
+        frameIndex++;
         drainProfileQueries();
         frameShaderCompileNanos = 0L;
         currentProfileSection = 0;
@@ -1567,9 +1584,20 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private BindingSetResource requireBindingSet(BindingSetHandle handle) {
         BindingSetResource resource = bindingSets.get(handle.id());
         if (resource == null) {
-            throw new EpysiaException("Unknown binding set handle: " + handle.id());
+            throw new EpysiaException("Unknown binding set handle: " + handle.id()
+                    + " while executing in frame " + frameIndex + describeDestruction(handle));
         }
         return resource;
+    }
+
+    private String describeDestruction(BindingSetHandle handle) {
+        if (!TRACK_BINDING_SETS) {
+            return " ";
+        }
+        String site = bindingSetGraveyard.get(handle.id());
+        return (site == null ? ", never created" : ", destroyed in " + site)
+                + "\n    submitted from "
+                + Frame.submitSiteOf(handle.id());
     }
 
     private record PipelineResource(int programId, int vaoId, RenderState state, int vertexStride, int instanceStride) {

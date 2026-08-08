@@ -105,6 +105,15 @@ final class MeshInstanceBatches {
         return batch;
     }
 
+    void forget(PerSubmesh perSubmesh) {
+        for (MeshInstanceBatch batch : batches) {
+            if (batch.represents(perSubmesh)) {
+                batch.forgetRepresentative();
+                activeBatches.remove(batch);
+            }
+        }
+    }
+
     List<MeshInstanceBatch> activeBatches() {
         return activeBatches;
     }
