@@ -85,6 +85,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -120,6 +121,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private final SurfaceShadowVariants depthPrepassVariants;
     private final SurfaceShadowVariants maskedDepthPrepassVariants;
     private boolean depthPrepassEnabled = Boolean.getBoolean("epysia.depthPrepass");
+    private int gpuCullMinimumInstances = RenderTuning.DEFAULT_GPU_CULL_MINIMUM_INSTANCES;
     private final ShadowStatistics shadowStatistics = new ShadowStatistics();
     private final Logger logger;
     private final SurfaceTimeDependence surfaceTimeDependence;
@@ -146,7 +148,6 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private final SceneRelevance sceneRelevance = new SceneRelevance();
     private final List<MeshRenderer> unindexedRenderers = new ArrayList<>();
     private PreparedEntry[] preparedBySlot = new PreparedEntry[0];
-    private static final int GPU_CULL_MINIMUM_INSTANCES = 64;
     private final Map<MeshInstanceBatch, GpuCullResources> cullResources = new IdentityHashMap<>();
     private final Map<MeshInstanceBatch, BindingSetHandle> indirectBindings = new IdentityHashMap<>();
     private final ByteBuffer scratchCullParameters =
@@ -219,7 +220,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private long lastSceneVersion = Long.MIN_VALUE;
     private long sceneVersionAtPurge = Long.MIN_VALUE;
     private final List<BufferHandle> ownedBuffers = new ArrayList<>();
-    private final List<BindingSetHandle> ownedBindings = new ArrayList<>();
+    private final Set<BindingSetHandle> ownedBindings = new LinkedHashSet<>();
     private final List<Light> activeLights = new ArrayList<>(64);
     private final List<Light> scratchDirectionalLights = new ArrayList<>(8);
     private final List<Light> scratchOtherLights = new ArrayList<>(64);
@@ -374,6 +375,15 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         poseSchedule.setFullRateDistance(value);
     }
 
+    public void setGpuCullMinimumInstances(int value) {
+        this.gpuCullMinimumInstances = Math.clamp(value,
+                RenderTuning.MINIMUM_GPU_CULL_INSTANCES, RenderTuning.MAXIMUM_GPU_CULL_INSTANCES);
+    }
+
+    public int gpuCullMinimumInstances() {
+        return gpuCullMinimumInstances;
+    }
+
     public float animationFullRateDistance() {
         return poseSchedule.fullRateDistance();
     }
@@ -515,7 +525,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private boolean gpuCullable(MeshInstanceBatch batch) {
         return gpuCullingEnabled && depthPyramid.texture() != null && batch.localBounds() != null
                 && !batch.representative().material().blended()
-                && batch.instanceCount() >= GPU_CULL_MINIMUM_INSTANCES;
+                && batch.instanceCount() >= gpuCullMinimumInstances;
     }
 
     private GpuCullResources cullResourcesFor(MeshInstanceBatch batch) {
@@ -769,6 +779,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         setSkinOnceEnabled(tuning.skinOnce());
         setAnimationCullingEnabled(tuning.animationCulling());
         setAnimationFullRateDistance(tuning.animationFullRateDistance());
+        setGpuCullMinimumInstances(tuning.gpuCullMinimumInstances());
         setFrontToBackOpaque(tuning.frontToBackOpaque());
         setShadowLayerReuse(tuning.shadowLayerReuse());
         setRingInstanceBuffers(tuning.ringInstanceBuffers());
@@ -1469,6 +1480,9 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         batchesThisFrame = instanceBatches.activeBatches().size();
         instancedBatchesThisFrame = 0;
         for (MeshInstanceBatch batch : instanceBatches.activeBatches()) {
+            if (!batchBindingsAlive(batch)) {
+                continue;
+            }
             if (batch.pendingCount() == 1) {
                 submitBatchAsSingleObject(frame, batch);
                 continue;
@@ -1477,6 +1491,13 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             submitInstancedBatch(frame, batch);
             instancedBatchesThisFrame++;
         }
+    }
+
+    private boolean batchBindingsAlive(MeshInstanceBatch batch) {
+        PerSubmesh perSubmesh = batch.representative();
+        return perSubmesh != null
+                && ownedBindings.contains(perSubmesh.litBindings())
+                && ownedBindings.contains(perSubmesh.shadowBindings());
     }
 
     private void submitBatchAsSingleObject(FrameBuilder frame, MeshInstanceBatch batch) {
@@ -2344,6 +2365,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private void destroyPerSubmesh(PerSubmesh perSubmesh) {
+        instanceBatches.forget(perSubmesh);
         backend.destroy(perSubmesh.litBindings());
         backend.destroy(perSubmesh.shadowBindings());
         objectUniforms().release(perSubmesh.modelSlot());

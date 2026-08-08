@@ -91,6 +91,8 @@ public final class SettingsDialog {
     private final ImInt shadowDepthSteps = new ImInt();
     private final float[] animationFullRateDistance =
             {RenderTuning.DEFAULT_ANIMATION_FULL_RATE_DISTANCE};
+    private final ImInt gpuCullMinimumInstances =
+            new ImInt(RenderTuning.DEFAULT_GPU_CULL_MINIMUM_INSTANCES);
     private final ImInt filteredCascades = new ImInt();
     private final float[] fogColor = new float[3];
     private final float[] fogDistanceStart = new float[1];
@@ -270,6 +272,7 @@ public final class SettingsDialog {
         shadowDepthSteps.set(quality.shadowDepthSteps());
         renderTuning = quality.renderTuning();
         animationFullRateDistance[0] = renderTuning.animationFullRateDistance();
+        gpuCullMinimumInstances.set(renderTuning.gpuCullMinimumInstances());
     }
 
     public ProjectQuality buildQuality() {
@@ -872,6 +875,12 @@ public final class SettingsDialog {
         depthPrepass = toggleRow("Depth prepass", depthPrepass);
     }
 
+    private int gpuCullMinimumInstancesRow() {
+        row("GPU cull minimum instances", () -> ImGui.dragInt("##value", gpuCullMinimumInstances.getData(),
+                1.0f, RenderTuning.MINIMUM_GPU_CULL_INSTANCES, RenderTuning.MAXIMUM_GPU_CULL_INSTANCES));
+        return gpuCullMinimumInstances.get();
+    }
+
     private float animationDistanceRow() {
         row("Animation full rate distance", () -> ImGui.dragFloat("##value", animationFullRateDistance,
                 0.5f, 0.0f, MAX_ANIMATION_DISTANCE));
@@ -882,6 +891,7 @@ public final class SettingsDialog {
         hint(TextKey.EDITOR_SETTINGS_DIALOG_PERFORMANCE_HELP);
         renderTuning = new RenderTuning(
                 toggleRow("GPU occlusion culling", renderTuning.gpuCulling()),
+                gpuCullMinimumInstancesRow(),
                 toggleRow("Scene render index", renderTuning.sceneIndex()),
                 toggleRow("Multi draw batching", renderTuning.multiDraw()),
                 toggleRow("Instancing", renderTuning.instancing()),

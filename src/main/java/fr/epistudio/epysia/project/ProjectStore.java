@@ -233,6 +233,7 @@ public final class ProjectStore {
                 .key("multiDraw").valueBoolean(quality.renderTuning().multiDraw())
                 .key("instancing").valueBoolean(quality.renderTuning().instancing())
                 .key("pipelineMemo").valueBoolean(quality.renderTuning().pipelineMemo())
+                .key("gpuCullMinimumInstances").valueNumber(quality.renderTuning().gpuCullMinimumInstances())
                 .key("cachedTransformLookup").valueBoolean(quality.renderTuning().cachedTransformLookup())
                 .key("sharedMaterialDigest").valueBoolean(quality.renderTuning().sharedMaterialDigest())
                 .key("skinOnce").valueBoolean(quality.renderTuning().skinOnce())
@@ -301,6 +302,7 @@ public final class ProjectStore {
     private static RenderTuning readRenderTuning(Map<?, ?> quality, RenderTuning defaults) {
         return new RenderTuning(
                 booleanMember(quality, "gpuCulling", defaults.gpuCulling()),
+                intMember(quality, "gpuCullMinimumInstances", defaults.gpuCullMinimumInstances()),
                 booleanMember(quality, "sceneIndex", defaults.sceneIndex()),
                 booleanMember(quality, "multiDraw", defaults.multiDraw()),
                 booleanMember(quality, "instancing", defaults.instancing()),
