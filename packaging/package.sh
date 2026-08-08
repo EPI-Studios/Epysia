@@ -5,8 +5,10 @@ VERSION="${VERSION:?VERSION is required}"
 TARGET="${TARGET:?TARGET is required}"
 
 LAUNCHER_NAME="EpysiaGame"
+SERVER_NAME="EpysiaServer"
 NATIVE_ACCESS="--enable-native-access=ALL-UNNAMED"
-GAME_MODULES="java.base,java.desktop,java.logging,java.management,java.naming,java.net.http,java.xml,jdk.unsupported,jdk.zipfs"
+GAME_MODULES="java.base,java.logging,java.management,java.naming,java.net.http,java.xml,jdk.unsupported,jdk.zipfs"
+SERVER_MODULES="java.base,java.logging,java.management,java.naming,java.net.http,java.xml,jdk.unsupported,jdk.zipfs"
 EDITOR_MODULES="${GAME_MODULES},java.compiler,jdk.compiler"
 
 JLINK="${JAVA_HOME}/bin/jlink"
@@ -78,6 +80,29 @@ package_editor_linux() {
     (cd "$WORK/editor-portable" && tar -czf "$DIST/Epysia-${VERSION}-${TARGET}.tar.gz" Epysia)
 }
 
+package_server() {
+    local input="$WORK/server-input"
+    mkdir -p "$input"
+    cp build/libs/epysia-engine.jar "$input/"
+    jlink_runtime "$SERVER_MODULES" "$WORK/server-runtime"
+    "$JPACKAGE" --type app-image --name "$SERVER_NAME" --app-version "$VERSION" \
+        --input "$input" --main-jar epysia-engine.jar \
+        --main-class fr.epistudio.epysia.GameLauncher \
+        --runtime-image "$WORK/server-runtime" --java-options "$NATIVE_ACCESS" \
+        --arguments "--server" \
+        --dest "$WORK/server"
+    strip_graphics_natives "$WORK/server/$SERVER_NAME"
+    make_zip "$DIST/epysia-server-${TARGET}-${VERSION}.zip" "$WORK/server/$SERVER_NAME"
+}
+
+strip_graphics_natives() {
+    local root="$1"
+    find "$root" -type f \( \
+        -name '*glfw*' -o -name '*opengl*' -o -name '*openal*' -o -name '*opus*' -o \
+        -name '*tinyexr*' -o -name '*shaderc*' -o -name '*spvc*' -o -name '*vulkan*' \
+    \) -delete 2>/dev/null || true
+}
+
 package_editor() {
     mkdir -p "$WORK/editor-input"
     cp epysia-editor/build/libs/epysia-editor.jar "$WORK/editor-input/"
@@ -90,5 +115,6 @@ package_editor() {
 }
 
 package_template
+package_server
 package_editor
 ls -lh "$DIST"
