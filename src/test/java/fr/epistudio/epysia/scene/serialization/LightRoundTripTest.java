@@ -12,11 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class LightRoundTripTest {
-
     private static final float RANGE = 42.0f;
     private static final float INNER_DEGREES = 7.0f;
     private static final float OUTER_DEGREES = 31.0f;
-    private static final int RENDER_LAYER = 3;
     private static final float COSINE_TOLERANCE = 1.0e-5f;
 
     @Test
@@ -32,10 +30,9 @@ class LightRoundTripTest {
     }
 
     @Test
-    void keepsTransformVisibilityAndRenderLayerThroughSerialization() {
+    void keepsTransformVisibilityThroughSerialization() {
         Transform3D restored = roundTrip().getComponentOrNull(Transform3D.class);
 
-        assertEquals(RENDER_LAYER, restored.renderLayer(), "render layer must survive a scene round trip");
         assertFalse(restored.visible(), "visibility must survive a scene round trip");
     }
 
@@ -55,7 +52,7 @@ class LightRoundTripTest {
 
     private static GameObject buildLight() {
         GameObject object = new GameObject("spot");
-        object.addComponent(new Transform3D().setRenderLayer(RENDER_LAYER).setVisible(false));
+        object.addComponent(new Transform3D().setVisible(false));
         object.addComponent(new SpotLight().setRange(RANGE).setConeDegrees(INNER_DEGREES, OUTER_DEGREES));
         return object;
     }

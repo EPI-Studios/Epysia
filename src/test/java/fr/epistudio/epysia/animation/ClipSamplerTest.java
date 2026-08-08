@@ -17,7 +17,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClipSamplerTest {
-
     private static float[] identity() {
         return new float[]{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
     }
@@ -40,7 +39,7 @@ class ClipSamplerTest {
 
     private static Matrix4f[] sampleToMatrices(Clip clip, Skeleton skeleton, float time) {
         SkeletonPose pose = new SkeletonPose(skeleton.jointCount());
-        new ClipSampler().sample(clip, skeleton, time, pose);
+        new ClipSampler().sample(clip, new BindPose(skeleton), time, pose);
         Matrix4f[] matrices = allocateMatrices(skeleton.jointCount());
         pose.computeSkinningMatrices(skeleton, matrices);
         return matrices;
@@ -108,8 +107,8 @@ class ClipSamplerTest {
 
         SkeletonPose stepPose = new SkeletonPose(skeleton.jointCount());
         SkeletonPose linearPose = new SkeletonPose(skeleton.jointCount());
-        new ClipSampler().sample(stepClip, skeleton, 0.5f, stepPose);
-        new ClipSampler().sample(linearClip, skeleton, 0.5f, linearPose);
+        new ClipSampler().sample(stepClip, new BindPose(skeleton), 0.5f, stepPose);
+        new ClipSampler().sample(linearClip, new BindPose(skeleton), 0.5f, linearPose);
 
         assertEquals(0.0f, stepPose.jointPose(0).translation().y, 1e-6f);
         assertEquals(2.0f, linearPose.jointPose(0).translation().y, 1e-6f);
@@ -126,7 +125,7 @@ class ClipSamplerTest {
         Clip clip = new Clip("rotate", 1.0f, skeleton.nameChecksum(), List.of(channel));
 
         SkeletonPose pose = new SkeletonPose(skeleton.jointCount());
-        new ClipSampler().sample(clip, skeleton, 0.5f, pose);
+        new ClipSampler().sample(clip, new BindPose(skeleton), 0.5f, pose);
 
         Quaternionf ninety = new Quaternionf().rotateZ((float) java.lang.Math.toRadians(90.0));
         Quaternionf sampled = pose.jointPose(0).rotation();
@@ -143,7 +142,7 @@ class ClipSamplerTest {
         Clip clip = new Clip("cubic", 1.0f, skeleton.nameChecksum(), List.of(channel));
 
         SkeletonPose pose = new SkeletonPose(skeleton.jointCount());
-        new ClipSampler().sample(clip, skeleton, 0.5f, pose);
+        new ClipSampler().sample(clip, new BindPose(skeleton), 0.5f, pose);
 
         assertEquals(2.0f, pose.jointPose(0).translation().y, 1e-6f);
     }
@@ -157,8 +156,8 @@ class ClipSamplerTest {
 
         SkeletonPose before = new SkeletonPose(skeleton.jointCount());
         SkeletonPose after = new SkeletonPose(skeleton.jointCount());
-        new ClipSampler().sample(clip, skeleton, 0.0f, before);
-        new ClipSampler().sample(clip, skeleton, 5.0f, after);
+        new ClipSampler().sample(clip, new BindPose(skeleton), 0.0f, before);
+        new ClipSampler().sample(clip, new BindPose(skeleton), 5.0f, after);
 
         assertEquals(3.0f, before.jointPose(0).translation().y, 1e-6f);
         assertEquals(9.0f, after.jointPose(0).translation().y, 1e-6f);
@@ -172,7 +171,7 @@ class ClipSamplerTest {
                         new float[]{0.0f}, new float[]{0, 0, 0})));
 
         SkeletonPose pose = new SkeletonPose(skeleton.jointCount());
-        assertThrows(EpysiaException.class, () -> new ClipSampler().sample(clip, skeleton, 0.0f, pose));
+        assertThrows(EpysiaException.class, () -> new ClipSampler().sample(clip, new BindPose(skeleton), 0.0f, pose));
     }
 
     @Test
@@ -185,9 +184,9 @@ class ClipSamplerTest {
         ClipSampler sampler = new ClipSampler();
         Matrix4f[] matrices = allocateMatrices(skeleton.jointCount());
 
-        sampler.sample(clip, skeleton, 0.5f, pose);
+        sampler.sample(clip, new BindPose(skeleton), 0.5f, pose);
         pose.computeSkinningMatrices(skeleton, matrices);
-        sampler.sample(clip, skeleton, 1.0f, pose);
+        sampler.sample(clip, new BindPose(skeleton), 1.0f, pose);
         pose.computeSkinningMatrices(skeleton, matrices);
 
         Vector4f rowOne = new Vector4f();

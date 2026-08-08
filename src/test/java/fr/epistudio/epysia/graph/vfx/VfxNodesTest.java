@@ -14,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VfxNodesTest {
-
     @Test
     void builtinsResolveEveryVfxNode() {
         GraphNodeRegistry registry = GraphNodeRegistry.withBuiltins();
@@ -27,7 +26,7 @@ class VfxNodesTest {
             assertTrue(registry.find(typeKey).isPresent(), typeKey);
         }
         NodeDefinition particleOutput = registry.find(VfxNodes.OUTPUT_PARTICLE).orElseThrow();
-        assertEquals(5, particleOutput.inputPins().size());
+        assertEquals(7, particleOutput.inputPins().size());
         assertEquals(0, particleOutput.outputPins().size());
     }
 

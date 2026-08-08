@@ -16,7 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BackgroundTasksTest {
-
     private static final long SETTLE_TIMEOUT_SECONDS = 5L;
 
     private final BackgroundTasks tasks = new BackgroundTasks(SilentLogger::new, 2);
@@ -112,6 +111,30 @@ class BackgroundTasksTest {
         assertEquals(0, tasks.pendingCount(), "settled work must leave the pending count");
     }
 
+    @Test
+    void spreadsSettledResultsAcrossFramesWhenTheBudgetIsSpent() throws InterruptedException {
+        List<String> delivered = new ArrayList<>();
+        tasks.setDeliveryBudgetSeconds(0.0f);
+        for (int index = 0; index < 4; index++) {
+            tasks.submit(() -> "chunk", delivered::add);
+        }
+        awaitSettledCount(4);
+
+        tasks.deliverCompleted();
+        assertEquals(1, delivered.size(), "a spent budget must still deliver one result per frame");
+
+        tasks.deliverAll();
+        assertEquals(4, delivered.size(), "an unbudgeted drain must deliver everything that settled");
+    }
+
+    private void awaitSettledCount(int expected) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(SETTLE_TIMEOUT_SECONDS);
+        while (tasks.settledCount() < expected && System.nanoTime() < deadline) {
+            Thread.sleep(1L);
+        }
+        assertEquals(expected, tasks.settledCount(), "the tasks never settled");
+    }
+
     private void awaitSettled() throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(SETTLE_TIMEOUT_SECONDS);
         while (tasks.settledCount() == 0 && System.nanoTime() < deadline) {
@@ -121,7 +144,6 @@ class BackgroundTasksTest {
     }
 
     private static final class SilentLogger implements Logger {
-
         @Override
         public void info(String message) {
         }

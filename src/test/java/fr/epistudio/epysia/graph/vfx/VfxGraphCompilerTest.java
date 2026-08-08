@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VfxGraphCompilerTest {
-
     private static VfxGraphCompiler compiler() {
         return new VfxGraphCompiler(shaderSource("particle_common.glsl"),
                 shaderSource("particle_shapes.glsl"), shaderSource("particle_noise.glsl"));
@@ -301,6 +300,52 @@ class VfxGraphCompilerTest {
         assertFalse(mainBody(withoutSetting).contains("effect.effectClock.y"), withoutSetting);
         assertTrue(mainBody(withoutSetting).contains("perlin3((particle.positionAge.xyz) * 1.000000)"),
                 withoutSetting);
+    }
+
+    @Test
+    void unwiredSizeYRepeatsTheSizeExpressionOnBothAxes() {
+        GraphAsset asset = vfxGraph();
+        GraphNode output = asset.addNode(VfxNodes.OUTPUT_PARTICLE, 0.0f, 0.0f);
+        GraphNode size = asset.addNode(VfxNodes.RANDOM_RANGE, 0.0f, 0.0f);
+        asset.edges().add(new GraphEdge(size.id(), VfxNodes.RESULT_PIN, output.id(), VfxNodes.SIZE_PIN));
+        String body = mainBody(compiler().compile(asset, "size.epygraph").spawnCompute());
+        String expression = "randomRange(0.000000, 1.000000, spawnKey, %du)".formatted(size.id());
+        assertTrue(body.contains("sizeRotation = vec4(%s, %s, 0.0, 0.0)"
+                .formatted(expression, expression)), body);
+    }
+
+    @Test
+    void wiredSizeYAndRotationDriveTheirOwnComponents() {
+        GraphAsset asset = vfxGraph();
+        GraphNode output = asset.addNode(VfxNodes.OUTPUT_PARTICLE, 0.0f, 0.0f);
+        output.values().put(VfxNodes.SIZE_PIN, 0.06f);
+        output.values().put(VfxNodes.SIZE_Y_PIN, 0.02f);
+        output.values().put(VfxNodes.ROTATION_PIN, 45.0f);
+        String body = mainBody(compiler().compile(asset, "flake.epygraph").spawnCompute());
+        assertTrue(body.contains("sizeRotation = vec4(0.060000, 0.020000, 45.000000, 0.0)"), body);
+    }
+
+    @Test
+    void angularVelocityIntegratesIntoTheStoredAngle() {
+        GraphAsset asset = vfxGraph();
+        GraphNode output = asset.addNode(VfxNodes.OUTPUT_UPDATE, 0.0f, 0.0f);
+        output.values().put(VfxNodes.ANGULAR_VELOCITY_PIN, 220.0f);
+        String body = mainBody(compiler().compile(asset, "spin.epygraph").updateCompute());
+        assertTrue(body.contains("particle.sizeRotation.z + (220.000000) * deltaTime"), body);
+        assertTrue(body.contains("particle.sizeRotation.x, particle.sizeRotation.y"), body);
+    }
+
+    @Test
+    void renderShapeSelectsTheCornerMetric() {
+        GraphAsset round = vfxGraph();
+        round.addNode(VfxNodes.OUTPUT_RENDER, 0.0f, 0.0f);
+        GraphAsset rectangular = vfxGraph();
+        rectangular.addNode(VfxNodes.OUTPUT_RENDER, 0.0f, 0.0f)
+                .values().put(VfxNodes.SHAPE_SETTING, VfxNodes.RENDER_SHAPE_RECT);
+        assertTrue(compiler().compile(round, "round.epygraph").fragmentBody()
+                .contains("distanceFromCenter = length(particleCorner)"));
+        assertTrue(compiler().compile(rectangular, "rect.epygraph").fragmentBody()
+                .contains("distanceFromCenter = max(abs(particleCorner.x), abs(particleCorner.y))"));
     }
 
     @Test
