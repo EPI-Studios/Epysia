@@ -258,6 +258,9 @@ public final class SpriteRenderSystem implements RenderSystem {
 
     private void gatherSprites(Scene scene) {
         for (SpriteRenderer sprite : scene.componentsOf(SpriteRenderer.class)) {
+            if (!sprite.activeInHierarchy()) {
+                continue;
+            }
             Transform2D transform = sprite.owner()
                     .map(owner -> owner.getComponentOrNull(Transform2D.class))
                     .orElse(null);

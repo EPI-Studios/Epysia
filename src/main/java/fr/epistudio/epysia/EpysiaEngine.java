@@ -332,6 +332,13 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
             profiler.record(FrameProfiler.SYSTEM_PREFIX + system.getClass().getSimpleName(),
                     System.nanoTime() - systemStart);
         }
+        lateUpdateGameSystems(input, deltaTimeSeconds);
+    }
+
+    private void lateUpdateGameSystems(InputState input, float deltaTimeSeconds) {
+        for (GameSystem system : gameSystems) {
+            system.lateUpdate(activeScene, input, deltaTimeSeconds);
+        }
     }
 
     public FrameProfiler profiler() {

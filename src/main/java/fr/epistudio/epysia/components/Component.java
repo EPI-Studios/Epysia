@@ -10,6 +10,8 @@ import java.util.Optional;
 public abstract class Component implements IComponent {
 
     private GameObject gameObject;
+    private boolean enabled = true;
+    private boolean alive = true;
 
     @Override
     public final void attachTo(GameObject gameObject) {
@@ -27,6 +29,25 @@ public abstract class Component implements IComponent {
     @Override
     public final GameObject ownerOrNull() {
         return gameObject;
+    }
+
+    @Override
+    public final boolean enabled() {
+        return enabled;
+    }
+
+    @Override
+    public final void setEnabled(boolean value) {
+        enabled = value;
+    }
+
+    @Override
+    public final boolean isAlive() {
+        return alive;
+    }
+
+    public final void markDestroyed() {
+        alive = false;
     }
 
     @Override

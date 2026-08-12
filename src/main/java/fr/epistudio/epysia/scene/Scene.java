@@ -42,9 +42,12 @@ public final class Scene implements IScene {
     private final Set<GameObject> indexDropped =
             Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<GameObject> indexAppended = new ArrayList<>();
+    private final Map<String, List<GameObject>> gameObjectsByName = new HashMap<>();
+    private final Map<String, List<GameObject>> gameObjectsByTag = new HashMap<>();
     private Consumer<GameObject> removalListener = removed -> {
     };
     private long modificationCount;
+    private long lookupIndexModificationCount = Long.MIN_VALUE;
 
     public Scene(String name) {
         this.name = name;
@@ -121,6 +124,7 @@ public final class Scene implements IScene {
         if (gameObjects.remove(removed)) {
             gameObjectsById.remove(removed.id());
             removed.clearStructuralChangeListener();
+            removed.markDestroyed();
             recentlyDeactivated.add(removed);
             indexDropped.add(removed);
             indexAppended.remove(removed);
@@ -255,24 +259,42 @@ public final class Scene implements IScene {
         if (name == null) {
             return Optional.empty();
         }
-        for (GameObject gameObject : gameObjects) {
-            if (name.equals(gameObject.name())) {
-                return Optional.of(gameObject);
-            }
+        refreshLookupIndexes();
+        List<GameObject> matches = gameObjectsByName.get(name);
+        return matches == null || matches.isEmpty()
+                ? Optional.empty()
+                : Optional.of(matches.getFirst());
+    }
+
+    public List<GameObject> findAllByName(String name) {
+        if (name == null) {
+            return List.of();
         }
-        return Optional.empty();
+        refreshLookupIndexes();
+        return gameObjectsByName.getOrDefault(name, List.of());
     }
 
     public List<GameObject> findByTag(String tag) {
         if (tag == null || tag.isEmpty()) {
             return List.of();
         }
-        List<GameObject> matches = new ArrayList<>();
+        refreshLookupIndexes();
+        return gameObjectsByTag.getOrDefault(tag, List.of());
+    }
+
+    private void refreshLookupIndexes() {
+        if (lookupIndexModificationCount == modificationCount) {
+            return;
+        }
+        gameObjectsByName.clear();
+        gameObjectsByTag.clear();
         for (GameObject gameObject : gameObjects) {
-            if (tag.equals(gameObject.tag())) {
-                matches.add(gameObject);
+            gameObjectsByName.computeIfAbsent(gameObject.name(), key -> new ArrayList<>())
+                    .add(gameObject);
+            for (String tag : gameObject.tags()) {
+                gameObjectsByTag.computeIfAbsent(tag, key -> new ArrayList<>()).add(gameObject);
             }
         }
-        return matches;
+        lookupIndexModificationCount = modificationCount;
     }
 }

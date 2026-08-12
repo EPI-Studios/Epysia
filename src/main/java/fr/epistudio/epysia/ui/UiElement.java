@@ -51,7 +51,7 @@ public abstract class UiElement extends Component {
     }
 
     public boolean drawable() {
-        return visible && owner().map(GameObject::active).orElse(true);
+        return visible && enabled() && owner().map(GameObject::activeInHierarchy).orElse(true);
     }
 
     public Optional<UiShader> shader() {

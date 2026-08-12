@@ -942,15 +942,18 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         for (Light light : scene.componentsOf(Light.class)) {
             classifyLight(light);
         }
-        List<DirectionalLight> directionals = scene.componentsOf(DirectionalLight.class);
-        Optional<DirectionalLight> primaryDirectional = directionals.isEmpty()
-                ? Optional.empty()
-                : Optional.of(directionals.getFirst());
+        Optional<DirectionalLight> primaryDirectional = scene.componentsOf(DirectionalLight.class)
+                .stream()
+                .filter(DirectionalLight::activeInHierarchy)
+                .findFirst();
         assembleActiveLights(primaryDirectional);
         return primaryDirectional;
     }
 
     private void classifyLight(Light light) {
+        if (!light.activeInHierarchy()) {
+            return;
+        }
         if (light instanceof DirectionalLight) {
             scratchDirectionalLights.add(light);
         } else {
@@ -1278,6 +1281,9 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private void submitMeshDraws(MeshRenderer renderer, FrameBuilder frame, float alpha) {
+        if (!renderer.activeInHierarchy()) {
+            return;
+        }
         if (!RenderLayers.intersects(renderer.layerMask(), activeCullMask)) {
             return;
         }
@@ -1409,6 +1415,9 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private void submitMultiMeshDraws(MultiMeshRenderer renderer) {
+        if (!renderer.activeInHierarchy()) {
+            return;
+        }
         if (!RenderLayers.intersects(renderer.layerMask(), activeCullMask)) {
             return;
         }

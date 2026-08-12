@@ -186,7 +186,7 @@ public final class VfxRenderSystem implements RenderSystem {
         List<ParticleEffect> seen = new ArrayList<>();
         for (ParticleEffect effect : scene.componentsOf(ParticleEffect.class)) {
             GameObject gameObject = effect.ownerOrNull();
-            if (gameObject == null) {
+            if (gameObject == null || !effect.activeInHierarchy()) {
                 continue;
             }
             Optional<EmitterPose> pose = emitterPoseOf(gameObject);

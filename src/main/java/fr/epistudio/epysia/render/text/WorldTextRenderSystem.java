@@ -151,7 +151,7 @@ public final class WorldTextRenderSystem implements RenderSystem {
 
     private void appendPass(List<WorldText> texts, boolean occluded) {
         for (WorldText text : texts) {
-            if (text.drawable() && text.occluded() == occluded) {
+            if (text.activeInHierarchy() && text.drawable() && text.occluded() == occluded) {
                 appendText(text);
             }
         }

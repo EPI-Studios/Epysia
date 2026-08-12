@@ -2,19 +2,24 @@ package fr.epistudio.epysia.scripting;
 
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.GameSystem;
+import fr.epistudio.epysia.components.ExecutionOrder;
 import fr.epistudio.epysia.components.IComponent;
-import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.InputState;
+import fr.epistudio.epysia.physics.PhysicsSystem;
 import fr.epistudio.epysia.scene.Scene;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class ScriptDispatcherSystem implements GameSystem {
+
+    private static final Map<Class<?>, Integer> EXECUTION_ORDERS = new ConcurrentHashMap<>();
 
     private final Set<Behaviour> startedBehaviours = new HashSet<>();
     private final Map<Behaviour, Boolean> enabledState = new IdentityHashMap<>();
@@ -22,6 +27,7 @@ public final class ScriptDispatcherSystem implements GameSystem {
     private Scene cachedScene;
     private long cachedModificationCount = Long.MIN_VALUE;
     private EngineServices services;
+    private boolean subscribedToFixedStep;
 
     @Override
     public void initialize(EngineServices services) {
@@ -29,7 +35,23 @@ public final class ScriptDispatcherSystem implements GameSystem {
     }
 
     @Override
+    public void lateUpdate(Scene scene, InputState input, float deltaTimeSeconds) {
+        dispatchLateUpdate(input, deltaTimeSeconds);
+    }
+
+    private void subscribeToFixedStepOnce() {
+        if (subscribedToFixedStep || services == null) {
+            return;
+        }
+        services.systems().find(PhysicsSystem.class).ifPresent(physics -> {
+            physics.addFixedStepListener(this::dispatchFixedUpdate);
+            subscribedToFixedStep = true;
+        });
+    }
+
+    @Override
     public void update(Scene scene, InputState input, float deltaTimeSeconds) {
+        subscribeToFixedStepOnce();
         refreshCacheIfStructureChanged(scene);
         for (Behaviour behaviour : cachedBehaviours) {
             if (startedBehaviours.add(behaviour)) {
@@ -42,6 +64,23 @@ public final class ScriptDispatcherSystem implements GameSystem {
         for (Behaviour behaviour : cachedBehaviours) {
             if (isCurrentlyEnabled(behaviour)) {
                 safeOnUpdate(behaviour, input, deltaTimeSeconds);
+            }
+        }
+    }
+
+    public void dispatchFixedUpdate(Scene scene, float fixedStepSeconds) {
+        refreshCacheIfStructureChanged(scene);
+        for (Behaviour behaviour : cachedBehaviours) {
+            if (isCurrentlyEnabled(behaviour)) {
+                safeOnFixedUpdate(behaviour, fixedStepSeconds);
+            }
+        }
+    }
+
+    public void dispatchLateUpdate(InputState input, float deltaTimeSeconds) {
+        for (Behaviour behaviour : cachedBehaviours) {
+            if (isCurrentlyEnabled(behaviour)) {
+                safeOnLateUpdate(behaviour, input, deltaTimeSeconds);
             }
         }
     }
@@ -87,7 +126,7 @@ public final class ScriptDispatcherSystem implements GameSystem {
     }
 
     private boolean isOwnerActive(Behaviour behaviour) {
-        return behaviour.owner().map(GameObject::active).orElse(false);
+        return behaviour.activeInHierarchy();
     }
 
     private void updateEnabledState(Behaviour behaviour) {
@@ -147,6 +186,22 @@ public final class ScriptDispatcherSystem implements GameSystem {
         }
     }
 
+    private void safeOnFixedUpdate(Behaviour behaviour, float fixedStepSeconds) {
+        try {
+            behaviour.onFixedUpdate(fixedStepSeconds);
+        } catch (RuntimeException error) {
+            logError("onFixedUpdate", behaviour, error);
+        }
+    }
+
+    private void safeOnLateUpdate(Behaviour behaviour, InputState input, float deltaTimeSeconds) {
+        try {
+            behaviour.onLateUpdate(input, deltaTimeSeconds);
+        } catch (RuntimeException error) {
+            logError("onLateUpdate", behaviour, error);
+        }
+    }
+
     private void safeOnDestroy(Behaviour behaviour) {
         try {
             behaviour.onDestroy();
@@ -165,6 +220,17 @@ public final class ScriptDispatcherSystem implements GameSystem {
     private void collectBehaviours(Scene scene) {
         cachedBehaviours.clear();
         cachedBehaviours.addAll(scene.componentsOf(Behaviour.class));
+        cachedBehaviours.sort(Comparator.comparingInt(ScriptDispatcherSystem::executionOrderOf));
+    }
+
+    private static int executionOrderOf(Behaviour behaviour) {
+        return EXECUTION_ORDERS.computeIfAbsent(behaviour.getClass(),
+                ScriptDispatcherSystem::readExecutionOrder);
+    }
+
+    private static int readExecutionOrder(Class<?> behaviourClass) {
+        ExecutionOrder declared = behaviourClass.getAnnotation(ExecutionOrder.class);
+        return declared == null ? ExecutionOrder.DEFAULT : declared.value();
     }
 
     private void invokeDestroyForRemovedBehaviours() {

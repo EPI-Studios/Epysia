@@ -14,6 +14,22 @@ public interface IComponent {
         return owner().orElse(null);
     }
 
+    default boolean enabled() {
+        return true;
+    }
+
+    default void setEnabled(boolean value) {
+    }
+
+    default boolean isAlive() {
+        return true;
+    }
+
+    default boolean activeInHierarchy() {
+        GameObject owner = ownerOrNull();
+        return isAlive() && enabled() && owner != null && owner.activeInHierarchy();
+    }
+
     default void onLoad(EngineServices services) {
     }
 

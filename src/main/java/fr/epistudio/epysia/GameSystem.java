@@ -10,6 +10,9 @@ public interface GameSystem {
 
     void update(Scene scene, InputState input, float deltaTimeSeconds);
 
+    default void lateUpdate(Scene scene, InputState input, float deltaTimeSeconds) {
+    }
+
     default void shutdown() {
     }
 }

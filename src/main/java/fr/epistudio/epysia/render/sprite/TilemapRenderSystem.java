@@ -89,6 +89,9 @@ public final class TilemapRenderSystem implements RenderSystem {
         seenRenderers.clear();
         submitSequence = 0L;
         for (TilemapRenderer renderer : scene.componentsOf(TilemapRenderer.class)) {
+            if (!renderer.activeInHierarchy()) {
+                continue;
+            }
             renderer.owner().ifPresent(owner -> collectGameObject(frame, owner));
         }
         releaseUnseenGeometry();

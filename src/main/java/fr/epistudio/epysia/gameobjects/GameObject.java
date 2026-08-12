@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.gameobjects;
 
+import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.RequiresComponent;
 import fr.epistudio.epysia.components.transforms.Transform2D;
@@ -9,9 +10,11 @@ import fr.epistudio.epysia.exceptions.ComponentPresentException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public final class GameObject implements IGameObject {
@@ -20,8 +23,9 @@ public final class GameObject implements IGameObject {
 
     private final UUID id;
     private String name;
-    private String tag = "";
+    private final Set<String> tags = new LinkedHashSet<>();
     private boolean active = true;
+    private boolean alive = true;
     private boolean persistent = true;
     private final Map<Class<?>, IComponent> componentsByType = new HashMap<>();
     private Transform3D cachedTransform3D;
@@ -55,16 +59,71 @@ public final class GameObject implements IGameObject {
     }
 
     public String tag() {
-        return tag;
+        return tags.isEmpty() ? "" : tags.iterator().next();
     }
 
     public GameObject setTag(String tag) {
-        this.tag = tag == null ? "" : tag;
+        tags.clear();
+        structuralChangeListener.run();
+        return addTag(tag);
+    }
+
+    public Set<String> tags() {
+        return Collections.unmodifiableSet(tags);
+    }
+
+    public GameObject addTag(String tag) {
+        if (tag != null && !tag.isBlank() && tags.add(tag)) {
+            structuralChangeListener.run();
+        }
         return this;
+    }
+
+    public GameObject removeTag(String tag) {
+        if (tags.remove(tag)) {
+            structuralChangeListener.run();
+        }
+        return this;
+    }
+
+    public boolean hasTag(String tag) {
+        return tags.contains(tag);
     }
 
     public boolean active() {
         return active;
+    }
+
+    public boolean isAlive() {
+        return alive;
+    }
+
+    public void markDestroyed() {
+        alive = false;
+        for (IComponent component : attachedComponents) {
+            if (component instanceof Component owned) {
+                owned.markDestroyed();
+            }
+        }
+    }
+
+    public boolean activeInHierarchy() {
+        GameObject current = this;
+        while (current != null) {
+            if (!current.alive || !current.active) {
+                return false;
+            }
+            current = current.parentOrNull();
+        }
+        return true;
+    }
+
+    public GameObject parentOrNull() {
+        if (cachedTransform3D == null) {
+            return null;
+        }
+        Transform3D parentTransform = cachedTransform3D.parentOrNull();
+        return parentTransform == null ? null : parentTransform.ownerOrNull();
     }
 
     public boolean persistent() {
@@ -90,6 +149,7 @@ public final class GameObject implements IGameObject {
     public void setName(String name) {
         if (name != null && !name.isBlank()) {
             this.name = name;
+            structuralChangeListener.run();
         }
     }
 
@@ -142,6 +202,40 @@ public final class GameObject implements IGameObject {
     @SuppressWarnings("unchecked")
     public <T extends IComponent> T getComponentOrNull(Class<T> componentClass) {
         return (T) componentsByType.get(componentClass);
+    }
+
+    public <T extends IComponent> List<T> getComponents(Class<T> componentClass) {
+        List<T> matches = new ArrayList<>();
+        for (IComponent component : attachedComponents) {
+            if (componentClass.isInstance(component)) {
+                matches.add(componentClass.cast(component));
+            }
+        }
+        return List.copyOf(matches);
+    }
+
+    public <T extends IComponent> Optional<T> getComponentInChildren(Class<T> componentClass) {
+        List<T> matches = getComponentsInChildren(componentClass);
+        return matches.isEmpty() ? Optional.empty() : Optional.of(matches.getFirst());
+    }
+
+    public <T extends IComponent> List<T> getComponentsInChildren(Class<T> componentClass) {
+        List<T> matches = new ArrayList<>(getComponents(componentClass));
+        for (GameObject child : children()) {
+            matches.addAll(child.getComponentsInChildren(componentClass));
+        }
+        return List.copyOf(matches);
+    }
+
+    public <T extends IComponent> Optional<T> getComponentInParent(Class<T> componentClass) {
+        List<T> matches = getComponentsInParent(componentClass);
+        return matches.isEmpty() ? Optional.empty() : Optional.of(matches.getFirst());
+    }
+
+    public <T extends IComponent> List<T> getComponentsInParent(Class<T> componentClass) {
+        List<T> matches = new ArrayList<>(getComponents(componentClass));
+        parent().ifPresent(owner -> matches.addAll(owner.getComponentsInParent(componentClass)));
+        return List.copyOf(matches);
     }
 
     @Override

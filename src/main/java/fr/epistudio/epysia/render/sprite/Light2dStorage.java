@@ -111,7 +111,7 @@ public final class Light2dStorage {
     }
 
     private boolean accepts(Light2D light) {
-        return light.enabled() && lightCount < MAX_LIGHTS;
+        return light.activeInHierarchy() && lightCount < MAX_LIGHTS;
     }
 
     private void putColor(Light2D light) {

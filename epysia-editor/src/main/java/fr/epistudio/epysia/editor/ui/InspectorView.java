@@ -14,6 +14,7 @@ import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.SpriteRenderer;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
+import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.EditorSelection;
 import fr.epistudio.epysia.editor.assets.SpriteTextureLookup;
@@ -22,6 +23,7 @@ import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.MergeIntoMultiMeshCommand;
 import fr.epistudio.epysia.editor.command.builtin.RemoveComponentCommand;
+import fr.epistudio.epysia.editor.command.builtin.SetComponentEnabledCommand;
 import fr.epistudio.epysia.editor.icons.ComponentIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -38,6 +40,7 @@ import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.reflection.ComponentAction;
 import fr.epistudio.epysia.reflection.Reflection;
 import imgui.ImGui;
+import imgui.type.ImBoolean;
 import imgui.type.ImString;
 
 import java.nio.file.Path;
@@ -258,11 +261,24 @@ public final class InspectorView {
         boolean expanded = Sections.header(displayNameOf(component),
                 icons.textureId(ComponentIcons.forComponent(component)));
         renderRemoveButton(gameObject, component);
+        renderEnabledToggle(component);
         if (expanded) {
             renderComponentProperties(gameObject, component);
         }
         ImGui.popID();
         ImGui.popID();
+    }
+
+    private void renderEnabledToggle(IComponent component) {
+        if (component instanceof Transform3D || component instanceof Transform2D) {
+            return;
+        }
+        ImGui.sameLine(ImGui.getContentRegionMaxX() - EditorStyle.iconSizeSmall() * 4.0f);
+        ImBoolean enabled = new ImBoolean(component.enabled());
+        if (ImGui.checkbox("##component-enabled", enabled)) {
+            history().execute(new SetComponentEnabledCommand(component,
+                    component.enabled(), enabled.get()));
+        }
     }
 
     private void renderRemoveButton(GameObject gameObject, IComponent component) {

@@ -147,6 +147,10 @@ public final class Transform3D extends Component {
         return Optional.ofNullable(parent);
     }
 
+    public Transform3D parentOrNull() {
+        return parent;
+    }
+
     public List<Transform3D> children() {
         return children;
     }

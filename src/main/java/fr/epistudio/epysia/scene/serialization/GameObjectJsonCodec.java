@@ -60,7 +60,11 @@ public final class GameObjectJsonCodec {
         writer.beginObject();
         writer.key("id").valueString(gameObject.id().toString());
         writer.key("name").valueString(gameObject.name());
-        writer.key("tag").valueString(gameObject.tag());
+        writer.key("tags").beginArray();
+        for (String tag : gameObject.tags()) {
+            writer.valueString(tag);
+        }
+        writer.endArray();
         writer.key("active").valueBoolean(gameObject.active());
         writer.key("parentIndex").valueNumber(resolveParentIndex(gameObject, indexByGameObject));
         writer.key("components").beginArray();
@@ -94,6 +98,7 @@ public final class GameObjectJsonCodec {
         writer.beginObject();
         writer.key("type").valueString(entry.componentClass().getName());
         writer.key("displayName").valueString(entry.displayName());
+        writer.key("enabled").valueBoolean(component.enabled());
         writer.key("fields").beginObject();
         fieldsCodec.writeFields(writer, component,
                 target -> encodeReference(target, indexByGameObject));
@@ -278,11 +283,23 @@ public final class GameObjectJsonCodec {
         }
 
         private void applyFlags(GameObject gameObject, Map<String, Object> gameObjectJson) {
-            if (gameObjectJson.get("tag") instanceof String tag) {
-                gameObject.setTag(tag);
-            }
+            applyTags(gameObject, gameObjectJson);
             if (gameObjectJson.get("active") instanceof Boolean active) {
                 gameObject.setActive(active);
+            }
+        }
+
+        private void applyTags(GameObject gameObject, Map<String, Object> gameObjectJson) {
+            if (gameObjectJson.get("tags") instanceof List<?> declared) {
+                for (Object tag : declared) {
+                    if (tag instanceof String text) {
+                        gameObject.addTag(text);
+                    }
+                }
+                return;
+            }
+            if (gameObjectJson.get("tag") instanceof String legacy) {
+                gameObject.setTag(legacy);
             }
         }
 
@@ -306,6 +323,7 @@ public final class GameObjectJsonCodec {
                 IComponent existing = gameObject.getComponentOrNull(component.getClass());
                 IComponent target = existing != null ? existing : component;
                 fieldsCodec.applyFields(target, fields, this);
+                target.setEnabled(readEnabledFlag(componentJson, fields));
                 applyMaterialsIfPresent(target, componentJson);
                 applyPostEffectsIfPresent(target, componentJson);
                 applyGraphOverridesIfPresent(target, componentJson);
@@ -313,6 +331,17 @@ public final class GameObjectJsonCodec {
                     attachTolerant(gameObject, component);
                 }
             });
+        }
+
+        private static boolean readEnabledFlag(Map<String, Object> componentJson,
+                                               Map<String, Object> fields) {
+            if (componentJson.get("enabled") instanceof Boolean declared) {
+                return declared;
+            }
+            if (fields.get("enabled") instanceof Boolean legacy) {
+                return legacy;
+            }
+            return true;
         }
 
         private void attachTolerant(GameObject gameObject, IComponent component) {

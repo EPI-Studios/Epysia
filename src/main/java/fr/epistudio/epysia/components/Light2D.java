@@ -12,8 +12,6 @@ public abstract class Light2D extends Component {
     private float intensity = 1.0f;
     @Export(label = "Light Layers", step = 1.0f)
     private int lightLayers = ALL_LIGHT_LAYERS;
-    @Export(label = "Enabled")
-    private boolean enabled = true;
 
     public Vector3f color() {
         return color;
@@ -39,15 +37,6 @@ public abstract class Light2D extends Component {
 
     public Light2D setLightLayers(int lightLayers) {
         this.lightLayers = lightLayers;
-        return this;
-    }
-
-    public boolean enabled() {
-        return enabled;
-    }
-
-    public Light2D setEnabled(boolean enabled) {
-        this.enabled = enabled;
         return this;
     }
 }
