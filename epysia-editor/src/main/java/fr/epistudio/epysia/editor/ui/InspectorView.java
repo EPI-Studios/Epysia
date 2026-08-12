@@ -1,13 +1,19 @@
 package fr.epistudio.epysia.editor.ui;
 
-import fr.epistudio.epysia.components.Animator;
-import fr.epistudio.epysia.components.Camera3D;
+import fr.epistudio.epysia.editor.inspector.ColliderFitSection;
+import fr.epistudio.epysia.editor.inspector.InspectorDependencies;
+import fr.epistudio.epysia.editor.inspector.ComponentSections;
+import fr.epistudio.epysia.editor.inspector.InspectorSectionBundle;
+import fr.epistudio.epysia.editor.inspector.PropertyKeyCache;
+import fr.epistudio.epysia.editor.ui.kit.EmptyStates;
+import fr.epistudio.epysia.editor.ui.kit.Category;
+import fr.epistudio.epysia.editor.ui.kit.Sections;
+import fr.epistudio.epysia.editor.ui.kit.Switches;
+import fr.epistudio.epysia.editor.ui.kit.Notices;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.MeshRenderer;
-import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.components.SpriteRenderer;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
-import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.EditorSelection;
 import fr.epistudio.epysia.editor.assets.SpriteTextureLookup;
@@ -23,19 +29,15 @@ import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.gameobjects.GameObject;
-import fr.epistudio.epysia.graph.GraphComponent;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
-import fr.epistudio.epysia.vfx.ParticleEffect;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.reflection.ComponentAction;
 import fr.epistudio.epysia.reflection.Reflection;
-import fr.epistudio.epysia.physics.components.RigidBodyComponent;
 import imgui.ImGui;
-import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImString;
 
 import java.nio.file.Path;
@@ -47,21 +49,17 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import javax.lang.model.SourceVersion;
-import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
-import fr.epistudio.epysia.ui.UiElement;
+import fr.epistudio.epysia.editor.ui.kit.Fields;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 
 public final class InspectorView {
 
-    private static final float EMPTY_STATE_LINE_GAP = 6.0f;
-    private static final float EMPTY_STATE_BLOCK_HEIGHT = 70.0f;
 
     public static final String WINDOW_TITLE = "Inspector";
 
     private static final String ADD_COMPONENT_POPUP = "##add-component-popup";
     private static final int SEARCH_CAPACITY = 128;
-    private static final int COMPONENT_HEADER_FLAGS = ImGuiTreeNodeFlags.DefaultOpen
-            | ImGuiTreeNodeFlags.AllowItemOverlap;
 
     private final Supplier<SceneDocument> activeDocument;
     private final ComponentRegistry componentRegistry;
@@ -73,62 +71,61 @@ public final class InspectorView {
             I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_TITLE),
             I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_CONFIRM));
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
-    private final MaterialsSection materialsSection;
-    private final UiElementSection uiElementSection;
-    private final PopulateSection populateSection;
-    private final RigidBodyLiveSection rigidBodyLiveSection = new RigidBodyLiveSection();
     private boolean playModeActive;
-    private final AnimatorSection animatorSection;
-    private final VfxSection vfxSection;
-    private final PostEffectsSection postEffectsSection;
-    private final GraphSection graphSection;
+    private final ComponentSections componentSections;
+    private final PropertyKeyCache propertyKeys = new PropertyKeyCache();
     private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
     private final BiConsumer<String, GameObject> onCreateScriptForObject;
     private final Supplier<Optional<Path>> selectedAssetPath;
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
-    private final Runnable openTilemapDock;
     private final EngineServices engineServices;
-    private final SpriteColliderFitSection spriteColliderFit;
-    private final MeshColliderFitSection meshColliderFit = new MeshColliderFitSection();
     private final SpriteTextureLookup spriteTextures;
     private final SurfaceUniformRows spriteUniformRows;
 
-    public InspectorView(Supplier<SceneDocument> activeDocument, ComponentRegistry componentRegistry,
-                         Notifier notifier, IconWidgets icons, AssetPicker assetPicker,
-                         ThumbnailCache thumbnails, Project project,
+    public InspectorView(InspectorDependencies dependencies, AssetPicker assetPicker,
                          BiConsumer<String, GameObject> onCreateScriptForObject,
                          Consumer<Path> onOpenGraph,
                          Supplier<Optional<Path>> selectedAssetPath,
-                         GameObjectFactory objectFactory,
                          AtlasInspectorSection atlasSection,
                          TextureInspectorSection textureSection,
-                         Runnable openTilemapDock,
-                         EngineServices engineServices) {
+                         Runnable openTilemapDock) {
+        Supplier<SceneDocument> activeDocument = dependencies.activeDocument();
+        Project project = dependencies.project();
+        ThumbnailCache thumbnails = dependencies.thumbnails();
+        Notifier notifier = dependencies.notifier();
         this.activeDocument = activeDocument;
-        this.componentRegistry = componentRegistry;
+        this.componentRegistry = dependencies.componentRegistry();
         this.notifier = notifier;
-        this.icons = icons;
+        this.icons = dependencies.icons();
         this.assetPicker = assetPicker;
         this.propertyRows = new PropertyRows(activeDocument, assetPicker);
-        this.spriteColliderFit = new SpriteColliderFitSection(project.locator());
         this.spriteTextures = new SpriteTextureLookup(project.locator());
         this.spriteUniformRows = new SurfaceUniformRows(projectShaderLoader(project), this::history,
                 new AssetFilePicker(project, thumbnails), project.locator());
-        this.materialsSection = new MaterialsSection(activeDocument, thumbnails, project, notifier);
-        this.uiElementSection = new UiElementSection(objectFactory,
-                () -> activeDocument.get().scene(), () -> activeDocument.get().history());
-        this.populateSection = new PopulateSection(activeDocument, notifier, project);
-        this.animatorSection = new AnimatorSection(activeDocument, project);
-        this.vfxSection = new VfxSection(activeDocument, project);
-        this.postEffectsSection = new PostEffectsSection(project, thumbnails);
-        this.graphSection = new GraphSection(activeDocument, onOpenGraph);
+        this.componentSections = ComponentSections.of(new InspectorSectionBundle(
+                new UiElementSection(dependencies.objectFactory(),
+                        () -> activeDocument.get().scene(), () -> activeDocument.get().history()),
+                new MaterialsSection(activeDocument, thumbnails, project, notifier),
+                new PopulateSection(activeDocument, notifier, project),
+                new AnimatorSection(activeDocument, project),
+                new VfxSection(activeDocument, project),
+                new CameraPostEffectsSection(new PostEffectsSection(project, thumbnails),
+                        () -> activeDocument.get().markDirty()),
+                new GraphSection(activeDocument, onOpenGraph),
+                new ColliderFitSection(new SpriteColliderFitSection(project.locator()),
+                        new MeshColliderFitSection(),
+                        () -> activeDocument.get().markDirty(),
+                        command -> activeDocument.get().history().execute(command)),
+                new TilemapSummarySection(openTilemapDock),
+                new RigidBodyLiveSection(),
+                new NavMeshSurfaceSection(dependencies::engineServices),
+                () -> playModeActive));
         this.onCreateScriptForObject = onCreateScriptForObject;
         this.selectedAssetPath = selectedAssetPath;
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
-        this.openTilemapDock = openTilemapDock;
-        this.engineServices = engineServices;
+        this.engineServices = dependencies.engineServices();
     }
 
     private static ShaderLoader projectShaderLoader(Project project) {
@@ -177,12 +174,12 @@ public final class InspectorView {
         if (mergeable < 2) {
             return;
         }
-        if (ImGui.button("Merge " + mergeable + " selected into one MultiMesh")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_MERGE_MULTIMESH, mergeable))) {
             history().execute(new MergeIntoMultiMeshCommand(all));
             return;
         }
-        ImGui.textDisabled("Groups by mesh, material, shadows and layer.");
-        ImGui.separator();
+        Sections.caption(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_MERGE_MULTIMESH_HINT));
+        Sections.divider();
     }
 
     private void renderSpriteUniforms(GameObject gameObject) {
@@ -190,8 +187,8 @@ public final class InspectorView {
         if (sprite == null || sprite.surfaceShaderPath().isEmpty()) {
             return;
         }
-        ImGui.separator();
-        if (ImGui.collapsingHeader("Sprite Shader Uniforms", ImGuiTreeNodeFlags.DefaultOpen)) {
+        Sections.divider();
+        if (Sections.header(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_SPRITE_SHADER_UNIFORMS))) {
             spriteUniformRows.render(sprite, List.of(sprite.surfaceShaderPath()));
         }
     }
@@ -202,8 +199,8 @@ public final class InspectorView {
         if (asset.isEmpty()) {
             return;
         }
-        ImGui.separator();
-        if (ImGui.collapsingHeader("Texture Import", ImGuiTreeNodeFlags.DefaultOpen)
+        Sections.divider();
+        if (Sections.header(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TEXTURE_IMPORT))
                 && !textureSection.render(asset)) {
             atlasSection.render(asset);
         }
@@ -217,7 +214,7 @@ public final class InspectorView {
         if (!playModeActive) {
             return;
         }
-        ImGui.textColored(1.0f, 0.78f, 0.25f, 1.0f, "Playing: edits tune the running game and revert on stop.");
+        Notices.warning(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_PLAY_MODE_NOTICE));
         ImGui.separator();
     }
 
@@ -227,26 +224,9 @@ public final class InspectorView {
     }
 
     private void renderEmpty() {
-        centerVertically();
-        centerText(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NOTHING_SELECTED));
-        ImGui.dummy(0.0f, EMPTY_STATE_LINE_GAP);
-        centerText(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_PICK_OBJECT));
-        centerText(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_EDIT_COMPONENTS));
-    }
-
-    private static void centerVertically() {
-        float free = ImGui.getContentRegionAvailY() - EMPTY_STATE_BLOCK_HEIGHT;
-        if (free > 0.0f) {
-            ImGui.dummy(0.0f, free * 0.5f);
-        }
-    }
-
-    private static void centerText(String text) {
-        float indent = (ImGui.getContentRegionAvailX() - ImGui.calcTextSize(text).x) * 0.5f;
-        if (indent > 0.0f) {
-            ImGui.setCursorPosX(ImGui.getCursorPosX() + indent);
-        }
-        ImGui.textDisabled(text);
+        EmptyStates.centered(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NOTHING_SELECTED),
+                List.of(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_PICK_OBJECT),
+                        I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_EDIT_COMPONENTS)));
     }
 
     private void renderBody(GameObject gameObject) {
@@ -261,25 +241,27 @@ public final class InspectorView {
 
     private void renderObjectHeader(GameObject gameObject) {
         boolean active = gameObject.active();
-        if (ImGui.checkbox("##active", active)) {
+        if (Switches.draw("##active", active) != active) {
             gameObject.setActive(!active);
         }
         ImGui.sameLine();
-        ImGui.textUnformatted(gameObject.name());
         int componentCount = gameObject.components().size();
-        ImGui.textDisabled(componentCount <= 1
+        Texts.muted(componentCount <= 1
                 ? I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_SINGULAR, componentCount)
                 : I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_PLURAL, componentCount));
+        Category.draw(gameObject.name(), 0);
     }
 
     private void renderComponentBlock(GameObject gameObject, IComponent component) {
-        ImGui.pushID(gameObject.id() + "#" + component.getClass().getName());
-        icons.drawInline(ComponentIcons.forComponent(component), EditorStyle.ICON_SIZE_SMALL);
-        boolean expanded = ImGui.collapsingHeader(displayNameOf(component), COMPONENT_HEADER_FLAGS);
+        ImGui.pushID(gameObject.id().hashCode());
+        ImGui.pushID(component.getClass().getName());
+        boolean expanded = Sections.header(displayNameOf(component),
+                icons.textureId(ComponentIcons.forComponent(component)));
         renderRemoveButton(gameObject, component);
         if (expanded) {
             renderComponentProperties(gameObject, component);
         }
+        ImGui.popID();
         ImGui.popID();
     }
 
@@ -287,8 +269,8 @@ public final class InspectorView {
         if (component instanceof Transform3D) {
             return;
         }
-        ImGui.sameLine(ImGui.getContentRegionMaxX() - EditorStyle.ICON_SIZE_SMALL * 2.0f);
-        if (icons.iconButton("remove-component", EditorIcon.REMOVE, EditorStyle.ICON_SIZE_SMALL - 2.0f)) {
+        ImGui.sameLine(ImGui.getContentRegionMaxX() - EditorStyle.iconSizeSmall() * 2.0f);
+        if (icons.iconButton("remove-component", EditorIcon.REMOVE, EditorStyle.iconSizeSmall() - 2.0f)) {
             removeConfirm.open(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_MESSAGE,
                             displayNameOf(component), gameObject.name()),
                     () -> removeComponent(gameObject, component));
@@ -303,49 +285,18 @@ public final class InspectorView {
     private void renderComponentProperties(GameObject gameObject, IComponent component) {
         List<ExportedProperty> properties = Reflection.scan(component);
         if (properties.isEmpty() && !(component instanceof MeshRenderer)) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NO_EXPORTED_FIELDS));
+            Texts.muted(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NO_EXPORTED_FIELDS));
             return;
         }
-        String keyPrefix = gameObject.id() + "#" + component.getClass().getName()
-                + "#" + System.identityHashCode(component);
+        String keyPrefix = propertyKeys.prefixFor(gameObject, component);
         for (ExportedProperty property : properties) {
             if (property.isHiddenInEditor()) {
                 continue;
             }
-            propertyRows.renderProperty(component, property, keyPrefix + "." + property.fieldName());
+            propertyRows.renderProperty(component, property,
+                    propertyKeys.keyFor(keyPrefix, property.fieldName()));
         }
-        if (component instanceof UiElement element) {
-            uiElementSection.render(gameObject, element);
-        }
-        if (component instanceof MeshRenderer renderer) {
-            materialsSection.render(renderer);
-        }
-        if (component instanceof MultiMeshRenderer multiMesh) {
-            materialsSection.render(multiMesh);
-            populateSection.render(multiMesh);
-        }
-        if (component instanceof Animator animator) {
-            animatorSection.render(gameObject, animator);
-        }
-        if (component instanceof ParticleEffect particleEffect) {
-            vfxSection.render(particleEffect);
-        }
-        if (component instanceof Camera3D camera) {
-            renderCameraPostEffects(camera);
-        }
-        if (component instanceof GraphComponent graph) {
-            graphSection.render(graph);
-        }
-        if (spriteColliderFit.render(gameObject, component)) {
-            activeDocument.get().markDirty();
-        }
-        meshColliderFit.render(gameObject, component).ifPresent(command -> history().execute(command));
-        if (component instanceof TilemapRenderer tilemapRenderer) {
-            renderTilemapSummary(tilemapRenderer);
-        }
-        if (component instanceof RigidBodyComponent rigidBody) {
-            rigidBodyLiveSection.render(rigidBody, playModeActive);
-        }
+        componentSections.render(gameObject, component);
         renderComponentActions(component);
     }
 
@@ -371,51 +322,11 @@ public final class InspectorView {
         try {
             action.invoke(component, engineServices);
             activeDocument.get().markDirty();
-            notifier.show(action.label() + " ran");
+            notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_ACTION_RAN, action.label()));
         } catch (RuntimeException error) {
-            notifier.show(action.label() + " failed: " + error.getMessage());
+            notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_ACTION_FAILED,
+                    action.label(), error.getMessage()));
         }
-    }
-
-    private void renderTilemapSummary(TilemapRenderer renderer) {
-        ImGui.spacing();
-        ImGui.separator();
-        renderer.tilemapValue().ifPresentOrElse(InspectorView::renderTilemapFacts,
-                () -> ImGui.textDisabled("No tilemap asset assigned yet."));
-        if (ImGui.button("Open the TileMap panel")) {
-            openTilemapDock.run();
-        }
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Tools, palette, layers, terrains and per tile settings live in the bottom dock.");
-        }
-    }
-
-    private static void renderTilemapFacts(SpriteTilemap tilemap) {
-        ImGui.textDisabled(tilemap.width() + " x " + tilemap.height() + " cells");
-        ImGui.textDisabled(tilemap.layerCount() + " layer(s), " + tilemap.terrains().size() + " terrain(s)");
-        ImGui.textDisabled(tilemap.solidTiles().size() + " solid tile(s)");
-    }
-
-    private void renderCameraPostEffects(Camera3D camera) {
-        ImGui.spacing();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_POST_EFFECTS));
-        ImGui.separator();
-        boolean overrideActive = camera.postEffectStack().isPresent();
-        if (ImGui.checkbox(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_OVERRIDE_POST_EFFECTS,
-                "inspector-override-post-effects"), overrideActive)) {
-            toggleCameraPostEffects(camera, overrideActive);
-        }
-        camera.postEffectStack().ifPresent(stack ->
-                postEffectsSection.render(stack, () -> activeDocument.get().markDirty()));
-    }
-
-    private void toggleCameraPostEffects(Camera3D camera, boolean overrideActive) {
-        if (overrideActive) {
-            camera.disablePostEffectStack();
-        } else {
-            camera.enablePostEffectStack();
-        }
-        activeDocument.get().markDirty();
     }
 
     private void renderAddComponentButton(GameObject gameObject) {
@@ -431,8 +342,9 @@ public final class InspectorView {
         if (!ImGui.beginPopup(ADD_COMPONENT_POPUP)) {
             return;
         }
-        ImGui.inputTextWithHint("##component-search",
-                I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_SEARCH_COMPONENTS), componentSearch);
+        Fields.underlined("##component-search",
+                I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_SEARCH_COMPONENTS), componentSearch,
+                ImGui.getContentRegionAvailX());
         ImGui.separator();
         renderNewScriptOption(gameObject);
         ImGui.separator();

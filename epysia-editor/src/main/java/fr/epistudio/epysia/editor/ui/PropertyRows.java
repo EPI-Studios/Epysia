@@ -1,5 +1,9 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.ui.kit.NumberFields;
+import fr.epistudio.epysia.editor.ui.kit.Rows;
+import fr.epistudio.epysia.editor.ui.kit.Switches;
+import fr.epistudio.epysia.editor.ui.kit.Sections;
 import fr.epistudio.epysia.assets.AssetRef;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.editor.command.EditorHistory;
@@ -14,6 +18,7 @@ import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiColorEditFlags;
 import imgui.type.ImString;
@@ -88,7 +93,8 @@ public final class PropertyRows {
     @SuppressWarnings("unchecked")
     private void renderObjectList(IComponent owner, ExportedProperty property, String key) {
         List<Object> elements = (List<Object>) property.read();
-        if (!ImGui.collapsingHeader(property.label() + " (" + elements.size() + ")")) {
+        if (!Sections.header(I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_LIST_HEADER,
+                property.label(), elements.size()))) {
             return;
         }
         ImGui.indent();
@@ -154,12 +160,28 @@ public final class PropertyRows {
         }
     }
 
+    private static String hidden(ExportedProperty property) {
+        return "##" + property.fieldName();
+    }
+
+    private static void beginLabelled(ExportedProperty property) {
+        float split = Rows.splitColumnWidth();
+        ImGui.alignTextToFramePadding();
+        ImGui.textUnformatted(property.label());
+        ImGui.sameLine(split);
+        ImGui.setNextItemWidth(-1.0f);
+    }
+
     private void renderFloat(IComponent owner, ExportedProperty property) {
         float current = ((Number) property.read()).floatValue();
         float[] value = {current};
         float step = property.step() > 0.0f ? property.step() : DRAG_STEP_FALLBACK;
-        if (ImGui.dragFloat(property.label(), value, step, boundedMin(property), boundedMax(property))
-                && Float.compare(value[0], current) != 0) {
+        beginLabelled(property);
+        value[0] = hasBounds(property)
+                ? NumberFields.ranged(hidden(property), current, step,
+                        ImGui.getContentRegionAvailX(), boundedMin(property), boundedMax(property))
+                : NumberFields.scalar(hidden(property), current, step, ImGui.getContentRegionAvailX());
+        if (Float.compare(value[0], current) != 0) {
             history().execute(new SetPropertyCommand(owner, property, current, value[0]));
         }
     }
@@ -171,14 +193,15 @@ public final class PropertyRows {
             return;
         }
         int[] value = {current};
-        if (ImGui.dragInt(property.label(), value, 1.0f, (int) boundedMin(property), (int) boundedMax(property))
+        beginLabelled(property);
+        if (ImGui.dragInt(hidden(property), value, 1.0f, (int) boundedMin(property), (int) boundedMax(property))
                 && value[0] != current) {
             history().execute(new SetPropertyCommand(owner, property, current, value[0]));
         }
     }
 
     private void renderLayerMask(IComponent owner, ExportedProperty property, int current) {
-        ImGui.text(property.label());
+        ImGui.textUnformatted(property.label());
         int updated = current;
         for (int layer = 0; layer < LAYER_MASK_VISIBLE_LAYERS; layer++) {
             if (layer % LAYER_MASK_COLUMNS != 0) {
@@ -195,7 +218,7 @@ public final class PropertyRows {
             }
         }
         ImGui.sameLine();
-        ImGui.textDisabled(String.format("0x%08X", current));
+        Texts.muted(String.format("0x%08X", current));
         if (updated != current) {
             history().execute(new SetPropertyCommand(owner, property, current, updated));
         }
@@ -203,7 +226,8 @@ public final class PropertyRows {
 
     private void renderBoolean(IComponent owner, ExportedProperty property) {
         boolean current = (boolean) property.read();
-        if (ImGui.checkbox(property.label(), current)) {
+        beginLabelled(property);
+        if (Switches.draw(hidden(property), current) != current) {
             history().execute(new SetPropertyCommand(owner, property, current, !current));
         }
     }
@@ -215,7 +239,8 @@ public final class PropertyRows {
         }
         String current = String.valueOf(property.read());
         ImString buffer = stringBuffer(key, current);
-        if (ImGui.inputText(property.label(), buffer) && !buffer.get().equals(current)) {
+        beginLabelled(property);
+        if (ImGui.inputText(hidden(property), buffer) && !buffer.get().equals(current)) {
             history().execute(new SetPropertyCommand(owner, property, current, buffer.get()));
         }
     }
@@ -244,7 +269,9 @@ public final class PropertyRows {
     private void renderVector4(IComponent owner, ExportedProperty property) {
         Vector4f current = (Vector4f) property.read();
         float[] buffer = {current.x, current.y, current.z, current.w};
-        if (ImGui.dragFloat4(property.label(), buffer, property.step())) {
+        beginLabelled(property);
+        if (NumberFields.vector(hidden(property), buffer, 4, ImGui.getContentRegionAvailX(),
+                property.step())) {
             Vector4f updated = new Vector4f(buffer[0], buffer[1], buffer[2], buffer[3]);
             history().execute(new SetPropertyCommand(owner, property, new Vector4f(current), updated));
         }
@@ -253,7 +280,8 @@ public final class PropertyRows {
     private void renderEnum(IComponent owner, ExportedProperty property) {
         Object current = property.read();
         String label = current == null ? I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_NONE_LOWER) : current.toString();
-        if (!ImGui.beginCombo(property.label(), label)) {
+        beginLabelled(property);
+        if (!ImGui.beginCombo(hidden(property), label)) {
             return;
         }
         for (Object candidate : property.enumConstants()) {
@@ -267,7 +295,9 @@ public final class PropertyRows {
     private void renderVector2(IComponent owner, ExportedProperty property) {
         Vector2f vector = (Vector2f) property.read();
         float[] values = {vector.x, vector.y};
-        if (ImGui.dragFloat2(property.label(), values, DRAG_STEP_FALLBACK)
+        beginLabelled(property);
+        if (NumberFields.vector(hidden(property), values, 2, ImGui.getContentRegionAvailX(),
+                DRAG_STEP_FALLBACK)
                 && (vector.x != values[0] || vector.y != values[1])) {
             Vector2f before = new Vector2f(vector);
             Vector2f after = new Vector2f(values[0], values[1]);
@@ -282,7 +312,9 @@ public final class PropertyRows {
         }
         Vector3f vector = (Vector3f) property.read();
         float[] values = {vector.x, vector.y, vector.z};
-        if (ImGui.dragFloat3(property.label(), values, DRAG_STEP_FALLBACK)
+        beginLabelled(property);
+        if (NumberFields.vector(hidden(property), values, 3, ImGui.getContentRegionAvailX(),
+                DRAG_STEP_FALLBACK)
                 && (vector.x != values[0] || vector.y != values[1] || vector.z != values[2])) {
             commitVector3(owner, property, vector, values);
         }
@@ -294,7 +326,8 @@ public final class PropertyRows {
         boolean picked = ImGui.colorEdit3("##swatch", values, COLOR_EDIT_FLAGS);
         ImGui.sameLine();
         ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
-        boolean dragged = ImGui.dragFloat3(property.label(), values, COLOR_DRAG_STEP);
+        beginLabelled(property);
+        boolean dragged = ImGui.dragFloat3(hidden(property), values, COLOR_DRAG_STEP);
         if ((picked || dragged) && (vector.x != values[0] || vector.y != values[1] || vector.z != values[2])) {
             commitVector3(owner, property, vector, values);
         }
@@ -313,7 +346,8 @@ public final class PropertyRows {
         cache.refreshFromIfChanged(quaternion, ImGui.isAnyItemActive() && ImGui.isWindowFocused());
         Vector3f degrees = cache.degrees();
         float[] values = {degrees.x, degrees.y, degrees.z};
-        if (ImGui.dragFloat3(property.label(), values, 0.5f)) {
+        beginLabelled(property);
+        if (ImGui.dragFloat3(hidden(property), values, 0.5f)) {
             commitEuler(owner, property, quaternion, cache, values);
         }
     }
@@ -421,6 +455,10 @@ public final class PropertyRows {
             history().execute(new SetPropertyCommand(owner, property, property.read(), dropped));
         }
         ImGui.endDragDropTarget();
+    }
+
+    private static boolean hasBounds(ExportedProperty property) {
+        return Float.isFinite(property.min()) && Float.isFinite(property.max());
     }
 
     private static float boundedMin(ExportedProperty property) {

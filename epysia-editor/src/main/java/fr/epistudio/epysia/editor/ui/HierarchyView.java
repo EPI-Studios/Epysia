@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
@@ -27,6 +28,8 @@ import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
+import imgui.ImDrawList;
+import imgui.flag.ImGuiCol;
 import imgui.ImGui;
 import imgui.ImGuiListClipper;
 import imgui.callback.ImListClipperCallback;
@@ -50,8 +53,19 @@ import java.util.function.Supplier;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.scene.UniqueObjectName;
+import fr.epistudio.epysia.editor.ui.kit.SearchField;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 
 public final class HierarchyView {
+
+    private static final int TRANSPARENT = 0;
+    private static final int SELECTION_COLOR_COUNT = 3;
+    private static final float SELECTED_ALPHA = 0.16f;
+    private static final float HOVER_ALPHA = 0.5f;
+    private static final float MARKER_WIDTH = 2.0f;
+    private static final float MARKER_INSET = 2.0f;
+    private static final float LABEL_INSET = 6.0f;
+
 
     public static final String WINDOW_TITLE = "Hierarchy";
     static final String PAYLOAD_GAMEOBJECT = "gameobject";
@@ -130,20 +144,20 @@ public final class HierarchyView {
 
     private void renderHeader() {
         if (icons.iconButton("hierarchy-add", EditorIcon.ADD,
-                EditorStyle.ICON_SIZE_SMALL)) {
+                EditorStyle.iconSizeSmall())) {
             createEmptyGameObject();
         }
         ImGui.sameLine();
         ImGui.beginDisabled(selection().count() == 0);
         if (icons.iconButton("hierarchy-remove", EditorIcon.REMOVE,
-                EditorStyle.ICON_SIZE_SMALL)) {
+                EditorStyle.iconSizeSmall())) {
             askDeleteSelected();
         }
         ImGui.endDisabled();
         ImGui.sameLine();
-        ImGui.setNextItemWidth(-1.0f);
-        ImGui.inputTextWithHint("##hierarchy-filter",
-                I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_FILTER), filterInput);
+        SearchField.render("##hierarchy-filter",
+                I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_FILTER), filterInput,
+                ImGui.getContentRegionAvailX());
     }
 
     private boolean matchesFilter(GameObject gameObject) {
@@ -166,25 +180,25 @@ public final class HierarchyView {
 
     private void renderEmptyState() {
         if (isFiltering()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_NO_FILTER_MATCH));
+            Texts.muted(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_NO_FILTER_MATCH));
             return;
         }
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY));
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_HELP_1));
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_HELP_2));
+        Texts.muted(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY));
+        Texts.muted(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_HELP_1));
+        Texts.muted(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_EMPTY_HELP_2));
     }
 
     private void renderRow(Row row, int index) {
         ImGui.pushID(widgetIdOf(row.gameObject()));
         drawIndentGuides(row.depth());
-        ImGui.indent(row.depth() * EditorStyle.INDENT_SPACING + 1.0f);
-        icons.drawInline(ComponentIcons.forGameObject(row.gameObject()), EditorStyle.ICON_SIZE_SMALL);
+        ImGui.indent(row.depth() * EditorStyle.indentSpacing() + 1.0f);
+        icons.drawInline(ComponentIcons.forGameObject(row.gameObject()), EditorStyle.iconSizeSmall());
         if (renameTarget == row.gameObject()) {
             renderRenameField();
         } else {
             renderSelectable(row, index);
         }
-        ImGui.unindent(row.depth() * EditorStyle.INDENT_SPACING + 1.0f);
+        ImGui.unindent(row.depth() * EditorStyle.indentSpacing() + 1.0f);
         ImGui.popID();
     }
 
@@ -200,7 +214,14 @@ public final class HierarchyView {
         String name = row.gameObject().name();
         float availableWidth = ImGui.getContentRegionAvailX();
         LabelFit fit = labelFits.fitFor(name, availableWidth);
-        if (ImGui.selectable(fit.label(), selected, ImGuiSelectableFlags.AllowDoubleClick)) {
+        float left = ImGui.getCursorScreenPosX();
+        float top = ImGui.getCursorScreenPosY();
+        pushTransparentSelection();
+        boolean activated = ImGui.selectable("##" + widgetIdOf(row.gameObject()), selected,
+                ImGuiSelectableFlags.AllowDoubleClick);
+        ImGui.popStyleColor(SELECTION_COLOR_COUNT);
+        paintRow(left, top, fit.label(), selected, ImGui.isItemHovered());
+        if (activated) {
             handleRowClick(row, index);
         }
         if (fit.truncated() && ImGui.isItemHovered()) {
@@ -215,6 +236,31 @@ public final class HierarchyView {
         renderRowContextMenu(row);
     }
 
+    private static void pushTransparentSelection() {
+        ImGui.pushStyleColor(ImGuiCol.Header, TRANSPARENT);
+        ImGui.pushStyleColor(ImGuiCol.HeaderHovered, TRANSPARENT);
+        ImGui.pushStyleColor(ImGuiCol.HeaderActive, TRANSPARENT);
+    }
+
+    private static void paintRow(float left, float top, String label, boolean selected,
+                                 boolean hovered) {
+        float height = ImGui.getTextLineHeightWithSpacing();
+        float right = left + ImGui.getContentRegionAvailX();
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        int fill = selected
+                ? EditorStyle.withAlpha(EditorStyle.COLOR_ACCENT, SELECTED_ALPHA)
+                : EditorStyle.withAlpha(EditorStyle.COLOR_WIDGET_HOVER, hovered ? HOVER_ALPHA : 0.0f);
+        drawList.addRectFilled(left, top, right, top + height, fill, EditorStyle.frameRounding());
+        if (selected) {
+            drawList.addRectFilled(left, top + MARKER_INSET,
+                    left + EditorScale.ofAtLeastOne(MARKER_WIDTH), top + height - MARKER_INSET,
+                    EditorStyle.COLOR_ACCENT);
+        }
+        drawList.addText(left + EditorScale.of(LABEL_INSET),
+                top + (height - ImGui.getTextLineHeight()) * 0.5f,
+                selected ? EditorStyle.COLOR_TEXT : EditorStyle.COLOR_TEXT_MUTED, label);
+    }
+
     private void renderNetworkBadge(GameObject gameObject) {
         NetworkObject networkObject = gameObject.getComponentOrNull(NetworkObject.class);
         if (networkObject == null) {
@@ -222,7 +268,7 @@ public final class HierarchyView {
         }
         ImGui.sameLine();
         boolean ownedHere = networkObject.ownerPeer() != NetworkObject.SERVER_PEER;
-        ImGui.textColored(ownedHere ? BADGE_OWNED_COLOR : BADGE_NETWORKED_COLOR,
+        Texts.colored(ownedHere ? BADGE_OWNED_COLOR : BADGE_NETWORKED_COLOR,
                 ownedHere ? NETWORK_BADGE_OWNED : NETWORK_BADGE);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip("network id " + networkObject.networkId()
@@ -238,7 +284,7 @@ public final class HierarchyView {
         float startY = ImGui.getCursorScreenPosY();
         float height = ImGui.getTextLineHeightWithSpacing();
         for (int level = 0; level < depth; level++) {
-            float x = startX + level * EditorStyle.INDENT_SPACING + INDENT_GUIDE_OFFSET;
+            float x = startX + level * EditorStyle.indentSpacing() + EditorScale.of(INDENT_GUIDE_OFFSET);
             ImGui.getWindowDrawList().addLine(x, startY, x, startY + height, INDENT_GUIDE_COLOR);
         }
     }
