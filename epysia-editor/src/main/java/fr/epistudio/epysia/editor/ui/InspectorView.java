@@ -25,7 +25,10 @@ import fr.epistudio.epysia.editor.command.builtin.MergeIntoMultiMeshCommand;
 import fr.epistudio.epysia.editor.command.builtin.RemoveComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetComponentEnabledCommand;
 import fr.epistudio.epysia.assets.AssetUri;
+import fr.epistudio.epysia.editor.command.builtin.ApplyInstanceToPrefabCommand;
+import fr.epistudio.epysia.editor.command.builtin.RevertPrefabOverridesCommand;
 import fr.epistudio.epysia.prefab.PrefabApplier;
+import fr.epistudio.epysia.prefab.PrefabFieldApplier;
 import fr.epistudio.epysia.prefab.PrefabRefresher;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import fr.epistudio.epysia.editor.icons.ComponentIcons;
@@ -90,6 +93,7 @@ public final class InspectorView {
     private final TextureInspectorSection textureSection;
     private final EngineServices engineServices;
     private PrefabRefresher prefabRefresher;
+    private PrefabFieldApplier fieldApplier;
     private final SpriteTextureLookup spriteTextures;
     private final SurfaceUniformRows spriteUniformRows;
 
@@ -270,7 +274,8 @@ public final class InspectorView {
         Texts.muted("Prefab " + gameObject.prefabSource()
                 + " (" + gameObject.overriddenProperties().size() + " overridden)");
         if (ImGui.button("Revert all")) {
-            prefabRefresher().revertEverything(gameObject);
+            history().execute(new RevertPrefabOverridesCommand(gameObject, prefabRefresher(),
+                    fieldApplier()));
             notifier.show("Reverted to " + gameObject.prefabSource());
         }
         ImGui.sameLine();
@@ -286,19 +291,22 @@ public final class InspectorView {
             notifier.show("Prefab not found: " + gameObject.prefabSource());
             return;
         }
-        try {
-            new PrefabApplier(componentRegistry).applyToPrefab(gameObject, file.get());
-            prefabRefresher().refresh(activeDocument.get().scene());
-            notifier.show("Applied to " + gameObject.prefabSource());
-        } catch (IOException failure) {
-            notifier.show("Could not write the prefab: " + failure.getMessage());
+        history().execute(new ApplyInstanceToPrefabCommand(gameObject, file.get(),
+                new PrefabApplier(componentRegistry)));
+        prefabRefresher().refresh(activeDocument.get().scene());
+        notifier.show("Applied to " + gameObject.prefabSource());
+    }
+
+    private PrefabFieldApplier fieldApplier() {
+        if (fieldApplier == null) {
+            fieldApplier = new SceneSerializer(componentRegistry)::applyFields;
         }
+        return fieldApplier;
     }
 
     private PrefabRefresher prefabRefresher() {
         if (prefabRefresher == null) {
-            prefabRefresher = new PrefabRefresher(this::readPrefabText,
-                    new SceneSerializer(componentRegistry)::applyFields);
+            prefabRefresher = new PrefabRefresher(this::readPrefabText, fieldApplier());
         }
         return prefabRefresher;
     }

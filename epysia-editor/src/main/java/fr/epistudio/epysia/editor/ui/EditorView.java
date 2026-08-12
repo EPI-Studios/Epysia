@@ -1395,9 +1395,11 @@ public final class EditorView implements FrameView {
     }
 
     private void refreshPrefabInstances() {
-        new PrefabRefresher(this::readPrefabText,
-                new SceneSerializer(componentRegistry)::applyFields)
-                .refresh(workspace.active().scene());
+        PrefabRefresher refresher = new PrefabRefresher(this::readPrefabText,
+                new SceneSerializer(componentRegistry)::applyFields);
+        for (SceneDocument document : workspace.documents()) {
+            refresher.refresh(document.scene());
+        }
     }
 
     private Optional<String> readPrefabText(String prefabSource) {
