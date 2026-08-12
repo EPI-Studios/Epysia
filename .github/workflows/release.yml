@@ -50,6 +50,28 @@ jobs:
           distribution: temurin
           java-version: 25
 
+      - name: Checkout imgui-java
+        uses: actions/checkout@v4
+        with:
+          repository: Meekiavelique/imgui-java
+          submodules: recursive
+          path: imgui-java
+
+      - name: Verify imgui natives
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux) native=libimgui-java64.so ;;
+            Windows) native=imgui-java64.dll ;;
+            macOS) native=libimgui-java64.dylib ;;
+          esac
+          if [ ! -f "imgui-java/bin/$native" ]; then
+            echo "::error::imgui-java/bin/$native is missing, the editor cannot run on ${{ runner.os }}"
+            ls -la imgui-java/bin || true
+            exit 1
+          fi
+          echo "found imgui-java/bin/$native"
+
       - name: Checkout box3d-java
         uses: actions/checkout@v4
         with:
