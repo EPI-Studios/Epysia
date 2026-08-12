@@ -35,13 +35,29 @@ tasks.register('runGame', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'fr.epistudio.epysia.GameLauncher'
     jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    systemProperties System.getProperties().findAll {
+        it.key.toString().startsWith('epysia.')
+    }
     def scene = project.findProperty('scene') ?: '/tmp/epysia-scene.epyscene'
     def project_ = project.findProperty('projectRoot') ?: ''
     def channel = project.findProperty('channel') ?: ''
     def title = project.findProperty('title') ?: 'Epysia - Game'
     args = ['--scene', scene, '--title', title]
+    if (project.hasProperty('width')) args += ['--width', project.findProperty('width')]
+    if (project.hasProperty('height')) args += ['--height', project.findProperty('height')]
+    if (project.hasProperty('precompiledScripts')) {
+        args += ['--precompiled-scripts', project.findProperty('precompiledScripts')]
+    }
     if (project_) args += ['--project', project_]
     if (channel == 'stdio') args += ['--runtime-channel=stdio']
+}
+
+tasks.register('translateShaders', JavaExec) {
+    group = 'verification'
+    description = 'Translates every engine GLSL shader to SPIR-V and reports failures.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'fr.epistudio.epysia.render.vulkan.ShaderTranslationReport'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
 }
 
 tasks.register('syncPhysicsNatives', Copy) {
@@ -108,6 +124,9 @@ dependencies {
     implementation 'org.lwjgl:lwjgl'
     implementation 'org.lwjgl:lwjgl-glfw'
     implementation 'org.lwjgl:lwjgl-opengl'
+    implementation 'org.lwjgl:lwjgl-vulkan'
+    implementation 'org.lwjgl:lwjgl-vma'
+    implementation 'org.lwjgl:lwjgl-shaderc'
     implementation 'org.lwjgl:lwjgl-stb'
     implementation 'org.lwjgl:lwjgl-tinyexr'
     implementation 'org.lwjgl:lwjgl-openal'
@@ -115,9 +134,19 @@ dependencies {
     implementation 'de.maxhenkel.speex4j:speex4j:1.0.3'
     implementation 'de.maxhenkel.rnnoise4j:rnnoise4j:2.1.3'
     implementation 'de.maxhenkel.lame4j:lame4j:2.1.5'
+    implementation 'com.code-disaster.steamworks4j:steamworks4j:1.10.0'
+    implementation 'com.code-disaster.steamworks4j:steamworks4j-lwjgl3:1.10.0'
+    implementation 'org.recast4j:recast:1.5.12'
+    implementation 'org.recast4j:detour:1.5.12'
+    implementation 'org.recast4j:detour-crowd:1.5.12'
     runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-vma::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-shaderc::${lwjglNatives}"
+    if (lwjglNatives == 'natives-macos' || lwjglNatives == 'natives-macos-arm64') {
+        runtimeOnly "org.lwjgl:lwjgl-vulkan::${lwjglNatives}"
+    }
     runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-tinyexr::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-openal::${lwjglNatives}"
@@ -167,3 +196,11 @@ tasks.withType(JavaExec).configureEach {
     }
 }
 
+
+tasks.register('printRuntimeClasspath') {
+    group = 'verification'
+    description = 'Prints the runtime classpath for launching the engine outside Gradle.'
+    doLast {
+        println sourceSets.main.runtimeClasspath.asPath
+    }
+}
