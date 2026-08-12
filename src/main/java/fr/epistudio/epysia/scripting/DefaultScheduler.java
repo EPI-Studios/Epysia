@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.scripting;
 
+import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.logging.Logger;
 
 import java.util.ArrayList;
@@ -17,19 +18,35 @@ public final class DefaultScheduler implements Scheduler {
     }
 
     @Override
-    public void after(float seconds, Runnable action) {
-        pending.add(new Entry(Math.max(0.0f, seconds), 0.0f, action));
+    public ScheduledAction after(float seconds, Runnable action) {
+        return schedule(new Entry(Math.max(0.0f, seconds), 0.0f, action, null));
     }
 
     @Override
-    public void every(float seconds, Runnable action) {
+    public ScheduledAction every(float seconds, Runnable action) {
         float interval = Math.max(0.0001f, seconds);
-        pending.add(new Entry(interval, interval, action));
+        return schedule(new Entry(interval, interval, action, null));
     }
 
     @Override
-    public void nextFrame(Runnable action) {
-        pending.add(new Entry(0.0f, 0.0f, action));
+    public ScheduledAction nextFrame(Runnable action) {
+        return schedule(new Entry(0.0f, 0.0f, action, null));
+    }
+
+    @Override
+    public ScheduledAction after(IComponent owner, float seconds, Runnable action) {
+        return schedule(new Entry(Math.max(0.0f, seconds), 0.0f, action, owner));
+    }
+
+    @Override
+    public ScheduledAction every(IComponent owner, float seconds, Runnable action) {
+        float interval = Math.max(0.0001f, seconds);
+        return schedule(new Entry(interval, interval, action, owner));
+    }
+
+    private ScheduledAction schedule(Entry entry) {
+        pending.add(entry);
+        return entry;
     }
 
     public void tick(float deltaTimeSeconds) {
@@ -38,19 +55,30 @@ public final class DefaultScheduler implements Scheduler {
         List<Entry> repeats = new ArrayList<>();
         Iterator<Entry> iterator = entries.iterator();
         while (iterator.hasNext()) {
-            Entry entry = iterator.next();
-            entry.remaining -= deltaTimeSeconds;
-            if (entry.remaining > 0.0f) {
-                continue;
-            }
-            run(entry.action);
-            iterator.remove();
-            if (entry.interval > 0.0f) {
-                entry.remaining += entry.interval;
-                repeats.add(entry);
-            }
+            advance(iterator, iterator.next(), deltaTimeSeconds, repeats);
         }
         entries.addAll(repeats);
+    }
+
+    private void advance(Iterator<Entry> iterator, Entry entry, float deltaTimeSeconds,
+                         List<Entry> repeats) {
+        if (entry.isAbandoned()) {
+            entry.cancel();
+            iterator.remove();
+            return;
+        }
+        entry.remaining -= deltaTimeSeconds;
+        if (entry.remaining > 0.0f) {
+            return;
+        }
+        run(entry.action);
+        iterator.remove();
+        if (entry.interval > 0.0f && !entry.cancelled) {
+            entry.remaining += entry.interval;
+            repeats.add(entry);
+        } else {
+            entry.cancelled = true;
+        }
     }
 
     private void run(Runnable action) {
@@ -63,15 +91,37 @@ public final class DefaultScheduler implements Scheduler {
         }
     }
 
-    private static final class Entry {
+    public void clear() {
+        entries.clear();
+        pending.clear();
+    }
+
+    private static final class Entry implements ScheduledAction {
         float remaining;
         final float interval;
         final Runnable action;
+        final IComponent owner;
+        boolean cancelled;
 
-        Entry(float remaining, float interval, Runnable action) {
+        Entry(float remaining, float interval, Runnable action, IComponent owner) {
             this.remaining = remaining;
             this.interval = interval;
             this.action = action;
+            this.owner = owner;
+        }
+
+        boolean isAbandoned() {
+            return cancelled || (owner != null && !owner.isAlive());
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+        }
+
+        @Override
+        public boolean isPending() {
+            return !cancelled;
         }
     }
 }
