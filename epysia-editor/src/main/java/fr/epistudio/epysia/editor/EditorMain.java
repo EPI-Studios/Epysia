@@ -9,6 +9,8 @@ import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.editor.ui.EditorView;
 import fr.epistudio.epysia.editor.ui.FrameView;
+import fr.epistudio.epysia.diagnostics.CrashReporter;
+import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.ui.ProjectSelectorView;
 import fr.epistudio.epysia.gpu.GpuLauncher;
@@ -46,13 +48,29 @@ public final class EditorMain {
     private double lastFrameSeconds;
 
     public static void main(String[] arguments) {
+        CrashReporter.install(EditorPreferences.defaultFile().getParent(),
+                new ConsoleLogger(System.err));
         GpuLauncher.enforce(EditorPreferences.load(EditorPreferences.defaultFile()).gpuPreference());
+        Optional<ImportRun> importRun = ImportRun.parse(arguments);
+        if (importRun.isPresent()) {
+            runImport(importRun.get());
+            return;
+        }
         Optional<ExportRun> export = ExportRun.parse(arguments);
         if (export.isPresent()) {
             runExport(export.get());
             return;
         }
         new EditorMain().run();
+    }
+
+    private static void runImport(ImportRun importRun) {
+        try {
+            importRun.run();
+        } catch (IOException failure) {
+            System.err.println("[import] failed: " + failure.getMessage());
+            throw new UncheckedIOException(failure);
+        }
     }
 
     private static void runExport(ExportRun export) {
@@ -65,7 +83,10 @@ public final class EditorMain {
     }
 
     private void run() {
-        shell.setViewportsEnabled(EditorPreferences.load(EditorPreferences.defaultFile()).detachableWindows());
+        EditorPreferences startupPreferences = EditorPreferences.load(EditorPreferences.defaultFile());
+        shell.setViewportsEnabled(startupPreferences.detachableWindows());
+        shell.setUiScalePreference(startupPreferences.uiScale());
+        shell.setFrameRateCap(DEFAULT_FOCUSED_FRAMERATE);
         shell.initialize();
         iconAtlas.loadAll();
         componentRegistry.populateFromScan(ComponentScanner.scan());

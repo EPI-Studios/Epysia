@@ -1,5 +1,10 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.gizmo.NavMeshOverlay;
+import fr.epistudio.epysia.navigation.NavigationService;
+import fr.epistudio.epysia.editor.ui.kit.SegmentedControl;
+import fr.epistudio.epysia.editor.ui.kit.Toggles;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.DirectionalLight;
@@ -156,6 +161,10 @@ public final class ViewportView {
     private boolean showPhysicsDebug;
     private final PhysicsDebugOverlay.Options physicsDebugOptions = new PhysicsDebugOverlay.Options();
     private boolean showTileCollision;
+    private boolean showNavMesh;
+    private final NavMeshOverlay navMeshOverlay = new NavMeshOverlay();
+    private float[] navMeshVertices = new float[0];
+    private int navMeshTileStamp = -1;
     private float overlayThicknessMultiplier = 1.0f;
     private float gridFadeDistance = GridOverlay.DEFAULT_MINOR_FADE_DISTANCE;
     private int supersampleFactor = DEFAULT_SUPERSAMPLE_FACTOR;
@@ -198,6 +207,15 @@ public final class ViewportView {
 
     public void enablePainting() {
         paintEnabled = true;
+    }
+
+    public boolean showNavMesh() {
+        return showNavMesh;
+    }
+
+    public void setShowNavMesh(boolean show) {
+        showNavMesh = show;
+        navMeshTileStamp = -1;
     }
 
     public boolean showTileCollision() {
@@ -261,6 +279,12 @@ public final class ViewportView {
         return viewMode;
     }
 
+    private static final float TOOLBAR_MARGIN_X = 4.0f;
+    private static final float TOOLBAR_MARGIN_Y = 2.0f;
+
+    private Runnable mainToolbarRenderer;
+    private Runnable sceneTabsRenderer;
+
     public void render(float deltaSeconds) {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
         boolean visible = ImGui.begin(I18n.label(TextKey.EDITOR_VIEWPORT_VIEW_TITLE, WINDOW_TITLE), WINDOW_FLAGS);
@@ -274,8 +298,43 @@ public final class ViewportView {
         }
         viewportFocusedThisFrame = ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows);
         timings.beginFrame();
+        renderSceneTabs();
+        renderMainToolbar();
         renderContent(deltaSeconds);
         ImGui.end();
+    }
+
+    public void setSceneTabsRenderer(Runnable renderer) {
+        sceneTabsRenderer = renderer;
+    }
+
+    private void renderSceneTabs() {
+        if (sceneTabsRenderer == null) {
+            return;
+        }
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, EditorScale.of(TOOLBAR_MARGIN_X), 0.0f);
+        ImGui.beginChild("##viewport-scene-tabs", 0.0f, ImGui.getFrameHeight(), false);
+        sceneTabsRenderer.run();
+        ImGui.endChild();
+        ImGui.popStyleVar();
+    }
+
+    public void setMainToolbarRenderer(Runnable renderer) {
+        mainToolbarRenderer = renderer;
+    }
+
+    private void renderMainToolbar() {
+        if (mainToolbarRenderer == null) {
+            return;
+        }
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, EditorScale.of(TOOLBAR_MARGIN_X),
+                EditorScale.of(TOOLBAR_MARGIN_Y));
+        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, EditorStyle.itemSpacingX(), 0.0f);
+        ImGui.beginChild("##viewport-toolbar", 0.0f,
+                ImGui.getFrameHeight() + EditorScale.of(TOOLBAR_MARGIN_Y) * 2.0f, false);
+        mainToolbarRenderer.run();
+        ImGui.endChild();
+        ImGui.popStyleVar(2);
     }
 
     private void renderContent(float deltaSeconds) {
@@ -313,6 +372,8 @@ public final class ViewportView {
         if (!editorCamera.twoDimensional()) {
             timings.measure("axis indicator", () -> renderAxisIndicator(imageX, imageY, width));
         }
+        drawNavMeshOverlay(imageX, imageY, width, height);
+        renderTilemapOverlay(imageX, imageY);
         timings.measure("billboards", () -> renderBillboards(imageX, imageY, width, height));
         timings.measure("light gizmos", () -> renderLightDirections(imageX, imageY, width, height));
         drawSmartSnapGuides(imageX, imageY, width, height);
@@ -975,8 +1036,8 @@ public final class ViewportView {
         ImGuizmo.setDrawList();
         editorCamera.viewMatrix(viewMatrix).get(viewArray);
         System.arraycopy(viewArray, 0, manipulatedViewArray, 0, viewArray.length);
-        float indicatorX = imageX + width - AXIS_INDICATOR_SIZE - AXIS_INDICATOR_MARGIN;
-        float indicatorY = imageY + AXIS_INDICATOR_MARGIN;
+        float indicatorX = imageX + width - AXIS_INDICATOR_SIZE - EditorScale.of(AXIS_INDICATOR_MARGIN);
+        float indicatorY = imageY + EditorScale.of(AXIS_INDICATOR_MARGIN);
         ImGuizmo.viewManipulate(manipulatedViewArray, editorCamera.focusDistance(),
                 indicatorX, indicatorY, AXIS_INDICATOR_SIZE, AXIS_INDICATOR_SIZE, 0x00000000);
         if (mouseOverIndicator(indicatorX, indicatorY) && viewChanged()) {
@@ -1047,10 +1108,10 @@ public final class ViewportView {
             return;
         }
         ImGui.getWindowDrawList().addCircleFilled(screenX, screenY,
-                BILLBOARD_SHADOW_RADIUS, BILLBOARD_SHADOW_COLOR);
+                EditorScale.of(BILLBOARD_SHADOW_RADIUS), BILLBOARD_SHADOW_COLOR);
         ImGui.getWindowDrawList().addImage(icons.atlasTextureId(icon),
-                screenX - BILLBOARD_HALF_SIZE, screenY - BILLBOARD_HALF_SIZE,
-                screenX + BILLBOARD_HALF_SIZE, screenY + BILLBOARD_HALF_SIZE);
+                screenX - EditorScale.of(BILLBOARD_HALF_SIZE), screenY - EditorScale.of(BILLBOARD_HALF_SIZE),
+                screenX + EditorScale.of(BILLBOARD_HALF_SIZE), screenY + EditorScale.of(BILLBOARD_HALF_SIZE));
         handleBillboardClick(gameObject, screenX, screenY);
     }
 
@@ -1061,7 +1122,7 @@ public final class ViewportView {
         }
         float deltaX = ImGui.getMousePosX() - screenX;
         float deltaY = ImGui.getMousePosY() - screenY;
-        if (deltaX * deltaX + deltaY * deltaY <= BILLBOARD_CLICK_RADIUS * BILLBOARD_CLICK_RADIUS) {
+        if (deltaX * deltaX + deltaY * deltaY <= EditorScale.of(BILLBOARD_CLICK_RADIUS) * EditorScale.of(BILLBOARD_CLICK_RADIUS)) {
             applyPick(gameObject);
             billboardClickConsumed = true;
         }
@@ -1361,30 +1422,76 @@ public final class ViewportView {
         }
         ImGui.getWindowDrawList().addRect(imageX + 1.0f, imageY + 1.0f,
                 imageX + width - 1.0f, imageY + height - 1.0f,
-                EditorStyle.COLOR_ACCENT, 0.0f, 0, PLAY_BORDER_THICKNESS);
+                EditorStyle.COLOR_ACCENT, 0.0f, 0, EditorScale.of(PLAY_BORDER_THICKNESS));
         renderViewModeButtons(imageX, imageY);
     }
 
-    private void renderViewModeButtons(float imageX, float imageY) {
-        ImGui.setCursorScreenPos(imageX + AXIS_INDICATOR_MARGIN, imageY + AXIS_INDICATOR_MARGIN);
-        if (renderModeButton(TextKey.EDITOR_VIEWPORT_VIEW_SCENE, viewMode == ViewMode.SCENE)) {
-            viewMode = ViewMode.SCENE;
+    private void drawNavMeshOverlay(float imageX, float imageY, int width, int height) {
+        if (!showNavMesh) {
+            return;
         }
+        refreshNavMeshVertices();
+        if (navMeshVertices.length == 0) {
+            return;
+        }
+        navMeshOverlay.render(navMeshVertices, new Matrix4f(editorCamera.camera().viewProjection()),
+                ImGui.getWindowDrawList(),
+                new NavMeshOverlay.ScreenRect(imageX, imageY, width, height));
+    }
+
+    private void refreshNavMeshVertices() {
+        NavigationService navigation = sceneHost.engine().navigation();
+        int stamp = navigation.loadedTileCount() * 31 + navigation.bakedTriangleCount();
+        if (stamp == navMeshTileStamp) {
+            return;
+        }
+        navMeshTileStamp = stamp;
+        navMeshVertices = navigation.debugTriangleVertices();
+    }
+
+    private boolean selectionCarriesTilemap() {
+        return activeDocument.get().selection().get()
+                .flatMap(gameObject -> gameObject.getComponent(TilemapRenderer.class))
+                .isPresent();
+    }
+
+    private void renderTilemapOverlay(float imageX, float imageY) {
+        if (!editorCamera.twoDimensional() || !selectionCarriesTilemap()) {
+            return;
+        }
+        ImGui.setCursorScreenPos(imageX + EditorScale.of(AXIS_INDICATOR_MARGIN), imageY + EditorScale.of(AXIS_INDICATOR_MARGIN));
+        if (Toggles.text("viewport-paint", I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_PAINT), paintEnabled)) {
+            paintEnabled = !paintEnabled;
+        }
+        tooltip(TextKey.EDITOR_VIEWPORT_VIEW_PAINT_TOOLTIP);
         ImGui.sameLine();
-        if (renderModeButton(TextKey.EDITOR_VIEWPORT_VIEW_GAME, viewMode == ViewMode.GAME)) {
-            viewMode = ViewMode.GAME;
+        if (Toggles.text("viewport-tile-collision",
+                I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_TILE_COLLISION), showTileCollision)) {
+            showTileCollision = !showTileCollision;
+        }
+        tooltip(TextKey.EDITOR_VIEWPORT_VIEW_TILE_COLLISION_TOOLTIP);
+    }
+
+    private static void tooltip(TextKey key) {
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(I18n.translate(key));
+        }
+    }
+
+    private void renderViewModeButtons(float imageX, float imageY) {
+        ImGui.setCursorScreenPos(imageX + EditorScale.of(AXIS_INDICATOR_MARGIN), imageY + EditorScale.of(AXIS_INDICATOR_MARGIN));
+        List<String> labels = List.of(I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_SCENE),
+                I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_GAME));
+        int chosen = SegmentedControl.render("viewport-mode", labels, viewMode == ViewMode.SCENE ? 0 : 1);
+        viewMode = chosen == 0 ? ViewMode.SCENE : ViewMode.GAME;
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_VIEW_TOOLTIP, labels.get(chosen)));
         }
     }
 
     private boolean renderModeButton(TextKey key, boolean active) {
-        if (active) {
-            ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
-        }
         String label = I18n.translate(key);
-        boolean clicked = ImGui.button(I18n.label(key, "viewport-mode-" + key.name()));
-        if (active) {
-            ImGui.popStyleColor();
-        }
+        boolean clicked = Toggles.text("viewport-mode-" + key.name(), label, active);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(I18n.translate(TextKey.EDITOR_VIEWPORT_VIEW_VIEW_TOOLTIP, label));
         }
@@ -1421,8 +1528,8 @@ public final class ViewportView {
     private static PreviewBounds previewBounds(float imageX, float imageY, int width, int height) {
         int previewWidth = Math.max(64, (int) (width * PREVIEW_WIDTH_FRACTION));
         int previewHeight = Math.max(36, (int) (previewWidth / PREVIEW_ASPECT));
-        return new PreviewBounds(imageX + width - previewWidth - PREVIEW_MARGIN,
-                imageY + height - previewHeight - PREVIEW_MARGIN, previewWidth, previewHeight);
+        return new PreviewBounds(imageX + width - previewWidth - EditorScale.of(PREVIEW_MARGIN),
+                imageY + height - previewHeight - EditorScale.of(PREVIEW_MARGIN), previewWidth, previewHeight);
     }
 
     private boolean mouseOverCameraPreview(float imageX, float imageY, int width, int height) {
@@ -1440,13 +1547,13 @@ public final class ViewportView {
         float y1 = y0 + bounds.height();
         var drawList = ImGui.getWindowDrawList();
         drawList.addRectFilled(x0 - 1.0f, y0 - 1.0f, x1 + 1.0f, y1 + 1.0f,
-                EditorStyle.COLOR_OUTLINE, PREVIEW_ROUNDING);
+                EditorStyle.COLOR_OUTLINE, EditorScale.of(PREVIEW_ROUNDING));
         drawList.addImageRounded(textureId, x0, y0, x1, y1,
-                0.0f, 1.0f, 1.0f, 0.0f, 0xFFFFFFFF, PREVIEW_ROUNDING);
+                0.0f, 1.0f, 1.0f, 0.0f, 0xFFFFFFFF, EditorScale.of(PREVIEW_ROUNDING));
         drawList.addRect(x0, y0, x1, y1,
                 isPinned(cameraObject) ? EditorStyle.COLOR_HIGHLIGHT : EditorStyle.COLOR_ACCENT,
-                PREVIEW_ROUNDING, 0, 1.5f);
-        drawList.addText(x0 + PREVIEW_LABEL_INSET_X, y0 + PREVIEW_LABEL_INSET_Y, EditorStyle.COLOR_TEXT,
+                EditorScale.of(PREVIEW_ROUNDING), 0, 1.5f);
+        drawList.addText(x0 + EditorScale.of(PREVIEW_LABEL_INSET_X), y0 + EditorScale.of(PREVIEW_LABEL_INSET_Y), EditorStyle.COLOR_TEXT,
                 cameraObject.name());
     }
 
@@ -1454,10 +1561,10 @@ public final class ViewportView {
         boolean pinned = isPinned(cameraObject);
         float restoreX = ImGui.getCursorScreenPosX();
         float restoreY = ImGui.getCursorScreenPosY();
-        ImGui.setCursorScreenPos(bounds.x() + bounds.width() - PREVIEW_PIN_SIZE - PREVIEW_LABEL_INSET_X * 2.0f,
-                bounds.y() + PREVIEW_LABEL_INSET_Y * 0.5f);
+        ImGui.setCursorScreenPos(bounds.x() + bounds.width() - EditorScale.of(PREVIEW_PIN_SIZE) - EditorScale.of(PREVIEW_LABEL_INSET_X) * 2.0f,
+                bounds.y() + EditorScale.of(PREVIEW_LABEL_INSET_Y) * 0.5f);
         if (icons.toggleButton("camera-preview-pin", pinned ? EditorIcon.LOCK : EditorIcon.UNLOCK,
-                PREVIEW_PIN_SIZE, pinned)) {
+                EditorScale.of(PREVIEW_PIN_SIZE), pinned)) {
             togglePin(cameraObject);
         }
         if (ImGui.isItemHovered()) {

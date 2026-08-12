@@ -1,7 +1,13 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.inspector.InspectorDependencies;
+import fr.epistudio.epysia.editor.ui.kit.Toggles;
+import fr.epistudio.epysia.editor.ui.kit.Toolbars;
 import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
+import fr.epistudio.epysia.editor.commands.CommandRegistry;
+import fr.epistudio.epysia.editor.commands.EditorCommand;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.render.backend.RenderBackend;
@@ -15,6 +21,7 @@ import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.InstantiatePrefabCommand;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
+import fr.epistudio.epysia.editor.ui.kit.DocumentTabs;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
 import fr.epistudio.epysia.editor.importer.AssetImportPipeline;
@@ -83,18 +90,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import fr.epistudio.epysia.project.EditorSettings;
+import fr.epistudio.epysia.project.NetworkSettings;
+import fr.epistudio.epysia.project.RenderSettings;
+import fr.epistudio.epysia.project.SteamSettings;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import java.util.List;
 
 public final class EditorView implements FrameView {
 
-    private static final float TOOLBAR_GROUP_SPACING = 8.0f;
-    private static final float TOOLBAR_SEPARATOR_INSET = 4.0f;
-    private static final float TOOLBAR_SEPARATOR_HEIGHT = 22.0f;
-    private static final int TOOLBAR_SEPARATOR_COLOR = EditorStyle.rgba(255, 255, 255, 30);
 
-    private static final float TOOLBAR_TOOLS_HEIGHT = 36.0f;
-    private static final float TOOLBAR_TABS_HEIGHT = 26.0f;
-    private static final float TOOLBAR_EDGE_PADDING = 8.0f;
+    private static final float TOOLBAR_TOOLS_HEIGHT = 30.0f;
+    private static final float MINIMUM_TAB_REGION_WIDTH = 120.0f;
+    private static final float TOOLBAR_EDGE_PADDING = 6.0f;
     private static final int PLAY_BUTTON_COUNT = 4;
     private static final float STATUS_BAR_HEIGHT = 26.0f;
     private static final float SPAWN_DISTANCE = 4.0f;
@@ -120,6 +127,7 @@ public final class EditorView implements FrameView {
     private final ProjectStore projectStore;
     private final EditorScene3DHost sceneHost;
     private final EditorCamera editorCamera;
+    private static final float UI_SCALE_STEP = 0.1f;
     private static final float BRAND_MARGIN = 6.0f;
 
     private final IconWidgets icons;
@@ -137,6 +145,8 @@ public final class EditorView implements FrameView {
     private final ScriptService scriptService;
     private final GizmoState gizmoState = new GizmoState();
     private final DockLayout dockLayout = new DockLayout();
+    private final CommandRegistry commands = new CommandRegistry();
+    private final CommandPaletteView commandPalette = new CommandPaletteView();
     private final HierarchyView hierarchyView;
     private final InspectorView inspectorView;
     private final ViewportView viewportView;
@@ -199,7 +209,7 @@ public final class EditorView implements FrameView {
         this.objectFactory = new GameObjectFactory(active, sceneHost.engine(), editorCamera::twoDimensional);
         this.creationMenu = new GameObjectCreationMenu(objectFactory);
         this.importPipeline = new AssetImportPipeline(buildImporterRegistry(componentRegistry, sceneHost.backend()));
-        this.scriptEditorView = new ScriptEditorView(componentRegistry, toasts, this::onScriptFileSaved);
+        this.scriptEditorView = new ScriptEditorView(componentRegistry, icons, toasts, this::onScriptFileSaved);
         this.shaderGraphPreviews = new ShaderGraphPreviewService(sceneHost.window(), sceneHost.backend());
         this.vfxPreviewPanel = new VfxPreviewPanel(sceneHost.window(), sceneHost.backend());
         this.graphEditorView = new GraphEditorView(componentRegistry, toasts, active,
@@ -217,12 +227,14 @@ public final class EditorView implements FrameView {
                 new ImagePreviewTexture(sceneHost.backend()), project.locator(), this::onAtlasSaved);
         this.tilemapDockView = new TilemapDockView(active, sceneHost.engine(), icons, tilePalettePanel,
                 viewportView::enablePainting, editorCamera::twoDimensional);
-        this.inspectorView = new InspectorView(active, componentRegistry, toasts, icons,
-                new AssetPicker(project), thumbnailCache, project, this::createScriptAndAttach,
-                graphEditorView::open, this::selectedBrowserAssetPath, objectFactory,
+        this.inspectorView = new InspectorView(
+                new InspectorDependencies(active, componentRegistry, toasts, icons, thumbnailCache,
+                        project, objectFactory, sceneHost.engine()),
+                new AssetPicker(project), this::createScriptAndAttach,
+                graphEditorView::open, this::selectedBrowserAssetPath,
                 new AtlasInspectorSection(spriteEditorWindow::open),
                 new TextureInspectorSection(imagePreview, this::onTextureFilterChanged),
-                tilemapDockView::focus, sceneHost.engine());
+                tilemapDockView::focus);
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
         this.meshBakeDialog = new MeshBakeDialog(toasts, this::onMeshBaked);
@@ -231,6 +243,7 @@ public final class EditorView implements FrameView {
                 this::instantiatePrefabAtOrigin, this::openScenePath, this::attachScriptToSelected,
                 graphEditorView::open, spriteEditorWindow::open, importPipeline);
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
+                this::onNetworkSaved, this::onSteamSaved, this::onRenderSaved,
                 this::onViewportTuningChanged);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
         this.librariesSection = new LibrariesSection(toasts, this::reloadScripts);
@@ -253,7 +266,80 @@ public final class EditorView implements FrameView {
         return registry;
     }
 
+    private void registerCommands() {
+        registerFileCommands();
+        registerEditCommands();
+        registerWindowCommands();
+        commands.add(EditorCommand.of("play.toggle",
+                () -> I18n.translate(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW),
+                () -> I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_PLAY),
+                this::togglePlaySession).withShortcut("Ctrl+P"));
+    }
+
+    private void registerFileCommands() {
+        Supplier<String> group = () -> I18n.translate(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE);
+        commands.add(command("file.new-scene", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCENE, workspace::create));
+        commands.add(command("file.open-scene", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_OPEN_SCENE, this::openSceneDialog));
+        commands.add(command("file.save", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_SAVE, this::saveScene).withShortcut("Ctrl+S"));
+        commands.add(command("file.save-as", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_SAVE_AS, this::saveSceneAs));
+        commands.add(command("file.export-game", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_EXPORT_GAME,
+                () -> exportGameDialog.open(workspace.active().name())));
+        commands.add(command("file.reload-scripts", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_RELOAD_SCRIPTS, this::reloadScripts));
+        commands.add(command("file.open-scripts-in-ide", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_OPEN_SCRIPTS_IN_IDE, this::openScriptsInIde));
+        commands.add(command("file.open-project", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_OPEN_PROJECT, onOpenProjectSelector));
+        commands.add(command("file.exit", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_EXIT, shell::requestClose));
+    }
+
+    private void registerEditCommands() {
+        Supplier<String> group = () -> I18n.translate(TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT);
+        commands.add(command("edit.undo", group, TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_UNDO,
+                () -> history().undo()).withShortcut("Ctrl+Z").availableWhen(() -> history().canUndo()));
+        commands.add(command("edit.redo", group, TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_REDO,
+                () -> history().redo()).withShortcut("Ctrl+Y").availableWhen(() -> history().canRedo()));
+        commands.add(command("edit.duplicate", group, TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_DUPLICATE,
+                hierarchyView::duplicateSelected).withShortcut("Ctrl+D"));
+        commands.add(command("edit.delete", group, TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_DELETE,
+                hierarchyView::askDeleteSelected).withShortcut("Del"));
+        commands.add(command("edit.settings", group, TextKey.EDITOR_EDITOR_VIEW_MENU_EDIT_SETTINGS,
+                this::openSettings));
+    }
+
+    private void registerWindowCommands() {
+        Supplier<String> group = () -> I18n.translate(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW);
+        commands.add(command("window.reset-layout", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_RESET_LAYOUT, dockLayout::requestDefaultLayout));
+        commands.add(command("window.grid", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_GRID, this::toggleGridPreference));
+        commands.add(command("window.collider-wireframes", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_COLLIDER_WIREFRAMES,
+                () -> viewportView.setShowColliderWireframes(!viewportView.showColliderWireframes())));
+        commands.add(command("window.navmesh-debug", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_NAVMESH_DEBUG,
+                () -> viewportView.setShowNavMesh(!viewportView.showNavMesh())));
+        commands.add(command("window.profiler", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_PROFILER,
+                () -> profilerView.setVisible(!profilerView.isVisible())));
+        commands.add(command("window.lighting", group,
+                TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_LIGHTING,
+                () -> lightingView.setVisible(!lightingView.isVisible())));
+    }
+
+    private static EditorCommand command(String id, Supplier<String> group, TextKey label,
+                                         Runnable action) {
+        return EditorCommand.of(id, group, () -> I18n.translate(label), action);
+    }
+
     private void finishSetup() {
+        registerCommands();
         applyPreferences();
         scriptService.reload();
         refreshScriptSymbols();
@@ -277,6 +363,8 @@ public final class EditorView implements FrameView {
         editorCamera.setClipPlanes(preferences.sceneNear(), preferences.sceneFar());
         editorCamera.setFieldOfViewDegrees(preferences.sceneFieldOfView());
         editorCamera.setTwoDimensional(preferences.viewport2DMode());
+        viewportView.setSceneTabsRenderer(this::renderSceneTabsStrip);
+        viewportView.setMainToolbarRenderer(this::renderViewportToolbar);
         viewportView.setShowGrid(preferences.gridVisible());
         gizmoState.setSnapEnabled(preferences.snapEnabled());
         viewportView.setOverlayThicknessMultiplier(preferences.overlayThickness());
@@ -297,6 +385,7 @@ public final class EditorView implements FrameView {
         renderHostWindow();
         renderPanels(deltaSeconds);
         renderDialogs();
+        commandPalette.render(commands);
         handleGlobalShortcuts();
         playSession.frame(deltaSeconds);
     }
@@ -392,9 +481,8 @@ public final class EditorView implements FrameView {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
         ImGui.begin("##editor-host", HOST_WINDOW_FLAGS);
         ImGui.popStyleVar(2);
-        renderToolbarStrip();
         dockLayout.buildIfRequested(viewport);
-        ImGui.dockSpace(dockLayout.dockspaceId(), 0.0f, -STATUS_BAR_HEIGHT);
+        ImGui.dockSpace(dockLayout.dockspaceId(), 0.0f, -EditorScale.of(STATUS_BAR_HEIGHT));
         renderStatusBar();
         ImGui.end();
     }
@@ -437,17 +525,23 @@ public final class EditorView implements FrameView {
         renderGameObjectMenu();
         renderWindowMenu();
         renderHelpMenu();
+        Toolbars.pushFlatButtons();
+        renderPlayControls();
+        renderRunGameButton();
+        Toolbars.popFlatButtons();
         ImGui.endMainMenuBar();
     }
 
     private void renderBrandMark() {
         float size = ImGui.getFontSize();
-        ImGui.setCursorPosY(ImGui.getCursorPosY() + (ImGui.getFrameHeight() - size) * 0.5f);
-        ImGui.dummy(BRAND_MARGIN, 0.0f);
+        float lineY = ImGui.getCursorPosY();
+        ImGui.dummy(EditorScale.of(BRAND_MARGIN), 0.0f);
         ImGui.sameLine();
+        ImGui.setCursorPosY(lineY + (ImGui.getFrameHeight() - size) * 0.5f);
         icons.draw(EditorIcon.EPYSIA_LOGO, size);
         ImGui.sameLine();
-        ImGui.dummy(BRAND_MARGIN, 0.0f);
+        ImGui.setCursorPosY(lineY);
+        ImGui.dummy(EditorScale.of(BRAND_MARGIN), 0.0f);
         ImGui.sameLine();
     }
 
@@ -621,6 +715,10 @@ public final class EditorView implements FrameView {
             viewportView.setShowColliderWireframes(!viewportView.showColliderWireframes());
         }
         renderPhysicsDebugMenu();
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_NAVMESH_DEBUG,
+                "menu-navmesh-debug"), "", viewportView.showNavMesh())) {
+            viewportView.setShowNavMesh(!viewportView.showNavMesh());
+        }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_WINDOW_PROFILER,
                 "menu-window-profiler"), "", profilerView.isVisible())) {
             profilerView.setVisible(!profilerView.isVisible());
@@ -658,7 +756,7 @@ public final class EditorView implements FrameView {
         }
         ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_ABOUT_ENGINE,
                 ProjectStore.CURRENT_ENGINE_VERSION));
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_ABOUT_PROJECT,
+        Texts.muted(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_ABOUT_PROJECT,
                 project.name(), project.engineVersion()));
         ImGui.separator();
         if (ImGui.button(I18n.label(TextKey.EDITOR_EDITOR_VIEW_CLOSE, "about-close"))) {
@@ -671,46 +769,20 @@ public final class EditorView implements FrameView {
         return I18n.label(TextKey.EDITOR_EDITOR_VIEW_ABOUT_TITLE, ABOUT_POPUP_ID);
     }
 
-    private void renderToolbarStrip() {
-        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, EditorStyle.ITEM_SPACING_X, 0.0f);
-        renderToolsStrip();
-        renderTabsStrip();
-        ImGui.popStyleVar();
-        ImGui.separator();
-    }
-
-    private void renderToolsStrip() {
-        ImGui.pushStyleColor(ImGuiCol.ChildBg, EditorStyle.COLOR_PANEL_BACKGROUND);
-        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, TOOLBAR_EDGE_PADDING, EditorStyle.FRAME_PADDING_Y);
-        ImGui.beginChild("##toolbar-tools", 0.0f, TOOLBAR_TOOLS_HEIGHT, false);
-        renderGizmoToolButtons();
-        renderToolbarSeparator();
-        renderToggleButtons();
-        renderPlayControls();
-        renderRunGameButton();
-        ImGui.endChild();
-        ImGui.popStyleVar();
-        ImGui.popStyleColor();
-    }
-
-    private void renderTabsStrip() {
-        ImGui.pushStyleColor(ImGuiCol.ChildBg, EditorStyle.COLOR_HEADER_BACKGROUND);
-        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, TOOLBAR_EDGE_PADDING, 0.0f);
-        ImGui.beginChild("##toolbar-tabs", 0.0f, TOOLBAR_TABS_HEIGHT, false);
+    private void renderSceneTabsStrip() {
+        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, EditorStyle.itemSpacingX(), 0.0f);
+        ImGui.beginChild("##scene-tabs-strip", 0.0f, Toolbars.buttonHeight(), false);
         renderSceneTabs();
         ImGui.endChild();
         ImGui.popStyleVar();
-        ImGui.popStyleColor();
     }
 
-    private static void renderToolbarSeparator() {
-        ImGui.sameLine(0.0f, TOOLBAR_GROUP_SPACING);
-        float x = ImGui.getCursorScreenPosX();
-        float y = ImGui.getCursorScreenPosY();
-        ImGui.getWindowDrawList().addLine(x, y + TOOLBAR_SEPARATOR_INSET,
-                x, y + TOOLBAR_SEPARATOR_HEIGHT, TOOLBAR_SEPARATOR_COLOR);
-        ImGui.dummy(1.0f, TOOLBAR_SEPARATOR_HEIGHT);
-        ImGui.sameLine(0.0f, TOOLBAR_GROUP_SPACING);
+    private void renderViewportToolbar() {
+        Toolbars.pushFlatButtons();
+        renderGizmoToolButtons();
+        Toolbars.groupSeparator();
+        renderToggleButtons();
+        Toolbars.popFlatButtons();
     }
 
     private void renderGizmoToolButtons() {
@@ -728,59 +800,22 @@ public final class EditorView implements FrameView {
         ImGui.sameLine();
         renderToolButton("tool-pivot", EditorIcon.TOOL_PIVOT, GizmoState.Tool.PIVOT,
                 TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_PIVOT);
-        ImGui.sameLine();
+        Toolbars.groupSeparator();
         TextKey spaceKey = gizmoState.worldSpace()
                 ? TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_WORLD
                 : TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_LOCAL;
-        if (ImGui.button(I18n.label(spaceKey, "toolbar-gizmo-space"))) {
+        if (Toolbars.textButton(I18n.label(spaceKey, "toolbar-gizmo-space"))) {
             gizmoState.toggleSpace();
         }
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_TOGGLE_GIZMO_SPACE);
-        ImGui.sameLine();
-        renderTwoDimensionalToggle();
-        ImGui.sameLine();
-        renderPaintToggle();
-        ImGui.sameLine();
-        renderTileCollisionToggle();
-    }
-
-    private void renderTileCollisionToggle() {
-        boolean active = viewportView.showTileCollision();
-        if (icons.toggleButton("tool-tile-collision", EditorIcon.COLLISION_SHAPE_3D,
-                EditorStyle.ICON_SIZE_TOOLBAR, active)) {
-            viewportView.setShowTileCollision(!active);
-        }
-        tooltip("Show tile collision shapes over the map (2D view)");
-    }
-
-    private void renderPaintToggle() {
-        boolean active = viewportView.paintEnabled();
-        if (active) {
-            ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
-        }
-        boolean clicked = ImGui.button("Paint");
-        if (active) {
-            ImGui.popStyleColor();
-        }
-        tooltip("Paint tiles onto the selected tilemap (2D view)");
-        if (clicked) {
-            viewportView.setPaintEnabled(!active);
-        }
     }
 
     private void renderTwoDimensionalToggle() {
         boolean active = editorCamera.twoDimensional();
-        if (active) {
-            ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
-        }
-        boolean clicked = ImGui.button("2D");
-        if (active) {
-            ImGui.popStyleColor();
-        }
-        tooltip("Toggle 2D view (orthographic front view)");
-        if (clicked) {
+        if (Toggles.text("toolbar-2d", I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_TWO_DIMENSIONAL), active)) {
             toggleTwoDimensionalPreference();
         }
+        tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_TWO_DIMENSIONAL_TOOLTIP);
     }
 
     private void toggleTwoDimensionalPreference() {
@@ -790,37 +825,39 @@ public final class EditorView implements FrameView {
     }
 
     private void renderToolButton(String id, EditorIcon icon, GizmoState.Tool tool, TextKey tooltipKey) {
-        if (icons.toggleButton(id, icon, EditorStyle.ICON_SIZE_TOOLBAR, gizmoState.tool() == tool)) {
+        if (icons.toggleButton(id, icon, EditorStyle.iconSizeToolbar(), gizmoState.tool() == tool)) {
             gizmoState.setTool(tool);
         }
         tooltip(tooltipKey);
     }
 
     private void renderToggleButtons() {
-        if (icons.toggleButton("toolbar-snap", EditorIcon.SNAP, EditorStyle.ICON_SIZE_TOOLBAR,
+        renderTwoDimensionalToggle();
+        Toolbars.nextItem();
+        if (icons.toggleButton("toolbar-snap", EditorIcon.SNAP, EditorStyle.iconSizeToolbar(),
                 gizmoState.snapEnabled())) {
             toggleSnapPreference();
         }
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_SNAP);
-        ImGui.sameLine();
-        if (icons.toggleButton("toolbar-grid", EditorIcon.GRID, EditorStyle.ICON_SIZE_TOOLBAR,
+        Toolbars.nextItem();
+        if (icons.toggleButton("toolbar-grid", EditorIcon.GRID, EditorStyle.iconSizeToolbar(),
                 viewportView.showGrid())) {
             toggleGridPreference();
         }
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_GRID);
-        ImGui.sameLine();
+        Toolbars.groupSeparator();
         renderSaveButton();
     }
 
     private void renderSaveButton() {
-        if (icons.iconButton("toolbar-save", EditorIcon.SAVE, EditorStyle.ICON_SIZE_TOOLBAR)) {
+        if (icons.iconButton("toolbar-save", EditorIcon.SAVE, EditorStyle.iconSizeToolbar())) {
             saveScene();
         }
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_SAVE_SCENE);
     }
 
     private void renderPlayControls() {
-        ImGui.sameLine(0.0f, TOOLBAR_GROUP_SPACING);
+        Toolbars.groupSeparator();
         float leftEdge = ImGui.getCursorPosX();
         float centered = (ImGui.getWindowWidth() - playGroupWidth()) * 0.5f;
         ImGui.sameLine(Math.max(centered, leftEdge));
@@ -833,7 +870,7 @@ public final class EditorView implements FrameView {
     }
 
     private static float iconButtonWidth() {
-        return EditorStyle.ICON_SIZE_TOOLBAR + ImGui.getStyle().getFramePaddingX() * 2.0f;
+        return EditorStyle.iconSizeToolbar() + ImGui.getStyle().getFramePaddingX() * 2.0f;
     }
 
     private static float labelButtonWidth(String label) {
@@ -843,7 +880,7 @@ public final class EditorView implements FrameView {
     private void renderEmbeddedPlayButtons() {
         boolean active = playSession.isActive();
         ImGui.beginDisabled(active);
-        if (icons.iconButton("toolbar-play", EditorIcon.PLAY, EditorStyle.ICON_SIZE_TOOLBAR)) {
+        if (icons.iconButton("toolbar-play", EditorIcon.PLAY, EditorStyle.iconSizeToolbar())) {
             playSession.start();
         }
         ImGui.endDisabled();
@@ -854,20 +891,20 @@ public final class EditorView implements FrameView {
 
     private void renderPauseStepStopButtons(boolean active) {
         ImGui.beginDisabled(!active);
-        if (icons.toggleButton("toolbar-pause", EditorIcon.PAUSE, EditorStyle.ICON_SIZE_TOOLBAR,
+        if (icons.toggleButton("toolbar-pause", EditorIcon.PAUSE, EditorStyle.iconSizeToolbar(),
                 playSession.state() == EmbeddedPlaySession.State.PAUSED)) {
             playSession.togglePause();
         }
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_PAUSE);
         ImGui.sameLine();
         ImGui.beginDisabled(playSession.state() != EmbeddedPlaySession.State.PAUSED);
-        if (icons.iconButton("toolbar-step", EditorIcon.REDO, EditorStyle.ICON_SIZE_TOOLBAR)) {
+        if (icons.iconButton("toolbar-step", EditorIcon.REDO, EditorStyle.iconSizeToolbar())) {
             playSession.step();
         }
         ImGui.endDisabled();
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_STEP);
         ImGui.sameLine();
-        if (icons.iconButton("toolbar-stop", EditorIcon.STOP, EditorStyle.ICON_SIZE_TOOLBAR)) {
+        if (icons.iconButton("toolbar-stop", EditorIcon.STOP, EditorStyle.iconSizeToolbar())) {
             playSession.stop();
         }
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_STOP);
@@ -880,9 +917,10 @@ public final class EditorView implements FrameView {
         String killLabel = I18n.label(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_KILL, "toolbar-kill-game");
         ImGui.sameLine(rightAlignedX(runGroupWidth(runLabel, killLabel, subprocessRunning)));
         ImGui.beginDisabled(subprocessRunning || playSession.isActive());
-        if (ImGui.button(runLabel)) {
+        if (Toolbars.textButton(DocumentTabs.reserveIconSpace(runLabel))) {
             startPlay();
         }
+        DocumentTabs.decorate(icons.textureId(EditorIcon.PLAY));
         ImGui.endDisabled();
         renderNetworkPlayPopup();
         tooltip(TextKey.EDITOR_EDITOR_VIEW_TOOLBAR_RUN_GAME_TOOLTIP);
@@ -900,7 +938,7 @@ public final class EditorView implements FrameView {
             return;
         }
         NetworkPlaySettings settings = playController.networkSettings();
-        ImGui.text(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NETWORK_PLAY_TITLE));
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NETWORK_PLAY_TITLE));
         ImGui.separator();
         renderEditorRoleChoices(settings);
         ImGui.separator();
@@ -937,7 +975,7 @@ public final class EditorView implements FrameView {
     }
 
     private static float rightAlignedX(float groupWidth) {
-        return ImGui.getWindowWidth() - groupWidth - TOOLBAR_EDGE_PADDING;
+        return ImGui.getWindowWidth() - groupWidth - EditorScale.of(TOOLBAR_EDGE_PADDING);
     }
 
     private void tooltip(String text) {
@@ -954,11 +992,11 @@ public final class EditorView implements FrameView {
 
     private void renderSceneTabs() {
         if (playSession.isActive()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCENE_PLAYING,
+            Texts.muted(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCENE_PLAYING,
                     workspace.active().name()));
             return;
         }
-        if (!ImGui.beginTabBar("##scene-tabs", ImGuiTabBarFlags.AutoSelectNewTabs)) {
+        if (!ImGui.beginTabBar("##scene-tabs", ImGuiTabBarFlags.AutoSelectNewTabs | ImGuiTabBarFlags.DrawSelectedOverline)) {
             return;
         }
         for (SceneDocument document : List.copyOf(workspace.documents())) {
@@ -973,12 +1011,15 @@ public final class EditorView implements FrameView {
     private void renderSceneTab(SceneDocument document) {
         ImBoolean keepOpen = new ImBoolean(true);
         int flags = document.isDirty() ? ImGuiTabItemFlags.UnsavedDocument : ImGuiTabItemFlags.None;
-        boolean selected = ImGui.beginTabItem(document.name() + "##" + document.filePath(), keepOpen, flags);
+        String label = DocumentTabs.reserveIconSpace(document.name()) + "##" + document.filePath();
+        boolean selected = ImGui.beginTabItem(label, keepOpen, flags);
+        DocumentTabs.decorate(icons.textureId(EditorIcon.PACKED_SCENE));
+        boolean middleClicked = DocumentTabs.closeRequestedByMiddleClick();
         if (selected) {
             activateDocument(document);
             ImGui.endTabItem();
         }
-        if (!keepOpen.get()) {
+        if (!keepOpen.get() || middleClicked) {
             requestCloseDocument(document);
         }
     }
@@ -1039,11 +1080,11 @@ public final class EditorView implements FrameView {
     }
 
     private void renderStatusBar() {
-        ImGui.beginChild("##status-bar", 0.0f, STATUS_BAR_HEIGHT, false);
-        ImGui.setCursorPosX(EditorStyle.WINDOW_PADDING);
+        ImGui.beginChild("##status-bar", 0.0f, EditorScale.of(STATUS_BAR_HEIGHT), false);
+        ImGui.setCursorPosX(EditorStyle.windowPadding());
         renderPlayState();
         ImGui.sameLine();
-        ImGui.textDisabled(objectCountLabel());
+        Texts.muted(objectCountLabel());
         renderLastLogLine();
         renderFramerate();
         ImGui.endChild();
@@ -1051,17 +1092,17 @@ public final class EditorView implements FrameView {
 
     private void renderPlayState() {
         if (playSession.state() == EmbeddedPlaySession.State.PLAYING) {
-            ImGui.textColored(EditorStyle.COLOR_ACCENT, I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_PLAYING));
+            Texts.colored(EditorStyle.COLOR_ACCENT, I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_PLAYING));
         } else if (playSession.state() == EmbeddedPlaySession.State.PAUSED) {
-            ImGui.textColored(EditorStyle.COLOR_WARNING, I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_PAUSED));
+            Texts.colored(EditorStyle.COLOR_WARNING, I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_PAUSED));
         } else if (playController.isRunning()) {
-            ImGui.textColored(EditorStyle.COLOR_ACCENT,
+            Texts.colored(EditorStyle.COLOR_ACCENT,
                     I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_GAME_RUNNING));
         } else {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_READY));
+            Texts.muted(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_READY));
         }
         ImGui.sameLine();
-        ImGui.textDisabled(contextHint());
+        Texts.muted(contextHint());
     }
 
     private String contextHint() {
@@ -1081,15 +1122,15 @@ public final class EditorView implements FrameView {
         Optional<String> lastLine = consoleView.lastLine();
         if (lastLine.isPresent()) {
             ImGui.sameLine();
-            ImGui.textDisabled(truncate(lastLine.get()));
+            Texts.muted(truncate(lastLine.get()));
         }
     }
 
     private void renderFramerate() {
         String fps = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_FPS,
                 String.format(Locale.ROOT, "%.0f", ImGui.getIO().getFramerate()));
-        ImGui.sameLine(ImGui.getWindowWidth() - ImGui.calcTextSize(fps).x - EditorStyle.WINDOW_PADDING);
-        ImGui.textColored(EditorStyle.COLOR_ACCENT, fps);
+        ImGui.sameLine(ImGui.getWindowWidth() - ImGui.calcTextSize(fps).x - EditorStyle.windowPadding());
+        Texts.colored(EditorStyle.COLOR_ACCENT, fps);
     }
 
     private String objectCountLabel() {
@@ -1112,6 +1153,14 @@ public final class EditorView implements FrameView {
     }
 
     private void handleGlobalShortcuts() {
+        if (commandPalette.isVisible()) {
+            return;
+        }
+        if (ImGui.getIO().getKeyCtrl() && ImGui.getIO().getKeyShift()
+                && ImGui.isKeyPressed(ImGuiKey.P)) {
+            commandPalette.open();
+            return;
+        }
         if (rightMouseHeld() || ImGui.isAnyItemActive()) {
             return;
         }
@@ -1129,7 +1178,7 @@ public final class EditorView implements FrameView {
     }
 
     private void handleControlShortcuts() {
-        if (ImGui.isKeyPressed(ImGuiKey.P)) {
+        if (ImGui.isKeyPressed(ImGuiKey.P) && !ImGui.getIO().getKeyShift()) {
             togglePlaySession();
         }
         if (playSession.isActive()) {
@@ -1147,6 +1196,32 @@ public final class EditorView implements FrameView {
         if (ImGui.isKeyPressed(ImGuiKey.D)) {
             hierarchyView.duplicateSelected();
         }
+        applyZoomShortcuts();
+    }
+
+    private void applyZoomShortcuts() {
+        if (ImGui.isKeyPressed(ImGuiKey.Equal) || ImGui.isKeyPressed(ImGuiKey.KeypadAdd)) {
+            zoomBy(UI_SCALE_STEP);
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.Minus) || ImGui.isKeyPressed(ImGuiKey.KeypadSubtract)) {
+            zoomBy(-UI_SCALE_STEP);
+        }
+        if (ImGui.isKeyPressed(ImGuiKey._0) || ImGui.isKeyPressed(ImGuiKey.Keypad0)) {
+            applyUiScale(EditorScale.detectDisplayScale());
+        }
+    }
+
+    private void zoomBy(float delta) {
+        applyUiScale(EditorScale.factor() + delta);
+    }
+
+    private void applyUiScale(float requested) {
+        float clamped = Math.clamp(requested, EditorScale.MINIMUM_FACTOR, EditorScale.MAXIMUM_FACTOR);
+        EditorScale.setFactor(clamped);
+        EditorStyle.apply();
+        preferences = preferences.withUiScale(clamped);
+        persistPreferences();
+        toasts.show(String.format(java.util.Locale.ROOT, "Interface scale %.0f%%", clamped * 100.0f));
     }
 
     private void togglePlaySession() {
@@ -1473,7 +1548,33 @@ public final class EditorView implements FrameView {
                 () -> workspace.active().markDirty());
         settingsDialog.attachLibraries(librariesSection);
         settingsDialog.openFor(projectStore.readSettings(project), preferences, project,
-                projectStore.readQuality(project), projectStore.readInputActions(project));
+                projectStore.readQuality(project), projectStore.readInputActions(project),
+                projectStore.readNetwork(project), projectStore.readSteam(project),
+                projectStore.readRender(project));
+    }
+
+    private void onRenderSaved(RenderSettings settings) {
+        try {
+            projectStore.writeRender(project, settings);
+        } catch (IOException failure) {
+            toasts.show(failure.getMessage());
+        }
+    }
+
+    private void onSteamSaved(SteamSettings settings) {
+        try {
+            projectStore.writeSteam(project, settings);
+        } catch (IOException failure) {
+            toasts.show(failure.getMessage());
+        }
+    }
+
+    private void onNetworkSaved(NetworkSettings settings) {
+        try {
+            projectStore.writeNetwork(project, settings);
+        } catch (IOException failure) {
+            toasts.show(failure.getMessage());
+        }
     }
 
     private void onSettingsSaved(EditorSettings settings) {

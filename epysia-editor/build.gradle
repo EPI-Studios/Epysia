@@ -33,7 +33,12 @@ if (rootProject == project) {
 ext {
     lwjglVersion = rootProject.ext.lwjglVersion
     lwjglNatives = rootProject.ext.lwjglNatives
-    imguiVersion = '1.87.7'
+    imguiVersion = 'fork'
+    imguiNativesDirectory = [
+            rootProject.file('imgui-java/bin'),
+            rootProject.file('../imgui-java/bin'),
+            System.getenv('IMGUI_JAVA_HOME') == null ? null : file("${System.getenv('IMGUI_JAVA_HOME')}/bin")
+    ].findAll { it != null }.find { it.directory }
 }
 
 dependencies {
@@ -43,9 +48,6 @@ dependencies {
 
     implementation "io.github.spair:imgui-java-binding:${imguiVersion}"
     implementation "io.github.spair:imgui-java-lwjgl3:${imguiVersion}"
-    runtimeOnly "io.github.spair:imgui-java-natives-linux:${imguiVersion}"
-    runtimeOnly "io.github.spair:imgui-java-natives-windows:${imguiVersion}"
-    runtimeOnly "io.github.spair:imgui-java-natives-macos:${imguiVersion}"
 
     implementation 'de.javagl:jgltf-model:2.0.4'
     implementation 'org.apache.maven.resolver:maven-resolver-supplier:1.9.22'
@@ -80,8 +82,16 @@ test {
 tasks.named('run', JavaExec) {
     classpath = files(rootProject.sourceSets.main.output) + sourceSets.main.runtimeClasspath
     mainClass = 'fr.epistudio.epysia.editor.EditorMain'
-    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    def crashReports = new File(System.getProperty('user.home'), '.epysia/crash-reports')
+    crashReports.mkdirs()
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED',
+                "-XX:ErrorFile=${crashReports}/hs_err_pid%p.log".toString(),
+                '-XX:+HeapDumpOnOutOfMemoryError',
+                "-XX:HeapDumpPath=${crashReports}".toString()]
     systemProperty 'epysia.gpu.profiling', 'true'
+    if (imguiNativesDirectory != null) {
+        systemProperty 'imgui.library.path', imguiNativesDirectory.absolutePath
+    }
     systemProperties System.getProperties().findAll { it.key.toString().startsWith('epysia.') }
 }
 
@@ -118,6 +128,22 @@ tasks.register('editorJar', ShadowJar) {
     }
     mergeServiceFiles()
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register('importAssets', JavaExec) {
+    group = 'distribution'
+    description = 'Imports glTF or GLB files into engine assets without opening the editor.'
+    classpath = files(rootProject.sourceSets.main.output) + sourceSets.main.runtimeClasspath
+    mainClass = 'fr.epistudio.epysia.editor.EditorMain'
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
+    doFirst {
+        def sources = project.findProperty('importSource')
+        if (!sources) {
+            throw new GradleException('importAssets needs -PimportSource=<file or directory>, '
+                    + 'separate several with a comma.')
+        }
+        args = sources.toString().split(',').collectMany { ['--import', it.trim()] }
+    }
 }
 
 tasks.register('exportGame', JavaExec) {
