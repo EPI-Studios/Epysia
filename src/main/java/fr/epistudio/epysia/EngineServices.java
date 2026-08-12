@@ -2,6 +2,7 @@ package fr.epistudio.epysia;
 
 import fr.epistudio.epysia.assets.AssetRegistry;
 import fr.epistudio.epysia.concurrent.BackgroundTasks;
+import fr.epistudio.epysia.debug.DebugDraw;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.net.NetworkService;
 import fr.epistudio.epysia.steam.SteamService;
@@ -48,6 +49,10 @@ public interface EngineServices {
     Hud hud();
 
     PostEffects postEffects();
+
+    default DebugDraw debug() {
+        return DebugDraw.detached();
+    }
 
     default SaveGames saves() {
         return SaveGames.beside(Path.of(System.getProperty("user.dir", ".")));

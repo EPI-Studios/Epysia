@@ -58,6 +58,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import fr.epistudio.epysia.debug.DebugDraw;
 import fr.epistudio.epysia.physics.api.PhysicsDebugLines;
 
 public final class PhysicsSystem implements IPhysicsSystem {
@@ -98,6 +99,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
     @Override
     public void initialize(EngineServices services) {
         this.services = services;
+        this.debugDraw = services == null ? DebugDraw.detached() : services.debug();
         world = new Box3dPhysicsWorld();
         world.setGravity(defaultGravity);
     }
@@ -110,6 +112,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
     }
 
     private final List<FixedStepListener> fixedStepListeners = new ArrayList<>();
+    private DebugDraw debugDraw;
+    private boolean debugDrawEnabled;
 
     public void setFixedTimestepHertz(int hertz) {
         fixedStepSeconds = 1.0f / Math.clamp(hertz, MINIMUM_STEP_HERTZ, MAXIMUM_STEP_HERTZ);
@@ -183,6 +187,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         advanceFixedSteps(scene, deltaTimeSeconds);
         writeInterpolatedTransforms(scene);
         removeBodiesBelowWorldFloor(scene);
+        drawDebugIntoOverlay();
         dispatchPhysicsEvents();
     }
 
@@ -1176,5 +1181,22 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (world != null) {
             world.drawDebug(lines);
         }
+    }
+
+    public boolean debugDrawEnabled() {
+        return debugDrawEnabled;
+    }
+
+    public PhysicsSystem setDebugDrawEnabled(boolean value) {
+        debugDrawEnabled = value;
+        return this;
+    }
+
+    private void drawDebugIntoOverlay() {
+        if (!debugDrawEnabled || debugDraw == null || !debugDraw.enabled()) {
+            return;
+        }
+        drawDebug((startX, startY, startZ, endX, endY, endZ, color) ->
+                debugDraw.line(startX, startY, startZ, endX, endY, endZ, color, DebugDraw.ONE_FRAME));
     }
 }

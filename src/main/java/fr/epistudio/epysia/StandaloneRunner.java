@@ -23,6 +23,7 @@ import fr.epistudio.epysia.profiling.BenchmarkHarness;
 import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.render.GraphicsApi;
+import fr.epistudio.epysia.render.debug.DebugLineRenderSystem;
 import fr.epistudio.epysia.render.debug.FrameCaptureSchedule;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.opengl.OpenGlRenderBackend;
@@ -127,7 +128,8 @@ public final class StandaloneRunner {
         SpriteRenderSystem spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(new TilemapRenderSystem(spriteRenderSystem, engine.logger()));
-        engine.addRenderSystem(new WorldTextRenderSystem(shaderLoader, meshRenderSystem));
+        engine.addRenderSystem(new WorldTextRenderSystem(shaderLoader, meshRenderSystem, engine.debug()));
+        engine.addRenderSystem(new DebugLineRenderSystem(shaderLoader, meshRenderSystem, engine.debug()));
         engine.addRenderSystem(new TextRenderSystem(shaderLoader, window, engine, engine.logger()));
         engine.addRenderSystem(new UiRenderSystem(shaderLoader, window, engine));
         engine.addSystem(new UiInputSystem());

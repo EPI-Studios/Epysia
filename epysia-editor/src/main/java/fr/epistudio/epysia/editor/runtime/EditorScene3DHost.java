@@ -43,6 +43,7 @@ import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
+import fr.epistudio.epysia.render.debug.DebugLineRenderSystem;
 import fr.epistudio.epysia.render.text.WorldTextRenderSystem;
 import fr.epistudio.epysia.ui.UiInputSystem;
 import fr.epistudio.epysia.ui.UiRenderSystem;
@@ -172,7 +173,7 @@ public final class EditorScene3DHost {
         spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         tilemapRenderSystem = new TilemapRenderSystem(spriteRenderSystem, engine.logger());
         textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());
-        worldTextRenderSystem = new WorldTextRenderSystem(shaderLoader, meshRenderSystem);
+        worldTextRenderSystem = new WorldTextRenderSystem(shaderLoader, meshRenderSystem, engine.debug());
         uiRenderSystem = new UiRenderSystem(shaderLoader, renderSurface, engine);
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(vfxRenderSystem);
@@ -181,6 +182,7 @@ public final class EditorScene3DHost {
         engine.addRenderSystem(tilemapRenderSystem);
         engine.addRenderSystem(postProcessSystem);
         engine.addRenderSystem(worldTextRenderSystem);
+        engine.addRenderSystem(new DebugLineRenderSystem(shaderLoader, meshRenderSystem, engine.debug()));
         engine.addRenderSystem(textRenderSystem);
         engine.addRenderSystem(uiRenderSystem);
         baselineSystems.addAll(engine.renderSystems());
@@ -251,7 +253,7 @@ public final class EditorScene3DHost {
             engine.addRenderSystem(postProcessSystem);
         }
         if (!current.contains(worldTextRenderSystem)) {
-            worldTextRenderSystem = new WorldTextRenderSystem(shaderLoader, meshRenderSystem);
+            worldTextRenderSystem = new WorldTextRenderSystem(shaderLoader, meshRenderSystem, engine.debug());
             engine.addRenderSystem(worldTextRenderSystem);
         }
         if (!current.contains(textRenderSystem)) {

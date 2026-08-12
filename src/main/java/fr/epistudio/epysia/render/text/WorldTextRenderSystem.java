@@ -2,6 +2,8 @@ package fr.epistudio.epysia.render.text;
 
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.WorldText;
+import fr.epistudio.epysia.debug.DebugDraw;
+import fr.epistudio.epysia.debug.DebugLabel;
 import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
 import fr.epistudio.epysia.render.RenderPasses;
@@ -60,11 +62,14 @@ public final class WorldTextRenderSystem implements RenderSystem {
     private static final int VERTICES_PER_QUAD = 4;
     private static final int INDICES_PER_QUAD = 6;
     private static final int VERTEX_BYTES = 40;
+    private static final float DEBUG_LABEL_HEIGHT = 0.02f;
+    private static final float DEBUG_LABEL_OUTLINE = 0.6f;
     private static final int FRAME_UBO_BINDING = 0;
     private static final int ATLAS_BINDING = 1;
 
     private final ShaderLoader shaderLoader;
     private final MeshRenderSystem meshRenderSystem;
+    private final DebugDraw debugDraw;
 
     private RenderBackend backend;
     private Font font;
@@ -88,9 +93,11 @@ public final class WorldTextRenderSystem implements RenderSystem {
     private final Vector3f anchor = new Vector3f();
     private final Vector3f corner = new Vector3f();
 
-    public WorldTextRenderSystem(ShaderLoader shaderLoader, MeshRenderSystem meshRenderSystem) {
+    public WorldTextRenderSystem(ShaderLoader shaderLoader, MeshRenderSystem meshRenderSystem,
+                                 DebugDraw debugDraw) {
         this.shaderLoader = shaderLoader;
         this.meshRenderSystem = meshRenderSystem;
+        this.debugDraw = debugDraw;
     }
 
     @Override
@@ -133,7 +140,8 @@ public final class WorldTextRenderSystem implements RenderSystem {
     @Override
     public void collect(Scene scene, FrameBuilder frame, RenderContext context) {
         List<WorldText> texts = scene.componentsOf(WorldText.class);
-        if (texts.isEmpty() || context.primaryCamera().isEmpty()) {
+        List<DebugLabel> labels = debugDraw.labels();
+        if (texts.isEmpty() && labels.isEmpty() || context.primaryCamera().isEmpty()) {
             return;
         }
         readCameraAxes(context);
@@ -143,6 +151,7 @@ public final class WorldTextRenderSystem implements RenderSystem {
         appendPass(texts, true);
         occludedQuadCount = quadCount;
         appendPass(texts, false);
+        appendLabels(labels);
         if (quadCount <= 0) {
             return;
         }
@@ -182,6 +191,9 @@ public final class WorldTextRenderSystem implements RenderSystem {
         upAxis.set(viewMatrix.m01(), viewMatrix.m11(), viewMatrix.m21()).normalize();
     }
 
+    private record GlyphStyle(float red, float green, float blue, float alpha, float outline) {
+    }
+
     private void appendText(WorldText text) {
         text.anchor(anchor);
         float distance = anchor.distance(cameraPosition);
@@ -191,7 +203,27 @@ public final class WorldTextRenderSystem implements RenderSystem {
         }
         float metresPerPixel = scaleFor(text, distance) / font.pixelHeight();
         float startX = -font.measureWidth(text.text()) * 0.5f;
-        emitGlyphs(text, startX, metresPerPixel, fade);
+        emitGlyphs(text.text(), startX, metresPerPixel, new GlyphStyle(text.colour().x,
+                text.colour().y, text.colour().z, fade, text.outlineStrength()));
+    }
+
+    private void appendLabels(List<DebugLabel> labels) {
+        for (DebugLabel label : labels) {
+            appendLabel(label);
+        }
+    }
+
+    private void appendLabel(DebugLabel label) {
+        anchor.set(label.x(), label.y(), label.z());
+        float distance = Math.max(anchor.distance(cameraPosition), 0.001f);
+        float metresPerPixel = DEBUG_LABEL_HEIGHT * distance / font.pixelHeight();
+        float startX = -font.measureWidth(label.content()) * 0.5f;
+        int color = label.color();
+        emitGlyphs(label.content(), startX, metresPerPixel, new GlyphStyle(
+                ((color >> 16) & 0xFF) / 255.0f,
+                ((color >> 8) & 0xFF) / 255.0f,
+                (color & 0xFF) / 255.0f,
+                1.0f, DEBUG_LABEL_OUTLINE));
     }
 
     private float scaleFor(WorldText text, float distance) {
@@ -201,41 +233,40 @@ public final class WorldTextRenderSystem implements RenderSystem {
         return text.lineHeight() * Math.max(distance, 0.001f);
     }
 
-    private void emitGlyphs(WorldText text, float startX, float metresPerPixel, float alpha) {
+    private void emitGlyphs(String value, float startX, float metresPerPixel, GlyphStyle style) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer penX = stack.floats(startX);
             FloatBuffer penY = stack.floats(0.0f);
             STBTTAlignedQuad quad = STBTTAlignedQuad.malloc(stack);
-            String value = text.text();
             for (int index = 0; index < value.length() && quadCount < MAX_QUADS; index++) {
                 if (font.appendQuad(value.charAt(index), penX, penY, quad)) {
-                    appendQuad(quad, text, metresPerPixel, alpha);
+                    appendQuad(quad, metresPerPixel, style);
                     quadCount++;
                 }
             }
         }
     }
 
-    private void appendQuad(STBTTAlignedQuad quad, WorldText text, float metresPerPixel, float alpha) {
+    private void appendQuad(STBTTAlignedQuad quad, float metresPerPixel, GlyphStyle style) {
         int base = quadCount * VERTICES_PER_QUAD;
-        putVertex(quad.x0(), -quad.y1(), quad.s0(), quad.t1(), text, metresPerPixel, alpha);
-        putVertex(quad.x1(), -quad.y1(), quad.s1(), quad.t1(), text, metresPerPixel, alpha);
-        putVertex(quad.x1(), -quad.y0(), quad.s1(), quad.t0(), text, metresPerPixel, alpha);
-        putVertex(quad.x0(), -quad.y0(), quad.s0(), quad.t0(), text, metresPerPixel, alpha);
+        putVertex(quad.x0(), -quad.y1(), quad.s0(), quad.t1(), metresPerPixel, style);
+        putVertex(quad.x1(), -quad.y1(), quad.s1(), quad.t1(), metresPerPixel, style);
+        putVertex(quad.x1(), -quad.y0(), quad.s1(), quad.t0(), metresPerPixel, style);
+        putVertex(quad.x0(), -quad.y0(), quad.s0(), quad.t0(), metresPerPixel, style);
         indexScratch.putInt(base).putInt(base + 1).putInt(base + 2);
         indexScratch.putInt(base).putInt(base + 2).putInt(base + 3);
     }
 
     private void putVertex(float localX, float localY, float u, float v,
-                           WorldText text, float metresPerPixel, float alpha) {
+                           float metresPerPixel, GlyphStyle style) {
         corner.set(anchor)
                 .fma(localX * metresPerPixel, rightAxis)
                 .fma(localY * metresPerPixel, upAxis);
         vertexScratch.putFloat(corner.x).putFloat(corner.y).putFloat(corner.z);
         vertexScratch.putFloat(u).putFloat(v);
-        vertexScratch.putFloat(text.colour().x).putFloat(text.colour().y)
-                .putFloat(text.colour().z).putFloat(alpha);
-        vertexScratch.putFloat(text.outlineStrength());
+        vertexScratch.putFloat(style.red()).putFloat(style.green())
+                .putFloat(style.blue()).putFloat(style.alpha());
+        vertexScratch.putFloat(style.outline());
     }
 
     @Override
