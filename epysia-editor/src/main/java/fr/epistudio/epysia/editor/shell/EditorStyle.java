@@ -10,54 +10,144 @@ import java.util.Optional;
 
 public final class EditorStyle {
 
-    public static final int COLOR_WINDOW_BACKGROUND = rgb(18, 18, 26);
-    public static final int COLOR_PANEL_BACKGROUND = rgb(30, 30, 40);
-    public static final int COLOR_HEADER_BACKGROUND = rgb(24, 24, 33);
-    public static final int COLOR_SUNKEN_BACKGROUND = rgb(13, 13, 18);
-    public static final int COLOR_FIELD_BACKGROUND = rgb(38, 38, 48);
-    public static final int COLOR_FIELD_HOVER = rgb(48, 48, 60);
-    public static final int COLOR_FIELD_ACTIVE = rgb(56, 56, 71);
-    public static final int COLOR_WIDGET_BACKGROUND = rgb(51, 56, 69);
-    public static final int COLOR_WIDGET_HOVER = rgb(74, 80, 99);
-    public static final int COLOR_WIDGET_ACTIVE = rgb(92, 101, 128);
-    public static final int COLOR_OUTLINE = rgba(51, 51, 64, 128);
-    public static final int COLOR_TEXT = rgb(230, 230, 242);
-    public static final int COLOR_TEXT_MUTED = rgb(128, 128, 143);
-    public static final int COLOR_ACCENT = rgb(61, 155, 233);
-    public static final int COLOR_ACCENT_HOVER = rgb(99, 180, 245);
-    public static final int COLOR_HIGHLIGHT = rgb(255, 128, 0);
-    public static final int COLOR_DANGER = rgb(235, 95, 88);
-    public static final int COLOR_WARNING = rgb(224, 182, 90);
-    public static final int COLOR_SUCCESS = rgb(134, 196, 107);
-    public static final int COLOR_SYSTEM = rgb(107, 198, 224);
+    private static final int BASE_SURFACE = 41;
 
-    public static final float WINDOW_ROUNDING = 3.0f;
-    public static final float CHILD_ROUNDING = 3.0f;
-    public static final float FRAME_ROUNDING = 3.0f;
-    public static final float POPUP_ROUNDING = 3.0f;
-    public static final float SCROLLBAR_ROUNDING = 3.0f;
-    public static final float GRAB_ROUNDING = 3.0f;
-    public static final float TAB_ROUNDING = 0.0f;
-    public static final float WINDOW_PADDING = 10.0f;
-    public static final float FRAME_PADDING_X = 6.0f;
-    public static final float FRAME_PADDING_Y = 4.0f;
-    public static final float ITEM_SPACING_X = 8.0f;
-    public static final float ITEM_SPACING_Y = 6.0f;
-    public static final float INNER_SPACING = 6.0f;
-    public static final float CELL_PADDING_X = 6.0f;
-    public static final float CELL_PADDING_Y = 3.0f;
-    public static final float INDENT_SPACING = 16.0f;
-    public static final float SCROLLBAR_SIZE = 12.0f;
-    public static final float GRAB_MINIMUM_SIZE = 10.0f;
-    public static final float BORDER_SIZE = 1.0f;
+    public static final int COLOR_WINDOW_BACKGROUND = surface(0.49f);
+    public static final int COLOR_PANEL_BACKGROUND = surface(1.0f);
+    public static final int COLOR_HEADER_BACKGROUND = surface(0.49f);
+    public static final int COLOR_SUNKEN_BACKGROUND = surface(0.43f);
+    public static final int COLOR_FIELD_BACKGROUND = surface(0.67f);
+    public static final int COLOR_FIELD_HOVER = surface(0.76f);
+    public static final int COLOR_FIELD_ACTIVE = surface(0.86f);
+    public static final int COLOR_WIDGET_BACKGROUND = surface(1.6f);
+    public static final int COLOR_WIDGET_HOVER = surface(1.87f);
+    public static final int COLOR_WIDGET_ACTIVE = surface(1.96f);
+    public static final int COLOR_WIDGET_OUTLINE = surface(1.75f);
+    public static final int COLOR_ELEVATED_BACKGROUND = surface(1.39f);
+    public static final int COLOR_OUTLINE = surface(0.76f);
+    public static final int COLOR_TEXT = rgba(255, 255, 255, 191);
+    public static final int COLOR_TEXT_MUTED = rgba(255, 255, 255, 140);
+    public static final int COLOR_TEXT_FAINT = rgba(255, 255, 255, 89);
+    public static final int COLOR_TEXT_FOCUS = rgb(255, 255, 255);
+    public static final int COLOR_TEXT_ON_ACCENT = rgb(16, 16, 16);
+    public static final int COLOR_ACCENT = rgb(198, 198, 198);
+    public static final int COLOR_ACCENT_HOVER = rgb(226, 226, 226);
+    public static final int COLOR_HIGHLIGHT = rgb(255, 138, 31);
+    public static final int COLOR_DANGER = rgb(224, 92, 86);
+    public static final int COLOR_WARNING = rgb(218, 178, 76);
+    public static final int COLOR_SUCCESS = rgb(124, 188, 108);
+    public static final int COLOR_SYSTEM = rgb(158, 158, 158);
+    public static final int COLOR_AXIS_X = rgb(214, 90, 86);
+    public static final int COLOR_AXIS_Y = rgb(126, 186, 102);
+    public static final int COLOR_AXIS_Z = rgb(96, 140, 206);
 
-    public static final float ICON_SIZE_SMALL = 14.0f;
-    public static final float ICON_SIZE_MEDIUM = 16.0f;
-    public static final float ICON_SIZE_TOOLBAR = 18.0f;
-    public static final float FONT_PIXEL_HEIGHT = 16.0f;
-    public static final float MONOSPACE_FONT_PIXEL_HEIGHT = 15.0f;
+    private static final float WINDOW_ROUNDING = 0.0f;
+    private static final float CHILD_ROUNDING = 4.0f;
+    private static final float FRAME_ROUNDING = 4.0f;
+    private static final float POPUP_ROUNDING = 4.0f;
+    private static final float SCROLLBAR_ROUNDING = 4.0f;
+    private static final float GRAB_ROUNDING = 4.0f;
+    private static final float TAB_ROUNDING = 4.0f;
+    private static final float TAB_CLOSE_BUTTON_ON_HOVER = 0.0f;
+    private static final float TAB_OVERLINE_SIZE = 2.0f;
+    private static final float WINDOW_PADDING = 6.0f;
+    private static final float FRAME_PADDING_X = 6.0f;
+    private static final float FRAME_PADDING_Y = 5.0f;
+    private static final float ITEM_SPACING_X = 4.0f;
+    private static final float ITEM_SPACING_Y = 4.0f;
+    private static final float INNER_SPACING = 4.0f;
+    private static final float CELL_PADDING_X = 6.0f;
+    private static final float CELL_PADDING_Y = 4.0f;
+    private static final float INDENT_SPACING = 14.0f;
+    private static final float SCROLLBAR_SIZE = 10.0f;
+    private static final float GRAB_MINIMUM_SIZE = 10.0f;
+    private static final float BORDER_SIZE = 1.0f;
+    private static final float ICON_SIZE_SMALL = 14.0f;
+    private static final float ICON_SIZE_MEDIUM = 16.0f;
+    private static final float ICON_SIZE_TOOLBAR = 15.0f;
+    private static final float FONT_PIXEL_HEIGHT = 14.0f;
+    private static final float TITLE_FONT_PIXEL_HEIGHT = 15.0f;
+    private static final float SMALL_FONT_PIXEL_HEIGHT = 13.0f;
+    private static final float MONOSPACE_FONT_PIXEL_HEIGHT = 14.0f;
 
     private static ImFont monospaceFont;
+    private static ImFont titleFont;
+    private static ImFont smallFont;
+
+    private EditorStyle() {
+    }
+
+    public static float windowRounding() {
+        return EditorScale.of(WINDOW_ROUNDING);
+    }
+
+    public static float frameRounding() {
+        return EditorScale.of(FRAME_ROUNDING);
+    }
+
+    public static float windowPadding() {
+        return EditorScale.of(WINDOW_PADDING);
+    }
+
+    public static float framePaddingX() {
+        return EditorScale.of(FRAME_PADDING_X);
+    }
+
+    public static float framePaddingY() {
+        return EditorScale.of(FRAME_PADDING_Y);
+    }
+
+    public static float itemSpacingX() {
+        return EditorScale.of(ITEM_SPACING_X);
+    }
+
+    public static float itemSpacingY() {
+        return EditorScale.of(ITEM_SPACING_Y);
+    }
+
+    public static float innerSpacing() {
+        return EditorScale.of(INNER_SPACING);
+    }
+
+    public static float indentSpacing() {
+        return EditorScale.of(INDENT_SPACING);
+    }
+
+    public static float scrollbarSize() {
+        return EditorScale.of(SCROLLBAR_SIZE);
+    }
+
+    public static float borderSize() {
+        return EditorScale.ofAtLeastOne(BORDER_SIZE);
+    }
+
+    public static float iconSizeSmall() {
+        return EditorScale.of(ICON_SIZE_SMALL);
+    }
+
+    public static float iconSizeMedium() {
+        return EditorScale.of(ICON_SIZE_MEDIUM);
+    }
+
+    public static float iconSizeToolbar() {
+        return EditorScale.of(ICON_SIZE_TOOLBAR);
+    }
+
+    public static float fontPixelHeight() {
+        return EditorScale.of(FONT_PIXEL_HEIGHT);
+    }
+
+    public static float monospaceFontPixelHeight() {
+        return EditorScale.of(MONOSPACE_FONT_PIXEL_HEIGHT);
+    }
+
+    public static float titleFontPixelHeight() {
+        return EditorScale.of(TITLE_FONT_PIXEL_HEIGHT);
+    }
+
+    public static float smallFontPixelHeight() {
+        return EditorScale.of(SMALL_FONT_PIXEL_HEIGHT);
+    }
 
     public static void setMonospaceFont(ImFont font) {
         monospaceFont = font;
@@ -67,7 +157,20 @@ public final class EditorStyle {
         return Optional.ofNullable(monospaceFont);
     }
 
-    private EditorStyle() {
+    public static void setTitleFont(ImFont font) {
+        titleFont = font;
+    }
+
+    public static void setSmallFont(ImFont font) {
+        smallFont = font;
+    }
+
+    public static Optional<ImFont> titleFont() {
+        return Optional.ofNullable(titleFont);
+    }
+
+    public static Optional<ImFont> smallFont() {
+        return Optional.ofNullable(smallFont);
     }
 
     public static void apply() {
@@ -85,24 +188,27 @@ public final class EditorStyle {
     }
 
     private static void applyRounding(ImGuiStyle style) {
-        style.setWindowRounding(WINDOW_ROUNDING);
-        style.setChildRounding(CHILD_ROUNDING);
-        style.setFrameRounding(FRAME_ROUNDING);
-        style.setPopupRounding(POPUP_ROUNDING);
-        style.setScrollbarRounding(SCROLLBAR_ROUNDING);
-        style.setGrabRounding(GRAB_ROUNDING);
-        style.setTabRounding(TAB_ROUNDING);
+        style.setWindowRounding(windowRounding());
+        style.setChildRounding(EditorScale.of(CHILD_ROUNDING));
+        style.setFrameRounding(frameRounding());
+        style.setPopupRounding(EditorScale.of(POPUP_ROUNDING));
+        style.setScrollbarRounding(EditorScale.of(SCROLLBAR_ROUNDING));
+        style.setGrabRounding(EditorScale.of(GRAB_ROUNDING));
+        style.setTabRounding(EditorScale.of(TAB_ROUNDING));
+        style.setTabBarOverlineSize(EditorScale.of(TAB_OVERLINE_SIZE));
+        style.setTabCloseButtonMinWidthSelected(TAB_CLOSE_BUTTON_ON_HOVER);
+        style.setTabCloseButtonMinWidthUnselected(TAB_CLOSE_BUTTON_ON_HOVER);
     }
 
     private static void applySpacing(ImGuiStyle style) {
-        style.setWindowPadding(WINDOW_PADDING, WINDOW_PADDING);
-        style.setFramePadding(FRAME_PADDING_X, FRAME_PADDING_Y);
-        style.setItemSpacing(ITEM_SPACING_X, ITEM_SPACING_Y);
-        style.setItemInnerSpacing(INNER_SPACING, INNER_SPACING);
-        style.setCellPadding(CELL_PADDING_X, CELL_PADDING_Y);
-        style.setIndentSpacing(INDENT_SPACING);
-        style.setScrollbarSize(SCROLLBAR_SIZE);
-        style.setGrabMinSize(GRAB_MINIMUM_SIZE);
+        style.setWindowPadding(windowPadding(), windowPadding());
+        style.setFramePadding(framePaddingX(), framePaddingY());
+        style.setItemSpacing(itemSpacingX(), itemSpacingY());
+        style.setItemInnerSpacing(innerSpacing(), innerSpacing());
+        style.setCellPadding(EditorScale.of(CELL_PADDING_X), EditorScale.of(CELL_PADDING_Y));
+        style.setIndentSpacing(indentSpacing());
+        style.setScrollbarSize(scrollbarSize());
+        style.setGrabMinSize(EditorScale.of(GRAB_MINIMUM_SIZE));
         style.setWindowTitleAlign(0.0f, 0.5f);
         style.setButtonTextAlign(0.5f, 0.5f);
         style.setSelectableTextAlign(0.0f, 0.5f);
@@ -110,8 +216,8 @@ public final class EditorStyle {
     }
 
     private static void applyBorders(ImGuiStyle style) {
-        style.setWindowBorderSize(BORDER_SIZE);
-        style.setChildBorderSize(BORDER_SIZE);
+        style.setWindowBorderSize(0.0f);
+        style.setChildBorderSize(0.0f);
         style.setFrameBorderSize(0.0f);
         style.setPopupBorderSize(0.0f);
         style.setTabBorderSize(0.0f);
@@ -169,11 +275,14 @@ public final class EditorStyle {
     }
 
     private static void applyDockingColors(ImGuiStyle style) {
-        style.setColor(ImGuiCol.Tab, COLOR_PANEL_BACKGROUND);
-        style.setColor(ImGuiCol.TabHovered, COLOR_WIDGET_HOVER);
-        style.setColor(ImGuiCol.TabActive, rgb(45, 49, 64));
-        style.setColor(ImGuiCol.TabUnfocused, rgb(22, 22, 30));
-        style.setColor(ImGuiCol.TabUnfocusedActive, rgb(33, 33, 43));
+        style.setColor(ImGuiCol.Tab, COLOR_HEADER_BACKGROUND);
+        style.setColor(ImGuiCol.TabHovered, COLOR_ELEVATED_BACKGROUND);
+        style.setColor(ImGuiCol.UnsavedMarker, COLOR_WARNING);
+        style.setColor(ImGuiCol.TabSelectedOverline, rgba(0, 0, 0, 0));
+        style.setColor(ImGuiCol.TabDimmedSelectedOverline, rgba(0, 0, 0, 0));
+        style.setColor(ImGuiCol.TabActive, COLOR_PANEL_BACKGROUND);
+        style.setColor(ImGuiCol.TabUnfocused, COLOR_HEADER_BACKGROUND);
+        style.setColor(ImGuiCol.TabUnfocusedActive, COLOR_PANEL_BACKGROUND);
         style.setColor(ImGuiCol.DockingPreview, withAlpha(COLOR_ACCENT, 0.55f));
         style.setColor(ImGuiCol.DockingEmptyBg, COLOR_SUNKEN_BACKGROUND);
     }
@@ -193,12 +302,44 @@ public final class EditorStyle {
         style.setColor(ImGuiCol.PlotHistogramHovered, rgb(255, 168, 77));
     }
 
+    public static int surface(float elevation) {
+        int value = Math.round(Math.clamp(BASE_SURFACE * elevation, 0.0f, 255.0f));
+        return rgb(value, value, value);
+    }
+
     public static int rgb(int red, int green, int blue) {
         return rgba(red, green, blue, 255);
     }
 
     public static int rgba(int red, int green, int blue, int alpha) {
         return (alpha << 24) | (blue << 16) | (green << 8) | red;
+    }
+
+    public static int lighten(int abgrColor, float amount) {
+        return mix(abgrColor, rgba(255, 255, 255, alphaOf(abgrColor)), amount);
+    }
+
+    public static int darken(int abgrColor, float amount) {
+        return mix(abgrColor, rgba(0, 0, 0, alphaOf(abgrColor)), amount);
+    }
+
+    public static int mix(int fromColor, int toColor, float amount) {
+        float clamped = Math.clamp(amount, 0.0f, 1.0f);
+        return rgba(
+                channel(fromColor, toColor, 0, clamped),
+                channel(fromColor, toColor, 8, clamped),
+                channel(fromColor, toColor, 16, clamped),
+                channel(fromColor, toColor, 24, clamped));
+    }
+
+    public static int alphaOf(int abgrColor) {
+        return (abgrColor >>> 24) & 0xFF;
+    }
+
+    private static int channel(int fromColor, int toColor, int shift, float amount) {
+        int start = (fromColor >> shift) & 0xFF;
+        int end = (toColor >> shift) & 0xFF;
+        return Math.round(start + (end - start) * amount);
     }
 
     public static int withAlpha(int abgrColor, float alpha) {

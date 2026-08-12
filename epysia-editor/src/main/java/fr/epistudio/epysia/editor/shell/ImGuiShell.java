@@ -41,7 +41,8 @@ public final class ImGuiShell {
     private static final int OPENGL_MAJOR = 4;
     private static final int OPENGL_MINOR = 3;
     private static final String GLSL_VERSION = "#version 430";
-    private static final String FONT_RESOURCE = "/fonts/inter.ttf";
+    private static final String FONT_RESOURCE = "/fonts/inter-regular.ttf";
+    private static final String BOLD_FONT_RESOURCE = "/fonts/inter-semibold.ttf";
     private static final String MONOSPACE_FONT_RESOURCE = "/fonts/noto-sans-mono.ttf";
     private static final float CLEAR_RED = 0.117f;
     private static final float CLEAR_GREEN = 0.117f;
@@ -58,7 +59,9 @@ public final class ImGuiShell {
     private ImFont monospaceFont;
     private Consumer<List<Path>> fileDropHandler = paths -> { };
     private boolean viewportsEnabled = true;
+    private float uiScalePreference = EditorScale.AUTOMATIC;
     private boolean frameRateCapEnabled = true;
+    private int frameRateCap;
     private boolean vsyncEnabled = true;
 
     public boolean isVsyncEnabled() {
@@ -67,6 +70,14 @@ public final class ImGuiShell {
 
     public boolean isFrameRateCapEnabled() {
         return frameRateCapEnabled;
+    }
+
+    public int frameRateCap() {
+        return frameRateCap;
+    }
+
+    public void setFrameRateCap(int framesPerSecond) {
+        frameRateCap = framesPerSecond;
     }
 
     public void setFrameRateCapEnabled(boolean enabled) {
@@ -90,8 +101,13 @@ public final class ImGuiShell {
         this.fileDropHandler = paths -> { };
     }
 
+    public void setUiScalePreference(float preferred) {
+        uiScalePreference = preferred;
+    }
+
     public void initialize() {
         initializeGlfwWindow();
+        EditorScale.applyPreference(uiScalePreference);
         initializeImGui();
     }
 
@@ -150,12 +166,20 @@ public final class ImGuiShell {
         io.setIniFilename(null);
         ImFontConfig fontConfig = new ImFontConfig();
         fontConfig.setFontDataOwnedByAtlas(false);
-        io.getFonts().addFontFromMemoryTTF(readFontBytes(FONT_RESOURCE), EditorStyle.FONT_PIXEL_HEIGHT, fontConfig);
+        byte[] interfaceFont = readFontBytes(FONT_RESOURCE);
+        byte[] boldFont = readFontBytes(BOLD_FONT_RESOURCE);
+        io.getFonts().addFontFromMemoryTTF(interfaceFont, EditorStyle.fontPixelHeight(), fontConfig);
+        ImFont title = io.getFonts().addFontFromMemoryTTF(boldFont,
+                EditorStyle.titleFontPixelHeight(), fontConfig);
+        ImFont small = io.getFonts().addFontFromMemoryTTF(interfaceFont,
+                EditorStyle.smallFontPixelHeight(), fontConfig);
         monospaceFont = io.getFonts().addFontFromMemoryTTF(readFontBytes(MONOSPACE_FONT_RESOURCE),
-                EditorStyle.MONOSPACE_FONT_PIXEL_HEIGHT, fontConfig);
+                EditorStyle.monospaceFontPixelHeight(), fontConfig);
         io.getFonts().build();
         fontConfig.destroy();
         EditorStyle.setMonospaceFont(monospaceFont);
+        EditorStyle.setTitleFont(title);
+        EditorStyle.setSmallFont(small);
         EditorStyle.apply();
         imGuiGlfw.init(windowHandle, true);
         imGuiGl3.init(GLSL_VERSION);
