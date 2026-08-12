@@ -47,15 +47,16 @@ map.
 
 ## What's in it
 
-**Scene runtime.** GameObjects and components on a fixed-step simulation.
-60 Hz by default, but you can push it anywhere from 10 to 480 Hz, with frame
-pacing and interpolated rendering between simulation steps.
+**Scene runtime.** Objects made of components, updated on a fixed clock that
+runs at 60 Hz by default and anywhere from 10 to 480 if you want it. Rendering
+smooths out the gaps between those updates, so motion stays even whatever the
+frame rate does.
 
-**Rendering.** Forward PBR on OpenGL 4.3 or Vulkan. Metallic-roughness
-materials, clustered lights, cascaded sun shadows, spot and point shadow
-atlases, image-based lighting, GPU and CPU culling, hardware instancing, and
-LOD. The backend is picked at launch and falls back to OpenGL if Vulkan
-cannot start, so a driver that refuses one still runs the game.
+**Rendering.** Physically based lighting on OpenGL or Vulkan, with shadows
+from suns, spots and points, reflections from the environment, and the usual
+work to keep it fast: only drawing what the camera can see, batching repeated
+objects, and swapping in simpler meshes at distance. The backend is chosen at
+launch, and a machine that cannot run Vulkan quietly falls back to OpenGL.
 
 ```java
 LitMaterial material = new LitMaterial();
@@ -68,10 +69,9 @@ renderer.setMeshPath("res://models/rock.epymesh")
 ```
 
 **Materials and shaders.** Material uniforms come straight from annotated
-Java fields, packed into std140 by reflection so you never hand-write the
-layout. Surface shaders hook into five stages of the standard lit shader, so
-you override the one you care about and keep shadows, lights, and fog for
-free. They hot reload while the editor's running, too.
+Java fields, so you never hand-write the layout. Surface shaders let you
+override one stage of the standard lit shader and keep shadows, lights and fog
+for free. They reload while the editor is open.
 
 ```glsl
 uniform float waveSpeed = 0.4;
@@ -82,18 +82,18 @@ void surfaceVertex(inout vec3 worldPosition, in vec3 localPosition,
 }
 ```
 
-**Post-processing.** SSAO, bloom, tonemapping, fog, vignette, FXAA, and room
-for your own effect stacks at two points in the pipeline (before or after
-tonemap). There's also a pixel-perfect mode that renders at a fixed internal
-resolution with integer scaling and letterboxing, for anyone doing pixel art.
+**Post-processing.** Ambient occlusion, bloom, fog, vignette and antialiasing,
+with two places to slot in effects of your own. Pixel art gets its own mode
+that renders at a fixed resolution and scales up in whole numbers, so nothing
+smears.
 
-**2D.** Sprites all batched into a single dynamic vertex buffer, atlases and
-flipbooks, layered tilemaps with autotiling and per-tile collision, 2D
-lights, and physics that stays locked to a plane.
+**2D.** Sprites drawn together in one pass, atlases and flipbook animation,
+tilemaps with layers, autotiling and per-tile collision, 2D lights, and
+physics that stays flat.
 
-**Physics.** Native rigid bodies via Box3D. Box, sphere, capsule, and mesh
-colliders, triggers, joints, 3D and 2D character controllers, raycasts and
-shape casts, plus a 16-layer collision matrix.
+**Physics.** Rigid bodies running on native Box3D. Box, sphere, capsule and
+mesh colliders, triggers, joints, character controllers for 3D and 2D, ray
+and shape casts, and 16 layers you can decide collide with what.
 
 ```java
 @Override
@@ -112,17 +112,33 @@ public void onUpdate(InputState input, float deltaTimeSeconds) {
 blending, GPU skinning, and joint sockets if you need to bolt something onto
 a rig.
 
-**VFX.** GPU particle systems built from node graphs, compiled down to
-compute shaders. Shapes, curl noise, curves and gradients get baked to
-lookup textures, plus burst schedules for the chaotic stuff.
+**VFX.** Particle systems built as node graphs and run on the GPU, with
+shapes, noise, curves and gradients, plus bursts for the chaotic stuff.
 
-**Visual scripting.** One graph format doing five jobs: logic graphs, state
-machines, surface shader graphs, post-effect graphs, and VFX graphs. Any
-public method on your components shows up as a node automatically, through
-reflection.
+**Visual scripting.** One graph format doing five jobs: logic, state machines,
+surface shaders, post effects and VFX. Any public method on your components
+turns up as a node on its own.
 
-**Audio.** OpenAL underneath, with a bus mixer and ducking, spatial
-sources, a 48-voice one-shot pool, streaming, and EFX reverb.
+**Audio.** Positional sound with a mixer, ducking, streaming and reverb,
+running on OpenAL.
+
+**Navigation.** Navmeshes baked from the geometry a surface declares, walked
+by agents that path around what you put in front of them.
+
+**Shipping.** An exported game reads `epysia-settings.json` sitting beside it
+before the window exists, so a player can change the render backend, adapter,
+resolution, vsync and frame cap without a rebuild. Saves are written
+atomically into `saves/` so an interrupted write cannot corrupt progress, and
+an uncaught exception leaves a crash report the next launch can collect.
+
+**Steam.** Lobbies, achievements, cloud saves, rich presence and the overlay,
+plus friends, avatars, DLC and the app you were launched as. The app id lives
+in the project and ships in `steam_appid.txt`, so a build either identifies
+itself or carries no Steam dependency at all.
+
+**Web requests.** `services.web()` runs a request off the main thread and
+hands the response back on it, so a script can touch the scene in the
+callback. Failures arrive as a response rather than an exception.
 
 **Navigation.** Navmeshes baked from the geometry a surface declares, walked
 by agents that path around what you put in front of them.
