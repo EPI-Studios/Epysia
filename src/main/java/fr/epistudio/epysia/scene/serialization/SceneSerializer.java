@@ -5,6 +5,7 @@ import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scene.SceneLoadMode;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -66,26 +67,40 @@ public final class SceneSerializer {
         deserialize(scene, Files.readString(path), services);
     }
 
-    @SuppressWarnings("unchecked")
     public void deserialize(Scene scene, String text, EngineServices services) {
+        deserializeInto(scene, text, services, SceneLoadMode.REPLACE, "");
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<GameObject> deserializeInto(Scene scene, String text, EngineServices services,
+                                            SceneLoadMode mode, String sourceId) {
         Map<String, Object> root = new JsonReader(text).readRootObject();
-        clearScene(scene);
+        if (mode == SceneLoadMode.REPLACE) {
+            clearScene(scene);
+            readSceneSettings(root, scene);
+        }
+        List<Object> gameObjectsJson = (List<Object>) root.getOrDefault("gameObjects", List.of());
+        List<GameObject> loaded = codec.readGameObjectArray(
+                gameObjectsJson, GameObjectJsonCodec.IdentityPolicy.PRESERVE_IDS);
+        for (GameObject gameObject : loaded) {
+            gameObject.setSourceId(sourceId);
+            scene.addGameObject(gameObject);
+        }
+        scene.advanceTick();
+        if (services != null) {
+            scene.drainRecentlyActivated();
+            codec.invokeOnLoad(loaded, services);
+        }
+        return loaded;
+    }
+
+    private void readSceneSettings(Map<String, Object> root, Scene scene) {
         if (root.get("postProcess") instanceof Map<?, ?> postProcessJson) {
             postProcessCodec.read(castMembers(postProcessJson), scene.postProcess());
         }
         scene.postEffects().clear();
         if (root.get("postEffects") instanceof List<?> postEffectsJson) {
             postEffectCodec.readStack(postEffectsJson, scene.postEffects());
-        }
-        List<Object> gameObjectsJson = (List<Object>) root.getOrDefault("gameObjects", List.of());
-        List<GameObject> loaded = codec.readGameObjectArray(
-                gameObjectsJson, GameObjectJsonCodec.IdentityPolicy.PRESERVE_IDS);
-        for (GameObject gameObject : loaded) {
-            scene.addGameObject(gameObject);
-        }
-        scene.advanceTick();
-        if (services != null) {
-            codec.invokeOnLoad(loaded, services);
         }
     }
 
@@ -94,9 +109,22 @@ public final class SceneSerializer {
     }
 
     private void clearScene(Scene scene) {
-        List<GameObject> existing = new ArrayList<>(scene.gameObjects());
-        for (GameObject gameObject : existing) {
-            scene.removeGameObject(gameObject);
+        for (GameObject gameObject : new ArrayList<>(scene.gameObjects())) {
+            if (!gameObject.keepOnSceneChange()) {
+                scene.removeGameObject(gameObject);
+            }
+        }
+        scene.advanceTick();
+    }
+
+    public void unloadSource(Scene scene, String sourceId) {
+        if (sourceId == null || sourceId.isEmpty()) {
+            return;
+        }
+        for (GameObject gameObject : new ArrayList<>(scene.gameObjects())) {
+            if (sourceId.equals(gameObject.sourceId()) && !gameObject.keepOnSceneChange()) {
+                scene.removeGameObject(gameObject);
+            }
         }
         scene.advanceTick();
     }

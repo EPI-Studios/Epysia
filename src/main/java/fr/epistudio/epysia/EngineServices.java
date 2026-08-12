@@ -21,6 +21,7 @@ import java.util.Optional;
 import fr.epistudio.epysia.input.action.InputActions;
 import fr.epistudio.epysia.navigation.NavigationService;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scene.SceneLoader;
 import fr.epistudio.epysia.scripting.Hud;
 import fr.epistudio.epysia.scripting.Scheduler;
 import fr.epistudio.epysia.window.Window;
@@ -52,6 +53,10 @@ public interface EngineServices {
 
     default DebugDraw debug() {
         return DebugDraw.detached();
+    }
+
+    default Optional<SceneLoader> scenes() {
+        return Optional.empty();
     }
 
     default SaveGames saves() {

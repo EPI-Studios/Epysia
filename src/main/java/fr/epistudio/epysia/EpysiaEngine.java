@@ -47,6 +47,7 @@ import fr.epistudio.epysia.render.text.FontRegistry;
 import fr.epistudio.epysia.runtime.NullRuntimeChannel;
 import fr.epistudio.epysia.runtime.RuntimeChannel;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scene.SceneLoader;
 import fr.epistudio.epysia.scripting.DefaultHud;
 import fr.epistudio.epysia.scripting.DefaultScheduler;
 import fr.epistudio.epysia.scripting.Hud;
@@ -88,6 +89,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private final long[] cpuTimingsNanosArray = new long[CpuTimings.values().length];
     private final FrameProfiler profiler = new FrameProfiler();
     private final DebugDraw debugDraw = new DebugDraw();
+    private SceneLoader sceneLoader;
     private final AnimationClock animationClock = new AnimationClock();
     private final TransformResolver transformResolver = new TransformResolver();
     private final DefaultScheduler scheduler = new DefaultScheduler();
@@ -247,6 +249,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
         profiler.record(FrameProfiler.BACKGROUND_DELIVERY_SECTION, System.nanoTime() - deliveryStart);
         scheduler.tick(deltaTimeSeconds);
         if (activeScene != null) {
+            applyPendingSceneLoads();
             activeScene.advanceTick();
             dispatchDeactivations(activeScene);
             dispatchActivations(activeScene);
@@ -574,6 +577,21 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     @Override
     public DebugDraw debug() {
         return debugDraw;
+    }
+
+    @Override
+    public Optional<SceneLoader> scenes() {
+        return Optional.ofNullable(sceneLoader);
+    }
+
+    public void setSceneLoader(SceneLoader loader) {
+        this.sceneLoader = loader;
+    }
+
+    private void applyPendingSceneLoads() {
+        if (sceneLoader != null && sceneLoader.hasPendingWork()) {
+            sceneLoader.applyPending();
+        }
     }
 
     @Override

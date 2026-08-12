@@ -27,6 +27,8 @@ public final class GameObject implements IGameObject {
     private boolean active = true;
     private boolean alive = true;
     private boolean persistent = true;
+    private boolean keepOnSceneChange;
+    private String sourceId = "";
     private final Map<Class<?>, IComponent> componentsByType = new HashMap<>();
     private Transform3D cachedTransform3D;
     private final List<IComponent> attachedComponents = new ArrayList<>();
@@ -132,6 +134,24 @@ public final class GameObject implements IGameObject {
 
     public GameObject setPersistent(boolean value) {
         this.persistent = value;
+        return this;
+    }
+
+    public boolean keepOnSceneChange() {
+        return keepOnSceneChange;
+    }
+
+    public GameObject setKeepOnSceneChange(boolean value) {
+        this.keepOnSceneChange = value;
+        return this;
+    }
+
+    public String sourceId() {
+        return sourceId;
+    }
+
+    public GameObject setSourceId(String value) {
+        this.sourceId = value == null ? "" : value;
         return this;
     }
 

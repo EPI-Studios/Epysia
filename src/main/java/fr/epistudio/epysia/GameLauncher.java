@@ -32,6 +32,8 @@ import fr.epistudio.epysia.runtime.RuntimeChannel;
 import fr.epistudio.epysia.runtime.RuntimeEvent;
 import fr.epistudio.epysia.runtime.StdioRuntimeChannel;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scene.SceneLoadMode;
+import fr.epistudio.epysia.scene.SceneLoader;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.scripting.compile.ScriptLoadResult;
@@ -39,6 +41,7 @@ import fr.epistudio.epysia.scripting.compile.ScriptModule;
 import fr.epistudio.epysia.window.Window;
 
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 
@@ -105,7 +108,9 @@ public final class GameLauncher {
             });
             projectRoot.ifPresent(root -> attachAssetDatabase(services, root, logger));
             SceneSerializer serializer = new SceneSerializer(registry);
-            serializer.load(services.scene(), scenePath, services);
+            engine.setSceneLoader(new SceneLoader(services, serializer));
+            serializer.deserializeInto(services.scene(), Files.readString(scenePath), services,
+                    SceneLoadMode.REPLACE, scenePath.toString());
             if (rendering) {
                 ensureCameraExists(services.scene());
             }

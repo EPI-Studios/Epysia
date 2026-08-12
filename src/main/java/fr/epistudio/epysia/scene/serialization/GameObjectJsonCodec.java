@@ -66,6 +66,7 @@ public final class GameObjectJsonCodec {
         }
         writer.endArray();
         writer.key("active").valueBoolean(gameObject.active());
+        writer.key("keepOnSceneChange").valueBoolean(gameObject.keepOnSceneChange());
         writer.key("parentIndex").valueNumber(resolveParentIndex(gameObject, indexByGameObject));
         writer.key("components").beginArray();
         for (ComponentRegistry.Entry entry : componentRegistry.entries()) {
@@ -286,6 +287,9 @@ public final class GameObjectJsonCodec {
             applyTags(gameObject, gameObjectJson);
             if (gameObjectJson.get("active") instanceof Boolean active) {
                 gameObject.setActive(active);
+            }
+            if (gameObjectJson.get("keepOnSceneChange") instanceof Boolean keep) {
+                gameObject.setKeepOnSceneChange(keep);
             }
         }
 
