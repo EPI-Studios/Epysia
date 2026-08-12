@@ -214,6 +214,13 @@ git push origin v0.1.0
 - Physics runs on Box3D, with vendored FFM bindings under `src/main/java/com/meekdev/box3d`.
 - Built on LWJGL 3, JOML, Dear ImGui, and ClassGraph.
 
-## License
+<hr/>
 
-MIT.
+## Copywrite & Licence
+
+This project is brought to you by **EPI Studio**, a french non-profit development studio. 
+To know more about the non-profit or to join us, check our website: https://epistudio.fr
+
+<img width="850" height="400" alt="Banniereepistudio" src="https://github.com/user-attachments/assets/76803703-ebfa-46bd-93e5-a6fbd6376515" />
+
+### This project is under the licence MIT. Everyone can copy, modify and distribute the project as long as EPI Studio and Meek are mentionned in your readme.md or LICENCE file. 
