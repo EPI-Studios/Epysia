@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.physics.components.RigidBodyComponent;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import org.joml.Vector3fc;
 
@@ -24,7 +25,7 @@ public final class RigidBodyLiveSection {
     }
 
     private static void row(String label, Optional<String> value) {
-        ImGui.textDisabled(label);
+        Texts.muted(label);
         ImGui.sameLine(LiveLayout.VALUE_COLUMN);
         ImGui.textUnformatted(value.orElse(NOT_SIMULATED));
     }

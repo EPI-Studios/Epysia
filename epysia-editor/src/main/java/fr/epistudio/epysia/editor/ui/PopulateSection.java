@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epyinstances.EpyInstancesFormat;
 import fr.epistudio.epysia.assets.epyinstances.EpyInstancesWriter;
 import fr.epistudio.epysia.components.MeshRenderer;
@@ -12,6 +14,7 @@ import fr.epistudio.epysia.render.mesh.MeshData;
 import fr.epistudio.epysia.render.mesh.MeshDataSource;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.render.mesh.SurfacePopulator;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.type.ImInt;
 import org.joml.Matrix4f;
@@ -49,16 +52,16 @@ public final class PopulateSection {
 
     public void render(MultiMeshRenderer renderer) {
         ImGui.separator();
-        ImGui.text("Populate from surface");
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_POPULATE_SECTION_TITLE));
         List<GameObject> surfaces = surfaceCandidates();
         if (surfaces.isEmpty()) {
-            ImGui.textDisabled("No object with a Mesh Renderer to scatter onto.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_POPULATE_SECTION_NO_TARGET));
             return;
         }
         renderSurfacePicker(surfaces);
         renderParameters();
         renderPopulateButton(renderer, surfaces);
-        ImGui.textDisabled(renderer.instanceCount() + " instances stored");
+        Texts.muted(renderer.instanceCount() + " instances stored");
     }
 
     private void renderSurfacePicker(List<GameObject> surfaces) {
@@ -81,7 +84,7 @@ public final class PopulateSection {
     }
 
     private void renderPopulateButton(MultiMeshRenderer renderer, List<GameObject> surfaces) {
-        if (!ImGui.button("Populate")) {
+        if (!ImGui.button(I18n.translate(TextKey.EDITOR_POPULATE_SECTION_POPULATE))) {
             return;
         }
         GameObject surface = surfaces.get(surfaceIndex.get());

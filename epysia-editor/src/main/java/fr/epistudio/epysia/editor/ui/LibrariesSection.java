@@ -1,11 +1,15 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.scripts.LibraryResolutionTask;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectDependencies;
 import fr.epistudio.epysia.project.ProjectLibraries;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.type.ImString;
 
@@ -45,24 +49,24 @@ public final class LibrariesSection {
     }
 
     private void renderArchives(Project project) {
-        ImGui.textDisabled("Jars");
+        Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_JARS));
         if (ImGui.button(PICK_TITLE)) {
             addLibrary(project);
         }
         ProjectLibraries libraries = project.libraries();
         if (libraries.isEmpty()) {
-            ImGui.textDisabled("No jar in " + Project.LIBRARIES_DIRECTORY_NAME + "/.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_NO_JAR, Project.LIBRARIES_DIRECTORY_NAME));
             return;
         }
         libraries.archives().forEach(this::renderRow);
     }
 
     private void renderDependencies(Project project) {
-        ImGui.textDisabled("Maven coordinates");
-        ImGui.setNextItemWidth(COORDINATE_INPUT_WIDTH);
+        Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_MAVEN_COORDINATES));
+        ImGui.setNextItemWidth(EditorScale.of(COORDINATE_INPUT_WIDTH));
         ImGui.inputTextWithHint("##coordinate", "group:artifact:version", coordinateInput);
         ImGui.sameLine();
-        if (ImGui.button("Add")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_ADD))) {
             addCoordinate(project);
         }
         ImGui.sameLine();
@@ -72,10 +76,10 @@ public final class LibrariesSection {
 
     private void renderResolveButton(Project project) {
         if (resolution.isRunning()) {
-            ImGui.textDisabled("Resolving...");
+            Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_RESOLVING));
             return;
         }
-        if (ImGui.button("Resolve")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_RESOLVE))) {
             resolution.start(project);
         }
     }
@@ -85,7 +89,7 @@ public final class LibrariesSection {
         ImGui.alignTextToFramePadding();
         ImGui.textUnformatted(coordinate);
         ImGui.sameLine();
-        if (ImGui.button("Remove")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_REMOVE))) {
             writeDependencies(project, project.dependencies().without(coordinate));
         }
         ImGui.popID();
@@ -119,12 +123,11 @@ public final class LibrariesSection {
     }
 
     private void renderLimits() {
-        ImGui.textDisabled("Jars in " + Project.LIBRARIES_DIRECTORY_NAME
-                + "/ are on the script compile and runtime classpath.");
-        ImGui.textDisabled("Maven coordinates resolve transitively into "
-                + Project.LIBRARIES_CACHE_DIRECTORY_NAME + "/, rewritten on every Resolve.");
-        ImGui.textDisabled("A jar dropped by hand carries no transitive resolution: drop its dependencies too.");
-        ImGui.textDisabled("Engine classes win a version collision.");
+        Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_JARS_HINT, Project.LIBRARIES_DIRECTORY_NAME));
+        Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_MAVEN_HINT,
+                Project.LIBRARIES_CACHE_DIRECTORY_NAME));
+        Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_HAND_DROPPED_HINT));
+        Texts.muted(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_COLLISION_HINT));
     }
 
     private void renderRow(Path archive) {
@@ -134,18 +137,18 @@ public final class LibrariesSection {
         ImGui.sameLine();
         if (isPendingRemoval(archive)) {
             renderRemovalConfirmation(archive);
-        } else if (ImGui.button("Remove")) {
+        } else if (ImGui.button(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_REMOVE))) {
             pendingRemoval = Optional.of(archive);
         }
         ImGui.popID();
     }
 
     private void renderRemovalConfirmation(Path archive) {
-        if (ImGui.button("Confirm")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_CONFIRM))) {
             removeLibrary(archive);
         }
         ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_LIBRARIES_SECTION_CANCEL))) {
             pendingRemoval = Optional.empty();
         }
     }

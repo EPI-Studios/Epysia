@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAnimation;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasGrid;
@@ -10,6 +13,7 @@ import fr.epistudio.epysia.assets.LegacyAssetReferences;
 import fr.epistudio.epysia.assets.NestedAssetPaths;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
@@ -195,9 +199,9 @@ public final class SpriteEditorWindow {
         if (!visible) {
             return;
         }
-        ImGui.setNextWindowSize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, ImGuiCond.FirstUseEver);
+        ImGui.setNextWindowSize(EditorScale.of(DEFAULT_WINDOW_WIDTH), EditorScale.of(DEFAULT_WINDOW_HEIGHT), ImGuiCond.FirstUseEver);
         ImBoolean keepOpen = new ImBoolean(true);
-        if (ImGui.begin(WINDOW_TITLE, keepOpen)) {
+        if (ImGui.begin(I18n.label(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_TITLE, WINDOW_TITLE), keepOpen)) {
             renderBody();
         }
         ImGui.end();
@@ -220,11 +224,11 @@ public final class SpriteEditorWindow {
 
     private void renderBody() {
         if (atlasPath.isEmpty()) {
-            ImGui.textDisabled("Double-click a .epyatlas asset to edit it here.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_EMPTY));
             return;
         }
         if (!loadError.isEmpty()) {
-            ImGui.textDisabled("Could not parse atlas: " + loadError);
+            Texts.muted(I18n.translate(TextKey.EDITOR_ATLAS_PARSE_ERROR, loadError));
             return;
         }
         renderHeader();
@@ -239,19 +243,19 @@ public final class SpriteEditorWindow {
     private void renderHeader() {
         ImGui.textUnformatted(atlasFileName() + (dirty ? " *" : ""));
         ImGui.sameLine();
-        ImGui.textDisabled(storedTexturePath.isEmpty() ? "(no texture)" : storedTexturePath);
+        Texts.muted(storedTexturePath.isEmpty() ? "(no texture)" : storedTexturePath);
         ImGui.sameLine(ImGui.getContentRegionAvailX() - 60.0f);
-        if (ImGui.button("Save", 60.0f, 0.0f)) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_SAVE), 60.0f, 0.0f)) {
             save();
         }
         if (!saveError.isEmpty()) {
-            ImGui.textColored(EditorStyle.COLOR_DANGER, "Save failed: " + saveError);
+            Texts.colored(EditorStyle.COLOR_DANGER, I18n.translate(TextKey.EDITOR_COMMON_SAVE_FAILED, saveError));
         }
         ImGui.separator();
     }
 
     private void renderSliceTabItem() {
-        if (!ImGui.beginTabItem("Slice")) {
+        if (!ImGui.beginTabItem(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_SLICE))) {
             return;
         }
         renderSliceTab();
@@ -259,7 +263,7 @@ public final class SpriteEditorWindow {
     }
 
     private void renderAnimationsTabItem() {
-        if (!ImGui.beginTabItem("Animations")) {
+        if (!ImGui.beginTabItem(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_ANIMATIONS))) {
             return;
         }
         renderAnimationsTab();
@@ -321,7 +325,7 @@ public final class SpriteEditorWindow {
     private void renderSliceTab() {
         Optional<ImagePreviewTexture.PreviewImage> image = texturePreview();
         if (image.isEmpty()) {
-            ImGui.textDisabled("Texture preview unavailable");
+            Texts.muted(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_PREVIEW_UNAVAILABLE));
             return;
         }
         renderGridFields();
@@ -373,7 +377,7 @@ public final class SpriteEditorWindow {
     }
 
     private AtlasCanvas drawSliceImage(ImagePreviewTexture.PreviewImage image) {
-        float maxHeight = Math.max(64.0f, ImGui.getContentRegionAvailY() - SLICE_INFO_ROWS_HEIGHT);
+        float maxHeight = Math.max(64.0f, ImGui.getContentRegionAvailY() - EditorScale.of(SLICE_INFO_ROWS_HEIGHT));
         float width = Math.max(32.0f, ImGui.getContentRegionAvailX());
         float height = width * image.height() / image.width();
         if (height > maxHeight) {
@@ -433,12 +437,12 @@ public final class SpriteEditorWindow {
     private void renderSliceSelectedCellInfo() {
         Optional<SpriteAtlasRegion> region = gridRegionFor(sliceSelectedCell);
         if (region.isEmpty()) {
-            ImGui.textDisabled("Click a cell to inspect it");
+            Texts.muted(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_CLICK_CELL));
             return;
         }
-        ImGui.textUnformatted("Region \"" + region.get().name() + "\"");
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_REGION, region.get().name()));
         ImGui.sameLine();
-        ImGui.textDisabled(String.format("uv [%.3f, %.3f] - [%.3f, %.3f]",
+        Texts.muted(String.format("uv [%.3f, %.3f] - [%.3f, %.3f]",
                 region.get().minU(), region.get().minV(), region.get().maxU(), region.get().maxV()));
     }
 
@@ -498,7 +502,7 @@ public final class SpriteEditorWindow {
     }
 
     private void renderAnimationListPanel() {
-        ImGui.beginChild("##animation-list", LIST_PANEL_WIDTH, 0.0f, true);
+        ImGui.beginChild("##animation-list", EditorScale.of(LIST_PANEL_WIDTH), 0.0f, true);
         renderAnimationListButtons();
         ImGui.separator();
         for (int index = 0; index < animations.size(); index++) {
@@ -512,20 +516,20 @@ public final class SpriteEditorWindow {
     }
 
     private void renderAnimationListButtons() {
-        if (ImGui.button("Add")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_ADD))) {
             addAnimation(new AnimationDraft(uniqueAnimationName(DEFAULT_ANIMATION_NAME),
                     10.0f, true, List.of()));
         }
         ImGui.sameLine();
         Optional<AnimationDraft> selected = selectedDraft();
         ImGui.beginDisabled(selected.isEmpty());
-        if (ImGui.button("Duplicate") && selected.isPresent()) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_DUPLICATE)) && selected.isPresent()) {
             AnimationDraft source = selected.get();
             addAnimation(new AnimationDraft(uniqueAnimationName(source.name),
                     source.framesPerSecond, source.loop, source.frames));
         }
         ImGui.sameLine();
-        if (ImGui.button("Delete") && selected.isPresent()) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_DELETE)) && selected.isPresent()) {
             deleteSelectedAnimation();
         }
         ImGui.endDisabled();
@@ -565,7 +569,7 @@ public final class SpriteEditorWindow {
             renameSelected(draft, nameInput.get().replace("\0", "").strip());
         }
         if (!nameError.isEmpty()) {
-            ImGui.textColored(EditorStyle.COLOR_DANGER, nameError);
+            Texts.colored(EditorStyle.COLOR_DANGER, nameError);
         }
         renderFpsAndLoop(draft);
     }
@@ -593,19 +597,19 @@ public final class SpriteEditorWindow {
             draft.framesPerSecond = Math.clamp(framesPerSecond[0], FPS_MINIMUM, FPS_MAXIMUM);
             dirty = true;
         }
-        if (ImGui.checkbox("Loop", draft.loop)) {
+        if (ImGui.checkbox(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_LOOP), draft.loop)) {
             draft.loop = !draft.loop;
             dirty = true;
         }
     }
 
     private void renderSheetPanel() {
-        float height = Math.max(64.0f, ImGui.getContentRegionAvailY() - STRIP_HEIGHT);
+        float height = Math.max(64.0f, ImGui.getContentRegionAvailY() - EditorScale.of(STRIP_HEIGHT));
         int flags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
         ImGui.beginChild("##sheet-panel", 0.0f, height, true, flags);
         Optional<ImagePreviewTexture.PreviewImage> image = texturePreview();
         if (image.isEmpty()) {
-            ImGui.textDisabled("Texture preview unavailable");
+            Texts.muted(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_PREVIEW_UNAVAILABLE));
         } else {
             renderSheetCanvas(image.get());
         }
@@ -686,7 +690,7 @@ public final class SpriteEditorWindow {
         float travel = Math.abs(endX - rubberBandStartX) + Math.abs(endY - rubberBandStartY);
         int columns = Math.max(1, editColumns.get());
         int rows = Math.max(1, editRows.get());
-        if (travel < DRAG_THRESHOLD) {
+        if (travel < EditorScale.of(DRAG_THRESHOLD)) {
             appendFrame(canvas.cellIndexAt(endX, endY, columns, rows));
             return;
         }
@@ -790,14 +794,14 @@ public final class SpriteEditorWindow {
     }
 
     private void renderFrameStripRow() {
-        float stripWidth = Math.max(64.0f, ImGui.getContentRegionAvailX() - PREVIEW_PANEL_WIDTH);
-        ImGui.beginChild("##frame-strip", stripWidth, STRIP_HEIGHT, true,
+        float stripWidth = Math.max(64.0f, ImGui.getContentRegionAvailX() - EditorScale.of(PREVIEW_PANEL_WIDTH));
+        ImGui.beginChild("##frame-strip", stripWidth, EditorScale.of(STRIP_HEIGHT), true,
                 ImGuiWindowFlags.HorizontalScrollbar);
         selectedDraft().ifPresentOrElse(this::renderFrameThumbnails,
-                () -> ImGui.textDisabled("Select an animation to edit its frames"));
+                () -> Texts.muted(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_SELECT_ANIMATION)));
         ImGui.endChild();
         ImGui.sameLine();
-        ImGui.beginChild("##frame-preview", 0.0f, STRIP_HEIGHT, true);
+        ImGui.beginChild("##frame-preview", 0.0f, EditorScale.of(STRIP_HEIGHT), true);
         selectedDraft().ifPresent(this::renderPreview);
         ImGui.endChild();
     }
@@ -823,7 +827,7 @@ public final class SpriteEditorWindow {
         }
         handleThumbnailInteractions(draft, index);
         markThumbnail(index == selectedFrame, region.isEmpty());
-        ImGui.textDisabled(Integer.toString(index + 1));
+        Texts.muted(Integer.toString(index + 1));
         ImGui.endGroup();
         ImGui.popID();
     }
@@ -831,10 +835,11 @@ public final class SpriteEditorWindow {
     private boolean frameThumbnailButton(Optional<ImagePreviewTexture.PreviewImage> image,
                                          Optional<SpriteAtlasRegion> region) {
         if (image.isEmpty() || region.isEmpty()) {
-            return ImGui.button("?", THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+            return ImGui.button("?", EditorScale.of(THUMBNAIL_SIZE), EditorScale.of(THUMBNAIL_SIZE));
         }
         SpriteAtlasRegion uv = region.get();
-        return ImGui.imageButton(image.get().textureId(), THUMBNAIL_SIZE, THUMBNAIL_SIZE,
+        return ImGui.imageButton("##frame-thumbnail", image.get().textureId(),
+                EditorScale.of(THUMBNAIL_SIZE), EditorScale.of(THUMBNAIL_SIZE),
                 uv.minU(), 1.0f - uv.maxV(), uv.maxU(), 1.0f - uv.minV());
     }
 
@@ -858,7 +863,7 @@ public final class SpriteEditorWindow {
         }
         if (ImGui.beginDragDropSource()) {
             ImGui.setDragDropPayload(FRAME_PAYLOAD, Integer.valueOf(index));
-            ImGui.textUnformatted("Frame " + (index + 1));
+            ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_SPRITE_EDITOR_WINDOW_FRAME, index + 1));
             ImGui.endDragDropSource();
         }
         handleThumbnailDropTarget(draft, index);
@@ -901,7 +906,7 @@ public final class SpriteEditorWindow {
             previewPlaying = !previewPlaying;
         }
         ImGui.sameLine();
-        ImGui.textDisabled(draft.frames.isEmpty() ? "no frames"
+        Texts.muted(draft.frames.isEmpty() ? "no frames"
                 : (frameIndex + 1) + " / " + draft.frames.size());
     }
 
@@ -922,12 +927,12 @@ public final class SpriteEditorWindow {
                 : resolveRegion(draft.frames.get(frameIndex));
         if (image.isEmpty() || region.isEmpty()) {
             ImGui.pushStyleColor(ImGuiCol.Text, EditorStyle.COLOR_TEXT_MUTED);
-            ImGui.button("no frame", PREVIEW_IMAGE_SIZE, PREVIEW_IMAGE_SIZE);
+            ImGui.button("no frame", EditorScale.of(PREVIEW_IMAGE_SIZE), EditorScale.of(PREVIEW_IMAGE_SIZE));
             ImGui.popStyleColor();
             return;
         }
         SpriteAtlasRegion uv = region.get();
-        ImGui.image(image.get().textureId(), PREVIEW_IMAGE_SIZE, PREVIEW_IMAGE_SIZE,
+        ImGui.image(image.get().textureId(), EditorScale.of(PREVIEW_IMAGE_SIZE), EditorScale.of(PREVIEW_IMAGE_SIZE),
                 uv.minU(), 1.0f - uv.maxV(), uv.maxU(), 1.0f - uv.minV());
     }
 

@@ -1,5 +1,9 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.ui.kit.Sections;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TilemapLayer;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
@@ -24,7 +28,7 @@ public final class TileLayersSection {
     }
 
     public boolean render(SpriteTilemap tilemap) {
-        if (!ImGui.collapsingHeader("Layers")) {
+        if (!Sections.header(I18n.translate(TextKey.EDITOR_TILE_LAYERS_SECTION_TITLE))) {
             return false;
         }
         boolean changed = renderAddButton(tilemap);
@@ -35,9 +39,9 @@ public final class TileLayersSection {
     }
 
     private boolean renderAddButton(SpriteTilemap tilemap) {
-        boolean clicked = icons.iconButton("addLayer", EditorIcon.ADD, BUTTON_SIZE);
+        boolean clicked = icons.iconButton("addLayer", EditorIcon.ADD, EditorScale.of(BUTTON_SIZE));
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Add a layer. Lower sorting order draws first, so put the background there.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_LAYERS_SECTION_HINT));
         }
         if (!clicked) {
             return false;
@@ -63,7 +67,7 @@ public final class TileLayersSection {
 
     private boolean renderVisibilityToggle(SpriteTilemap tilemap, TilemapLayer layer) {
         EditorIcon icon = layer.visible() ? EditorIcon.VISIBILITY_VISIBLE : EditorIcon.VISIBILITY_HIDDEN;
-        boolean clicked = icons.iconButton("visible", icon, BUTTON_SIZE);
+        boolean clicked = icons.iconButton("visible", icon, EditorScale.of(BUTTON_SIZE));
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(layer.visible() ? "Hide this layer" : "Show this layer");
         }
@@ -76,7 +80,7 @@ public final class TileLayersSection {
     }
 
     private boolean renderCollisionToggle(SpriteTilemap tilemap, TilemapLayer layer) {
-        boolean clicked = icons.toggleButton("collision", EditorIcon.COLLISION_SHAPE_3D, BUTTON_SIZE,
+        boolean clicked = icons.toggleButton("collision", EditorIcon.COLLISION_SHAPE_3D, EditorScale.of(BUTTON_SIZE),
                 layer.collisionEnabled());
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(layer.collisionEnabled()
@@ -99,7 +103,7 @@ public final class TileLayersSection {
             brush.setLayerIndex(layerIndex);
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Click to paint on it, double click to rename.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_LAYERS_SECTION_SELECT_HINT));
         }
         if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(0)) {
             renamingLayer = layerIndex;
@@ -126,7 +130,7 @@ public final class TileLayersSection {
 
     private boolean renderRemoveButton(SpriteTilemap tilemap, int layerIndex) {
         ImGui.beginDisabled(tilemap.layerCount() <= 1);
-        boolean clicked = icons.iconButton("removeLayer", EditorIcon.REMOVE, BUTTON_SIZE);
+        boolean clicked = icons.iconButton("removeLayer", EditorIcon.REMOVE, EditorScale.of(BUTTON_SIZE));
         ImGui.endDisabled();
         if (!clicked) {
             return false;

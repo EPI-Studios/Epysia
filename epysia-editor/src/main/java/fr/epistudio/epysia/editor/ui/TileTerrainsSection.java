@@ -1,5 +1,9 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.ui.kit.Sections;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TerrainDefinition;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
@@ -7,6 +11,7 @@ import fr.epistudio.epysia.assets.epytilemap.TerrainMatchMode;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 
 public final class TileTerrainsSection {
@@ -22,7 +27,7 @@ public final class TileTerrainsSection {
     }
 
     public boolean render(SpriteTilemap tilemap) {
-        if (!ImGui.collapsingHeader("Terrains")) {
+        if (!Sections.header(I18n.translate(TextKey.EDITOR_TILE_TERRAINS_SECTION_TITLE))) {
             return false;
         }
         boolean changed = renderMatchModes(tilemap);
@@ -45,7 +50,7 @@ public final class TileTerrainsSection {
 
     private boolean renderMatchModeButton(SpriteTilemap tilemap, TerrainMatchMode mode, EditorIcon icon) {
         boolean active = tilemap.terrainMatchMode() == mode;
-        boolean clicked = icons.toggleButton("mode" + mode.name(), icon, BUTTON_SIZE, active);
+        boolean clicked = icons.toggleButton("mode" + mode.name(), icon, EditorScale.of(BUTTON_SIZE), active);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(tooltipFor(mode));
         }
@@ -75,9 +80,9 @@ public final class TileTerrainsSection {
     }
 
     private boolean renderAddButton(SpriteTilemap tilemap) {
-        boolean clicked = icons.iconButton("addTerrain", EditorIcon.ADD, BUTTON_SIZE);
+        boolean clicked = icons.iconButton("addTerrain", EditorIcon.ADD, EditorScale.of(BUTTON_SIZE));
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Add a terrain, then mark which sides of each tile belong to it in Setup.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_TERRAINS_SECTION_HINT));
         }
         if (!clicked) {
             return false;
@@ -95,12 +100,12 @@ public final class TileTerrainsSection {
             brush.setTerrainIndex(terrainIndex);
         }
         ImGui.sameLine();
-        ImGui.textDisabled(configuredTileCount(tilemap, terrainIndex) + " tiles");
+        Texts.muted(configuredTileCount(tilemap, terrainIndex) + " tiles");
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Tiles whose centre is this terrain. Painting does nothing until at least one exists.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_TERRAINS_SECTION_MEMBERS_HINT));
         }
         ImGui.sameLine();
-        boolean removed = icons.iconButton("removeTerrain", EditorIcon.REMOVE, BUTTON_SIZE);
+        boolean removed = icons.iconButton("removeTerrain", EditorIcon.REMOVE, EditorScale.of(BUTTON_SIZE));
         ImGui.popID();
         if (removed) {
             tilemap.removeTerrain(terrainIndex);

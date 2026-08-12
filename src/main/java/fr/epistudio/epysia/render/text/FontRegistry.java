@@ -49,22 +49,30 @@ public final class FontRegistry {
     }
 
     public Font resolve(AssetLocator locator, String path, float pixelHeight) {
-        String key = path + "@" + pixelHeight;
+        return resolve(locator, path, pixelHeight, SamplerFilter.LINEAR);
+    }
+
+    public Font resolve(AssetLocator locator, String path, float pixelHeight, SamplerFilter samplerFilter) {
+        return resolve(locator, path, pixelHeight, samplerFilter, 0.0f);
+    }
+
+    public Font resolve(AssetLocator locator, String path, float pixelHeight, SamplerFilter samplerFilter,
+                        float edgeCutoff) {
+        String key = path + "@" + pixelHeight + "/" + samplerFilter + "/" + edgeCutoff;
         Font existing = fontsByStyle.get(key);
         if (existing != null) {
             return existing;
         }
-        Font created = bakeStyle(locator, path, pixelHeight);
+        Font created = bakeStyle(locator, path, pixelHeight, samplerFilter, edgeCutoff);
         fontsByStyle.put(key, created);
         return created;
     }
 
-    private Font bakeStyle(AssetLocator locator, String path, float pixelHeight) {
+    private Font bakeStyle(AssetLocator locator, String path, float pixelHeight, SamplerFilter samplerFilter,
+                           float edgeCutoff) {
         Optional<ByteBuffer> bytes = path.isEmpty() ? Optional.empty() : readFont(locator, path);
-        if (bytes.isEmpty()) {
-            return Font.bake(backend, defaultFontBytes(), pixelHeight);
-        }
-        return Font.bake(backend, bytes.get(), pixelHeight);
+        ByteBuffer source = bytes.orElseGet(this::defaultFontBytes);
+        return Font.bake(backend, source, pixelHeight, samplerFilter, edgeCutoff);
     }
 
     private ByteBuffer defaultFontBytes() {

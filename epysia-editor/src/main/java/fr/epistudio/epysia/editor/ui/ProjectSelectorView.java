@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.notify.Notifier;
@@ -9,6 +10,7 @@ import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiCond;
@@ -82,7 +84,7 @@ public final class ProjectSelectorView implements FrameView {
     }
 
     private void renderContent() {
-        float contentWidth = Math.min(CONTENT_MAX_WIDTH, ImGui.getContentRegionAvailX());
+        float contentWidth = Math.min(EditorScale.of(CONTENT_MAX_WIDTH), ImGui.getContentRegionAvailX());
         float indent = (ImGui.getContentRegionAvailX() - contentWidth) * 0.5f;
         if (indent > 0.0f) {
             ImGui.indent(indent);
@@ -90,7 +92,7 @@ public final class ProjectSelectorView implements FrameView {
         float recentsWidth = contentWidth * RECENTS_COLUMN_RATIO;
         renderRecentsColumn(recentsWidth);
         ImGui.sameLine();
-        renderActionsColumn(contentWidth - recentsWidth - EditorStyle.ITEM_SPACING_X);
+        renderActionsColumn(contentWidth - recentsWidth - EditorStyle.itemSpacingX());
         if (indent > 0.0f) {
             ImGui.unindent(indent);
         }
@@ -98,7 +100,7 @@ public final class ProjectSelectorView implements FrameView {
 
     private void renderRecentsColumn(float width) {
         ImGui.beginChild("##recents", width, 0.0f, false);
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_RECENT_PROJECTS));
+        Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_RECENT_PROJECTS));
         ImGui.separator();
         if (recents.isEmpty()) {
             renderEmptyRecents();
@@ -111,8 +113,8 @@ public final class ProjectSelectorView implements FrameView {
 
     private void renderEmptyRecents() {
         ImGui.spacing();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NO_RECENT_PROJECTS));
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FIRST_PROJECT_HELP));
+        Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NO_RECENT_PROJECTS));
+        Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FIRST_PROJECT_HELP));
     }
 
     private void renderRecentCards() {
@@ -124,7 +126,7 @@ public final class ProjectSelectorView implements FrameView {
     private void renderCard(RecentEntry entry) {
         ImGui.beginDisabled(!entry.exists());
         ImGui.pushID(entry.project().rootDirectory().toString());
-        boolean clicked = ImGui.button("##card", ImGui.getContentRegionAvailX(), CARD_HEIGHT);
+        boolean clicked = ImGui.button("##card", ImGui.getContentRegionAvailX(), EditorScale.of(CARD_HEIGHT));
         renderCardOverlay(entry);
         ImGui.popID();
         ImGui.endDisabled();
@@ -138,11 +140,11 @@ public final class ProjectSelectorView implements FrameView {
         float cardMinY = ImGui.getItemRectMinY();
         float cardMaxX = ImGui.getItemRectMaxX();
         var drawList = ImGui.getWindowDrawList();
-        float iconSize = EditorStyle.ICON_SIZE_MEDIUM;
-        float padding = EditorStyle.WINDOW_PADDING;
+        float iconSize = EditorStyle.iconSizeMedium();
+        float padding = EditorStyle.windowPadding();
         float textX = cardMinX + padding + iconSize + padding;
-        drawList.addImage(icons.atlasTextureId(EditorIcon.FOLDER), cardMinX + padding, cardMinY + (CARD_HEIGHT - iconSize) * 0.5f,
-                cardMinX + padding + iconSize, cardMinY + (CARD_HEIGHT + iconSize) * 0.5f);
+        drawList.addImage(icons.atlasTextureId(EditorIcon.FOLDER), cardMinX + padding, cardMinY + (EditorScale.of(CARD_HEIGHT) - iconSize) * 0.5f,
+                cardMinX + padding + iconSize, cardMinY + (EditorScale.of(CARD_HEIGHT) + iconSize) * 0.5f);
         drawList.addText(textX, cardMinY + padding, EditorStyle.COLOR_TEXT, entry.project().name());
         String pathLine = entry.exists()
                 ? entry.project().rootDirectory().toString()
@@ -189,7 +191,7 @@ public final class ProjectSelectorView implements FrameView {
 
     private void renderActionsColumn(float width) {
         ImGui.beginChild("##actions", width, 0.0f, false);
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_GET_STARTED));
+        Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_GET_STARTED));
         ImGui.separator();
         if (actionButton("new-project", EditorIcon.ADD,
                 I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NEW_PROJECT))) {
@@ -204,7 +206,7 @@ public final class ProjectSelectorView implements FrameView {
 
     private boolean actionButton(String id, EditorIcon icon, String label) {
         ImGui.pushID(id);
-        boolean clicked = ImGui.button("##" + id, ImGui.getContentRegionAvailX(), ACTION_BUTTON_HEIGHT);
+        boolean clicked = ImGui.button("##" + id, ImGui.getContentRegionAvailX(), EditorScale.of(ACTION_BUTTON_HEIGHT));
         drawButtonContent(icon, label);
         ImGui.popID();
         return clicked;
@@ -214,14 +216,14 @@ public final class ProjectSelectorView implements FrameView {
         float minX = ImGui.getItemRectMinX();
         float minY = ImGui.getItemRectMinY();
         float width = ImGui.getItemRectMaxX() - minX;
-        float iconSize = EditorStyle.ICON_SIZE_MEDIUM;
+        float iconSize = EditorStyle.iconSizeMedium();
         float labelWidth = ImGui.calcTextSize(label).x;
-        float startX = minX + (width - iconSize - EditorStyle.INNER_SPACING - labelWidth) * 0.5f;
-        float iconY = minY + (ACTION_BUTTON_HEIGHT - iconSize) * 0.5f;
+        float startX = minX + (width - iconSize - EditorStyle.innerSpacing() - labelWidth) * 0.5f;
+        float iconY = minY + (EditorScale.of(ACTION_BUTTON_HEIGHT) - iconSize) * 0.5f;
         var drawList = ImGui.getWindowDrawList();
         drawList.addImage(icons.atlasTextureId(icon), startX, iconY, startX + iconSize, iconY + iconSize);
-        drawList.addText(startX + iconSize + EditorStyle.INNER_SPACING,
-                minY + (ACTION_BUTTON_HEIGHT - ImGui.getTextLineHeight()) * 0.5f,
+        drawList.addText(startX + iconSize + EditorStyle.innerSpacing(),
+                minY + (EditorScale.of(ACTION_BUTTON_HEIGHT) - ImGui.getTextLineHeight()) * 0.5f,
                 EditorStyle.COLOR_TEXT, label);
     }
 

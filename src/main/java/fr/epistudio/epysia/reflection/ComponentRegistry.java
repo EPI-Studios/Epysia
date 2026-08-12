@@ -29,6 +29,27 @@ public final class ComponentRegistry {
             userEntries.add(toEntry(component));
         }
         rebuildCombinedEntries();
+        UserComponents.publish(discovered);
+    }
+
+    private static List<DiscoveredComponent> builtinScan;
+
+    private static synchronized List<DiscoveredComponent> scannedBuiltins() {
+        if (builtinScan == null) {
+            builtinScan = ComponentScanner.scan();
+        }
+        return builtinScan;
+    }
+
+    public static ComponentRegistry populated() {
+        ComponentRegistry registry = new ComponentRegistry();
+        registry.populateFromScan(scannedBuiltins());
+        registry.userEntries.clear();
+        for (DiscoveredComponent component : UserComponents.current()) {
+            registry.userEntries.add(toEntry(component));
+        }
+        registry.rebuildCombinedEntries();
+        return registry;
     }
 
     private void rebuildCombinedEntries() {

@@ -3,6 +3,7 @@ package fr.epistudio.epysia;
 import fr.epistudio.epysia.assets.loaders.ClipAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
+import fr.epistudio.epysia.assets.loaders.AudioBufferLoaderAsset;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
 import fr.epistudio.epysia.assets.loaders.InstancesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
@@ -18,15 +19,21 @@ import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.logging.LogFile;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
+import fr.epistudio.epysia.profiling.BenchmarkHarness;
 import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
+import fr.epistudio.epysia.render.GraphicsApi;
+import fr.epistudio.epysia.render.debug.FrameCaptureSchedule;
+import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.opengl.OpenGlRenderBackend;
+import fr.epistudio.epysia.render.vulkan.VulkanRenderBackend;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.shader.ShaderWatcher;
 import fr.epistudio.epysia.render.sprite.SpriteRenderSystem;
 import fr.epistudio.epysia.render.sprite.TilemapRenderSystem;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
+import fr.epistudio.epysia.render.text.WorldTextRenderSystem;
 import fr.epistudio.epysia.ui.UiInputSystem;
 import fr.epistudio.epysia.ui.UiRenderSystem;
 import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
@@ -85,9 +92,22 @@ public final class StandaloneRunner {
         }
     }
 
+    private static RenderBackend createRenderBackend() {
+        if (!GraphicsApi.isVulkan()) {
+            return new OpenGlRenderBackend();
+        }
+        try {
+            return new VulkanRenderBackend();
+        } catch (RuntimeException | LinkageError unavailable) {
+            System.err.println("[render] Vulkan is unavailable, falling back to OpenGL: "
+                    + unavailable);
+            return new OpenGlRenderBackend();
+        }
+    }
+
     public static void runStandalone(String windowTitle, int width, int height, ScenePopulator populator) {
         Window window = new Window(windowTitle, width, height);
-        OpenGlRenderBackend backend = new OpenGlRenderBackend();
+        RenderBackend backend = createRenderBackend();
         EpysiaEngine engine = new EpysiaEngine(window, backend);
         Logger logger = createLogger();
         installCrashHandler(logger);
@@ -107,6 +127,7 @@ public final class StandaloneRunner {
         SpriteRenderSystem spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(new TilemapRenderSystem(spriteRenderSystem, engine.logger()));
+        engine.addRenderSystem(new WorldTextRenderSystem(shaderLoader, meshRenderSystem));
         engine.addRenderSystem(new TextRenderSystem(shaderLoader, window, engine, engine.logger()));
         engine.addRenderSystem(new UiRenderSystem(shaderLoader, window, engine));
         engine.addSystem(new UiInputSystem());
@@ -119,6 +140,7 @@ public final class StandaloneRunner {
         engine.assets().register(new MeshAssetLoader(builtins));
         engine.assets().register(new TextureAssetLoader());
         engine.assets().register(new PhysicsMaterialLoader());
+        engine.assets().register(new AudioBufferLoaderAsset());
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
@@ -199,6 +221,9 @@ public final class StandaloneRunner {
     }
 
     private static void loop(EpysiaEngine engine, Window window, MutableInputState inputState) {
+        BenchmarkHarness benchmark = BenchmarkHarness.fromSystemProperties();
+        Optional<FrameCaptureSchedule> frameCapture =
+                FrameCaptureSchedule.fromSystemProperties(engine.logger());
         long previousNanos = System.nanoTime();
         long lastProfileReportNanos = previousNanos;
         int framesSinceReport = 0;
@@ -214,14 +239,17 @@ public final class StandaloneRunner {
             double frameSeconds = Math.min((currentNanos - previousNanos) / NANOS_PER_SECOND, MAX_FRAME_SECONDS);
             previousNanos = currentNanos;
             long updateStart = System.nanoTime();
-            accumulator = drainFixedSteps(engine, window, inputState, accumulator + frameSeconds);
+            if (benchmark == null || !benchmark.simulationFrozen()) {
+                accumulator = drainFixedSteps(engine, window, inputState, accumulator + frameSeconds);
+            }
             long updateEnd = System.nanoTime();
-            float interpolationAlpha = (float) (accumulator / fixedTimestepSeconds);
+            float interpolationAlpha = Math.clamp((float) (accumulator / fixedTimestepSeconds), 0.0f, 1.0f);
             List<Camera3D> activeCameras = collectActiveCameras(engine.scene());
             updateCameraAspect(activeCameras, window.framebufferWidth(), window.framebufferHeight());
             long renderStart = System.nanoTime();
             engine.render(activeCameras, RenderTargetHandle.SCREEN, interpolationAlpha);
             long renderEnd = System.nanoTime();
+            frameCapture.ifPresent(FrameCaptureSchedule::onFrameRendered);
             long swapStart = System.nanoTime();
             window.swapBuffers();
             long swapEnd = System.nanoTime();
@@ -230,6 +258,9 @@ public final class StandaloneRunner {
             engine.setCpuTimingNanos(CpuTimings.RENDER, renderEnd - renderStart);
             engine.setCpuTimingNanos(CpuTimings.SWAP_BUFFERS, swapEnd - swapStart);
             throttle(frameStartNanos);
+            if (benchmark != null && recordBenchmarkFrame(benchmark, engine, swapEnd - pollStart)) {
+                return;
+            }
             framesSinceReport++;
             if (swapEnd - lastProfileReportNanos >= PROFILE_REPORT_INTERVAL_NANOS) {
                 reportProfile(engine, framesSinceReport, swapEnd - lastProfileReportNanos);
@@ -237,6 +268,20 @@ public final class StandaloneRunner {
                 framesSinceReport = 0;
             }
         }
+    }
+
+    private static boolean recordBenchmarkFrame(BenchmarkHarness benchmark, EpysiaEngine engine, long frameNanos) {
+        benchmark.recordFrame(frameNanos, engine.profiler().sections(),
+                engine.renderBackend().latestProfileTimingsNanos(),
+                engine.renderBackend().drawStatistics().drawCalls(),
+                engine.renderBackend().drawStatistics().triangles(),
+                engine.renderBackend().drawStatistics().instances(),
+                engine.renderBackend().drawStatistics().instancedTriangles());
+        if (!benchmark.finished()) {
+            return false;
+        }
+        engine.logger().info(benchmark.report());
+        return true;
     }
 
     private static void reportProfile(EpysiaEngine engine, int frames, long elapsedNanos) {
@@ -253,6 +298,13 @@ public final class StandaloneRunner {
         for (Map.Entry<String, Long> entry : engine.profiler().sections().entrySet()) {
             report.append(String.format(" | %s %.3f", entry.getKey(), entry.getValue() / NANOS_PER_MILLI));
         }
+        report.append(String.format(" | draws %d (inst %d) pipes %d binds %d passes %d tris %d",
+                engine.renderBackend().drawStatistics().drawCalls(),
+                engine.renderBackend().drawStatistics().instancedDrawCalls(),
+                engine.renderBackend().drawStatistics().pipelineSwitches(),
+                engine.renderBackend().drawStatistics().bindingSetSwitches(),
+                engine.renderBackend().drawStatistics().passes(),
+                engine.renderBackend().drawStatistics().triangles()));
         for (Map.Entry<String, Long> entry : engine.renderBackend().latestProfileTimingsNanos().entrySet()) {
             report.append(String.format(" | gpu.%s %.3f", entry.getKey(), entry.getValue() / NANOS_PER_MILLI));
         }
@@ -262,7 +314,7 @@ public final class StandaloneRunner {
     private static double drainFixedSteps(EpysiaEngine engine, Window window,
                                           MutableInputState input, double accumulator) {
         float step = (float) fixedTimestepSeconds;
-        double remaining = accumulator;
+        double remaining = catchUpAdjusted(engine, accumulator);
         boolean firstStep = true;
         while (remaining >= fixedTimestepSeconds) {
             if (!firstStep) {
@@ -275,6 +327,11 @@ public final class StandaloneRunner {
             firstStep = false;
         }
         return remaining;
+    }
+
+    private static double catchUpAdjusted(EpysiaEngine engine, double accumulator) {
+        double adjusted = accumulator + engine.consumeCatchUpSteps() * fixedTimestepSeconds;
+        return Math.max(-fixedTimestepSeconds, adjusted);
     }
 
     private static void pollInput(Window window, MutableInputState input) {

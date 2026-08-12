@@ -10,8 +10,19 @@ import fr.epistudio.epysia.components.transforms.Transform3D;
 @RequiresComponent(Transform3D.class)
 public final class AudioListenerComponent extends Component {
 
+    @Export(label = "Active")
+    private boolean active = true;
     @Export(label = "Gain", min = 0.0f, max = 4.0f, step = 0.01f)
     private float gain = 1.0f;
+
+    public boolean active() {
+        return active;
+    }
+
+    public AudioListenerComponent setActive(boolean value) {
+        this.active = value;
+        return this;
+    }
 
     public AudioListenerComponent setGain(float gain) {
         this.gain = gain;

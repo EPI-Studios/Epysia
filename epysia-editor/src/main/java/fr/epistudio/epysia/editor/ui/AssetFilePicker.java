@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.assets.EditorAssetPaths;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.i18n.I18n;
@@ -130,7 +131,7 @@ public final class AssetFilePicker {
     }
 
     private void renderCandidateList() {
-        ImGui.beginChild("##file-candidates", LIST_WIDTH, LIST_HEIGHT, true);
+        ImGui.beginChild("##file-candidates", EditorScale.of(LIST_WIDTH), EditorScale.of(LIST_HEIGHT), true);
         if (allowClear) {
             renderClearEntry();
         }
@@ -141,11 +142,11 @@ public final class AssetFilePicker {
             if (!query.isEmpty() && !candidate.toLowerCase(Locale.ROOT).contains(query)) {
                 continue;
             }
-            if (used > 0.0f && used + PREVIEW_SIZE + TILE_PADDING < available) {
+            if (used > 0.0f && used + EditorScale.of(PREVIEW_SIZE) + EditorScale.of(TILE_PADDING) < available) {
                 ImGui.sameLine();
-                used += PREVIEW_SIZE + TILE_PADDING;
+                used += EditorScale.of(PREVIEW_SIZE) + EditorScale.of(TILE_PADDING);
             } else {
-                used = PREVIEW_SIZE + TILE_PADDING;
+                used = EditorScale.of(PREVIEW_SIZE) + EditorScale.of(TILE_PADDING);
             }
             renderCandidate(candidate);
         }
@@ -154,7 +155,7 @@ public final class AssetFilePicker {
 
     private void renderClearEntry() {
         if (ImGui.button(I18n.label(TextKey.EDITOR_ASSET_FILE_PICKER_NONE, "asset-file-picker-none"),
-                PREVIEW_SIZE, 0.0f)) {
+                EditorScale.of(PREVIEW_SIZE), 0.0f)) {
             ImGui.closeCurrentPopup();
             onPicked.accept("");
         }
@@ -178,9 +179,10 @@ public final class AssetFilePicker {
     private boolean renderPreviewButton(String candidate) {
         OptionalInt preview = previewFor(candidate);
         if (preview.isPresent()) {
-            return ImGui.imageButton(preview.getAsInt(), PREVIEW_SIZE, PREVIEW_SIZE);
+            return ImGui.imageButton("##asset-preview", preview.getAsInt(), EditorScale.of(PREVIEW_SIZE),
+                    EditorScale.of(PREVIEW_SIZE));
         }
-        return ImGui.button(fileExtensionOf(candidate), PREVIEW_SIZE, PREVIEW_SIZE);
+        return ImGui.button(fileExtensionOf(candidate), EditorScale.of(PREVIEW_SIZE), EditorScale.of(PREVIEW_SIZE));
     }
 
     private OptionalInt previewFor(String candidate) {

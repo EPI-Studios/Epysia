@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
 import imgui.ImDrawList;
@@ -47,7 +48,7 @@ public final class TilePolygonEditor {
     public boolean render(TileData data, int previewTextureId,
                           float minU, float minV, float maxU, float maxV, float size, int snapDivisions) {
         activeSnapDivisions = Math.max(0, snapDivisions);
-        float extent = Math.max(MINIMUM_SIZE, size);
+        float extent = Math.max(EditorScale.of(MINIMUM_SIZE), size);
         float originX = ImGui.getCursorScreenPosX();
         float originY = ImGui.getCursorScreenPosY();
         ImGui.image(previewTextureId, extent, extent, minU, minV, maxU, maxV);
@@ -178,7 +179,7 @@ public final class TilePolygonEditor {
             List<Vector2f> points = shapes.get(shapeIndex).points();
             for (int pointIndex = 0; pointIndex < points.size(); pointIndex++) {
                 Vector2f point = points.get(pointIndex);
-                if (withinRadius(canvas.screenX(point.x), canvas.screenY(point.y), VERTEX_HIT_RADIUS)) {
+                if (withinRadius(canvas.screenX(point.x), canvas.screenY(point.y), EditorScale.of(VERTEX_HIT_RADIUS))) {
                     return Optional.of(new VertexReference(shapeIndex, pointIndex));
                 }
             }
@@ -237,7 +238,7 @@ public final class TilePolygonEditor {
         float closestX = startX + alongEdge * edgeX;
         float closestY = startY + alongEdge * edgeY;
         float distance = (float) Math.hypot(ImGui.getMousePosX() - closestX, ImGui.getMousePosY() - closestY);
-        if (distance > EDGE_HIT_DISTANCE) {
+        if (distance > EditorScale.of(EDGE_HIT_DISTANCE)) {
             return Optional.empty();
         }
         return Optional.of(new EdgeHit(shapeIndex, insertIndex,
@@ -260,9 +261,9 @@ public final class TilePolygonEditor {
         for (int division = 1; division < divisions; division++) {
             float offset = division / (float) divisions * canvas.size();
             drawList.addLine(canvas.originX() + offset, canvas.originY(),
-                    canvas.originX() + offset, maxY, COLOR_GRID, GRID_THICKNESS);
+                    canvas.originX() + offset, maxY, COLOR_GRID, EditorScale.of(GRID_THICKNESS));
             drawList.addLine(canvas.originX(), canvas.originY() + offset,
-                    maxX, canvas.originY() + offset, COLOR_GRID, GRID_THICKNESS);
+                    maxX, canvas.originY() + offset, COLOR_GRID, EditorScale.of(GRID_THICKNESS));
         }
         drawList.addRect(canvas.originX(), canvas.originY(), maxX, maxY, COLOR_BORDER);
     }
@@ -274,7 +275,7 @@ public final class TilePolygonEditor {
             Vector2f start = points.get(pointIndex);
             Vector2f end = points.get((pointIndex + 1) % points.size());
             drawList.addLine(canvas.screenX(start.x), canvas.screenY(start.y),
-                    canvas.screenX(end.x), canvas.screenY(end.y), COLOR_OUTLINE, OUTLINE_THICKNESS);
+                    canvas.screenX(end.x), canvas.screenY(end.y), COLOR_OUTLINE, EditorScale.of(OUTLINE_THICKNESS));
         }
         drawVertices(drawList, canvas, points, shapeIndex);
     }
@@ -294,7 +295,7 @@ public final class TilePolygonEditor {
         for (int pointIndex = 0; pointIndex < points.size(); pointIndex++) {
             Vector2f point = points.get(pointIndex);
             boolean active = shapeIndex == dragShapeIndex && pointIndex == dragPointIndex;
-            float radius = active ? VERTEX_RADIUS + VERTEX_ACTIVE_BONUS : VERTEX_RADIUS;
+            float radius = active ? EditorScale.of(VERTEX_RADIUS) + EditorScale.of(VERTEX_ACTIVE_BONUS) : EditorScale.of(VERTEX_RADIUS);
             drawList.addCircleFilled(canvas.screenX(point.x), canvas.screenY(point.y), radius,
                     active ? COLOR_VERTEX_ACTIVE : COLOR_VERTEX);
         }

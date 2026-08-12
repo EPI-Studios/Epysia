@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class LayerWorld {
+    private static final int DEFAULT_MAXIMUM_ATTACHES_PER_FRAME = 1;
     private static final int DEFAULT_MAXIMUM_IN_FLIGHT = 12;
 
     private static final class ChunkSlot {
@@ -34,7 +35,10 @@ public final class LayerWorld {
     private final Map<GenerationLayer<?>, Set<ChunkCoordinate>> visibleChunks = new LinkedHashMap<>();
     private final List<GenerationLayer<?>> order = new ArrayList<>();
     private int maximumInFlight = DEFAULT_MAXIMUM_IN_FLIGHT;
+    private int maximumAttachesPerFrame = DEFAULT_MAXIMUM_ATTACHES_PER_FRAME;
     private int inFlight;
+
+    private static final float RELEASE_MARGIN = 1.18f;
 
     public void addLayer(GenerationLayer<?> layer) {
         if (grids.containsKey(layer)) {
@@ -75,25 +79,39 @@ public final class LayerWorld {
     }
 
     private void reconcileAttachments(EngineServices services) {
+        int budget = maximumAttachesPerFrame;
         for (GenerationLayer<?> layer : order) {
             Set<ChunkCoordinate> visible = visibleChunks.getOrDefault(layer, Set.of());
             for (Map.Entry<ChunkCoordinate, ChunkSlot> entry : slots.get(layer).entrySet()) {
-                reconcileSlot(services, layer, entry.getKey(), entry.getValue(),
-                        visible.contains(entry.getKey()));
+                budget = reconcileSlot(services, layer, entry.getKey(), entry.getValue(),
+                        visible.contains(entry.getKey()), budget);
             }
         }
     }
 
-    private void reconcileSlot(EngineServices services, GenerationLayer<?> layer,
-                               ChunkCoordinate coordinate, ChunkSlot slot, boolean visible) {
+    private int reconcileSlot(EngineServices services, GenerationLayer<?> layer,
+                              ChunkCoordinate coordinate, ChunkSlot slot, boolean visible,
+                              int budget) {
         if (slot.data.isEmpty() || visible == slot.attached) {
-            return;
+            return budget;
         }
-        if (visible) {
-            attach(services, layer, coordinate, slot);
-        } else {
+        if (!visible) {
             detach(services, layer, coordinate, slot);
+            return budget;
         }
+        if (budget <= 0) {
+            return budget;
+        }
+        attach(services, layer, coordinate, slot);
+        return budget - 1;
+    }
+
+    public void setMaximumAttachesPerFrame(int value) {
+        this.maximumAttachesPerFrame = Math.max(1, value);
+    }
+
+    public int maximumAttachesPerFrame() {
+        return maximumAttachesPerFrame;
     }
 
     private void rebuildOrder() {
@@ -137,14 +155,32 @@ public final class LayerWorld {
             all.put(layer, new LinkedHashSet<>());
         }
         for (Map.Entry<GenerationLayer<?>, Float> entry : topLevelRadius.entrySet()) {
+            GenerationLayer<?> layer = entry.getKey();
             WorldRect area = WorldRect.around(focusX, focusZ, entry.getValue());
-            visible.get(entry.getKey()).addAll(grids.get(entry.getKey()).covering(area));
+            Set<ChunkCoordinate> wanted = visible.get(layer);
+            wanted.addAll(grids.get(layer).covering(area));
+            retainAttachedWithinMargin(layer, focusX, focusZ, entry.getValue(), wanted);
         }
         order.forEach(layer -> all.get(layer).addAll(visible.get(layer)));
         for (int index = order.size() - 1; index >= 0; index--) {
             propagateRequirements(order.get(index), all);
         }
         return new Requirements(visible, all);
+    }
+
+    private void retainAttachedWithinMargin(GenerationLayer<?> layer, float focusX, float focusZ,
+                                            float radius, Set<ChunkCoordinate> wanted) {
+        Map<ChunkCoordinate, ChunkSlot> layerSlots = slots.get(layer);
+        if (layerSlots == null || layerSlots.isEmpty()) {
+            return;
+        }
+        WorldRect keepArea = WorldRect.around(focusX, focusZ, radius * RELEASE_MARGIN);
+        Set<ChunkCoordinate> keep = new LinkedHashSet<>(grids.get(layer).covering(keepArea));
+        for (Map.Entry<ChunkCoordinate, ChunkSlot> entry : layerSlots.entrySet()) {
+            if (entry.getValue().attached && keep.contains(entry.getKey())) {
+                wanted.add(entry.getKey());
+            }
+        }
     }
 
     private void propagateRequirements(GenerationLayer<?> layer,

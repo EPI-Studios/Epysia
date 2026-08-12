@@ -10,12 +10,18 @@ public final class Reconciler {
     private static final float IGNORED_ERROR_METERS = 0.002f;
     private static final float SOFT_CORRECTION_METERS = 0.25f;
     private static final float EASE_FRACTION_PER_TICK = 0.25f;
+    private static final int MAXIMUM_SKEW_TICKS = 3;
 
     private final Vector3f correction = new Vector3f();
 
     public int reconcile(ReconciliationRequest request) {
-        Optional<PredictedTransform> predicted = request.buffer().at(request.serverTick());
+        Optional<PredictedTransform> predicted = request.buffer().at(request.serverTick())
+                .or(() -> request.buffer().nearestAtOrBefore(request.serverTick(), MAXIMUM_SKEW_TICKS));
         if (predicted.isEmpty()) {
+            float driftNow = request.predictedNow().distanceTo(request.serverState());
+            if (driftNow <= SOFT_CORRECTION_METERS) {
+                return 0;
+            }
             return applyServerState(request);
         }
         float error = predicted.get().distanceTo(request.serverState());

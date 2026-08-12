@@ -27,8 +27,15 @@ public final class AudioBufferLoader {
     private AudioBufferLoader() {
     }
 
+    public static AudioBuffer loadFromFile(String absolutePath) {
+        return decode(absolutePath, readFromFile(Path.of(absolutePath)));
+    }
+
     public static AudioBuffer loadFromResource(String relativePath) {
-        ByteBuffer raw = readResource(relativePath);
+        return decode(relativePath, readResource(relativePath));
+    }
+
+    private static AudioBuffer decode(String relativePath, ByteBuffer raw) {
         if (relativePath.endsWith(".ogg")) {
             return loadOgg(raw);
         }

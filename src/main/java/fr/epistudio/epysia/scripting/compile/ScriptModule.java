@@ -4,7 +4,6 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.reflection.DiscoveredComponent;
-import fr.epistudio.epysia.scripting.Behaviour;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
@@ -74,7 +73,7 @@ public final class ScriptModule {
         {
             for (ClassInfo info : scan.getClassesWithAnnotation(EpysiaComponent.class.getName())) {
                 Class<?> raw = info.loadClass();
-                if (!Behaviour.class.isAssignableFrom(raw) || !IComponent.class.isAssignableFrom(raw)) {
+                if (!IComponent.class.isAssignableFrom(raw) || info.isAbstract() || info.isInterface()) {
                     continue;
                 }
                 @SuppressWarnings("unchecked")

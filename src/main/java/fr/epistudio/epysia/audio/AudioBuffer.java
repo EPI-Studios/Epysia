@@ -18,7 +18,13 @@ public final class AudioBuffer {
         this.sampleCount = sampleCount;
     }
 
+    public static final int SILENT_BUFFER = 0;
+
     public static AudioBuffer createFromPcm16(AudioFormat format, int sampleRate, ShortBuffer samples) {
+        if (!AudioDevice.ready()) {
+            return new AudioBuffer(SILENT_BUFFER, format, sampleRate,
+                    samples.remaining() / format.channelCount());
+        }
         int bufferId = AL10.alGenBuffers();
         AL10.alBufferData(bufferId, format.openAlFormat(), samples, sampleRate);
         return new AudioBuffer(bufferId, format, sampleRate, samples.remaining() / format.channelCount());
@@ -44,7 +50,13 @@ public final class AudioBuffer {
         return sampleCount / (float) sampleRate;
     }
 
+    public boolean playable() {
+        return bufferId != SILENT_BUFFER;
+    }
+
     public void destroy() {
-        AL10.alDeleteBuffers(bufferId);
+        if (bufferId != SILENT_BUFFER) {
+            AL10.alDeleteBuffers(bufferId);
+        }
     }
 }

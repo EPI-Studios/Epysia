@@ -11,6 +11,7 @@ public final class DrawStatistics {
     private int passes;
     private int droppedDraws;
     private long triangles;
+    private long instancedTriangles;
     private long instances;
 
     public void reset() {
@@ -21,6 +22,7 @@ public final class DrawStatistics {
         passes = 0;
         droppedDraws = 0;
         triangles = 0L;
+        instancedTriangles = 0L;
         instances = 0L;
     }
 
@@ -50,7 +52,15 @@ public final class DrawStatistics {
             instancedDrawCalls++;
             instances += Math.max(1, instanceCount);
         }
-        triangles += (long) primitiveCount(topology, indexCount) * Math.max(1, instanceCount);
+        long drawn = (long) primitiveCount(topology, indexCount) * Math.max(1, instanceCount);
+        triangles += drawn;
+        if (instanced) {
+            instancedTriangles += drawn;
+        }
+    }
+
+    public long instancedTriangles() {
+        return instancedTriangles;
     }
 
     private static int primitiveCount(Topology topology, int indexCount) {

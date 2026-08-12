@@ -4,6 +4,7 @@ import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.vfx.lut.VfxGradient;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
 
@@ -349,7 +350,7 @@ public final class GradientEditorWidget {
     }
 
     private static boolean renderEmptySelectionHint() {
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_INSTRUCTIONS));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_INSTRUCTIONS));
         return false;
     }
 
@@ -473,7 +474,7 @@ public final class GradientEditorWidget {
         }
         VfxGradient.ColorStop stop = stops.get(selectedIndex);
         float[] components = {stop.red(), stop.green(), stop.blue()};
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_COLOR_STOP,
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_COLOR_STOP,
                 String.format(Locale.ROOT, "%.3f", stop.time())));
         if (!ImGui.colorPicker3("##gradient-color-picker", components)) {
             return false;
@@ -488,7 +489,7 @@ public final class GradientEditorWidget {
         }
         VfxGradient.AlphaStop stop = stops.get(selectedIndex);
         float[] alpha = {stop.alpha()};
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_ALPHA_STOP,
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRADIENT_EDITOR_WIDGET_ALPHA_STOP,
                 String.format(Locale.ROOT, "%.3f", stop.time())));
         ImGui.setNextItemWidth(EDITOR_ITEM_WIDTH);
         if (!ImGui.sliderFloat("##gradient-alpha-picker", alpha, 0.0f, 1.0f)) {

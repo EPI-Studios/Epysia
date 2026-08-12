@@ -179,6 +179,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             Boolean.parseBoolean(System.getProperty("epysia.render.gpuCulling", "false"));
     private TextureHandle pyramidSourceDepth;
     private final CpuOcclusionGrid occlusionGrid = new CpuOcclusionGrid();
+    private boolean cpuOcclusionEnabled =
+            Boolean.parseBoolean(System.getProperty("epysia.render.cpuOcclusion", "false"));
     private static final float INDEX_MINIMUM_PRUNED_FRACTION =
             Float.parseFloat(System.getProperty("epysia.render.sceneIndexMinimumPruned", "0.30"));
     private static final int INDEX_IDLE_FRAMES_BEFORE_BYPASS = 3;
@@ -291,6 +293,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         this.pointShadows = new PointShadowAtlas(shaderLoader, shaderWatcher, logger,
                 shadowStatistics, this::invalidateShadowCaches);
         this.materialCache = new MaterialPipelineCache(shaderLoader, shaderWatcher, logger);
+        this.materialCache.useDepthPrepassState(this::depthPrepassEnabled);
         this.surfaceUniforms = new SurfaceUniformBinder(logger);
         this.environment = new Environment(shaderLoader);
     }
@@ -628,7 +631,9 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         depthPyramid.resize(depth, width, height);
         depthPyramid.build();
         runGpuCulling();
-        occlusionGrid.refresh(backend, depthPyramid, lastCameraViewProjection);
+        if (cpuOcclusionEnabled) {
+            occlusionGrid.refresh(backend, depthPyramid, lastCameraViewProjection);
+        }
     }
 
     TextureHandle shadowCascadeTexture() {
@@ -850,10 +855,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private void submitDepthPrepass(FrameBuilder frame, UploadedSubmesh submesh, BindingSetHandle bindings,
                                     Material material, long depthBits, int instanceCount, boolean skinned,
                                     boolean colored, boolean masked) {
-        if (!depthPrepassEnabled || skinned || material.blended()) {
-            return;
-        }
-        if (material.alphaScissor() && !masked) {
+        if (!materialCache.depthPrepassCovers(material, skinned)) {
             return;
         }
         SurfaceShadowVariants variants = masked ? maskedDepthPrepassVariants : depthPrepassVariants;
@@ -1301,7 +1303,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         }
         scratchCasterMin.set(prepared.worldMinimum);
         scratchCasterMax.set(prepared.worldMaximum);
-        if (!renderer.castsShadows() && occlusionGrid.isOccluded(
+        if (cpuOcclusionEnabled && !renderer.castsShadows() && occlusionGrid.isOccluded(
                 prepared.worldMinimum.x, prepared.worldMinimum.y, prepared.worldMinimum.z,
                 prepared.worldMaximum.x, prepared.worldMaximum.y, prepared.worldMaximum.z)) {
             occludedThisFrame++;
@@ -1459,6 +1461,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         MeshInstanceBatch batch = bulk.batch(slot);
         batch.beginFrame();
         batch.beginBulk(mesh.submeshes().get(slot), perSubmesh);
+        batch.setLocalBounds(mesh.localBounds());
         batch.setCastsShadows(renderer.castsShadows());
         batch.setVertexColored(mesh.vertexColored());
         batch.setVisibilityRange(renderer.visibilityRangeBegin(), renderer.visibilityRangeEnd());

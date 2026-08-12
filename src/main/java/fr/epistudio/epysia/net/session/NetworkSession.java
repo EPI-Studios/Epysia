@@ -10,6 +10,7 @@ import fr.epistudio.epysia.net.security.ConnectionSecurity;
 import fr.epistudio.epysia.net.security.MessageAuthenticationException;
 import fr.epistudio.epysia.net.transport.LatencySimulator;
 import fr.epistudio.epysia.net.transport.LoopbackTransport;
+import fr.epistudio.epysia.net.transport.SteamTransport;
 import fr.epistudio.epysia.net.transport.NetChannel;
 import fr.epistudio.epysia.net.transport.Transport;
 import fr.epistudio.epysia.net.transport.TransportListener;
@@ -29,11 +30,12 @@ import java.util.function.IntFunction;
 public final class NetworkSession implements TransportListener {
     private static final int LISTEN_SERVER_LOCAL_PEER = 1;
     private static final int NO_CONNECTION = -1;
-    private static final int HARD_RESYNC_TICKS = 20;
+    private static final int HARD_RESYNC_TICKS = 90;
 
     private final NetworkStats stats;
     private final Logger logger;
     private final Map<Integer, NetworkPeer> peersById = new LinkedHashMap<>();
+    private final Map<Integer, String> receivedRoster = new LinkedHashMap<>();
     private final Map<Integer, Integer> peerIdByConnection = new LinkedHashMap<>();
     private NetworkEvents events = new NoNetworkEvents();
     private NetworkConfig config = new NetworkConfig();
@@ -48,8 +50,8 @@ public final class NetworkSession implements TransportListener {
     private boolean polling;
     private Optional<DisconnectReason> deferredStop = Optional.empty();
     private float secondsSinceServerPacket;
-    private int heldTicks;
-    private int extraTicks;
+    private int pendingTickAdjustment;
+    private long packetArrivalNanos;
     private NetWriter scratchWriter = NetWriter.allocate(new NetworkConfig().snapshotByteCeiling()
             + new NetworkConfig().transmissionUnit());
     private boolean writerBusy;
@@ -87,15 +89,7 @@ public final class NetworkSession implements TransportListener {
     }
 
     public void advanceTick() {
-        if (heldTicks > 0) {
-            heldTicks--;
-            return;
-        }
         tick++;
-        if (extraTicks > 0) {
-            tick++;
-            extraTicks--;
-        }
     }
 
     public void synchroniseTick(int desiredTick) {
@@ -103,21 +97,66 @@ public final class NetworkSession implements TransportListener {
         if (Math.abs(drift) >= HARD_RESYNC_TICKS) {
             logger.info("[net] tick resynchronised by " + drift + " to " + desiredTick);
             tick = desiredTick;
-            heldTicks = 0;
-            extraTicks = 0;
+            pendingTickAdjustment = 0;
+            events.onTickResynchronised();
             return;
         }
-        if (drift > 0) {
-            extraTicks = drift;
-            heldTicks = 0;
-            return;
-        }
-        heldTicks = -drift;
-        extraTicks = 0;
+        pendingTickAdjustment = drift;
     }
 
-    public int tickDriftCorrection() {
-        return extraTicks - heldTicks;
+    public int pendingTickAdjustment() {
+        return pendingTickAdjustment;
+    }
+
+    public void consumeTickAdjustment(int appliedSteps) {
+        pendingTickAdjustment -= appliedSteps;
+    }
+
+    public Map<Integer, String> roster() {
+        return role.isServer() ? serverRoster() : Map.copyOf(receivedRoster);
+    }
+
+    private Map<Integer, String> serverRoster() {
+        Map<Integer, String> names = new LinkedHashMap<>();
+        if (role.isClient()) {
+            names.put(localPeer, config.displayName());
+        }
+        for (NetworkPeer peer : peersById.values()) {
+            if (peer.handshakeComplete()) {
+                names.put(peer.id(), peer.displayName());
+            }
+        }
+        return names;
+    }
+
+    private void broadcastRoster() {
+        if (!role.isServer()) {
+            return;
+        }
+        Map<Integer, String> names = serverRoster();
+        for (NetworkPeer peer : List.copyOf(peersById.values())) {
+            if (peer.handshakeComplete()) {
+                send(peer.connection(), NetChannel.RELIABLE, writer -> writeRoster(writer, names));
+            }
+        }
+    }
+
+    private static void writeRoster(NetWriter writer, Map<Integer, String> names) {
+        writer.writeMessageType(MessageType.PEER_ROSTER);
+        writer.writeVarInt(names.size());
+        for (Map.Entry<Integer, String> entry : names.entrySet()) {
+            writer.writeVarInt(entry.getKey());
+            writer.writeString(entry.getValue());
+        }
+    }
+
+    private void readRoster(NetReader reader) {
+        int count = reader.requireCount(reader.readVarInt(), 1);
+        receivedRoster.clear();
+        for (int index = 0; index < count; index++) {
+            int peerId = reader.readVarInt();
+            receivedRoster.put(peerId, reader.readString());
+        }
     }
 
     public List<NetworkPeer> peers() {
@@ -162,9 +201,7 @@ public final class NetworkSession implements TransportListener {
     }
 
     private Transport createTransport(NetworkConfig configuration) {
-        Transport base = configuration.transport() == TransportKind.LOOPBACK
-                ? new LoopbackTransport()
-                : new UdpTransport(configuration.transmissionUnit());
+        Transport base = baseTransport(configuration);
         if (!configuration.simulationEnabled()) {
             return base;
         }
@@ -172,6 +209,14 @@ public final class NetworkSession implements TransportListener {
                 configuration.simulatedLatencySeconds(),
                 configuration.simulatedJitterSeconds(),
                 configuration.simulatedLossProbability());
+    }
+
+    private static Transport baseTransport(NetworkConfig configuration) {
+        return switch (configuration.transport()) {
+            case LOOPBACK -> new LoopbackTransport();
+            case STEAM -> new SteamTransport();
+            case UDP -> new UdpTransport(configuration.transmissionUnit());
+        };
     }
 
     public void stop() {
@@ -193,6 +238,7 @@ public final class NetworkSession implements TransportListener {
         broadcastDisconnect(reason);
         transport.close();
         peersById.clear();
+        receivedRoster.clear();
         peerIdByConnection.clear();
         budgetByConnection.clear();
         handshakeAgeByConnection.clear();
@@ -205,8 +251,7 @@ public final class NetworkSession implements TransportListener {
         localPeer = PeerIds.NONE;
         serverConnection = NO_CONNECTION;
         secondsSinceServerPacket = 0.0f;
-        heldTicks = 0;
-        extraTicks = 0;
+        pendingTickAdjustment = 0;
         tick = 0;
         events.onSessionStopped();
     }
@@ -363,6 +408,7 @@ public final class NetworkSession implements TransportListener {
         stats.forgetPeer(peer.id());
         logger.info("[net] peer " + peer.id() + " left: " + reason);
         events.onPeerLeft(peer, reason);
+        broadcastRoster();
     }
 
     public void send(int connection, NetChannel channel, Consumer<NetWriter> body) {
@@ -469,6 +515,12 @@ public final class NetworkSession implements TransportListener {
     }
 
     @Override
+    public void onPacketReceived(int connection, NetChannel channel, NetReader reader, long arrivalNanos) {
+        packetArrivalNanos = arrivalNanos;
+        onPacketReceived(connection, channel, reader);
+    }
+
+    @Override
     public void onPacketReceived(int connection, NetChannel channel, NetReader reader) {
         int byteCount = reader.remaining();
         stats.recordReceived(channel, byteCount);
@@ -558,6 +610,7 @@ public final class NetworkSession implements TransportListener {
             case VOICE -> events.onVoiceFrameReceived(PeerIds.SERVER, reader);
             case DISCONNECT -> refuseLocally(readReason(reader));
             case HEARTBEAT -> replyToHeartbeat(serverConnection, reader);
+            case PEER_ROSTER -> readRoster(reader);
             default -> stats.recordUnknownMessage();
         }
     }
@@ -665,6 +718,7 @@ public final class NetworkSession implements TransportListener {
                 + peer.displayName() + (returning.isPresent() ? ") returned" : ") joined"));
         returning.ifPresentOrElse(parked -> events.onPeerReturned(peer, parked.ownedObjects()),
                 () -> events.onPeerJoined(peer));
+        broadcastRoster();
     }
 
     private void sendConnectRequest() {
@@ -695,20 +749,27 @@ public final class NetworkSession implements TransportListener {
         boolean isReply = reader.readBoolean();
         long stamp = reader.readLong();
         if (isReply) {
-            recordRoundTrip(connection, stamp);
+            recordRoundTrip(connection, stamp, reader.readLong());
             return;
         }
+        long heldNanos = Math.max(0L, System.nanoTime() - arrivalOfCurrentPacket());
         send(connection, NetChannel.UNRELIABLE, writer -> {
             writer.writeMessageType(MessageType.HEARTBEAT);
             writer.writeBoolean(true);
             writer.writeLong(stamp);
+            writer.writeLong(heldNanos);
         });
     }
 
-    private void recordRoundTrip(int connection, long sentNanos) {
-        float seconds = (System.nanoTime() - sentNanos) / 1_000_000_000.0f;
+    private long arrivalOfCurrentPacket() {
+        return packetArrivalNanos == 0L ? System.nanoTime() : packetArrivalNanos;
+    }
+
+    private void recordRoundTrip(int connection, long sentNanos, long peerHeldNanos) {
+        long observed = arrivalOfCurrentPacket() - sentNanos;
+        long networkOnly = Math.max(0L, observed - Math.max(0L, peerHeldNanos));
         int peerId = peerIdByConnection.getOrDefault(connection, PeerIds.SERVER);
-        stats.latencyOf(peerId).sample(seconds);
+        stats.latencyOf(peerId).sample(networkOnly / 1_000_000_000.0f);
     }
 
     public void sendHeartbeats() {

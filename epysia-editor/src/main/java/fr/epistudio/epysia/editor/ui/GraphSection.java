@@ -9,6 +9,7 @@ import fr.epistudio.epysia.graph.GraphValues;
 import fr.epistudio.epysia.graph.GraphVariable;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.type.ImString;
 import org.joml.Vector3f;
@@ -48,7 +49,7 @@ public final class GraphSection {
         String fileName = component.graphPath().isEmpty()
                 ? I18n.translate(TextKey.EDITOR_GRAPH_SECTION_DROP_HINT)
                 : Path.of(component.graphPath()).getFileName().toString();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_SECTION_GRAPH));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_SECTION_GRAPH));
         ImGui.sameLine();
         ImGui.button(fileName, ImGui.getContentRegionAvailX(), 0.0f);
         acceptGraphDrop(component);
@@ -93,7 +94,7 @@ public final class GraphSection {
     private static boolean showHeaderOnce(boolean headerShown) {
         if (!headerShown) {
             ImGui.spacing();
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_SECTION_EXPOSED_VARIABLES));
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_SECTION_EXPOSED_VARIABLES));
             ImGui.separator();
         }
         return true;

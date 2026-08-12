@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
@@ -135,7 +136,7 @@ public final class AssetPicker {
     }
 
     private void renderCandidateList() {
-        ImGui.beginChild("##asset-candidates", 460.0f, LIST_HEIGHT, true);
+        ImGui.beginChild("##asset-candidates", 460.0f, EditorScale.of(LIST_HEIGHT), true);
         String query = filterInput.get().toLowerCase(Locale.ROOT);
         for (String candidate : candidates) {
             if (query.isEmpty() || candidate.toLowerCase(Locale.ROOT).contains(query)) {

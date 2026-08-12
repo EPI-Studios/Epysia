@@ -4,6 +4,7 @@ import fr.epistudio.epysia.input.action.InputAction;
 import fr.epistudio.epysia.input.action.InputActions;
 import fr.epistudio.epysia.input.action.InputActionsJsonCodec;
 import fr.epistudio.epysia.scene.serialization.JsonReader;
+import fr.epistudio.epysia.render.GraphicsApi;
 import fr.epistudio.epysia.scene.serialization.JsonWriter;
 
 import java.io.IOException;
@@ -20,7 +21,8 @@ public final class ProjectStore {
     private List<InputAction> pendingInputActions;
 
     private static final Set<String> MARKER_KEYS =
-            Set.of("name", "engineVersion", "layerNames", "collisionMatrix", "quality", "inputActions");
+            Set.of("name", "engineVersion", "layerNames", "collisionMatrix", "quality", "inputActions",
+                    "network", "steam", "render");
 
     public static final String CURRENT_ENGINE_VERSION = "0.1";
     private static final String RECENTS_FILENAME = "recents.json";
@@ -144,6 +146,9 @@ public final class ProjectStore {
                 .key("engineVersion").valueString(project.engineVersion());
         writeSettingsKeys(writer, settings);
         writeQualityKeys(writer, quality);
+        writeNetworkKeys(writer, readNetwork(project));
+        writeSteamKeys(writer, readSteam(project));
+        writeRenderKeys(writer, readRender(project));
         writer.key("inputActions");
         new InputActionsJsonCodec().write(writer,
                 pendingInputActions == null ? readInputActions(project) : pendingInputActions);
@@ -330,6 +335,112 @@ public final class ProjectStore {
     public void writeQuality(Project project, ProjectQuality quality) throws IOException {
         writeMarker(project, readSettings(project), quality.clamped());
     }
+
+    public NetworkSettings readNetwork(Project project) {
+        if (pendingNetwork != null) {
+            return pendingNetwork;
+        }
+        Map<String, Object> root = readMarkerRoot(project);
+        if (!(root.get("network") instanceof Map<?, ?> network)) {
+            return NetworkSettings.defaults();
+        }
+        NetworkSettings defaults = NetworkSettings.defaults();
+        return new NetworkSettings(
+                intMember(network, "port", defaults.port()),
+                intMember(network, "maximumPeers", defaults.maximumPeers()),
+                intMember(network, "networkTickRate", defaults.networkTickRate()),
+                intMember(network, "snapshotRate", defaults.snapshotRate()),
+                intMember(network, "interpolationDelayTicks", defaults.interpolationDelayTicks()),
+                floatMember(network, "timeoutSeconds", defaults.timeoutSeconds()),
+                network.get("joinSecret") instanceof String secret ? secret : defaults.joinSecret())
+                .clamped();
+    }
+
+    public void writeNetwork(Project project, NetworkSettings network) throws IOException {
+        pendingNetwork = network.clamped();
+        try {
+            writeMarker(project, readSettings(project), readQuality(project));
+        } finally {
+            pendingNetwork = null;
+        }
+    }
+
+    public SteamSettings readSteam(Project project) {
+        if (pendingSteam != null) {
+            return pendingSteam;
+        }
+        Map<String, Object> root = readMarkerRoot(project);
+        if (!(root.get("steam") instanceof Map<?, ?> steam)) {
+            return SteamSettings.defaults();
+        }
+        SteamSettings defaults = SteamSettings.defaults();
+        return new SteamSettings(
+                intMember(steam, "appId", defaults.appId()),
+                steam.get("required") instanceof Boolean required ? required : defaults.required(),
+                steam.get("relayAllowed") instanceof Boolean relay ? relay : defaults.relayAllowed())
+                .clamped();
+    }
+
+    public void writeSteam(Project project, SteamSettings steam) throws IOException {
+        pendingSteam = steam.clamped();
+        try {
+            writeMarker(project, readSettings(project), readQuality(project));
+        } finally {
+            pendingSteam = null;
+        }
+    }
+
+    public RenderSettings readRender(Project project) {
+        if (pendingRender != null) {
+            return pendingRender;
+        }
+        Map<String, Object> root = readMarkerRoot(project);
+        if (!(root.get("render") instanceof Map<?, ?> render)) {
+            return RenderSettings.defaults();
+        }
+        String api = render.get("api") instanceof String text ? text : "";
+        return new RenderSettings(GraphicsApi.parse(api, RenderSettings.defaults().api()));
+    }
+
+    public void writeRender(Project project, RenderSettings render) throws IOException {
+        pendingRender = render.clamped();
+        try {
+            writeMarker(project, readSettings(project), readQuality(project));
+        } finally {
+            pendingRender = null;
+        }
+    }
+
+    private void writeRenderKeys(JsonWriter writer, RenderSettings render) {
+        writer.key("render").beginObject()
+                .key("api").valueString(render.api().id())
+                .endObject();
+    }
+
+    private void writeSteamKeys(JsonWriter writer, SteamSettings steam) {
+        writer.key("steam").beginObject()
+                .key("appId").valueNumber(steam.appId())
+                .key("required").valueBoolean(steam.required())
+                .key("relayAllowed").valueBoolean(steam.relayAllowed())
+                .endObject();
+    }
+
+    private void writeNetworkKeys(JsonWriter writer, NetworkSettings network) {
+        writer.key("network").beginObject()
+                .key("port").valueNumber(network.port())
+                .key("maximumPeers").valueNumber(network.maximumPeers())
+                .key("networkTickRate").valueNumber(network.networkTickRate())
+                .key("snapshotRate").valueNumber(network.snapshotRate())
+                .key("interpolationDelayTicks").valueNumber(network.interpolationDelayTicks())
+                .key("timeoutSeconds").valueNumber(network.timeoutSeconds())
+                .key("joinSecret").valueString(network.joinSecret())
+                .endObject();
+    }
+
+
+    private NetworkSettings pendingNetwork;
+    private SteamSettings pendingSteam;
+    private RenderSettings pendingRender;
 
     private static float numberAt(List<?> values, int index, float fallback) {
         return values.get(index) instanceof Number number ? number.floatValue() : fallback;

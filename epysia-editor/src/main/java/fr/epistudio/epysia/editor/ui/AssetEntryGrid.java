@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.ui.kit.ExtensionBadge;
 import fr.epistudio.epysia.editor.assets.AssetEntry;
 import fr.epistudio.epysia.editor.assets.AssetType;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
@@ -28,11 +30,12 @@ public final class AssetEntryGrid {
     public enum Mode { GRID, LIST }
 
     private static final String ELLIPSIS = "...";
-    private static final float CELL_PADDING = 10.0f;
-    private static final float LABEL_HEIGHT = 20.0f;
-    private static final float LIST_ROW_HEIGHT = 22.0f;
-    private static final float LIST_THUMBNAIL_SIZE = 16.0f;
-    private static final float SIZE_COLUMN_WIDTH = 90.0f;
+    private static final int MAXIMUM_KEPT_EXTENSION = 12;
+    private static final float CELL_PADDING_DESIGN = 10.0f;
+    private static final float LABEL_HEIGHT_DESIGN = 20.0f;
+    private static final float LIST_ROW_HEIGHT_DESIGN = 22.0f;
+    private static final float LIST_THUMBNAIL_SIZE_DESIGN = 16.0f;
+    private static final float SIZE_COLUMN_WIDTH_DESIGN = 90.0f;
     private static final float ELLIPSIS_MINIMUM = 1;
 
     private final IconWidgets icons;
@@ -47,6 +50,26 @@ public final class AssetEntryGrid {
         this.icons = icons;
         this.thumbnails = thumbnails;
         this.meshThumbnails = meshThumbnails;
+    }
+
+    private static float cellPadding() {
+        return EditorScale.of(CELL_PADDING_DESIGN);
+    }
+
+    private static float labelHeight() {
+        return EditorScale.of(LABEL_HEIGHT_DESIGN);
+    }
+
+    private static float listRowHeight() {
+        return EditorScale.of(LIST_ROW_HEIGHT_DESIGN);
+    }
+
+    private static float listThumbnailSize() {
+        return EditorScale.of(LIST_THUMBNAIL_SIZE_DESIGN);
+    }
+
+    private static float sizeColumnWidth() {
+        return EditorScale.of(SIZE_COLUMN_WIDTH_DESIGN);
     }
 
     public Mode mode() {
@@ -88,10 +111,10 @@ public final class AssetEntryGrid {
 
     private void renderGrid(List<AssetEntry> entries, Consumer<AssetEntry> onActivate,
                             Consumer<AssetEntry> onDecorate) {
-        float cellWidth = cellSize + CELL_PADDING;
+        float cellWidth = cellSize + cellPadding();
         int columns = Math.max(1, (int) (ImGui.getContentRegionAvailX() / cellWidth));
         int rowCount = (entries.size() + columns - 1) / columns;
-        int rowHeight = Math.round(cellSize + LABEL_HEIGHT + ImGui.getStyle().getItemSpacingY());
+        int rowHeight = Math.round(cellSize + labelHeight() + ImGui.getStyle().getItemSpacingY());
         ImGuiListClipper.forEach(rowCount, rowHeight, new ImListClipperCallback() {
             @Override
             public void accept(int row) {
@@ -120,7 +143,7 @@ public final class AssetEntryGrid {
         float startY = ImGui.getCursorPosY();
         boolean selected = selection.contains(entry.assetPath());
         if (ImGui.selectable("##cell", selected, ImGuiSelectableFlags.AllowDoubleClick,
-                cellSize, cellSize + LABEL_HEIGHT)) {
+                cellSize, cellSize + labelHeight())) {
             applyClick(entry);
             if (ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
                 onActivate.accept(entry);
@@ -137,7 +160,7 @@ public final class AssetEntryGrid {
         drawThumbnail(entry, cellSize);
         ImGui.setCursorPos(startX, startY + cellSize);
         drawCenteredLabel(entry.displayName(), cellSize);
-        ImGui.setCursorPos(startX, startY + cellSize + LABEL_HEIGHT);
+        ImGui.setCursorPos(startX, startY + cellSize + labelHeight());
     }
 
     private void drawCenteredLabel(String name, float width) {
@@ -151,7 +174,7 @@ public final class AssetEntryGrid {
 
     private void renderList(List<AssetEntry> entries, Consumer<AssetEntry> onActivate,
                             Consumer<AssetEntry> onDecorate) {
-        ImGuiListClipper.forEach(entries.size(), Math.round(LIST_ROW_HEIGHT), new ImListClipperCallback() {
+        ImGuiListClipper.forEach(entries.size(), Math.round(listRowHeight()), new ImListClipperCallback() {
             @Override
             public void accept(int index) {
                 renderListRow(entries.get(index), onActivate, onDecorate);
@@ -165,7 +188,7 @@ public final class AssetEntryGrid {
         float startY = ImGui.getCursorPosY();
         boolean selected = selection.contains(entry.assetPath());
         if (ImGui.selectable("##row", selected, ImGuiSelectableFlags.AllowDoubleClick,
-                0.0f, LIST_ROW_HEIGHT)) {
+                0.0f, listRowHeight())) {
             applyClick(entry);
             if (ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
                 onActivate.accept(entry);
@@ -177,14 +200,14 @@ public final class AssetEntryGrid {
     }
 
     private void drawListRowContent(AssetEntry entry, float startY) {
-        ImGui.setCursorPosY(startY + (LIST_ROW_HEIGHT - LIST_THUMBNAIL_SIZE) * 0.5f);
-        ImGui.setCursorPosX(ImGui.getCursorPosX() + CELL_PADDING * 0.5f);
-        drawThumbnail(entry, LIST_THUMBNAIL_SIZE);
+        ImGui.setCursorPosY(startY + (listRowHeight() - listThumbnailSize()) * 0.5f);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + cellPadding() * 0.5f);
+        drawThumbnail(entry, listThumbnailSize());
         ImGui.sameLine();
-        ImGui.setCursorPosY(startY + (LIST_ROW_HEIGHT - ImGui.getTextLineHeight()) * 0.5f);
+        ImGui.setCursorPosY(startY + (listRowHeight() - ImGui.getTextLineHeight()) * 0.5f);
         ImGui.textUnformatted(entry.displayName());
         drawSizeColumn(entry, startY);
-        ImGui.setCursorPosY(startY + LIST_ROW_HEIGHT);
+        ImGui.setCursorPosY(startY + listRowHeight());
     }
 
     private static void drawSizeColumn(AssetEntry entry, float startY) {
@@ -192,8 +215,8 @@ public final class AssetEntryGrid {
             return;
         }
         ImGui.sameLine();
-        ImGui.setCursorPosX(ImGui.getContentRegionMaxX() - SIZE_COLUMN_WIDTH);
-        ImGui.setCursorPosY(startY + (LIST_ROW_HEIGHT - ImGui.getTextLineHeight()) * 0.5f);
+        ImGui.setCursorPosX(ImGui.getContentRegionMaxX() - sizeColumnWidth());
+        ImGui.setCursorPosY(startY + (listRowHeight() - ImGui.getTextLineHeight()) * 0.5f);
         ImGui.pushStyleColor(ImGuiCol.Text, EditorStyle.COLOR_TEXT_MUTED);
         ImGui.textUnformatted(entry.formattedSize());
         ImGui.popStyleColor();
@@ -217,7 +240,12 @@ public final class AssetEntryGrid {
     private void drawThumbnail(AssetEntry entry, float size) {
         OptionalInt texture = thumbnailFor(entry);
         if (texture.isEmpty()) {
+            float iconX = ImGui.getCursorScreenPosX();
+            float iconY = ImGui.getCursorScreenPosY();
             icons.draw(AssetTypeIcons.iconFor(entry.type()), size);
+            if (entry.type() == AssetType.OTHER) {
+                ExtensionBadge.draw(entry.assetPath(), iconX, iconY, size);
+            }
             return;
         }
         if (entry.type() == AssetType.TEXTURE) {
@@ -247,12 +275,31 @@ public final class AssetEntryGrid {
         if (ImGui.calcTextSize(name).x <= availableWidth) {
             return name;
         }
-        String ellipsis = ELLIPSIS;
-        int length = name.length();
-        while (length > ELLIPSIS_MINIMUM
-                && ImGui.calcTextSize(name.substring(0, length) + ellipsis).x > availableWidth) {
+        int extensionStart = name.lastIndexOf('.');
+        if (extensionStart <= 0 || name.length() - extensionStart > MAXIMUM_KEPT_EXTENSION) {
+            return elideTail(name, availableWidth);
+        }
+        return elideMiddle(name.substring(0, extensionStart), name.substring(extensionStart), availableWidth);
+    }
+
+    private static String elideMiddle(String stem, String extension, float availableWidth) {
+        int length = stem.length();
+        while (length > ELLIPSIS_MINIMUM) {
+            String candidate = stem.substring(0, length) + ELLIPSIS + extension;
+            if (ImGui.calcTextSize(candidate).x <= availableWidth) {
+                return candidate;
+            }
             length--;
         }
-        return name.substring(0, length) + ellipsis;
+        return elideTail(stem + extension, availableWidth);
+    }
+
+    private static String elideTail(String name, float availableWidth) {
+        int length = name.length();
+        while (length > ELLIPSIS_MINIMUM
+                && ImGui.calcTextSize(name.substring(0, length) + ELLIPSIS).x > availableWidth) {
+            length--;
+        }
+        return name.substring(0, length) + ELLIPSIS;
     }
 }

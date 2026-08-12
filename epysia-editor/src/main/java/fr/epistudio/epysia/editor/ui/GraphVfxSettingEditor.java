@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.ui.widgets.CurveEditorWidget;
 import fr.epistudio.epysia.editor.ui.widgets.GradientEditorWidget;
@@ -8,6 +9,7 @@ import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.vfx.lut.VfxCurve;
 import fr.epistudio.epysia.vfx.lut.VfxGradient;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -68,7 +70,7 @@ final class GraphVfxSettingEditor {
             slot.curve = VfxCurve.isEncodedCurve(stored) ? VfxCurve.decode(stored) : VfxCurve.linear(0.0f, 1.0f);
             slot.encoded = stored;
         }
-        ImGui.textDisabled(setting.key());
+        Texts.muted(setting.key());
         drawCurveSwatch(identifier, slot.curve);
         openOnClick(identifier, setting.key());
         return true;
@@ -85,7 +87,7 @@ final class GraphVfxSettingEditor {
                     : VfxGradient.opaqueWhite();
             slot.encoded = stored;
         }
-        ImGui.textDisabled(setting.key());
+        Texts.muted(setting.key());
         drawGradientSwatch(identifier, slot.gradient);
         openOnClick(identifier, setting.key());
         return true;
@@ -108,7 +110,7 @@ final class GraphVfxSettingEditor {
         if (openIdentifier.isEmpty()) {
             return;
         }
-        ImGui.setNextWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT, ImGuiCond.FirstUseEver);
+        ImGui.setNextWindowSize(EditorScale.of(WINDOW_WIDTH), EditorScale.of(WINDOW_HEIGHT), ImGuiCond.FirstUseEver);
         if (ImGui.begin(openLabel + WINDOW_SUFFIX, windowOpen)) {
             renderOpenSlot();
         }
@@ -155,7 +157,7 @@ final class GraphVfxSettingEditor {
 
     private void drawCurveSwatch(String identifier, VfxCurve curve) {
         ImDrawList drawList = beginSwatch(identifier);
-        float padding = SWATCH_PADDING * swatchScale;
+        float padding = EditorScale.of(SWATCH_PADDING) * swatchScale;
         float minX = ImGui.getItemRectMinX() + padding;
         float maxX = ImGui.getItemRectMaxX() - padding;
         float minY = ImGui.getItemRectMinY() + padding;
@@ -167,7 +169,7 @@ final class GraphVfxSettingEditor {
             float progress = index / (float) (CURVE_SAMPLES - 1);
             float x = minX + (maxX - minX) * progress;
             float y = curveScreenY(curve, progress, span, minY, maxY);
-            drawList.addLine(previousX, previousY, x, y, COLOR_CURVE, CURVE_THICKNESS * swatchScale);
+            drawList.addLine(previousX, previousY, x, y, COLOR_CURVE, EditorScale.of(CURVE_THICKNESS) * swatchScale);
             previousX = x;
             previousY = y;
         }
@@ -182,7 +184,7 @@ final class GraphVfxSettingEditor {
 
     private void drawGradientSwatch(String identifier, VfxGradient gradient) {
         ImDrawList drawList = beginSwatch(identifier);
-        float padding = SWATCH_PADDING * swatchScale;
+        float padding = EditorScale.of(SWATCH_PADDING) * swatchScale;
         float minX = ImGui.getItemRectMinX() + padding;
         float maxX = ImGui.getItemRectMaxX() - padding;
         float minY = ImGui.getItemRectMinY() + padding;
@@ -198,7 +200,7 @@ final class GraphVfxSettingEditor {
 
     private ImDrawList beginSwatch(String identifier) {
         ImGui.invisibleButton("##vfx-swatch-" + identifier,
-                SWATCH_WIDTH * swatchScale, SWATCH_HEIGHT * swatchScale);
+                EditorScale.of(SWATCH_WIDTH) * swatchScale, EditorScale.of(SWATCH_HEIGHT) * swatchScale);
         ImDrawList drawList = ImGui.getWindowDrawList();
         drawList.addRectFilled(ImGui.getItemRectMinX(), ImGui.getItemRectMinY(),
                 ImGui.getItemRectMaxX(), ImGui.getItemRectMaxY(), COLOR_BACKGROUND);
@@ -208,7 +210,7 @@ final class GraphVfxSettingEditor {
     private void endSwatch(ImDrawList drawList) {
         drawList.addRect(ImGui.getItemRectMinX(), ImGui.getItemRectMinY(),
                 ImGui.getItemRectMaxX(), ImGui.getItemRectMaxY(), COLOR_BORDER,
-                0.0f, 0, BORDER_THICKNESS * swatchScale);
+                0.0f, 0, EditorScale.of(BORDER_THICKNESS) * swatchScale);
     }
 
     private static int packColor(Vector4f color) {

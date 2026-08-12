@@ -1,7 +1,10 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasJsonCodec;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 
 import java.io.IOException;
@@ -57,19 +60,19 @@ public final class AtlasInspectorSection {
         ImGui.textUnformatted(path.getFileName().toString());
         ImGui.separator();
         if (cachedAtlas.isEmpty()) {
-            ImGui.textDisabled("Could not parse atlas: " + cachedError);
+            Texts.muted(I18n.translate(TextKey.EDITOR_ATLAS_PARSE_ERROR, cachedError));
             return;
         }
         renderSummary(cachedAtlas.get());
-        if (ImGui.button("Open Sprite Editor", ImGui.getContentRegionAvailX(), 0.0f)) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_ATLAS_INSPECTOR_SECTION_OPEN_SPRITE_EDITOR), ImGui.getContentRegionAvailX(), 0.0f)) {
             onOpenSpriteEditor.accept(path);
         }
     }
 
     private static void renderSummary(SpriteAtlas atlas) {
-        ImGui.textDisabled("Texture");
+        Texts.muted(I18n.translate(TextKey.EDITOR_ATLAS_INSPECTOR_SECTION_TEXTURE));
         ImGui.textUnformatted(atlas.texturePath().isEmpty() ? "(none)" : atlas.texturePath());
-        ImGui.textDisabled(atlas.regionCount() + " regions, " + atlas.animations().size() + " animations");
+        Texts.muted(atlas.regionCount() + " regions, " + atlas.animations().size() + " animations");
         for (String name : atlas.animationNames()) {
             atlas.animation(name).ifPresent(animation -> ImGui.textUnformatted(animation.name() + "  "
                     + animation.frames().size() + " frames @ " + animation.framesPerSecond() + " fps"));

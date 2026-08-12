@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasGrid;
@@ -28,6 +31,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 
 public final class TilePalettePanel {
 
@@ -63,7 +67,7 @@ public final class TilePalettePanel {
         Optional<SpriteTilemap> tilemap = renderer.tilemapValue();
         Optional<SpriteAtlas> atlas = renderer.atlasValue();
         if (tilemap.isEmpty() || atlas.isEmpty() || atlas.get().grid().isEmpty()) {
-            ImGui.textDisabled("Assign a tilemap backed by a grid atlas to paint tiles.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_NO_TILEMAP));
             return;
         }
         renderPalette(tilemap.get(), atlas.get());
@@ -116,13 +120,13 @@ public final class TilePalettePanel {
             ImGui.pushStyleColor(ImGuiCol.Button, EditorStyle.COLOR_ACCENT);
         }
         ImGui.beginDisabled(file.isEmpty());
-        boolean clicked = ImGui.button(dirty ? "Save Tilemap *" : "Save Tilemap");
+        boolean clicked = ImGui.button(dirty ? "Save Tilemap *" : I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_SAVE));
         ImGui.endDisabled();
         if (dirty) {
             ImGui.popStyleColor();
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Tiles, collision and terrains only reach the game once this file is written."
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_SAVE_HINT)
                     + "\nCtrl+S while this panel is focused does the same.");
         }
         if (clicked || saveShortcutPressed()) {
@@ -137,33 +141,33 @@ public final class TilePalettePanel {
 
     private void renderSaveState(Optional<Path> file, boolean dirty) {
         if (file.isEmpty()) {
-            ImGui.textColored(EditorStyle.COLOR_DANGER, "This tilemap has no file on disk yet.");
+            Texts.colored(EditorStyle.COLOR_DANGER, "This tilemap has no file on disk yet.");
             return;
         }
         if (!saveError.isEmpty()) {
-            ImGui.textColored(EditorStyle.COLOR_DANGER, "Save failed: " + saveError);
+            Texts.colored(EditorStyle.COLOR_DANGER, I18n.translate(TextKey.EDITOR_COMMON_SAVE_FAILED, saveError));
             return;
         }
         if (dirty) {
-            ImGui.textColored(EditorStyle.COLOR_DANGER,
-                    "Unsaved changes. The running game still loads the old file.");
+            Texts.colored(EditorStyle.COLOR_DANGER,
+                    I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_UNSAVED));
             return;
         }
-        ImGui.textDisabled("Saved  " + file.get().getFileName());
+        Texts.muted(I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_SAVED, file.get().getFileName()));
     }
 
     private void renderSaveRow(SpriteTilemap tilemap, TilemapRenderer renderer) {
         Optional<Path> file = tilemapFile(renderer);
         boolean dirty = file.map(path -> !TilemapDiskFile.matchesDisk(tilemap, path, services.assets().locator())).orElse(true);
-        ImGui.textDisabled(dirty ? "Unsaved changes" : "Saved");
+        Texts.muted(dirty ? "Unsaved changes" : "Saved");
         ImGui.sameLine();
         ImGui.beginDisabled(file.isEmpty());
-        if (ImGui.button("Save Tilemap")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_SAVE))) {
             file.ifPresent(path -> save(tilemap, path));
         }
         ImGui.endDisabled();
         if (!saveError.isEmpty()) {
-            ImGui.textColored(EditorStyle.COLOR_DANGER, "Save failed: " + saveError);
+            Texts.colored(EditorStyle.COLOR_DANGER, I18n.translate(TextKey.EDITOR_COMMON_SAVE_FAILED, saveError));
         }
     }
 
@@ -188,7 +192,7 @@ public final class TilePalettePanel {
     private void renderPalette(SpriteTilemap tilemap, SpriteAtlas atlas) {
         Optional<ImagePreviewTexture.PreviewImage> image = texturePreview(tilemap, atlas);
         if (image.isEmpty()) {
-            ImGui.textDisabled("Atlas texture preview unavailable");
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_ATLAS_PREVIEW_UNAVAILABLE));
             return;
         }
         SpriteAtlasGrid grid = atlas.grid().get();
@@ -219,9 +223,9 @@ public final class TilePalettePanel {
     private static AtlasCanvas drawImage(ImagePreviewTexture.PreviewImage image) {
         float width = Math.max(32.0f, ImGui.getContentRegionAvailX());
         float height = width * image.height() / image.width();
-        if (height > MAXIMUM_IMAGE_HEIGHT) {
-            width = width * MAXIMUM_IMAGE_HEIGHT / height;
-            height = MAXIMUM_IMAGE_HEIGHT;
+        if (height > EditorScale.of(MAXIMUM_IMAGE_HEIGHT)) {
+            width = width * EditorScale.of(MAXIMUM_IMAGE_HEIGHT) / height;
+            height = EditorScale.of(MAXIMUM_IMAGE_HEIGHT);
         }
         float originX = ImGui.getCursorScreenPosX();
         float originY = ImGui.getCursorScreenPosY();
@@ -300,7 +304,8 @@ public final class TilePalettePanel {
         }
         int tileIndex = canvas.cellIndexAt(ImGui.getMousePosX(), ImGui.getMousePosY(),
                 Math.max(1, grid.columns()), Math.max(1, grid.rows()));
-        ImGui.setTooltip("Tile " + tileIndex + "\n" + describeTile(tilemap, tileIndex));
+        ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_PALETTE_PANEL_TILE_TOOLTIP,
+                tileIndex, describeTile(tilemap, tileIndex)));
     }
 
     private static String describeTile(SpriteTilemap tilemap, int tileIndex) {

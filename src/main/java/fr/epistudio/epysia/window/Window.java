@@ -7,6 +7,7 @@ import java.util.Optional;
 import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MouseButton;
 import fr.epistudio.epysia.input.MutableInputState;
+import fr.epistudio.epysia.render.GraphicsApi;
 import fr.epistudio.epysia.render.backend.RenderSurface;
 import org.lwjgl.glfw.GLFWCharCallback;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
@@ -19,6 +20,8 @@ import org.lwjgl.system.MemoryStack;
 
 import java.nio.IntBuffer;
 
+import static org.lwjgl.glfw.GLFW.GLFW_CLIENT_API;
+import static org.lwjgl.glfw.GLFW.GLFW_NO_API;
 import static org.lwjgl.glfw.GLFW.GLFW_CONTEXT_VERSION_MAJOR;
 import static org.lwjgl.glfw.GLFW.GLFW_CONTEXT_VERSION_MINOR;
 import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
@@ -141,8 +144,10 @@ public final class Window implements RenderSurface {
         }
         iconFile.ifPresentOrElse(file -> WindowIcon.applyFromFile(handle, file),
                 () -> WindowIcon.applyDefault(handle));
-        glfwMakeContextCurrent(handle);
-        glfwSwapInterval(vsyncEnabled && !offscreenRequested() ? 1 : 0);
+        if (!GraphicsApi.isVulkan()) {
+            glfwMakeContextCurrent(handle);
+            glfwSwapInterval(vsyncEnabled && !offscreenRequested() ? 1 : 0);
+        }
         if (!offscreenRequested()) {
             glfwShowWindow(handle);
         }
@@ -228,6 +233,10 @@ public final class Window implements RenderSurface {
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        if (GraphicsApi.isVulkan()) {
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            return;
+        }
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -307,9 +316,19 @@ public final class Window implements RenderSurface {
     }
 
     public void swapBuffers() {
-        if (!headless) {
+        if (!headless && !GraphicsApi.isVulkan()) {
             glfwSwapBuffers(handle);
         }
+    }
+
+    @Override
+    public long nativeWindowHandle() {
+        return handle;
+    }
+
+    @Override
+    public boolean vsyncRequested() {
+        return vsyncEnabled && !offscreenRequested();
     }
 
     public void close() {

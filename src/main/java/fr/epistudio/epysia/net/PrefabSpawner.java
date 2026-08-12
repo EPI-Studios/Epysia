@@ -8,7 +8,6 @@ import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.net.replication.NetworkObject;
 import fr.epistudio.epysia.prefab.PrefabInstantiator;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
-import fr.epistudio.epysia.reflection.ComponentScanner;
 import fr.epistudio.epysia.scene.Scene;
 
 import java.io.IOException;
@@ -46,9 +45,7 @@ public final class PrefabSpawner {
 
     private PrefabInstantiator instantiatorFor() {
         if (instantiator == null) {
-            ComponentRegistry registry = new ComponentRegistry();
-            registry.populateFromScan(ComponentScanner.scan());
-            instantiator = new PrefabInstantiator(registry);
+            instantiator = new PrefabInstantiator(ComponentRegistry.populated());
         }
         return instantiator;
     }

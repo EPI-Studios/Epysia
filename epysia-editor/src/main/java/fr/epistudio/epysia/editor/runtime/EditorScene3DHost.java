@@ -7,6 +7,7 @@ import fr.epistudio.epysia.SystemRegistryImpl;
 import fr.epistudio.epysia.assets.loaders.ClipAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
+import fr.epistudio.epysia.assets.loaders.AudioBufferLoaderAsset;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
 import fr.epistudio.epysia.assets.loaders.InstancesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
@@ -42,6 +43,7 @@ import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
+import fr.epistudio.epysia.render.text.WorldTextRenderSystem;
 import fr.epistudio.epysia.ui.UiInputSystem;
 import fr.epistudio.epysia.ui.UiRenderSystem;
 import fr.epistudio.epysia.window.Window;
@@ -80,6 +82,7 @@ public final class EditorScene3DHost {
     private TilemapRenderSystem tilemapRenderSystem;
     private PostProcessSystem postProcessSystem;
     private TextRenderSystem textRenderSystem;
+    private WorldTextRenderSystem worldTextRenderSystem;
     private UiRenderSystem uiRenderSystem;
     private final List<RenderSystem> baselineSystems = new ArrayList<>();
     private ShaderLoader shaderLoader;
@@ -169,6 +172,7 @@ public final class EditorScene3DHost {
         spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         tilemapRenderSystem = new TilemapRenderSystem(spriteRenderSystem, engine.logger());
         textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());
+        worldTextRenderSystem = new WorldTextRenderSystem(shaderLoader, meshRenderSystem);
         uiRenderSystem = new UiRenderSystem(shaderLoader, renderSurface, engine);
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(vfxRenderSystem);
@@ -176,6 +180,7 @@ public final class EditorScene3DHost {
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(tilemapRenderSystem);
         engine.addRenderSystem(postProcessSystem);
+        engine.addRenderSystem(worldTextRenderSystem);
         engine.addRenderSystem(textRenderSystem);
         engine.addRenderSystem(uiRenderSystem);
         baselineSystems.addAll(engine.renderSystems());
@@ -184,6 +189,7 @@ public final class EditorScene3DHost {
         engine.assets().register(new MeshAssetLoader(builtins));
         engine.assets().register(new TextureAssetLoader());
         engine.assets().register(new PhysicsMaterialLoader());
+        engine.assets().register(new AudioBufferLoaderAsset());
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
@@ -243,6 +249,10 @@ public final class EditorScene3DHost {
             postProcessSystem = new PostProcessSystem(shaderLoader, renderSurface, engine.logger());
             postProcessSystem.setShaderWatcher(shaderWatcher);
             engine.addRenderSystem(postProcessSystem);
+        }
+        if (!current.contains(worldTextRenderSystem)) {
+            worldTextRenderSystem = new WorldTextRenderSystem(shaderLoader, meshRenderSystem);
+            engine.addRenderSystem(worldTextRenderSystem);
         }
         if (!current.contains(textRenderSystem)) {
             textRenderSystem = new TextRenderSystem(shaderLoader, renderSurface, engine, engine.logger());

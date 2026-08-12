@@ -1,10 +1,12 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiSelectableFlags;
@@ -63,7 +65,7 @@ public final class NewAssetDialog {
             ImGui.openPopup(popupId);
             openRequested = false;
         }
-        ImGui.setNextWindowSize(DIALOG_WIDTH, 0.0f);
+        ImGui.setNextWindowSize(EditorScale.of(DIALOG_WIDTH), 0.0f);
         if (!ImGui.beginPopupModal(popupId, ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
         }
@@ -91,9 +93,9 @@ public final class NewAssetDialog {
     }
 
     private void renderKindList(List<AssetKind> matches) {
-        ImGui.beginChild("##new-asset-list", 0.0f, LIST_HEIGHT, true);
+        ImGui.beginChild("##new-asset-list", 0.0f, EditorScale.of(LIST_HEIGHT), true);
         if (matches.isEmpty()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_NEW_ASSET_DIALOG_NO_MATCH));
+            Texts.muted(I18n.translate(TextKey.EDITOR_NEW_ASSET_DIALOG_NO_MATCH));
         }
         String renderedCategory = "";
         for (int index = 0; index < matches.size(); index++) {
@@ -110,7 +112,7 @@ public final class NewAssetDialog {
 
     private static void renderCategoryHeader(String category, boolean spaceAbove) {
         if (spaceAbove) {
-            ImGui.dummy(0.0f, CATEGORY_TOP_MARGIN);
+            ImGui.dummy(0.0f, EditorScale.of(CATEGORY_TOP_MARGIN));
         }
         ImGui.pushStyleColor(ImGuiCol.Text, EditorStyle.COLOR_TEXT_MUTED);
         ImGui.textUnformatted(category.toUpperCase(Locale.ROOT));
@@ -121,7 +123,7 @@ public final class NewAssetDialog {
         ImGui.pushID(index);
         float rowStartY = ImGui.getCursorPosY();
         if (ImGui.selectable("##row", index == selectedIndex,
-                ImGuiSelectableFlags.AllowDoubleClick, 0.0f, ROW_HEIGHT)) {
+                ImGuiSelectableFlags.AllowDoubleClick, 0.0f, EditorScale.of(ROW_HEIGHT))) {
             selectedIndex = index;
             nameInput.set(kind.defaultName());
             if (ImGui.isMouseDoubleClicked(0)) {
@@ -133,18 +135,18 @@ public final class NewAssetDialog {
     }
 
     private void renderRowContent(AssetKind kind, float rowStartY) {
-        float iconOffset = (ROW_HEIGHT - ICON_SIZE) * 0.5f;
+        float iconOffset = (EditorScale.of(ROW_HEIGHT) - EditorScale.of(ICON_SIZE)) * 0.5f;
         ImGui.setCursorPosY(rowStartY + iconOffset);
-        ImGui.setCursorPosX(ImGui.getCursorPosX() + ROW_PADDING);
-        icons.draw(kind.icon(), ICON_SIZE);
-        ImGui.sameLine(0.0f, ICON_TEXT_GAP);
-        ImGui.setCursorPosY(rowStartY + (ROW_HEIGHT - ImGui.getTextLineHeight()) * 0.5f);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + EditorScale.of(ROW_PADDING));
+        icons.draw(kind.icon(), EditorScale.of(ICON_SIZE));
+        ImGui.sameLine(0.0f, EditorScale.of(ICON_TEXT_GAP));
+        ImGui.setCursorPosY(rowStartY + (EditorScale.of(ROW_HEIGHT) - ImGui.getTextLineHeight()) * 0.5f);
         ImGui.textUnformatted(kind.label());
-        ImGui.sameLine(0.0f, ICON_TEXT_GAP);
+        ImGui.sameLine(0.0f, EditorScale.of(ICON_TEXT_GAP));
         ImGui.pushStyleColor(ImGuiCol.Text, EditorStyle.COLOR_TEXT_MUTED);
         ImGui.textUnformatted(kind.description());
         ImGui.popStyleColor();
-        ImGui.setCursorPosY(rowStartY + ROW_HEIGHT);
+        ImGui.setCursorPosY(rowStartY + EditorScale.of(ROW_HEIGHT));
     }
 
     private void renderNameField(List<AssetKind> matches) {

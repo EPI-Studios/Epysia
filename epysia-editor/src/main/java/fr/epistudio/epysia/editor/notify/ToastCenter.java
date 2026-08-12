@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.notify;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
@@ -49,10 +50,10 @@ public final class ToastCenter implements Notifier {
 
     private void positionWindow() {
         ImGuiViewport viewport = ImGui.getMainViewport();
-        float x = viewport.getWorkPosX() + viewport.getWorkSizeX() - MARGIN;
-        float y = viewport.getWorkPosY() + viewport.getWorkSizeY() - MARGIN;
+        float x = viewport.getWorkPosX() + viewport.getWorkSizeX() - EditorScale.of(MARGIN);
+        float y = viewport.getWorkPosY() + viewport.getWorkSizeY() - EditorScale.of(MARGIN);
         ImGui.setNextWindowPos(x, y, ImGuiCond.Always, 1.0f, 1.0f);
-        ImGui.setNextWindowSizeConstraints(TOAST_WIDTH, 0.0f, TOAST_WIDTH, Float.MAX_VALUE);
+        ImGui.setNextWindowSizeConstraints(EditorScale.of(TOAST_WIDTH), 0.0f, EditorScale.of(TOAST_WIDTH), Float.MAX_VALUE);
         ImGui.setNextWindowBgAlpha(0.92f);
     }
 
@@ -61,7 +62,7 @@ public final class ToastCenter implements Notifier {
             if (i > 0) {
                 ImGui.separator();
             }
-            ImGui.pushTextWrapPos(TOAST_WIDTH - EditorStyle.WINDOW_PADDING);
+            ImGui.pushTextWrapPos(EditorScale.of(TOAST_WIDTH) - EditorStyle.windowPadding());
             ImGui.textUnformatted(toasts.get(i).message());
             ImGui.popTextWrapPos();
         }

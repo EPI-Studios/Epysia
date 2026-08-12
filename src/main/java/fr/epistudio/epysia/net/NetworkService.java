@@ -15,6 +15,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import fr.epistudio.epysia.logging.ConsoleLogger;
 
@@ -24,7 +25,7 @@ public final class NetworkService implements VoiceChannelAssignment {
 
     public NetworkService(NetworkRuntime runtime) {
         this.runtime = runtime;
-        this.voice = new VoiceService(runtime.config().voice(), runtime.voice(), this);
+        this.voice = new VoiceService(() -> runtime.config().voice(), runtime::voice, this);
     }
 
     public static NetworkService detached() {
@@ -123,6 +124,18 @@ public final class NetworkService implements VoiceChannelAssignment {
 
     public void call(IComponent component, String methodName, Object... arguments) {
         runtime.call(component, methodName, arguments);
+    }
+
+    public Map<Integer, String> roster() {
+        return runtime.roster();
+    }
+
+    public String displayNameOf(int peer) {
+        return roster().getOrDefault(peer, "");
+    }
+
+    public void setLocalLook(float yaw, float pitch) {
+        runtime.setLocalLook(yaw, pitch);
     }
 
     public Optional<InputSample> inputOf(int peer) {

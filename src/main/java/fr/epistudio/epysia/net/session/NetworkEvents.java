@@ -20,6 +20,9 @@ public interface NetworkEvents {
 
     void onLocalPeerAssigned(int peerId, int serverTick);
 
+    default void onTickResynchronised() {
+    }
+
     void onSnapshotReceived(NetReader reader);
 
     void onSpawnReceived(NetReader reader);

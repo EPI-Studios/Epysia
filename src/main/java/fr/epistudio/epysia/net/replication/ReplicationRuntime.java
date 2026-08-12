@@ -6,12 +6,15 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.net.protocol.NetReader;
 import fr.epistudio.epysia.net.rpc.RpcRegistry;
+import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.net.prediction.PredictedMovement;
 import fr.epistudio.epysia.scene.Scene;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -44,12 +47,14 @@ public final class ReplicationRuntime {
         ReplicationTable.Builder tableBuilder = ReplicationTable.builder();
         RpcRegistry.Builder procedureBuilder = RpcRegistry.builder();
         collectComponentTypes(scene, tableBuilder, procedureBuilder);
-        addDefaultTransformProperties(scene, tableBuilder);
+        collectRegisteredTypes(tableBuilder, procedureBuilder);
+        addDefaultTransformProperties(tableBuilder);
         addSynchronizerProperties(scene, tableBuilder);
         table = tableBuilder.build();
         remoteProcedures = procedureBuilder.build();
         rebuildCodecs();
         reportWarnings();
+        logger.info("[net.replication] table=" + table.componentTypes().stream().map(Class::getSimpleName).toList());
     }
 
     private void rebuildCodecs() {
@@ -78,10 +83,15 @@ public final class ReplicationRuntime {
         }
     }
 
-    private static void addDefaultTransformProperties(Scene scene, ReplicationTable.Builder tableBuilder) {
-        if (scene.componentsOf(NetworkObject.class).isEmpty()) {
-            return;
+    private static void collectRegisteredTypes(ReplicationTable.Builder tableBuilder,
+                                               RpcRegistry.Builder procedureBuilder) {
+        for (ComponentRegistry.Entry entry : ComponentRegistry.populated().entries()) {
+            tableBuilder.addComponentType(entry.componentClass());
+            procedureBuilder.addComponentType(entry.componentClass());
         }
+    }
+
+    private static void addDefaultTransformProperties(ReplicationTable.Builder tableBuilder) {
         tableBuilder.addSynchronizedProperty(Transform3D.class, new SynchronizedProperty()
                 .setComponentType(Transform3D.class.getName())
                 .setFieldName(TRANSFORM_POSITION_FIELD)
@@ -199,12 +209,23 @@ public final class ReplicationRuntime {
         boolean predictedLocally = networkObject != null
                 && networkObject.isOwnedBy(localPeer)
                 && networkObject.predictOwnedMovement();
-        Set<Class<?>> excluded = predictedLocally ? ownedExclusions : Set.of();
         if (predictedLocally) {
+            Set<Class<?>> excluded = predictedExclusionsFor(gameObject, ownedExclusions);
             clientState.find(networkId).ifPresent(state -> stateApply.apply(gameObject, state, excluded));
             return;
         }
         applyInterpolated(gameObject, networkId, interpolatedTick);
+    }
+
+    private static Set<Class<?>> predictedExclusionsFor(GameObject gameObject,
+                                                        Set<Class<?>> ownedExclusions) {
+        Set<Class<?>> excluded = new HashSet<>(ownedExclusions);
+        for (IComponent component : gameObject.components()) {
+            if (component instanceof PredictedMovement) {
+                excluded.add(component.getClass());
+            }
+        }
+        return excluded;
     }
 
     private void applyInterpolated(GameObject gameObject, int networkId, float interpolatedTick) {

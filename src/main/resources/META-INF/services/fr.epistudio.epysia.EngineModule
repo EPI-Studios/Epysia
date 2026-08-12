@@ -6,3 +6,5 @@ fr.epistudio.epysia.components.SpriteModule
 fr.epistudio.epysia.render.lighting.LightingModule
 fr.epistudio.epysia.net.NetworkModule
 fr.epistudio.epysia.net.NetworkSendModule
+fr.epistudio.epysia.steam.SteamModule
+fr.epistudio.epysia.navigation.NavigationModule

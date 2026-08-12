@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.i18n.I18n;
@@ -16,6 +17,7 @@ import fr.epistudio.epysia.render.shader.ShaderUniformDeclaration;
 import fr.epistudio.epysia.render.shader.ShaderUniformDefaults;
 import fr.epistudio.epysia.render.shader.ShaderUniformKind;
 import fr.epistudio.epysia.render.shader.ShaderUniformValue;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiTreeNodeFlags;
 
@@ -54,7 +56,7 @@ public final class PostEffectsSection {
     public void render(PostEffectStack stack, Runnable onChanged) {
         List<PostEffect> snapshot = new ArrayList<>(stack.effects());
         if (snapshot.isEmpty()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_EMPTY));
+            Texts.muted(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_EMPTY));
         }
         for (int index = 0; index < snapshot.size(); index++) {
             renderEffect(stack, snapshot.get(index), index, snapshot.size(), onChanged);
@@ -104,7 +106,7 @@ public final class PostEffectsSection {
                                   Runnable onChanged) {
         renderOrderButtons(stack, effect, index, count, onChanged);
         renderInsertionCombo(effect, onChanged);
-        ImGui.textDisabled(Path.of(effect.shaderPath()).getFileName().toString());
+        Texts.muted(Path.of(effect.shaderPath()).getFileName().toString());
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(effect.shaderPath());
         }
@@ -158,7 +160,7 @@ public final class PostEffectsSection {
         ImGui.labelText(I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_INSERTION_POINT,
                 "post-effects-declared-insertion-point"), I18n.translate(insertionPointKey(declared)));
         ImGui.endDisabled();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_SHADER_INSERTION,
+        Texts.muted(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_SHADER_INSERTION,
                 declared.annotationToken()));
     }
 
@@ -172,7 +174,7 @@ public final class PostEffectsSection {
     private void renderUniformRows(PostEffect effect, Runnable onChanged) {
         Optional<ParsedSource> parsed = parsedSourceFor(effect.shaderPath());
         if (parsed.isEmpty()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_PARSE_ERROR));
+            Texts.muted(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_PARSE_ERROR));
             return;
         }
         for (ShaderUniformDeclaration declaration : parsed.get().declarations()) {
@@ -188,7 +190,7 @@ public final class PostEffectsSection {
             return;
         }
         if (declaration.isArray()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_ARRAY_SCRIPT_CONTROLLED,
+            Texts.muted(I18n.translate(TextKey.EDITOR_POST_EFFECTS_SECTION_ARRAY_SCRIPT_CONTROLLED,
                     declaration.name(), declaration.arraySize()));
             return;
         }
@@ -201,7 +203,7 @@ public final class PostEffectsSection {
             case INT -> renderIntRow(effect, declaration, onChanged);
             case BOOL -> renderBoolRow(effect, declaration, onChanged);
             case VECTOR2, VECTOR3, VECTOR4 -> renderVectorRow(effect, declaration, onChanged);
-            case MATRIX4 -> ImGui.textDisabled(I18n.translate(
+            case MATRIX4 -> Texts.muted(I18n.translate(
                     TextKey.EDITOR_POST_EFFECTS_SECTION_SCRIPT_CONTROLLED, declaration.name()));
             case SAMPLER2D -> {
             }
@@ -314,12 +316,13 @@ public final class PostEffectsSection {
                                    String currentPath, Runnable onChanged) {
         OptionalInt thumbnail = currentPath.isEmpty() ? OptionalInt.empty() : thumbnails.get(currentPath);
         boolean clicked = thumbnail.isPresent()
-                ? ImGui.imageButton(thumbnail.getAsInt(), TEXTURE_WELL_SIZE, TEXTURE_WELL_SIZE)
+                ? ImGui.imageButton("##texture-well", thumbnail.getAsInt(), EditorScale.of(TEXTURE_WELL_SIZE),
+                        EditorScale.of(TEXTURE_WELL_SIZE))
                 : ImGui.button(currentPath.isEmpty()
                                 ? I18n.label(TextKey.EDITOR_POST_EFFECTS_SECTION_NONE,
                                         "post-effects-texture-none-" + declaration.name())
                                 : "…",
-                        TEXTURE_WELL_SIZE + 8.0f, TEXTURE_WELL_SIZE);
+                        EditorScale.of(TEXTURE_WELL_SIZE) + 8.0f, EditorScale.of(TEXTURE_WELL_SIZE));
         if (ImGui.isItemHovered() && !currentPath.isEmpty()) {
             ImGui.setTooltip(currentPath);
         }

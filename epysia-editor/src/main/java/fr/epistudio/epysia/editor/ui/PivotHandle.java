@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetPivot2DCommand;
@@ -66,7 +67,7 @@ public final class PivotHandle {
     private static boolean withinGrab(Vector2f handleScreen) {
         float deltaX = ImGui.getMousePosX() - handleScreen.x;
         float deltaY = ImGui.getMousePosY() - handleScreen.y;
-        return deltaX * deltaX + deltaY * deltaY <= GRAB_RADIUS_PIXELS * GRAB_RADIUS_PIXELS;
+        return deltaX * deltaX + deltaY * deltaY <= EditorScale.of(GRAB_RADIUS_PIXELS) * EditorScale.of(GRAB_RADIUS_PIXELS);
     }
 
     private void moveTo(Transform2D transform, Vector2f halfExtents, Vector2f mouseWorld) {
@@ -135,16 +136,16 @@ public final class PivotHandle {
 
     private static void drawHandle(ImDrawList drawList, Vector2f screen, boolean highlighted) {
         int color = highlighted ? COLOR_HANDLE_ACTIVE : COLOR_HANDLE;
-        drawList.addCircle(screen.x, screen.y, HANDLE_RADIUS_PIXELS, color, 0, HANDLE_THICKNESS);
-        drawList.addCircleFilled(screen.x, screen.y, HANDLE_THICKNESS, color);
-        drawList.addLine(screen.x - CROSS_REACH_PIXELS, screen.y,
-                screen.x - HANDLE_RADIUS_PIXELS, screen.y, color, HANDLE_THICKNESS);
-        drawList.addLine(screen.x + HANDLE_RADIUS_PIXELS, screen.y,
-                screen.x + CROSS_REACH_PIXELS, screen.y, color, HANDLE_THICKNESS);
-        drawList.addLine(screen.x, screen.y - CROSS_REACH_PIXELS,
-                screen.x, screen.y - HANDLE_RADIUS_PIXELS, color, HANDLE_THICKNESS);
-        drawList.addLine(screen.x, screen.y + HANDLE_RADIUS_PIXELS,
-                screen.x, screen.y + CROSS_REACH_PIXELS, color, HANDLE_THICKNESS);
+        drawList.addCircle(screen.x, screen.y, EditorScale.of(HANDLE_RADIUS_PIXELS), color, 0, EditorScale.of(HANDLE_THICKNESS));
+        drawList.addCircleFilled(screen.x, screen.y, EditorScale.of(HANDLE_THICKNESS), color);
+        drawList.addLine(screen.x - EditorScale.of(CROSS_REACH_PIXELS), screen.y,
+                screen.x - EditorScale.of(HANDLE_RADIUS_PIXELS), screen.y, color, EditorScale.of(HANDLE_THICKNESS));
+        drawList.addLine(screen.x + EditorScale.of(HANDLE_RADIUS_PIXELS), screen.y,
+                screen.x + EditorScale.of(CROSS_REACH_PIXELS), screen.y, color, EditorScale.of(HANDLE_THICKNESS));
+        drawList.addLine(screen.x, screen.y - EditorScale.of(CROSS_REACH_PIXELS),
+                screen.x, screen.y - EditorScale.of(HANDLE_RADIUS_PIXELS), color, EditorScale.of(HANDLE_THICKNESS));
+        drawList.addLine(screen.x, screen.y + EditorScale.of(HANDLE_RADIUS_PIXELS),
+                screen.x, screen.y + EditorScale.of(CROSS_REACH_PIXELS), color, EditorScale.of(HANDLE_THICKNESS));
     }
 
     private static void drawBounds(Transform2D transform, Vector2f halfExtents, WorldToScreen projection) {
@@ -157,7 +158,7 @@ public final class PivotHandle {
         Vector2f cornerC = cornerScreen(matrix, projection, halfExtents.x, halfExtents.y);
         Vector2f cornerD = cornerScreen(matrix, projection, -halfExtents.x, halfExtents.y);
         ImGui.getWindowDrawList().addQuad(cornerA.x, cornerA.y, cornerB.x, cornerB.y,
-                cornerC.x, cornerC.y, cornerD.x, cornerD.y, COLOR_BOUNDS, BOUNDS_THICKNESS);
+                cornerC.x, cornerC.y, cornerD.x, cornerD.y, COLOR_BOUNDS, EditorScale.of(BOUNDS_THICKNESS));
     }
 
     private static Vector2f cornerScreen(Matrix3x2f matrix, WorldToScreen projection,

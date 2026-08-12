@@ -4,6 +4,7 @@ import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.vfx.lut.VfxCurve;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
 
@@ -149,11 +150,11 @@ public final class CurveEditorWidget {
     private void renderSelectionRow(VfxCurve curve) {
         List<VfxCurve.Keyframe> keyframes = curve.keyframes();
         if (selectedKeyframe < 0 || selectedKeyframe >= keyframes.size()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_NO_KEYFRAME_SELECTED));
+            Texts.muted(I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_NO_KEYFRAME_SELECTED));
             return;
         }
         VfxCurve.Keyframe keyframe = keyframes.get(selectedKeyframe);
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_KEYFRAME,
+        Texts.muted(I18n.translate(TextKey.EDITOR_CURVE_EDITOR_WIDGET_KEYFRAME,
                 selectedKeyframe,
                 horizontalAxisLabel, String.format(Locale.ROOT, "%.3f", keyframe.time()),
                 verticalAxisLabel, String.format(Locale.ROOT, "%.3f", keyframe.value()),
@@ -346,9 +347,9 @@ public final class CurveEditorWidget {
     private void drawFrame(CurveCanvas canvas, float originX, float originY, float width, float height) {
         var drawList = ImGui.getWindowDrawList();
         drawList.addRectFilled(originX, originY, originX + width, originY + height,
-                COLOR_BACKGROUND, EditorStyle.FRAME_ROUNDING);
+                COLOR_BACKGROUND, EditorStyle.frameRounding());
         drawList.addRect(originX, originY, originX + width, originY + height,
-                COLOR_BORDER, EditorStyle.FRAME_ROUNDING);
+                COLOR_BORDER, EditorStyle.frameRounding());
         drawGrid(canvas);
         drawAxisLabels(canvas, originX, originY, width, height);
     }
@@ -369,7 +370,7 @@ public final class CurveEditorWidget {
 
     private void drawAxisLabels(CurveCanvas canvas, float originX, float originY, float width, float height) {
         var drawList = ImGui.getWindowDrawList();
-        drawList.addText(originX + EditorStyle.INNER_SPACING, originY + 2.0f,
+        drawList.addText(originX + EditorStyle.innerSpacing(), originY + 2.0f,
                 EditorStyle.COLOR_TEXT_MUTED, verticalAxisLabel);
         String horizontal = horizontalAxisLabel;
         float horizontalWidth = ImGui.calcTextSize(horizontal).x;
@@ -386,9 +387,9 @@ public final class CurveEditorWidget {
         float lineHeight = ImGui.getTextLineHeight();
         String high = String.format(Locale.ROOT, "%.2f", canvas.highValue());
         String low = String.format(Locale.ROOT, "%.2f", canvas.lowValue());
-        drawList.addText(canvas.minX() - EditorStyle.INNER_SPACING - ImGui.calcTextSize(high).x,
+        drawList.addText(canvas.minX() - EditorStyle.innerSpacing() - ImGui.calcTextSize(high).x,
                 canvas.minY(), EditorStyle.COLOR_TEXT_MUTED, high);
-        drawList.addText(canvas.minX() - EditorStyle.INNER_SPACING - ImGui.calcTextSize(low).x,
+        drawList.addText(canvas.minX() - EditorStyle.innerSpacing() - ImGui.calcTextSize(low).x,
                 canvas.maxY() - lineHeight, EditorStyle.COLOR_TEXT_MUTED, low);
     }
 

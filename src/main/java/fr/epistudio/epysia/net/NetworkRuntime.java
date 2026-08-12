@@ -15,16 +15,19 @@ import fr.epistudio.epysia.net.prediction.InputSample;
 import fr.epistudio.epysia.net.prediction.InputSampler;
 import fr.epistudio.epysia.net.prediction.PhysicsRollback;
 import fr.epistudio.epysia.net.prediction.PredictedMovement;
+import fr.epistudio.epysia.net.prediction.CharacterRollback;
 import fr.epistudio.epysia.net.prediction.PredictedPhysics;
 import fr.epistudio.epysia.net.prediction.PredictedTransform;
 import fr.epistudio.epysia.net.prediction.PredictionBuffer;
 import fr.epistudio.epysia.net.prediction.ReconciliationRequest;
 import fr.epistudio.epysia.net.prediction.Reconciler;
 import fr.epistudio.epysia.physics.PhysicsSystem;
+import fr.epistudio.epysia.physics.components.CharacterControllerComponent;
 import fr.epistudio.epysia.physics.components.RigidBodyComponent;
 import fr.epistudio.epysia.net.protocol.MessageType;
 import fr.epistudio.epysia.net.protocol.NetReader;
 import fr.epistudio.epysia.net.replication.SnapshotReader;
+import fr.epistudio.epysia.net.replication.NetworkCharacterController;
 import fr.epistudio.epysia.net.replication.NetworkObject;
 import fr.epistudio.epysia.net.replication.ReplicationRuntime;
 import fr.epistudio.epysia.net.replication.NetworkInterestGrid;
@@ -72,7 +75,7 @@ import fr.epistudio.epysia.net.replication.OwnershipPolicy;
 
 public final class NetworkRuntime implements NetworkEvents {
     private static final Set<Class<?>> PREDICTED_EXCLUSIONS = Set.of(Transform3D.class);
-    private static final int HEARTBEAT_INTERVAL_TICKS = 30;
+    private static final int HEARTBEAT_INTERVAL_TICKS = 10;
     private static final int MINIMUM_CLIENT_LEAD_TICKS = 2;
     private static final int MAXIMUM_CLIENT_LEAD_TICKS = 30;
     private static final int INPUT_WINDOW_MARGIN_TICKS = 15;
@@ -98,6 +101,10 @@ public final class NetworkRuntime implements NetworkEvents {
     private EngineServices services;
     private NetworkConfig config = new NetworkConfig();
     private InputSampler sampler = InputSampler.forActions(new InputActions());
+    private InputState currentInput;
+    private int simulatedTick;
+    private float localYaw;
+    private float localPitch;
     private Scene activeScene = new Scene("network-placeholder");
     private float fixedTimestepSeconds = 1.0f / 60.0f;
     private boolean started;
@@ -193,6 +200,15 @@ public final class NetworkRuntime implements NetworkEvents {
                 .withReconnectToken(reconnectToken);
     }
 
+    public java.util.Map<Integer, String> roster() {
+        return session.roster();
+    }
+
+    public void setLocalLook(float yaw, float pitch) {
+        localYaw = yaw;
+        localPitch = pitch;
+    }
+
     public long reconnectToken() {
         return reconnectToken;
     }
@@ -210,9 +226,6 @@ public final class NetworkRuntime implements NetworkEvents {
             return;
         }
         session.poll(deltaTimeSeconds);
-        if (session.role().isServer()) {
-            resolvePeerInputs();
-        }
         if (session.role().isClient()) {
             replication.applyToScene(session.localPeer(), interpolatedTick(), PREDICTED_EXCLUSIONS);
             reconcileOwnedObjects();
@@ -231,9 +244,6 @@ public final class NetworkRuntime implements NetworkEvents {
         if (!started) {
             return;
         }
-        if (session.role().isClient()) {
-            sendLocalInput(input);
-        }
         if (session.role().isServer() && dueForSnapshot()) {
             broadcastSnapshots(scene);
         }
@@ -242,7 +252,96 @@ public final class NetworkRuntime implements NetworkEvents {
         if (session.tick() % HEARTBEAT_INTERVAL_TICKS == 0) {
             session.sendHeartbeats();
         }
+    }
+
+    public void setCurrentInput(InputState input) {
+        this.currentInput = input;
+    }
+
+    public void fixedStep(Scene scene, float fixedStepSeconds) {
+        this.activeScene = scene;
+        if (!started) {
+            return;
+        }
+        applyLocalSimulationOwnership();
+        if (session.role().isServer()) {
+            resolvePeerInputs();
+            applyPeerInputsToObjects(fixedStepSeconds);
+        }
+        if (session.role().isClient() && currentInput != null) {
+            driveLocalPrediction(fixedStepSeconds);
+        }
+        simulatedTick = session.tick();
         session.advanceTick();
+        if (session.role().isClient()) {
+            requestClockCatchUp();
+        }
+    }
+
+    private void requestClockCatchUp() {
+        int pending = session.pendingTickAdjustment();
+        if (pending == 0 || services == null) {
+            return;
+        }
+        int step = pending > 0 ? 1 : -1;
+        services.requestCatchUpSteps(step);
+        session.consumeTickAdjustment(step);
+    }
+
+    @Override
+    public void onTickResynchronised() {
+        predictionBuffer.clear();
+        localInputs.clear();
+    }
+
+    private void driveLocalPrediction(float fixedStepSeconds) {
+        InputSample sample = sampler.sample(session.tick(), services.inputActions(), currentInput,
+                localYaw, localPitch);
+        localInputs.push(sample);
+        ownedPredictedObject().ifPresent(gameObject -> {
+            for (PredictedMovement mover : predictedMoversOf(gameObject)) {
+                mover.simulatePredictedStep(sample, fixedStepSeconds);
+            }
+        });
+        recordPredictionState();
+        sendInputBatch();
+    }
+
+    private void applyLocalSimulationOwnership() {
+        boolean authoritative = session.role().isServer();
+        for (int networkId : replication.objects().networkIds()) {
+            replication.objects().find(networkId)
+                    .ifPresent(gameObject -> applySimulationFlag(gameObject, authoritative));
+        }
+    }
+
+    private void applySimulationFlag(GameObject gameObject, boolean authoritative) {
+        CharacterControllerComponent controller =
+                gameObject.getComponentOrNull(CharacterControllerComponent.class);
+        NetworkObject networkObject = gameObject.getComponentOrNull(NetworkObject.class);
+        if (controller == null || networkObject == null) {
+            return;
+        }
+        controller.setSimulated(authoritative || networkObject.isOwnedBy(session.localPeer()));
+    }
+
+    private void applyPeerInputsToObjects(float fixedStepSeconds) {
+        for (int networkId : replication.objects().networkIds()) {
+            replication.objects().find(networkId).ifPresent(gameObject ->
+                    applyOwnerInput(gameObject, fixedStepSeconds));
+        }
+    }
+
+    private void applyOwnerInput(GameObject gameObject, float fixedStepSeconds) {
+        NetworkObject networkObject = gameObject.getComponentOrNull(NetworkObject.class);
+        if (networkObject == null || networkObject.ownerPeer() == session.localPeer()) {
+            return;
+        }
+        session.peer(networkObject.ownerPeer()).ifPresent(peer -> {
+            for (PredictedMovement mover : predictedMoversOf(gameObject)) {
+                mover.simulatePredictedStep(peer.currentInput(), fixedStepSeconds);
+            }
+        });
     }
 
     private void forgetObjectEverywhere(int networkId) {
@@ -289,10 +388,7 @@ public final class NetworkRuntime implements NetworkEvents {
         return true;
     }
 
-    private void sendLocalInput(InputState input) {
-        InputSample sample = sampler.sample(session.tick(), services.inputActions(), input);
-        localInputs.push(sample);
-        recordPredictionState();
+    private void sendInputBatch() {
         List<InputSample> redundant = localInputs.lastSamples(config.redundantInputSamples());
         session.sendToServer(NetChannel.UNRELIABLE, writer -> {
             writer.writeMessageType(MessageType.INPUT_BATCH);
@@ -344,15 +440,39 @@ public final class NetworkRuntime implements NetworkEvents {
         }
         int replayed = reconciler.reconcile(new ReconciliationRequest(transform.get(), predictionBuffer,
                 localInputs, serverState.get(), PredictedTransform.capturedFrom(transform.get()),
-                predictedMoversOf(gameObject), physicsRollbackFor(gameObject),
+                predictedMoversOf(gameObject), physicsRollbackFor(gameObject, networkId),
                 replication.lastAppliedSnapshotTick(), fixedTimestepSeconds));
         if (replayed > 0) {
             stats.recordReconciliation(replayed);
         }
     }
 
-    private PredictedPhysics physicsRollbackFor(GameObject gameObject) {
-        if (gameObject.getComponentOrNull(RigidBodyComponent.class) == null || services == null) {
+    private void restoreServerCharacterState(GameObject gameObject, int networkId) {
+        CharacterControllerComponent controller =
+                gameObject.getComponentOrNull(CharacterControllerComponent.class);
+        if (controller == null) {
+            return;
+        }
+        replication.replicatedValue(networkId, NetworkCharacterController.class, "verticalVelocity")
+                .ifPresent(value -> controller.setVerticalVelocity((Float) value));
+        replication.replicatedValue(networkId, NetworkCharacterController.class, "grounded")
+                .ifPresent(value -> controller.setGrounded((Boolean) value));
+    }
+
+    private PredictedPhysics physicsRollbackFor(GameObject gameObject, int networkId) {
+        if (services == null) {
+            return PredictedPhysics.NONE;
+        }
+        Optional<PhysicsSystem> physics = services.systems().find(PhysicsSystem.class);
+        if (physics.isEmpty()) {
+            return PredictedPhysics.NONE;
+        }
+        CharacterRollback character = new CharacterRollback(physics.get(), gameObject,
+                () -> restoreServerCharacterState(gameObject, networkId));
+        if (character.hasCharacter()) {
+            return character;
+        }
+        if (gameObject.getComponentOrNull(RigidBodyComponent.class) == null) {
             return PredictedPhysics.NONE;
         }
         PhysicsRollback rollback = new PhysicsRollback(services.systems().get(PhysicsSystem.class), activeScene)
@@ -414,14 +534,14 @@ public final class NetworkRuntime implements NetworkEvents {
     private void sendSnapshotTo(NetworkPeer peer, Map<Integer, Integer> owners) {
         Optional<WorldState> baseline = peer.baselineForAcknowledgedTick();
         SnapshotRequest request = new SnapshotRequest(replication.serverState(),
-                baseline.orElseGet(WorldState::new), owners, peer.id(), session.tick(),
+                baseline.orElseGet(WorldState::new), owners, peer.id(), simulatedTick,
                 baseline.map(ignored -> peer.acknowledgedSnapshotTick()).orElse(SnapshotRequest.NO_BASELINE),
                 config.snapshotByteCeiling(), priorityFor(peer, owners), peer.sendGate(),
                 config.networkTickRate(), interestFor(peer, owners));
         session.sendSnapshotToPeer(peer.id(), writer -> {
             writer.writeMessageType(MessageType.SNAPSHOT);
             WorldState delivered = replication.snapshotWriter().write(writer, request);
-            peer.recordSentState(session.tick(), delivered);
+            peer.recordSentState(simulatedTick, delivered);
             recordSnapshotOutcome(peer, writer.position());
         });
     }
@@ -430,7 +550,7 @@ public final class NetworkRuntime implements NetworkEvents {
         stats.recordSnapshot(byteCount);
         stats.recordCulledObjects(replication.snapshotWriter().culledObjects());
         for (int networkId : replication.snapshotWriter().writtenNetworkIds()) {
-            peer.markIncluded(networkId, session.tick());
+            peer.markIncluded(networkId, simulatedTick);
         }
         int dropped = replication.snapshotWriter().droppedObjects();
         if (dropped > 0) {
@@ -510,7 +630,7 @@ public final class NetworkRuntime implements NetworkEvents {
     }
 
     private void synchroniseClientTick(int latestServerTick) {
-        session.synchroniseTick(latestServerTick + clientLeadTicks());
+        session.synchroniseTick(latestServerTick + oneWayTicks() + clientLeadTicks());
     }
 
     private int clientLeadTicks() {
@@ -518,10 +638,17 @@ public final class NetworkRuntime implements NetworkEvents {
         if (!latency.sampled()) {
             return config.interpolationDelayTicks() + MINIMUM_CLIENT_LEAD_TICKS;
         }
-        int oneWayTicks = Math.round(latency.roundTripSeconds() * 0.5f * config.networkTickRate());
         int jitterTicks = Math.round(latency.jitterSeconds() * config.networkTickRate());
-        return Math.clamp(oneWayTicks + jitterTicks + MINIMUM_CLIENT_LEAD_TICKS,
+        return Math.clamp(oneWayTicks() + jitterTicks + MINIMUM_CLIENT_LEAD_TICKS,
                 MINIMUM_CLIENT_LEAD_TICKS, MAXIMUM_CLIENT_LEAD_TICKS);
+    }
+
+    private int oneWayTicks() {
+        PeerLatency latency = stats.latencyOf(PeerIds.SERVER);
+        if (!latency.sampled()) {
+            return 0;
+        }
+        return Math.round(latency.stableRoundTripSeconds() * 0.5f * config.networkTickRate());
     }
 
     public int clientLead() {

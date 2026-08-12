@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.ui.kit.Sections;
 import fr.epistudio.epysia.graph.BuiltinNodes;
 import fr.epistudio.epysia.graph.GraphAsset;
 import fr.epistudio.epysia.graph.GraphKind;
@@ -10,8 +12,8 @@ import fr.epistudio.epysia.graph.StateNodes;
 import fr.epistudio.epysia.graph.shader.ShaderNodes;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
-import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImString;
 
 import java.util.ArrayList;
@@ -27,7 +29,6 @@ final class GraphNodePalette {
     static final String NODE_PAYLOAD = "graph/node-type";
 
     private static final char PAYLOAD_SEPARATOR = '|';
-    private static final int HEADER_FLAGS = ImGuiTreeNodeFlags.SpanAvailWidth;
     private static final float ENTRY_INDENT = 8.0f;
 
     private final String identifier;
@@ -53,7 +54,7 @@ final class GraphNodePalette {
         String query = filter.get().replace("\0", "").strip().toLowerCase(Locale.ROOT);
         Map<String, List<Entry>> groups = groups(asset, registry, query);
         if (groups.isEmpty()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_NODE_PALETTE_NO_MATCH));
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_NODE_PALETTE_NO_MATCH));
             return;
         }
         for (Map.Entry<String, List<Entry>> group : groups.entrySet()) {
@@ -66,14 +67,14 @@ final class GraphNodePalette {
         if (forceOpen) {
             ImGui.setNextItemOpen(true);
         }
-        if (!ImGui.collapsingHeader(category + "##palette-group-" + category, HEADER_FLAGS)) {
+        if (!Sections.header(category)) {
             return;
         }
-        ImGui.indent(ENTRY_INDENT);
+        ImGui.indent(EditorScale.of(ENTRY_INDENT));
         for (Entry entry : entries) {
             renderEntry(entry, onCreate);
         }
-        ImGui.unindent(ENTRY_INDENT);
+        ImGui.unindent(EditorScale.of(ENTRY_INDENT));
     }
 
     private static void renderEntry(Entry entry, Consumer<Entry> onCreate) {

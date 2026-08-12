@@ -1,11 +1,15 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TilemapLayer;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
 import fr.epistudio.epysia.editor.tilemap.TileTool;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 
 public final class TileToolBar {
@@ -35,7 +39,7 @@ public final class TileToolBar {
     }
 
     private boolean renderToolButton(TileTool tool) {
-        boolean clicked = icons.toggleButton("tool" + tool.name(), tool.icon(), BUTTON_SIZE, brush.tool() == tool);
+        boolean clicked = icons.toggleButton("tool" + tool.name(), tool.icon(), EditorScale.of(BUTTON_SIZE), brush.tool() == tool);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(tool.label() + "  (" + tool.shortcut() + ")\n" + tool.hint());
         }
@@ -46,13 +50,13 @@ public final class TileToolBar {
     }
 
     public void renderClipboardState() {
-        ImGui.textDisabled(brush.tool().label());
+        Texts.muted(brush.tool().label());
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(brush.tool().hint());
         }
-        ImGui.textDisabled(brush.clipboardFilled() ? brush.clipboard().size() + " copied" : "clipboard empty");
+        Texts.muted(brush.clipboardFilled() ? brush.clipboard().size() + " copied" : "clipboard empty");
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Select cells with the Select tool, then C to copy, V to paste, Delete to clear.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_TOOL_BAR_SELECTION_HINT));
         }
     }
 
@@ -61,7 +65,7 @@ public final class TileToolBar {
         TilemapLayer active = tilemap.layer(brush.layerIndex());
         boolean open = ImGui.beginCombo("##paintLayer", "Painting on " + active.name());
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Every stroke lands on this layer.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_TOOL_BAR_LAYER_HINT));
         }
         if (!open) {
             return;
@@ -75,9 +79,9 @@ public final class TileToolBar {
     }
 
     public void renderMatchModeLegend() {
-        icons.draw(EditorIcon.TERRAIN_CONNECT, BUTTON_SIZE);
+        icons.draw(EditorIcon.TERRAIN_CONNECT, EditorScale.of(BUTTON_SIZE));
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Terrain brush picks the tile that matches its neighbours.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_TOOL_BAR_TERRAIN_HINT));
         }
     }
 }

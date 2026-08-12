@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.UiRectDragCommand;
@@ -103,12 +104,12 @@ public final class UiViewportEditor {
         parentOf(element).ifPresent(parent ->
                 drawOutline(parent.computedRect(), imageX, imageY, scale, PARENT_COLOR, 1.0f));
         UiRect rect = element.computedRect();
-        drawOutline(rect, imageX, imageY, scale, OUTLINE_COLOR, OUTLINE_THICKNESS);
+        drawOutline(rect, imageX, imageY, scale, OUTLINE_COLOR, EditorScale.of(OUTLINE_THICKNESS));
         for (int handle = 0; handle < HANDLE_COUNT; handle++) {
             float x = handleX(rect, handle, imageX, scale);
             float y = handleY(rect, handle, imageY, scale);
-            ImGui.getWindowDrawList().addRectFilled(x - HANDLE_SIZE, y - HANDLE_SIZE,
-                    x + HANDLE_SIZE, y + HANDLE_SIZE, HANDLE_COLOR);
+            ImGui.getWindowDrawList().addRectFilled(x - EditorScale.of(HANDLE_SIZE), y - EditorScale.of(HANDLE_SIZE),
+                    x + EditorScale.of(HANDLE_SIZE), y + EditorScale.of(HANDLE_SIZE), HANDLE_COLOR);
         }
         drawSizeLabel(rect, imageX, imageY, scale);
     }
@@ -183,20 +184,20 @@ public final class UiViewportEditor {
         float positionOffsetX = startPosition.y();
         float positionOffsetY = startPosition.w();
         if (HORIZONTAL_SIGN[activeHandle] < 0) {
-            float applied = Math.min(deltaX, sizeOffsetX - MINIMUM_SIZE);
+            float applied = Math.min(deltaX, sizeOffsetX - EditorScale.of(MINIMUM_SIZE));
             sizeOffsetX -= applied;
             positionOffsetX += applied * (1.0f - anchor.x());
         } else if (HORIZONTAL_SIGN[activeHandle] > 0) {
-            float applied = Math.max(deltaX, MINIMUM_SIZE - sizeOffsetX);
+            float applied = Math.max(deltaX, EditorScale.of(MINIMUM_SIZE) - sizeOffsetX);
             sizeOffsetX += applied;
             positionOffsetX += applied * anchor.x();
         }
         if (VERTICAL_SIGN[activeHandle] < 0) {
-            float applied = Math.min(deltaY, sizeOffsetY - MINIMUM_SIZE);
+            float applied = Math.min(deltaY, sizeOffsetY - EditorScale.of(MINIMUM_SIZE));
             sizeOffsetY -= applied;
             positionOffsetY += applied * (1.0f - anchor.y());
         } else if (VERTICAL_SIGN[activeHandle] > 0) {
-            float applied = Math.max(deltaY, MINIMUM_SIZE - sizeOffsetY);
+            float applied = Math.max(deltaY, EditorScale.of(MINIMUM_SIZE) - sizeOffsetY);
             sizeOffsetY += applied;
             positionOffsetY += applied * anchor.y();
         }
@@ -224,7 +225,7 @@ public final class UiViewportEditor {
         for (int handle = 0; handle < HANDLE_COUNT; handle++) {
             float x = handleX(rect, handle, imageX, scale);
             float y = handleY(rect, handle, imageY, scale);
-            if (Math.abs(pointerX - x) <= HANDLE_PICK_RADIUS && Math.abs(pointerY - y) <= HANDLE_PICK_RADIUS) {
+            if (Math.abs(pointerX - x) <= EditorScale.of(HANDLE_PICK_RADIUS) && Math.abs(pointerY - y) <= EditorScale.of(HANDLE_PICK_RADIUS)) {
                 return handle;
             }
         }

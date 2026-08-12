@@ -54,6 +54,10 @@ public abstract class UiElement extends Component {
         return visible && owner().map(GameObject::active).orElse(true);
     }
 
+    public Optional<UiShader> shader() {
+        return Optional.empty();
+    }
+
     public boolean clipChildren() {
         return clipChildren;
     }

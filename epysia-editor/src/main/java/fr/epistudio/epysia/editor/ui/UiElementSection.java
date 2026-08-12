@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.ui.kit.Notices;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.command.builtin.ReparentCommand;
@@ -31,8 +34,8 @@ public final class UiElementSection {
             return;
         }
         ImGui.separator();
-        ImGui.textColored(1.0f, 0.72f, 0.35f, 1.0f, "Not under a Ui Canvas, so nothing is drawn.");
-        if (ImGui.button("Move under a Ui Canvas")) {
+        Notices.warning(I18n.translate(TextKey.EDITOR_UI_ELEMENT_SECTION_NO_CANVAS));
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_UI_ELEMENT_SECTION_MOVE_UNDER_CANVAS))) {
             attachToCanvas(gameObject);
         }
         ImGui.separator();

@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.MultiMeshRenderer;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
@@ -30,6 +31,8 @@ import fr.epistudio.epysia.render.material.Uniform;
 import fr.epistudio.epysia.render.material.UniformDisplay;
 import fr.epistudio.epysia.render.mesh.UploadedMesh;
 import fr.epistudio.epysia.render.mesh.UploadedSubmesh;
+import fr.epistudio.epysia.editor.ui.kit.Disabled;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.type.ImInt;
 import imgui.flag.ImGuiHoveredFlags;
@@ -99,7 +102,7 @@ public final class MaterialsSection {
 
     public void render(MeshRenderer renderer) {
         ImGui.spacing();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_TITLE));
+        Texts.muted(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_TITLE));
         ImGui.separator();
         int slotCount = slotCount(renderer);
         for (int slot = 0; slot < slotCount; slot++) {
@@ -159,7 +162,7 @@ public final class MaterialsSection {
 
     public void render(MultiMeshRenderer renderer) {
         ImGui.spacing();
-        ImGui.textDisabled("Material");
+        Texts.muted(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_MATERIAL));
         ImGui.separator();
         renderMultiMeshMaterial(renderer);
         filePicker.render();
@@ -168,11 +171,11 @@ public final class MaterialsSection {
     private void renderMultiMeshMaterial(MultiMeshRenderer renderer) {
         Material material = renderer.materialOrNull();
         if (material == null) {
-            ImGui.textDisabled("No material resolved yet.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_NONE_RESOLVED));
             return;
         }
         if (material.assetPath().isEmpty()) {
-            ImGui.textWrapped("Pick a .epymaterial in the Material field above to edit it here."
+            ImGui.textWrapped(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_PICK_HINT)
                     + " A material that is not an asset is not saved with the scene.");
             return;
         }
@@ -190,14 +193,14 @@ public final class MaterialsSection {
         String label = material.assetPath().isEmpty()
                 ? I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_INLINE)
                 : Path.of(material.assetPath()).getFileName().toString();
-        if (ImGui.button(label, SHADER_PATH_BUTTON_WIDTH, 0.0f)) {
+        if (ImGui.button(label, EditorScale.of(SHADER_PATH_BUTTON_WIDTH), 0.0f)) {
             filePicker.open(MATERIAL_EXTENSIONS, false, path -> assignAssetMaterial(path, replace));
         }
         if (ImGui.isItemHovered() && !material.assetPath().isEmpty()) {
             ImGui.setTooltip(material.assetPath());
         }
         ImGui.sameLine();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_MATERIAL_ASSET));
+        Texts.muted(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_MATERIAL_ASSET));
         if (!material.assetPath().isEmpty()) {
             ImGui.sameLine();
             if (ImGui.smallButton(I18n.label(TextKey.EDITOR_MATERIALS_SECTION_DETACH,
@@ -333,7 +336,7 @@ public final class MaterialsSection {
 
     private void renderShaderPathRow(TextKey labelKey, String currentPath, Consumer<String> onPathChosen) {
         ImGui.pushID(labelKey.key());
-        if (ImGui.button(shaderPathButtonLabel(currentPath), SHADER_PATH_BUTTON_WIDTH, 0.0f)) {
+        if (ImGui.button(shaderPathButtonLabel(currentPath), EditorScale.of(SHADER_PATH_BUTTON_WIDTH), 0.0f)) {
             filePicker.open(SHADER_EXTENSIONS, false, onPathChosen);
         }
         if (ImGui.isItemHovered() && !currentPath.isEmpty()) {
@@ -365,7 +368,7 @@ public final class MaterialsSection {
 
     private void renderSamplerRows(ShaderMaterial material) {
         for (Map.Entry<String, Integer> sampler : detectedSamplers(material).entrySet()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_SAMPLER_BOUND,
+            Texts.muted(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_SAMPLER_BOUND,
                     sampler.getKey(), sampler.getValue()));
         }
     }
@@ -411,7 +414,7 @@ public final class MaterialsSection {
 
     private void renderReceiveShadowsRow(LitMaterial material) {
         boolean current = material.receiveShadows();
-        if (ImGui.checkbox("Receive shadows", current)) {
+        if (ImGui.checkbox(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_RECEIVE_SHADOWS), current)) {
             history().execute(new SetMaterialPropertyCommand(material,
                     SetMaterialPropertyCommand.Target.RECEIVE_SHADOWS, "", current, !current));
         }
@@ -422,18 +425,14 @@ public final class MaterialsSection {
 
     private void renderAnimatedShadowRow(LitMaterial material) {
         boolean hasSurfaceShader = !material.surfaceShaderPath().isEmpty();
-        if (!hasSurfaceShader) {
-            ImGui.beginDisabled();
-        }
+        Disabled.push(!hasSurfaceShader);
         boolean current = material.animatedShadow();
         if (ImGui.checkbox(I18n.label(TextKey.EDITOR_MATERIALS_SECTION_ANIMATE_SHADOW,
                 "materials-animate-shadow"), current)) {
             history().execute(new SetMaterialPropertyCommand(material,
                     SetMaterialPropertyCommand.Target.ANIMATED_SHADOW, "", current, !current));
         }
-        if (!hasSurfaceShader) {
-            ImGui.endDisabled();
-        }
+        Disabled.pop(!hasSurfaceShader);
         if (ImGui.isItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) {
             ImGui.setTooltip(I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_ANIMATE_SHADOW_TOOLTIP));
         }
@@ -442,7 +441,7 @@ public final class MaterialsSection {
     private void renderSurfaceShaderRow(LitMaterial material) {
         ImGui.pushID("surface-shader");
         String currentPath = material.surfaceShaderPath();
-        if (ImGui.button(shaderPathButtonLabel(currentPath), SHADER_PATH_BUTTON_WIDTH, 0.0f)) {
+        if (ImGui.button(shaderPathButtonLabel(currentPath), EditorScale.of(SHADER_PATH_BUTTON_WIDTH), 0.0f)) {
             filePicker.open(SURFACE_SHADER_EXTENSIONS, true,
                     pickedPath -> executeSurfaceShaderChange(material, currentPath, pickedPath));
         }
@@ -559,13 +558,14 @@ public final class MaterialsSection {
                 : thumbnails.get(EditorAssetPaths.absolute(locator, currentPath));
         boolean clicked;
         if (thumbnail.isPresent()) {
-            clicked = ImGui.imageButton(thumbnail.getAsInt(), TEXTURE_WELL_SIZE, TEXTURE_WELL_SIZE);
+            clicked = ImGui.imageButton("##texture-well", thumbnail.getAsInt(), EditorScale.of(TEXTURE_WELL_SIZE),
+                    EditorScale.of(TEXTURE_WELL_SIZE));
         } else {
             clicked = ImGui.button(currentPath.isEmpty()
                             ? I18n.label(TextKey.EDITOR_MATERIALS_SECTION_NONE,
                                     "materials-texture-none-" + field.getName())
                             : "…",
-                    TEXTURE_WELL_SIZE + 8.0f, TEXTURE_WELL_SIZE);
+                    EditorScale.of(TEXTURE_WELL_SIZE) + 8.0f, EditorScale.of(TEXTURE_WELL_SIZE));
         }
         if (ImGui.isItemHovered() && !currentPath.isEmpty()) {
             ImGui.setTooltip(currentPath);
@@ -602,7 +602,7 @@ public final class MaterialsSection {
             return;
         }
         ImGui.sameLine();
-        ImGui.textDisabled(Path.of(currentPath).getFileName().toString());
+        Texts.muted(Path.of(currentPath).getFileName().toString());
         ImGui.sameLine();
         if (ImGui.smallButton(I18n.label(TextKey.EDITOR_MATERIALS_SECTION_CLEAR,
                 "materials-texture-clear-" + field.getName()))) {

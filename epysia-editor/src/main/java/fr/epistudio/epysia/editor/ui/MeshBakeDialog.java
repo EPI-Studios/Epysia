@@ -8,6 +8,7 @@ import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.render.mesh.MeshData;
 import fr.epistudio.epysia.render.mesh.ObjMesh;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
 
@@ -66,7 +67,7 @@ public final class MeshBakeDialog {
     }
 
     private void renderColliderChoices() {
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_MESH_BAKE_DIALOG_COLLIDER));
+        Texts.muted(I18n.translate(TextKey.EDITOR_MESH_BAKE_DIALOG_COLLIDER));
         for (ColliderChoice candidate : ColliderChoice.values()) {
             if (ImGui.radioButton(I18n.label(colliderKey(candidate), "mesh-bake-collider-" + candidate.name()),
                     choice == candidate)) {

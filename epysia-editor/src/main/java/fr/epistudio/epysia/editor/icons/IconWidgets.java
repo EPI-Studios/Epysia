@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.icons;
 
-import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.editor.shell.EditorMotion;
+import fr.epistudio.epysia.editor.ui.kit.ToggleStyle;
 import imgui.ImGui;
 
 public final class IconWidgets {
@@ -22,7 +23,8 @@ public final class IconWidgets {
     }
 
     public void drawTinted(EditorIcon icon, float size, float red, float green, float blue) {
-        ImGui.image(atlas.textureId(icon), size, size, 0.0f, 0.0f, 1.0f, 1.0f, red, green, blue, FULL_ALPHA);
+        ImGui.imageWithBg(atlas.textureId(icon), size, size, 0.0f, 0.0f, 1.0f, 1.0f,
+                0.0f, 0.0f, 0.0f, 0.0f, red, green, blue, FULL_ALPHA);
     }
 
     public void drawInline(EditorIcon icon, float size) {
@@ -30,22 +32,19 @@ public final class IconWidgets {
         ImGui.sameLine();
     }
 
+    public int textureId(EditorIcon icon) {
+        return atlas.textureId(icon);
+    }
+
     public boolean iconButton(String id, EditorIcon icon, float size) {
-        ImGui.pushID(id);
-        boolean clicked = ImGui.imageButton(atlas.textureId(icon), size, size);
-        ImGui.popID();
-        return clicked;
+        return ImGui.imageButton(id, atlas.textureId(icon), size, size);
     }
 
     public boolean toggleButton(String id, EditorIcon icon, float size, boolean active) {
-        if (active) {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, EditorStyle.COLOR_WIDGET_ACTIVE);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, EditorStyle.COLOR_ACCENT);
-        }
+        ToggleStyle.push(active, EditorMotion.valueOf(id));
         boolean clicked = iconButton(id, icon, size);
-        if (active) {
-            ImGui.popStyleColor(2);
-        }
+        ToggleStyle.pop(active);
+        EditorMotion.towards(id, ImGui.isItemHovered());
         return clicked;
     }
 }

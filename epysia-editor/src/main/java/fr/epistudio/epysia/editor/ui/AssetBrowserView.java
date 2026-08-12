@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.assets.AssetMetaFile;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.editor.assets.AssetEntry;
@@ -22,6 +23,8 @@ import fr.epistudio.epysia.editor.importer.ImportOutcome;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.editor.ui.kit.Breadcrumb;
+import fr.epistudio.epysia.editor.ui.kit.SearchField;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
@@ -37,6 +40,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
 import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -238,17 +242,17 @@ public final class AssetBrowserView {
     }
 
     private void renderHeader() {
-        if (icons.iconButton("assets-new", EditorIcon.ADD, EditorStyle.ICON_SIZE_SMALL)) {
+        if (icons.iconButton("assets-new", EditorIcon.ADD, EditorStyle.iconSizeSmall())) {
             newAssetDialog.setKinds(assetKinds());
             newAssetDialog.open();
         }
         ImGui.sameLine();
-        if (icons.iconButton("assets-new-folder", EditorIcon.FOLDER, EditorStyle.ICON_SIZE_SMALL)) {
+        if (icons.iconButton("assets-new-folder", EditorIcon.FOLDER, EditorStyle.iconSizeSmall())) {
             nameDialog.open(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_NEW_FOLDER),
                     I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_NEW_FOLDER_DEFAULT_NAME), this::createFolder);
         }
         ImGui.sameLine();
-        if (icons.iconButton("assets-refresh", EditorIcon.LOAD, EditorStyle.ICON_SIZE_SMALL)) {
+        if (icons.iconButton("assets-refresh", EditorIcon.LOAD, EditorStyle.iconSizeSmall())) {
             refresh();
         }
         ImGui.sameLine();
@@ -258,19 +262,18 @@ public final class AssetBrowserView {
 
     private void renderBreadcrumb() {
         if (showingBuiltins) {
-            ImGui.textDisabled(BuiltinAssets.FOLDER_LABEL);
+            Texts.muted(BuiltinAssets.FOLDER_LABEL);
             return;
         }
         Path root = project.rootDirectory();
         List<Path> segments = breadcrumbSegments(root);
-        for (int index = 0; index < segments.size(); index++) {
-            if (index > 0) {
-                ImGui.sameLine(0.0f, BREADCRUMB_SPACING);
-                ImGui.textDisabled(BREADCRUMB_SEPARATOR);
-                ImGui.sameLine(0.0f, BREADCRUMB_SPACING);
-            }
-            renderBreadcrumbSegment(segments.get(index), index == segments.size() - 1);
-        }
+        List<String> labels = segments.stream().map(this::breadcrumbLabel).toList();
+        Breadcrumb.render("assets", labels).ifPresent(index -> navigateTo(segments.get(index)));
+    }
+
+    private String breadcrumbLabel(Path segment) {
+        return segment.equals(project.rootDirectory())
+                ? project.name() : segment.getFileName().toString();
     }
 
     private List<Path> breadcrumbSegments(Path root) {
@@ -300,20 +303,21 @@ public final class AssetBrowserView {
 
     private void renderSearchField() {
         ImGui.sameLine();
-        float offset = ImGui.getContentRegionMaxX() - SEARCH_FIELD_WIDTH;
+        float offset = ImGui.getContentRegionMaxX() - EditorScale.of(SEARCH_FIELD_WIDTH);
         if (offset > ImGui.getCursorPosX()) {
             ImGui.setCursorPosX(offset);
         }
-        ImGui.setNextItemWidth(SEARCH_FIELD_WIDTH);
-        if (ImGui.inputTextWithHint("##assets-search",
-                I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_SEARCH), searchInput)) {
+        ImGui.setNextItemWidth(EditorScale.of(SEARCH_FIELD_WIDTH));
+        if (SearchField.render("##assets-search",
+                I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_SEARCH), searchInput,
+                ImGui.calcItemWidth())) {
             query.setSearchText(searchInput.get());
             refresh();
         }
     }
 
     private void renderFolderTreeColumn() {
-        ImGui.beginChild("##asset-folders", FOLDER_TREE_WIDTH, 0.0f, true);
+        ImGui.beginChild("##asset-folders", EditorScale.of(FOLDER_TREE_WIDTH), 0.0f, true);
         renderFolderNode(project.rootDirectory(), project.name());
         ImGui.separator();
         renderBuiltinFolderNode();
@@ -382,7 +386,7 @@ public final class AssetBrowserView {
         renderViewControls();
         ImGui.separator();
         grid.render(query.apply(new ArrayList<>(entries)), this::activateEntry, this::decorateEntry);
-        ImGui.dummy(0.0f, ENTRY_LIST_BOTTOM_PADDING);
+        ImGui.dummy(0.0f, EditorScale.of(ENTRY_LIST_BOTTOM_PADDING));
         renderBrowserContextMenu();
         ImGui.endChild();
     }
@@ -394,7 +398,7 @@ public final class AssetBrowserView {
 
     private void renderViewControls() {
         boolean gridMode = grid.mode() == AssetEntryGrid.Mode.GRID;
-        if (icons.toggleButton("assets-grid", EditorIcon.GRID, EditorStyle.ICON_SIZE_SMALL, gridMode)) {
+        if (icons.toggleButton("assets-grid", EditorIcon.GRID, EditorStyle.iconSizeSmall(), gridMode)) {
             grid.setMode(gridMode ? AssetEntryGrid.Mode.LIST : AssetEntryGrid.Mode.GRID);
         }
         ImGui.sameLine();
@@ -402,11 +406,11 @@ public final class AssetBrowserView {
         ImGui.sameLine();
         renderTypeCombo();
         ImGui.sameLine();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ITEMS, entries.size()));
+        Texts.muted(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ITEMS, entries.size()));
     }
 
     private void renderSortCombo() {
-        ImGui.setNextItemWidth(SMALL_COMBO_WIDTH);
+        ImGui.setNextItemWidth(EditorScale.of(SMALL_COMBO_WIDTH));
         if (ImGui.beginCombo("##assets-sort", I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_SORT,
                 I18n.translate(sortFieldKey(query.sortField()))))) {
             for (AssetQuery.SortField field : AssetQuery.SortField.values()) {
@@ -430,7 +434,7 @@ public final class AssetBrowserView {
         String label = query.typeFilter()
                 .map(type -> I18n.translate(assetTypeKey(type)))
                 .orElse(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ALL));
-        ImGui.setNextItemWidth(SMALL_COMBO_WIDTH);
+        ImGui.setNextItemWidth(EditorScale.of(SMALL_COMBO_WIDTH));
         if (!ImGui.beginCombo("##assets-type", I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TYPE, label))) {
             return;
         }
@@ -779,7 +783,7 @@ public final class AssetBrowserView {
             return;
         }
         ImGui.setDragDropPayload(mimeType, entry.assetPath());
-        icons.drawInline(AssetTypeIcons.iconFor(entry.type()), EditorStyle.ICON_SIZE_SMALL);
+        icons.drawInline(AssetTypeIcons.iconFor(entry.type()), EditorStyle.iconSizeSmall());
         ImGui.textUnformatted(entry.displayName());
         ImGui.endDragDropSource();
     }
@@ -820,13 +824,13 @@ public final class AssetBrowserView {
                 "asset-context-bake-mesh"))) {
             onBakeMesh.accept(path);
         }
-        if (entry.type() == AssetType.TEXTURE && ImGui.menuItem("Create Sprite Atlas")) {
+        if (entry.type() == AssetType.TEXTURE && ImGui.menuItem(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CREATE_SPRITE_ATLAS))) {
             createSpriteAtlas(path);
         }
-        if (entry.type() == AssetType.ATLAS && ImGui.menuItem("Create Tilemap")) {
+        if (entry.type() == AssetType.ATLAS && ImGui.menuItem(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CREATE_TILEMAP))) {
             createTilemap(path);
         }
-        if (entry.type() == AssetType.ATLAS && ImGui.menuItem("Open as Text")) {
+        if (entry.type() == AssetType.ATLAS && ImGui.menuItem(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_OPEN_AS_TEXT))) {
             onOpenScript.accept(path);
         }
         if (isImportSource(path)
@@ -842,16 +846,16 @@ public final class AssetBrowserView {
     }
 
     private void renderCopyItems(Path path) {
-        if (ImGui.menuItem("Copy Path")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_COPY_PATH))) {
             ImGui.setClipboardText(project.locator().fromFile(path).toString());
         }
-        if (ImGui.menuItem("Copy System Path")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_COPY_SYSTEM_PATH))) {
             ImGui.setClipboardText(path.toAbsolutePath().toString());
         }
-        if (ImGui.menuItem("Copy GUID")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_COPY_GUID))) {
             ImGui.setClipboardText(AssetMetaFile.readGuid(AssetMetaFile.pathFor(path)).orElse(""));
         }
-        if (ImGui.menuItem("Reveal in File Manager")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_REVEAL))) {
             FileManagerReveal.reveal(path)
                     .ifPresent(failure -> notifier.show("Could not reveal the file: " + failure));
         }

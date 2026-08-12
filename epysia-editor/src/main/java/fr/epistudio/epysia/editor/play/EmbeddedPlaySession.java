@@ -147,10 +147,12 @@ public final class EmbeddedPlaySession {
         if (state != State.PLAYING) {
             return;
         }
-        accumulator = Math.min(accumulator + deltaSeconds, MAX_FRAME_SECONDS);
+        accumulator = Math.min(accumulator + deltaSeconds, MAX_FRAME_SECONDS)
+                + engine().consumeCatchUpSteps() * fixedTimestepSeconds;
+        accumulator = Math.max(-fixedTimestepSeconds, accumulator);
         int pending = (int) (accumulator / fixedTimestepSeconds);
         accumulator -= pending * fixedTimestepSeconds;
-        runTicks(pending);
+        runTicks(Math.max(0, pending));
     }
 
     public Optional<Camera3D> gameCamera() {

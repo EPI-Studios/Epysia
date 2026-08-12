@@ -52,22 +52,22 @@ public final class GameObjectCreationMenu {
     }
 
     private void renderUiItems() {
-        if (ImGui.menuItem("Ui Canvas")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_CANVAS))) {
             objectFactory.createUiCanvas();
         }
-        if (ImGui.menuItem("Ui Panel")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_PANEL))) {
             objectFactory.createUiElement("Panel", new UiPanel());
         }
-        if (ImGui.menuItem("Ui Label")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_LABEL))) {
             objectFactory.createUiElement("Label", new UiLabel());
         }
-        if (ImGui.menuItem("Ui Button")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_BUTTON))) {
             objectFactory.createUiElement("Button", new UiButton());
         }
-        if (ImGui.menuItem("Ui Image")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_IMAGE))) {
             objectFactory.createUiElement("Image", new UiImage());
         }
-        if (ImGui.menuItem("Ui Text Field")) {
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_TEXT_FIELD))) {
             objectFactory.createUiElement("Text Field", new UiTextField());
         }
     }

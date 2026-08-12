@@ -7,6 +7,9 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.gpu.GpuPreference;
 import fr.epistudio.epysia.logging.ConsoleLogger;
+import fr.epistudio.epysia.diagnostics.CrashReporter;
+import fr.epistudio.epysia.diagnostics.FrameRateOverlay;
+import fr.epistudio.epysia.logging.LevelFilteredLogger;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.net.session.NetworkConfig;
 import fr.epistudio.epysia.physics.PhysicsSystem;
@@ -17,6 +20,9 @@ import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.project.ProjectQuality;
 import fr.epistudio.epysia.project.ProjectQualityProperties;
+import fr.epistudio.epysia.project.NetworkSettings;
+import fr.epistudio.epysia.render.GraphicsApi;
+import fr.epistudio.epysia.settings.GameSettings;
 import fr.epistudio.epysia.project.ProjectStore;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.reflection.ComponentScanner;
@@ -43,31 +49,48 @@ public final class GameLauncher {
     private GameLauncher() {
     }
 
+    private static GameSettings loadGameSettings() {
+        Path directory = Path.of(System.getProperty("user.dir", "."));
+        return GameSettings.load(GameSettings.fileIn(directory));
+    }
+
     public static void main(String[] args) {
-        GpuLauncher.enforce(GpuPreference.fromId(parseStringOr(args, "--gpu", "system")));
+        GameSettings settings = loadGameSettings();
+        GraphicsApi.select(settings.renderApi());
+        GpuLauncher.enforce(GpuPreference.fromId(parseStringOr(args, "--gpu", settings.gpuAdapter())));
         Path scenePath = parseRequiredPath(args, "--scene");
         Optional<Path> projectRoot = parseOptionalPath(args, "--project");
         projectRoot.ifPresent(GameLauncher::applyProjectQuality);
         Optional<Path> precompiledScripts = parseOptionalPath(args, "--precompiled-scripts");
         String title = parseStringOr(args, "--title", DEFAULT_QUALITY.windowTitle());
         parseOptionalPath(args, "--icon").ifPresent(Window::setIconFile);
-        int width = parseIntOr(args, "--width", DEFAULT_QUALITY.windowWidth());
-        int height = parseIntOr(args, "--height", DEFAULT_QUALITY.windowHeight());
-        System.setProperty("epysia.vsync", parseStringOr(args, "--vsync", "true"));
-        StandaloneRunner.setMaximumFrameRate(parseIntOr(args, "--max-fps", 0));
+        int width = parseIntOr(args, "--width", settings.windowWidth());
+        int height = parseIntOr(args, "--height", settings.windowHeight());
+        System.setProperty("epysia.vsync",
+                parseStringOr(args, "--vsync", String.valueOf(settings.verticalSync())));
+        StandaloneRunner.setMaximumFrameRate(parseIntOr(args, "--max-fps",
+                settings.frameRateCap()));
         boolean stdioChannel = hasFlag(args, "--runtime-channel=stdio");
         RuntimeChannel channel = stdioChannel ? new StdioRuntimeChannel() : new NullRuntimeChannel();
         Logger localFallback = new ConsoleLogger(System.err);
-        Logger logger = stdioChannel ? new ChannelLogger(channel, localFallback) : localFallback;
+        Logger logger = LevelFilteredLogger.wrap(
+                stdioChannel ? new ChannelLogger(channel, localFallback) : localFallback,
+                settings.logLevel());
         boolean serverMode = hasFlag(args, "--server");
+        float validateSeconds = parseFloatOr(args, "--validate", 0.0f);
+        boolean rendering = !serverMode && validateSeconds <= 0.0f;
         boolean listenServerMode = hasFlag(args, "--listen-server");
         String connectHost = parseStringOr(args, "--connect", "");
         int port = parseIntOr(args, "--port", NetworkConfig.DEFAULT_PORT);
         String metricsHost = parseStringOr(args, "--metrics-host", "127.0.0.1");
         int metricsPort = parseIntOr(args, "--metrics-port", 0);
+        CrashReporter.install(Path.of(System.getProperty("user.dir", ".")), logger);
         StandaloneRunner.ScenePopulator populator = (engine, services) -> {
             engine.setLogger(logger);
             engine.setRuntimeChannel(channel);
+            if (settings.showFrameRate()) {
+                services.systems().add(new FrameRateOverlay());
+            }
             ComponentRegistry registry = new ComponentRegistry();
             registry.populateFromScan(ComponentScanner.scan());
             projectRoot.ifPresent(root -> {
@@ -76,23 +99,30 @@ public final class GameLauncher {
                     logger.info("[scripts] " + message);
                 }
                 registry.setUserComponents(scripts.components());
-                if (!serverMode) {
+                if (rendering) {
                     runRenderSetups(scripts, services, logger);
                 }
             });
             projectRoot.ifPresent(root -> attachAssetDatabase(services, root, logger));
             SceneSerializer serializer = new SceneSerializer(registry);
             serializer.load(services.scene(), scenePath, services);
-            if (!serverMode) {
+            if (rendering) {
                 ensureCameraExists(services.scene());
             }
-            projectRoot.ifPresent(root -> applyProjectSettings(engine, services, root, logger, serverMode));
+            projectRoot.ifPresent(root -> applyProjectSettings(engine, services, root, logger, !rendering));
             logger.info("Loaded scene " + scenePath
                     + (projectRoot.isPresent() ? " (project " + projectRoot.get() + ")" : ""));
             startNetworking(services, logger, new NetworkStartup(serverMode, listenServerMode,
-                    connectHost, port, metricsHost, metricsPort));
+                    connectHost, port, metricsHost, metricsPort), readNetworkSettings(projectRoot));
         };
-        if (serverMode) {
+        if (validateSeconds > 0.0f) {
+            logger.info("[validate] headless smoke run for " + validateSeconds + " s");
+            HeadlessRunner.setRunDurationSeconds(validateSeconds);
+            boolean survived = HeadlessRunner.run(populator);
+            logger.info("[validate] " + (survived ? "completed without crashing" : "FAILED"));
+            channel.close();
+            System.exit(survived ? 0 : 1);
+        } else if (serverMode) {
             logger.info("[server] starting a dedicated server on port " + port);
             HeadlessRunner.run(populator);
         } else {
@@ -117,11 +147,16 @@ public final class GameLauncher {
         services.network().startDiagnostics(startup.metricsHost(), startup.metricsPort());
     }
 
-    private static void startNetworking(EngineServices services, Logger logger, NetworkStartup startup) {
+    private static void startNetworking(EngineServices services, Logger logger, NetworkStartup startup,
+                                        NetworkSettings settings) {
         if (!startup.requested()) {
             return;
         }
-        NetworkConfig config = new NetworkConfig().setPort(startup.port());
+        NetworkConfig config = networkConfigFrom(settings, startup);
+        if (!settings.joinSecretConfigured()) {
+            logger.warn("[net] no join secret configured: any client may connect."
+                    + " Set one under Settings, Network.");
+        }
         if (startup.dedicatedServer()) {
             services.network().startServer(config);
             logger.info("[server] listening on port " + startup.port());
@@ -187,6 +222,27 @@ public final class GameLauncher {
         });
     }
 
+    private static NetworkSettings readNetworkSettings(Optional<Path> projectRoot) {
+        if (projectRoot.isEmpty()) {
+            return NetworkSettings.defaults();
+        }
+        ProjectStore store = new ProjectStore();
+        return store.readProjectFromDisk(projectRoot.get(), 0L)
+                .map(store::readNetwork)
+                .orElseGet(NetworkSettings::defaults);
+    }
+
+    private static NetworkConfig networkConfigFrom(NetworkSettings settings, NetworkStartup startup) {
+        NetworkConfig config = new NetworkConfig()
+                .setPort(startup.port())
+                .setMaximumPeers(settings.maximumPeers())
+                .setNetworkTickRate(settings.networkTickRate())
+                .setSnapshotRate(settings.snapshotRate())
+                .setInterpolationDelayTicks(settings.interpolationDelayTicks())
+                .setTimeoutSeconds(settings.timeoutSeconds());
+        return config.setJoinSecret(settings.joinSecret());
+    }
+
     private static void applyProjectQuality(Path projectRoot) {
         ProjectStore store = new ProjectStore();
         store.readProjectFromDisk(projectRoot, 0L).ifPresent(project -> {
@@ -229,6 +285,18 @@ public final class GameLauncher {
     private static String parseStringOr(String[] args, String flag, String fallback) {
         String value = findFlagValue(args, flag);
         return value == null ? fallback : value;
+    }
+
+    private static float parseFloatOr(String[] args, String flag, float fallback) {
+        String value = findFlagValue(args, flag);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Float.parseFloat(value);
+        } catch (NumberFormatException error) {
+            return fallback;
+        }
     }
 
     private static int parseIntOr(String[] args, String flag, int fallback) {

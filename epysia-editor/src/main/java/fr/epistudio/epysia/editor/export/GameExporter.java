@@ -3,7 +3,11 @@ package fr.epistudio.epysia.editor.export;
 import fr.epistudio.epysia.editor.BuildInfo;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectLibraries;
+import fr.epistudio.epysia.project.ProjectQuality;
+import fr.epistudio.epysia.project.SteamSettings;
 import fr.epistudio.epysia.project.ProjectStore;
+import fr.epistudio.epysia.render.GraphicsApi;
+import fr.epistudio.epysia.settings.GameSettings;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,6 +25,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public final class GameExporter {
+
+    private static final String STEAM_APP_ID_FILE = "steam_appid.txt";
 
     private static final String TEMPLATE_LAUNCHER_NAME = "EpysiaGame";
     private static final String CONTENT_DIRECTORY = "content";
@@ -58,7 +64,18 @@ public final class GameExporter {
         finalizeLauncher(request, layout, name, icon);
         progress.report(ExportStage.WRITING_LAUNCHER, 1.0f);
         archive(gameRoot, request.platform(), name, progress);
+        validate(request, gameRoot, name, progress);
         return gameRoot;
+    }
+
+    private void validate(ExportRequest request, Path gameRoot, String name, ExportProgress progress)
+            throws IOException {
+        progress.report(ExportStage.VALIDATING, 0.0f);
+        ExportValidation.Report report = ExportValidation.run(gameRoot, request.platform(), name);
+        progress.report(ExportStage.VALIDATING, 1.0f);
+        if (!report.survived()) {
+            throw new IOException("The exported game failed its headless smoke run.\n" + report.detail());
+        }
     }
 
     private void requireOutsideProject(Path outputDirectory) throws IOException {
@@ -97,7 +114,7 @@ public final class GameExporter {
                 + "from an older build and would fail at launch. Run the engineRuntimeJar task first.");
     }
 
-    static TargetPlatform hostPlatform() {
+    public static TargetPlatform hostPlatform() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
                 ? TargetPlatform.WINDOWS
                 : TargetPlatform.LINUX;
@@ -209,11 +226,31 @@ public final class GameExporter {
         LauncherConfiguration.forGame(request.sceneFileName(), new ProjectStore().readQuality(project),
                         request.gpuPreference(), iconFileName, request.title())
                 .writeTo(layout.config(), targetConfig);
+        writeGameSettings(layout);
+        writeSteamAppId(layout);
         Path targetLauncher = layout.launcher().resolveSibling(name + request.platform().launcherExtension());
         Files.move(layout.launcher(), targetLauncher, StandardCopyOption.REPLACE_EXISTING);
         if (request.platform() == TargetPlatform.LINUX) {
             markExecutable(targetLauncher);
         }
+    }
+
+    private void writeSteamAppId(TemplateLayout layout) throws IOException {
+        SteamSettings steam = new ProjectStore().readSteam(project);
+        Path appIdFile = layout.launcher().getParent().resolve(STEAM_APP_ID_FILE);
+        if (!steam.enabled()) {
+            Files.deleteIfExists(appIdFile);
+            return;
+        }
+        Files.writeString(appIdFile, Integer.toString(steam.appId()));
+    }
+
+    private void writeGameSettings(TemplateLayout layout) throws IOException {
+        ProjectQuality quality = new ProjectStore().readQuality(project);
+        GameSettings settings = new GameSettings(new ProjectStore().readRender(project).api(),
+                GameSettings.SYSTEM_DEFAULT_ADAPTER, quality.windowWidth(), quality.windowHeight(),
+                false, quality.verticalSync(), quality.maximumFrameRate(), "info", false).clamped();
+        settings.save(GameSettings.fileIn(layout.launcher().getParent()));
     }
 
     private static void copyDirectory(Path source, Path destination, ExportProgress progress, ExportStage stage)

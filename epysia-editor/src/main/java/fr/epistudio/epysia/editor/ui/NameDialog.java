@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
@@ -52,7 +53,7 @@ public final class NameDialog {
             ImGui.setKeyboardFocusHere();
             focusRequested = false;
         }
-        ImGui.setNextItemWidth(FIELD_WIDTH);
+        ImGui.setNextItemWidth(EditorScale.of(FIELD_WIDTH));
         if (TextFields.inputSubmitted("##name", nameInput)) {
             accept();
         }

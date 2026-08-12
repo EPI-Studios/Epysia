@@ -20,6 +20,7 @@ import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.vfx.ParticleEffect;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.window.Window;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 
 import java.nio.file.Path;
@@ -198,10 +199,10 @@ public final class VfxPreviewPanel {
     private void renderStatistics() {
         int poolSize = effect.poolSize();
         int alive = vfxRenderSystem.aliveCountOf(effect).orElse(0);
-        ImGui.text(I18n.translate(TextKey.EDITOR_VFX_PREVIEW_PANEL_ALIVE, alive, poolSize));
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_VFX_PREVIEW_PANEL_ALIVE, alive, poolSize));
         ImGui.progressBar(alive / (float) poolSize, -1.0f, 0.0f, alive + " / " + poolSize);
         if (alive >= poolSize) {
-            ImGui.textColored(POOL_EXHAUSTED_COLOR,
+            Texts.colored(POOL_EXHAUSTED_COLOR,
                     I18n.translate(TextKey.EDITOR_VFX_PREVIEW_PANEL_POOL_EXHAUSTED));
         }
     }

@@ -13,7 +13,12 @@ import fr.epistudio.epysia.input.InputState;
 import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.net.NetworkReceiveSystem;
+import fr.epistudio.epysia.audio.AudioSystem;
+import fr.epistudio.epysia.navigation.NavigationService;
+import fr.epistudio.epysia.navigation.NavigationSystem;
 import fr.epistudio.epysia.net.NetworkService;
+import fr.epistudio.epysia.steam.SteamCallbackSystem;
+import fr.epistudio.epysia.steam.SteamService;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.Frame;
 import fr.epistudio.epysia.render.RenderContext;
@@ -58,6 +63,7 @@ import fr.epistudio.epysia.render.ProfiledRenderSystem;
 
 public final class EpysiaEngine implements StageConfigurer, EngineServices, SceneCapture {
     private static final float ASSET_SWEEP_INTERVAL_SECONDS = 5.0f;
+    private static final int MAXIMUM_CATCH_UP_STEPS = 4;
 
     private PassClear defaultClear = PassClear.color(0.10f, 0.12f, 0.18f);
     private final InputActions inputActions = InputActions.defaults();
@@ -87,6 +93,8 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private final PostProcessSettings detachedPostProcessSettings = new PostProcessSettings();
     private final PostEffects postEffectsAccess = new ScenePostEffects(this::scene, this::resolvePostProcessSettings);
     private NetworkService networkService;
+    private NavigationService navigationService;
+    private SteamService steamService;
     private RuntimeChannel runtimeChannel = new NullRuntimeChannel();
     private Logger logger = new ConsoleLogger();
     private FontRegistry fontRegistry;
@@ -95,6 +103,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private boolean initialized;
     private boolean playing;
     private float secondsSinceAssetSweep;
+    private int pendingCatchUpSteps;
     private final BackgroundTasks backgroundTasks = new BackgroundTasks(this::logger);
 
     public EpysiaEngine(Window window, RenderBackend renderBackend) {
@@ -477,6 +486,18 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     }
 
     @Override
+    public void requestCatchUpSteps(int steps) {
+        pendingCatchUpSteps = Math.clamp(pendingCatchUpSteps + steps,
+                -MAXIMUM_CATCH_UP_STEPS, MAXIMUM_CATCH_UP_STEPS);
+    }
+
+    public int consumeCatchUpSteps() {
+        int steps = pendingCatchUpSteps;
+        pendingCatchUpSteps = 0;
+        return steps;
+    }
+
+    @Override
     public InputActions inputActions() {
         return inputActions;
     }
@@ -541,11 +562,57 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     }
 
     @Override
+    public SteamService steam() {
+        if (steamService == null) {
+            steamService = resolveSteamService();
+        }
+        return steamService;
+    }
+
+    private SteamService resolveSteamService() {
+        for (GameSystem system : gameSystems) {
+            if (system instanceof SteamCallbackSystem steam) {
+                return steam.service();
+            }
+        }
+        return SteamService.detached();
+    }
+
+    @Override
     public NetworkService network() {
         if (networkService == null) {
             networkService = resolveNetworkService();
         }
         return networkService;
+    }
+
+    @Override
+    public Optional<AudioSystem> audio() {
+        for (GameSystem system : gameSystems) {
+            if (system instanceof AudioSystem audioSystem) {
+                return Optional.of(audioSystem);
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public NavigationService navigation() {
+        if (navigationService == null) {
+            navigationService = resolveNavigationService();
+        }
+        return navigationService;
+    }
+
+    private NavigationService resolveNavigationService() {
+        for (GameSystem system : gameSystems) {
+            if (system instanceof NavigationSystem navigation) {
+                return navigation.service();
+            }
+        }
+        NavigationSystem fallback = new NavigationSystem();
+        addSystem(fallback);
+        return fallback.service();
     }
 
     private NetworkService resolveNetworkService() {

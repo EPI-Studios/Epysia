@@ -2,5 +2,6 @@ package fr.epistudio.epysia.net.session;
 
 public enum TransportKind {
     UDP,
-    LOOPBACK
+    LOOPBACK,
+    STEAM
 }

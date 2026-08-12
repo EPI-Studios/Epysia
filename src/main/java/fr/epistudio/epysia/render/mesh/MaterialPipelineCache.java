@@ -42,6 +42,7 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -66,6 +67,7 @@ final class MaterialPipelineCache {
     private long uniformFrameCounter;
     private final List<BufferHandle> ownedBuffers = new ArrayList<>();
 
+    private BooleanSupplier depthPrepassEnabled = () -> false;
     private RenderBackend backend;
     private TextureHandle defaultAlbedo;
     private TextureHandle defaultNormalMap;
@@ -75,6 +77,27 @@ final class MaterialPipelineCache {
         this.shaderLoader = shaderLoader;
         this.shaderWatcher = shaderWatcher;
         this.logger = logger;
+    }
+
+    void useDepthPrepassState(BooleanSupplier enabled) {
+        this.depthPrepassEnabled = enabled;
+    }
+
+    boolean depthPrepassCovers(Material material, boolean skinned) {
+        if (!depthPrepassEnabled.getAsBoolean() || skinned || material.blended()) {
+            return false;
+        }
+        return !material.alphaScissor() || shadowMasked(material);
+    }
+
+    private boolean shadowMasked(Material material) {
+        return material instanceof LitMaterial lit && lit.alphaCutoff > 0.0f
+                && materialClassHasUniformBuffer(material);
+    }
+
+    private boolean materialClassHasUniformBuffer(Material material) {
+        MaterialClassMetadata metadata = reflectionCache.get(material.getClass());
+        return metadata != null && metadata.hasUniformBuffer();
     }
 
     void initialize(RenderBackend backend) {
@@ -203,12 +226,15 @@ final class MaterialPipelineCache {
     private static final long NO_SHADOWS_BIT = 1L << 60;
     private static final long LIGHTMAP_UV2_BIT = 1L << 59;
 
-    private String textureDefines(Material material, long textureMask) {
+    private String textureDefines(Material material, long textureMask, boolean skinned) {
         MaterialClassMetadata metadata = reflectionCache.get(material.getClass());
         if (metadata == null || textureMask == 0L) {
             return shadowFilterDefines();
         }
         StringBuilder defines = new StringBuilder(shadowFilterDefines());
+        if (material.alphaScissor() && depthPrepassCovers(material, skinned)) {
+            defines.append("#define MATERIAL_EARLY_DEPTH_TESTED\n");
+        }
         List<TextureFieldDescriptor> fields = metadata.textureFields();
         for (int index = 0; index < fields.size(); index++) {
             if ((textureMask & (1L << index)) != 0L) {
@@ -270,7 +296,7 @@ final class MaterialPipelineCache {
     private MaterialClassResources buildFallbackClassResources(Material material, String surfacePath,
                                                                boolean skinned, boolean colored,
                                                                long textureMask, boolean multiDraw) {
-        String defines = textureDefines(material, textureMask);
+        String defines = textureDefines(material, textureMask, skinned);
         LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(), "",
                 skinned, colored, defines, (textureMask & LIGHTMAP_UV2_BIT) != 0L);
         MaterialClassMetadata metadata =
@@ -286,18 +312,20 @@ final class MaterialPipelineCache {
                 supportsInstancing(material));
     }
 
-    private static String pipelineKey(Material material, boolean skinned, boolean colored) {
+    private String pipelineKey(Material material, boolean skinned, boolean colored) {
         return pipelineKey(material, skinned, colored, false);
     }
 
-    private static String pipelineKey(Material material, boolean skinned, boolean colored, boolean multiDraw) {
+    private String pipelineKey(Material material, boolean skinned, boolean colored, boolean multiDraw) {
+        boolean prepassCovered = depthPrepassCovers(material, skinned);
         return material.getClass().getName() + "|" + material.vertexShaderPath() + "|" + material.fragmentShaderPath()
                 + "|" + surfaceShaderPathOf(material)
                 + "|" + (material.blended() ? "blended" : "opaque")
                 + "|" + (material.doubleSided() ? "doubleSided" : "culled")
                 + "|" + (skinned ? "skinned" : "static")
                 + "|" + (colored ? "colored" : "plain")
-                + "|" + (multiDraw ? "multiDraw" : "singleDraw");
+                + "|" + (multiDraw ? "multiDraw" : "singleDraw")
+                + "|" + (prepassCovered ? "prepassCovered" : "writesDepth");
     }
 
     static String surfaceShaderPathOf(Material material) {
@@ -420,7 +448,7 @@ final class MaterialPipelineCache {
 
     private MaterialClassResources buildClassResources(Material material, boolean skinned, boolean colored,
                                                        long textureMask, boolean multiDraw) {
-        String defines = textureDefines(material, textureMask);
+        String defines = textureDefines(material, textureMask, skinned);
         LoadedPrograms programs = loadPrograms(material.vertexShaderPath(), material.fragmentShaderPath(),
                 surfaceShaderPathOf(material), skinned, colored, defines,
                 (textureMask & LIGHTMAP_UV2_BIT) != 0L, multiDraw);
@@ -571,15 +599,15 @@ final class MaterialPipelineCache {
             attributes.add(new VertexAttribute(5, VertexFormat.FLOAT4, skinOffset + 8));
         }
         VertexLayout layout = new VertexLayout(attributes, MeshShaderBindings.vertexStride(skinned, colored));
-        return new PipelineDescriptor(programs.shaderSource(), layout, renderStateFor(material), bindingLayout);
+        return new PipelineDescriptor(programs.shaderSource(), layout,
+                renderStateFor(material, skinned), bindingLayout);
     }
 
-    private static RenderState renderStateFor(Material material) {
+    private RenderState renderStateFor(Material material, boolean skinned) {
         RenderState base = material.blended() ? RenderState.TRANSPARENT_3D : RenderState.OPAQUE_3D;
-        if (!material.doubleSided()) {
-            return base;
-        }
-        return new RenderState(base.topology(), base.depthTest(), base.blendMode(), CullMode.NONE, base.depthWrite());
+        boolean writesDepth = base.depthWrite() && !depthPrepassCovers(material, skinned);
+        CullMode cullMode = material.doubleSided() ? CullMode.NONE : base.cullMode();
+        return new RenderState(base.topology(), base.depthTest(), base.blendMode(), cullMode, writesDepth);
     }
 
     private void registerHotReload(String cacheKey, PipelineHandle pipeline, String vertexPath, String fragmentPath,

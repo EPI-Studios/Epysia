@@ -53,6 +53,8 @@ public class CharacterControllerComponent extends Component {
     private boolean hitCeiling;
     private boolean jumpRequested;
 
+    private boolean simulated = true;
+
     public CharacterControllerComponent setCapsule(float radius, float halfHeight) {
         this.capsuleRadius = radius;
         this.capsuleHalfHeight = halfHeight;
@@ -98,6 +100,15 @@ public class CharacterControllerComponent extends Component {
 
     public CharacterControllerComponent setSnapToGround(boolean value) {
         this.snapToGround = value;
+        return this;
+    }
+
+    public boolean simulated() {
+        return simulated;
+    }
+
+    public CharacterControllerComponent setSimulated(boolean value) {
+        simulated = value;
         return this;
     }
 

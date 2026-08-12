@@ -66,7 +66,7 @@ public final class AnimatorSection {
 
     private void renderBlendSpace(Animator animator, List<ClipCatalog.ClipEntry> entries) {
         ImGui.separator();
-        ImGui.text("Blend space");
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_ANIMATOR_SECTION_BLEND_SPACE));
         renderBlendShape(animator);
         renderBlendPositions(animator);
         for (int sampleIndex = 0; sampleIndex < animator.blendSamples().size(); sampleIndex++) {
@@ -74,7 +74,7 @@ public final class AnimatorSection {
                 return;
             }
         }
-        if (ImGui.button("Add blend sample##animator-add-blend")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_ANIMATOR_SECTION_ADD_BLEND, "animator-add-blend"))) {
             animator.addBlendSample();
             activeDocument.get().markDirty();
         }
@@ -121,12 +121,12 @@ public final class AnimatorSection {
 
     private boolean renderBlendSampleBody(Animator animator, BlendSample sample, int sampleIndex,
                                           List<ClipCatalog.ClipEntry> entries) {
-        if (!ImGui.treeNodeEx("Sample " + (sampleIndex + 1))) {
+        if (!ImGui.treeNodeEx(I18n.translate(TextKey.EDITOR_ANIMATOR_SECTION_SAMPLE, sampleIndex + 1))) {
             return false;
         }
         renderBlendSampleClip(sample, entries);
         renderBlendSamplePosition(animator, sample);
-        boolean removed = ImGui.button("Remove sample##animator-remove-blend");
+        boolean removed = ImGui.button(I18n.label(TextKey.EDITOR_ANIMATOR_SECTION_REMOVE_BLEND, "animator-remove-blend"));
         if (removed) {
             animator.removeBlendSample(sampleIndex);
             activeDocument.get().markDirty();
@@ -167,7 +167,7 @@ public final class AnimatorSection {
 
     private void renderLayers(Animator animator, List<ClipCatalog.ClipEntry> entries) {
         ImGui.separator();
-        ImGui.text(I18n.translate(TextKey.EDITOR_ANIMATOR_SECTION_LAYERS));
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_ANIMATOR_SECTION_LAYERS));
         for (int layerIndex = 0; layerIndex < animator.layers().size(); layerIndex++) {
             if (renderLayer(animator, animator.layers().get(layerIndex), layerIndex, entries)) {
                 return;

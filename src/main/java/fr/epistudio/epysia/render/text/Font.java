@@ -60,11 +60,16 @@ public final class Font {
 
     public static Font bake(RenderBackend backend, ByteBuffer ttfData, float pixelHeight,
                             SamplerFilter samplerFilter) {
+        return bake(backend, ttfData, pixelHeight, samplerFilter, 0.0f);
+    }
+
+    public static Font bake(RenderBackend backend, ByteBuffer ttfData, float pixelHeight,
+                            SamplerFilter samplerFilter, float edgeCutoff) {
         ByteBuffer coverage = BufferUtils.createByteBuffer(ATLAS_SIZE * ATLAS_SIZE);
         List<GlyphRange> ranges = packRanges(ttfData, pixelHeight, coverage);
         TextureHandle handle = backend.createTexture(new TextureDescriptor(ATLAS_SIZE, ATLAS_SIZE,
                 TextureFormat.RGBA8, TextureUsage.SAMPLED, samplerFilter));
-        backend.writeTexture(handle, expandToRgba(coverage));
+        backend.writeTexture(handle, expandToRgba(coverage, edgeCutoff));
         return new Font(pixelHeight, handle, ranges);
     }
 
@@ -105,10 +110,14 @@ public final class Font {
         return buffer;
     }
 
-    private static ByteBuffer expandToRgba(ByteBuffer coverage) {
+    private static ByteBuffer expandToRgba(ByteBuffer coverage, float edgeCutoff) {
         ByteBuffer rgba = BufferUtils.createByteBuffer(ATLAS_SIZE * ATLAS_SIZE * 4);
+        int threshold = Math.round(Math.clamp(edgeCutoff, 0.0f, 1.0f) * 255.0f);
         for (int index = 0; index < ATLAS_SIZE * ATLAS_SIZE; index++) {
             byte value = coverage.get(index);
+            if (threshold > 0) {
+                value = (value & 0xFF) >= threshold ? (byte) 0xFF : 0;
+            }
             rgba.put((byte) 0xFF).put((byte) 0xFF).put((byte) 0xFF).put(value);
         }
         rgba.flip();

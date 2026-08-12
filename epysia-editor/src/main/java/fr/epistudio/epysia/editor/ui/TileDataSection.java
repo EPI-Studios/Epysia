@@ -1,10 +1,15 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.ui.kit.Sections;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
 import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.assets.epytilemap.TileNeighbor;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.type.ImFloat;
@@ -53,7 +58,7 @@ public final class TileDataSection {
 
     public boolean render(SpriteTilemap tilemap, Optional<TilePreview> preview) {
         this.preview = preview;
-        if (!ImGui.collapsingHeader("Tile " + brush.tileIndex())) {
+        if (!Sections.header(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_TILE, brush.tileIndex()), false)) {
             return false;
         }
         TileData data = tilemap.tileData(brush.tileIndex());
@@ -69,9 +74,9 @@ public final class TileDataSection {
 
     private boolean renderSolidToggle(SpriteTilemap tilemap) {
         boolean solid = tilemap.isSolidTile(brush.tileIndex());
-        boolean clicked = ImGui.checkbox("Solid (full cell)", solid);
+        boolean clicked = ImGui.checkbox(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_SOLID), solid);
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Blocks as a whole square. Cheapest collision, merged into big boxes.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_SOLID_HINT));
         }
         if (!clicked) {
             return false;
@@ -81,14 +86,15 @@ public final class TileDataSection {
     }
 
     private boolean renderCollisionPresets(SpriteTilemap tilemap, TileData data) {
-        ImGui.textDisabled("Collision shapes: " + data.collisionShapes().size());
+        Texts.muted(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_COLLISION_SHAPES,
+                data.collisionShapes().size()));
         boolean changed = addShapeButton(tilemap, data, "Slope /", TileCollisionShape.slope(true));
         ImGui.sameLine();
         changed |= addShapeButton(tilemap, data, "Slope \\", TileCollisionShape.slope(false));
         ImGui.sameLine();
         changed |= addShapeButton(tilemap, data, "Platform", TileCollisionShape.platform(PLATFORM_HEIGHT));
         ImGui.sameLine();
-        if (ImGui.button("Clear##shapes")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_TILE_DATA_SECTION_CLEAR_SHAPES, "shapes"))) {
             data.clearCollisionShapes();
             tilemap.touch();
             changed = true;
@@ -148,10 +154,10 @@ public final class TileDataSection {
 
     private boolean renderTerrainBits(SpriteTilemap tilemap, TileData data) {
         if (tilemap.terrains().isEmpty()) {
-            ImGui.textDisabled("Add a terrain to enable autotiling for this tile.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_NO_TERRAIN));
             return false;
         }
-        ImGui.textDisabled("Terrain bits");
+        Texts.muted(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_TERRAIN_BITS));
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip("Click the middle of the tile to say which terrain it is.\n"
                     + "Click an edge or a corner to say what it connects to there.\n"
@@ -168,13 +174,13 @@ public final class TileDataSection {
     }
 
     private boolean renderFillRow(SpriteTilemap tilemap, TileData data) {
-        boolean fill = ImGui.button("Fill whole tile");
+        boolean fill = ImGui.button(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_FILL_TILE));
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip("Sets the centre and every active neighbour to the selected terrain.\n"
                     + "This is the solid interior tile of a terrain.");
         }
         ImGui.sameLine();
-        boolean clear = ImGui.button("Clear tile");
+        boolean clear = ImGui.button(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_CLEAR_TILE));
         if (fill) {
             assignWholeTile(tilemap, data, brush.terrainIndex());
         }
@@ -196,16 +202,16 @@ public final class TileDataSection {
     private boolean renderBitsOverTile(SpriteTilemap tilemap, TileData data, TilePreview image) {
         float originX = ImGui.getCursorScreenPosX();
         float originY = ImGui.getCursorScreenPosY();
-        ImGui.image(image.textureId(), TILE_ZONE_EXTENT, TILE_ZONE_EXTENT,
+        ImGui.image(image.textureId(), EditorScale.of(TILE_ZONE_EXTENT), EditorScale.of(TILE_ZONE_EXTENT),
                 image.minU(), image.minV(), image.maxU(), image.maxV());
         boolean changed = false;
-        float cell = TILE_ZONE_EXTENT / 3.0f;
+        float cell = EditorScale.of(TILE_ZONE_EXTENT) / 3.0f;
         for (int row = 0; row < 3; row++) {
             for (int column = 0; column < 3; column++) {
                 changed |= renderZone(tilemap, data, row, column, originX + column * cell, originY + row * cell, cell);
             }
         }
-        ImGui.setCursorScreenPos(originX, originY + TILE_ZONE_EXTENT + 4.0f);
+        ImGui.setCursorScreenPos(originX, originY + EditorScale.of(TILE_ZONE_EXTENT) + 4.0f);
         return changed;
     }
 
@@ -287,7 +293,7 @@ public final class TileDataSection {
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,
                 currentTerrain == TileData.NO_TERRAIN ? 0xFF303030 : 0xFF4CAF50);
         boolean clicked = ImGui.button(currentTerrain == TileData.NO_TERRAIN ? " " : Integer.toString(currentTerrain),
-                BIT_BUTTON_SIZE, BIT_BUTTON_SIZE);
+                EditorScale.of(BIT_BUTTON_SIZE), EditorScale.of(BIT_BUTTON_SIZE));
         ImGui.popStyleColor();
         boolean hovered = ImGui.isItemHovered();
         if (hovered) {
@@ -335,17 +341,17 @@ public final class TileDataSection {
     }
 
     private boolean renderCustomData(SpriteTilemap tilemap, TileData data) {
-        data.customData().forEach((key, value) -> ImGui.textDisabled(key + " = " + value));
+        data.customData().forEach((key, value) -> Texts.muted(key + " = " + value));
         ImGui.setNextItemWidth(90.0f);
         ImGui.inputText("##customKey", customKey);
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Free form data your scripts can read with renderer.tileValueAt(x, y, key).");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_DATA_SECTION_CUSTOM_DATA_HINT));
         }
         ImGui.sameLine();
         ImGui.setNextItemWidth(90.0f);
         ImGui.inputText("##customValue", customValue);
         ImGui.sameLine();
-        if (!ImGui.button("Set##custom") || customKey.get().isBlank()) {
+        if (!ImGui.button(I18n.label(TextKey.EDITOR_TILE_DATA_SECTION_SET_CUSTOM, "custom")) || customKey.get().isBlank()) {
             return false;
         }
         data.setCustomValue(customKey.get(), customValue.get());

@@ -23,7 +23,7 @@ public final class MeshColliderFitSection {
         }
         Optional<Aabb> bounds = MeshLocalBounds.of(gameObject);
         ImGui.beginDisabled(bounds.isEmpty());
-        boolean clicked = ImGui.button("Fit to mesh");
+        boolean clicked = ImGui.button(I18n.translate(TextKey.EDITOR_MESH_COLLIDER_FIT_SECTION_FIT));
         ImGui.endDisabled();
         renderTooltip(bounds);
         return clicked ? bounds.map(box -> fitCommand(collider, box)) : Optional.empty();

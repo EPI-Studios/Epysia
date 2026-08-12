@@ -95,9 +95,21 @@ public final class AssetDatabase {
             return;
         }
         try {
-            parseIndex(Files.readString(indexPath));
+            parseIndexIfReadable(Files.readString(indexPath));
         } catch (IOException error) {
             throw new UncheckedIOException(error);
+        }
+    }
+
+    private void parseIndexIfReadable(String text) {
+        if (text.isBlank()) {
+            return;
+        }
+        try {
+            parseIndex(text);
+        } catch (RuntimeException damaged) {
+            pathByGuid.clear();
+            guidByPath.clear();
         }
     }
 

@@ -3,12 +3,10 @@ package fr.epistudio.epysia.net.transport;
 import fr.epistudio.epysia.net.protocol.MalformedPacketException;
 import fr.epistudio.epysia.net.protocol.NetReader;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.channels.DatagramChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -19,14 +17,12 @@ import java.util.Optional;
 public final class UdpTransport implements Transport {
     static final int RELIABLE_HEADER_BYTES = 15;
     static final int UNRELIABLE_HEADER_BYTES = 1;
-    private static final int RECEIVE_BUFFER_BYTES = 2048;
     private static final int DEFAULT_TRANSMISSION_UNIT = 1200;
 
     private final int transmissionUnit;
-    private final ByteBuffer receiveBuffer = ByteBuffer.allocate(RECEIVE_BUFFER_BYTES).order(ByteOrder.LITTLE_ENDIAN);
     private final Map<SocketAddress, Integer> connectionByAddress = new HashMap<>();
     private final Map<Integer, RemotePeer> peers = new HashMap<>();
-    private DatagramChannel datagramChannel;
+    private DatagramPump pump;
     private boolean acceptsNewConnections;
     private int nextConnection = 1;
     private long droppedOversizedDatagrams;
@@ -51,20 +47,14 @@ public final class UdpTransport implements Transport {
 
     @Override
     public int connect(String host, int port) {
-        if (datagramChannel == null) {
+        if (pump == null) {
             openChannel(new InetSocketAddress(0));
         }
         return registerPeer(new InetSocketAddress(host, port));
     }
 
     private void openChannel(InetSocketAddress bindAddress) {
-        try {
-            datagramChannel = DatagramChannel.open();
-            datagramChannel.configureBlocking(false);
-            datagramChannel.bind(bindAddress);
-        } catch (IOException failure) {
-            throw new TransportException("Cannot open datagram channel on " + bindAddress, failure);
-        }
+        pump = new DatagramPump(bindAddress, "epysia-net-" + bindAddress.getPort());
     }
 
     private int registerPeer(SocketAddress address) {
@@ -143,11 +133,7 @@ public final class UdpTransport implements Transport {
     }
 
     private void transmit(RemotePeer peer, ByteBuffer datagram) {
-        try {
-            datagramChannel.send(datagram, peer.address());
-        } catch (IOException failure) {
-            throw new TransportException("Datagram send to " + peer.address() + " failed", failure);
-        }
+        pump.send(peer.address(), datagram);
     }
 
     @Override
@@ -160,35 +146,28 @@ public final class UdpTransport implements Transport {
     }
 
     private void receiveAll(TransportListener listener) {
-        SocketAddress source = receiveOne();
-        while (source != null) {
-            handleDatagram(listener, source);
-            source = receiveOne();
+        pump.rethrowFailure();
+        DatagramPump.Inbound next = pump.receive();
+        while (next != null) {
+            handleDatagram(listener, next);
+            next = pump.receive();
         }
     }
 
-    private SocketAddress receiveOne() {
-        receiveBuffer.clear();
-        try {
-            return datagramChannel.receive(receiveBuffer);
-        } catch (IOException failure) {
-            throw new TransportException("Datagram receive failed", failure);
-        }
-    }
-
-    private void handleDatagram(TransportListener listener, SocketAddress source) {
-        receiveBuffer.flip();
-        RemotePeer peer = resolvePeer(listener, source);
-        if (peer == null || !receiveBuffer.hasRemaining()) {
+    private void handleDatagram(TransportListener listener, DatagramPump.Inbound datagram) {
+        ByteBuffer buffer = ByteBuffer.wrap(datagram.payload()).order(ByteOrder.LITTLE_ENDIAN);
+        RemotePeer peer = resolvePeer(listener, datagram.source());
+        if (peer == null || !buffer.hasRemaining()) {
             return;
         }
-        NetChannel channel = NetChannel.fromOrdinal(receiveBuffer.get() & 0xFF).orElse(NetChannel.UNRELIABLE);
+        NetChannel channel = NetChannel.fromOrdinal(buffer.get() & 0xFF).orElse(NetChannel.UNRELIABLE);
         if (channel == NetChannel.RELIABLE) {
-            handleReliableDatagram(listener, peer);
+            handleReliableDatagram(listener, peer, buffer, datagram.arrivalNanos());
             return;
         }
-        byte[] payload = copyRemaining();
-        listener.onPacketReceived(peer.connection(), channel, NetReader.wrapping(payload, 0, payload.length));
+        byte[] payload = copyRemaining(buffer);
+        listener.onPacketReceived(peer.connection(), channel,
+                NetReader.wrapping(payload, 0, payload.length), datagram.arrivalNanos());
     }
 
     private RemotePeer resolvePeer(TransportListener listener, SocketAddress source) {
@@ -204,31 +183,33 @@ public final class UdpTransport implements Transport {
         return peers.get(connection);
     }
 
-    private void handleReliableDatagram(TransportListener listener, RemotePeer peer) {
-        if (receiveBuffer.remaining() < RELIABLE_HEADER_BYTES - UNRELIABLE_HEADER_BYTES) {
+    private void handleReliableDatagram(TransportListener listener, RemotePeer peer,
+                                        ByteBuffer buffer, long arrivalNanos) {
+        if (buffer.remaining() < RELIABLE_HEADER_BYTES - UNRELIABLE_HEADER_BYTES) {
             return;
         }
-        int sequence = receiveBuffer.getInt();
-        peer.reliable().acknowledge(receiveBuffer.getInt(), receiveBuffer.getInt());
+        int sequence = buffer.getInt();
+        peer.reliable().acknowledge(buffer.getInt(), buffer.getInt());
         if (sequence == ReliableChannel.ACK_ONLY_SEQUENCE) {
             return;
         }
         peer.markPendingAcknowledgement();
-        if (peer.reliable().accept(sequence, copyRemaining())) {
-            deliverOrdered(listener, peer);
+        if (peer.reliable().accept(sequence, copyRemaining(buffer))) {
+            deliverOrdered(listener, peer, arrivalNanos);
         }
     }
 
-    private void deliverOrdered(TransportListener listener, RemotePeer peer) {
+    private void deliverOrdered(TransportListener listener, RemotePeer peer, long arrivalNanos) {
         for (byte[] framed : peer.reliable().drainInOrder()) {
             peer.assemble(framed).ifPresent(payload -> listener.onPacketReceived(
-                    peer.connection(), NetChannel.RELIABLE, NetReader.wrapping(payload, 0, payload.length)));
+                    peer.connection(), NetChannel.RELIABLE,
+                    NetReader.wrapping(payload, 0, payload.length), arrivalNanos));
         }
     }
 
-    private byte[] copyRemaining() {
-        byte[] payload = new byte[receiveBuffer.remaining()];
-        receiveBuffer.get(payload);
+    private static byte[] copyRemaining(ByteBuffer buffer) {
+        byte[] payload = new byte[buffer.remaining()];
+        buffer.get(payload);
         return payload;
     }
 
@@ -288,16 +269,11 @@ public final class UdpTransport implements Transport {
     }
 
     private void closeChannel() {
-        if (datagramChannel == null) {
+        if (pump == null) {
             return;
         }
-        try {
-            datagramChannel.close();
-        } catch (IOException failure) {
-            throw new TransportException("Closing the datagram channel failed", failure);
-        } finally {
-            datagramChannel = null;
-        }
+        pump.close();
+        pump = null;
     }
 
     private static final class RemotePeer {

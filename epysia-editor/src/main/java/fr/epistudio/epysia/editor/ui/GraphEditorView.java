@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
@@ -35,6 +36,7 @@ import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.input.KeyCode;
 import fr.epistudio.epysia.input.MouseButton;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.extension.imnodes.ImNodes;
 import imgui.extension.imnodes.flag.ImNodesCol;
@@ -168,8 +170,8 @@ public final class GraphEditorView {
     private boolean centerViewRequested;
     private boolean sidePanelVisible = true;
     private boolean previewPanelVisible = true;
-    private float sidePanelWidth = VARIABLES_PANEL_WIDTH;
-    private float previewPanelWidth = PREVIEW_PANEL_WIDTH;
+    private float sidePanelWidth = EditorScale.of(VARIABLES_PANEL_WIDTH);
+    private float previewPanelWidth = EditorScale.of(PREVIEW_PANEL_WIDTH);
     private float popupSpawnX;
     private float popupSpawnY;
     private float canvasMinX;
@@ -278,8 +280,8 @@ public final class GraphEditorView {
 
     private void renderEmptyWindow() {
         if (ImGui.begin(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TITLE, WINDOW_TITLE))) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_GRAPH_OPEN));
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_OPEN_HELP));
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_GRAPH_OPEN));
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_OPEN_HELP));
         }
         ImGui.end();
     }
@@ -326,7 +328,7 @@ public final class GraphEditorView {
             renderCanvas(path, graph);
             return;
         }
-        ImGui.beginChild("##graph-canvas-host", -(previewPanelWidth + SPLITTER_THICKNESS), 0.0f, false);
+        ImGui.beginChild("##graph-canvas-host", -(previewPanelWidth + EditorScale.of(SPLITTER_THICKNESS)), 0.0f, false);
         renderCanvas(path, graph);
         ImGui.endChild();
         ImGui.sameLine();
@@ -345,7 +347,7 @@ public final class GraphEditorView {
 
     private void renderVfxPreviewPanel(Path path) {
         ImGui.beginChild("##graph-vfx-preview", 0.0f, 0.0f, true);
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_EFFECT_PREVIEW));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_EFFECT_PREVIEW));
         vfxPreview.render(path);
         ImGui.endChild();
     }
@@ -372,7 +374,7 @@ public final class GraphEditorView {
         ImGui.pushStyleColor(ImGuiCol.Button, SPLITTER_COLOR);
         ImGui.pushStyleColor(ImGuiCol.ButtonHovered, SPLITTER_ACTIVE_COLOR);
         ImGui.pushStyleColor(ImGuiCol.ButtonActive, SPLITTER_ACTIVE_COLOR);
-        ImGui.button(id, SPLITTER_THICKNESS, Math.max(1.0f, ImGui.getContentRegionAvailY()));
+        ImGui.button(id, EditorScale.of(SPLITTER_THICKNESS), Math.max(1.0f, ImGui.getContentRegionAvailY()));
         ImGui.popStyleColor(3);
         if (ImGui.isItemHovered() || ImGui.isItemActive()) {
             ImGui.setMouseCursor(ImGuiMouseCursor.ResizeEW);
@@ -382,12 +384,12 @@ public final class GraphEditorView {
             float delta = ImGui.getIO().getMouseDeltaX();
             adjusted += growsWithDrag ? delta : -delta;
         }
-        return Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, adjusted));
+        return Math.max(EditorScale.of(MIN_PANEL_WIDTH), Math.min(EditorScale.of(MAX_PANEL_WIDTH), adjusted));
     }
 
     private void renderPreviewPanel(Path path, OpenGraph graph) {
         ImGui.beginChild("##graph-preview", 0.0f, 0.0f, true);
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW));
         renderMeshSelector(path, graph);
         renderMainPreviewImage(path, graph);
         renderPreviewToggles();
@@ -397,18 +399,18 @@ public final class GraphEditorView {
     private void renderMainPreviewImage(Path path, OpenGraph graph) {
         previews.mainPreviewTexture(path, graph.asset, System.nanoTime())
                 .ifPresentOrElse(this::drawMainPreview,
-                        () -> ImGui.textDisabled(I18n.translate(
+                        () -> Texts.muted(I18n.translate(
                                 TextKey.EDITOR_GRAPH_EDITOR_VIEW_BUILDING_PREVIEW)));
         previews.mainErrorMessage().ifPresent(message -> {
             ImGui.pushTextWrapPos(0.0f);
-            ImGui.textColored(COLOR_PREVIEW_ERROR,
+            Texts.colored(COLOR_PREVIEW_ERROR,
                     I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_COMPILE_ERROR, message));
             ImGui.popTextWrapPos();
         });
     }
 
     private void drawMainPreview(int texture) {
-        ImGui.image(texture, PREVIEW_IMAGE_SIZE, PREVIEW_IMAGE_SIZE, 0.0f, 1.0f, 1.0f, 0.0f);
+        ImGui.image(texture, EditorScale.of(PREVIEW_IMAGE_SIZE), EditorScale.of(PREVIEW_IMAGE_SIZE), 0.0f, 1.0f, 1.0f, 0.0f);
         handlePreviewCameraInput();
     }
 
@@ -472,7 +474,7 @@ public final class GraphEditorView {
                 "graph-node-previews"), enabled)) {
             onNodePreviewsToggled.accept(enabled.get());
         }
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_LIVE_TARGETS,
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_LIVE_TARGETS,
                 previews.liveNodeTargetCount(), NodePreviewCache.MAX_LIVE_TARGETS));
     }
 
@@ -536,7 +538,7 @@ public final class GraphEditorView {
     }
 
     private void renderPanelActions(Path path, OpenGraph graph) {
-        ImGui.textDisabled(kindLabel(graph.asset.kind()));
+        Texts.muted(kindLabel(graph.asset.kind()));
         if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_SAVE, "graph-save"), -1.0f, 0.0f)) {
             save(path, graph);
         }
@@ -554,7 +556,7 @@ public final class GraphEditorView {
     }
 
     private void renderVariablesSection(OpenGraph graph) {
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_VARIABLES));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_VARIABLES));
         int removeIndex = -1;
         for (int index = 0; index < graph.asset.variables().size(); index++) {
             if (renderVariableRow(graph, index)) {
@@ -570,8 +572,8 @@ public final class GraphEditorView {
 
     private void renderPalettePanel(OpenGraph graph) {
         ImGui.separator();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES));
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES_HELP));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES_HELP));
         dockedPalette.render(0.0f, 0.0f, graph.asset, registry,
                 entry -> spawnPaletteEntry(graph, entry, panelSpawnX(), panelSpawnY()));
     }
@@ -595,7 +597,7 @@ public final class GraphEditorView {
     }
 
     private void renderShaderPanel(Path path, OpenGraph graph) {
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PARAMETERS));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PARAMETERS));
         boolean anyParameter = false;
         for (GraphNode node : graph.asset.nodes()) {
             if (node.typeKey().startsWith("shader.parameter.")) {
@@ -604,10 +606,10 @@ public final class GraphEditorView {
             }
         }
         if (!anyParameter) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_PARAMETER_HELP));
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_PARAMETER_HELP));
         }
         ImGui.separator();
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_GENERATED_FILE));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_GENERATED_FILE));
         ImGui.textWrapped(generatedShaderPath(path, graph.asset).getFileName().toString());
     }
 
@@ -958,7 +960,7 @@ public final class GraphEditorView {
         ImGui.textUnformatted(titleOf(graph, node));
         if (StateNodes.isState(node) && StateNodes.markedInitial(node)) {
             ImGui.sameLine();
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_INITIAL_MARKER));
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_INITIAL_MARKER));
         }
         debugInstance.ifPresent(instance -> renderTitleDebug(node, instance));
         ImNodes.endNodeTitleBar();
@@ -992,12 +994,12 @@ public final class GraphEditorView {
     private void renderNodePreviewImage(OpenGraph graph, GraphNode node) {
         String pinName = previewPinOf(graph, node).orElse(ShaderNodes.RESULT_PIN);
         if (!nodeVisibleInViewport(node.id())) {
-            ImGui.dummy(scaledWidth(NODE_PREVIEW_SIZE), scaledWidth(NODE_PREVIEW_SIZE));
+            ImGui.dummy(scaledWidth(EditorScale.of(NODE_PREVIEW_SIZE)), scaledWidth(EditorScale.of(NODE_PREVIEW_SIZE)));
             return;
         }
         previews.nodePreviewTexture(graph.graphPath, graph.asset, node.id(), pinName)
-                .ifPresentOrElse(texture -> ImGui.image(texture, scaledWidth(NODE_PREVIEW_SIZE),
-                                scaledWidth(NODE_PREVIEW_SIZE),
+                .ifPresentOrElse(texture -> ImGui.image(texture, scaledWidth(EditorScale.of(NODE_PREVIEW_SIZE)),
+                                scaledWidth(EditorScale.of(NODE_PREVIEW_SIZE)),
                                 0.0f, 1.0f, 1.0f, 0.0f),
                         () -> renderNodePreviewFallback(graph, node, pinName));
         if (ImGui.isItemClicked(ImGuiMouseButton.Right)) {
@@ -1007,7 +1009,7 @@ public final class GraphEditorView {
 
     private void renderNodePreviewFallback(OpenGraph graph, GraphNode node, String pinName) {
         previews.nodeErrorMessage(graph.graphPath, node.id(), pinName)
-                .ifPresentOrElse(message -> ImGui.textColored(COLOR_PREVIEW_ERROR,
+                .ifPresentOrElse(message -> Texts.colored(COLOR_PREVIEW_ERROR,
                                 I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_PREVIEW)),
                         () -> ImGui.textDisabled("..."));
     }
@@ -1040,10 +1042,10 @@ public final class GraphEditorView {
         }
         float nodeMaxX = nodeMinX + nodeWidth;
         float nodeMaxY = nodeMinY + nodeHeight;
-        return nodeMaxX >= canvasMinX - PREVIEW_CULL_MARGIN
-                && nodeMinX <= canvasMaxX + PREVIEW_CULL_MARGIN
-                && nodeMaxY >= canvasMinY - PREVIEW_CULL_MARGIN
-                && nodeMinY <= canvasMaxY + PREVIEW_CULL_MARGIN;
+        return nodeMaxX >= canvasMinX - EditorScale.of(PREVIEW_CULL_MARGIN)
+                && nodeMinX <= canvasMaxX + EditorScale.of(PREVIEW_CULL_MARGIN)
+                && nodeMaxY >= canvasMinY - EditorScale.of(PREVIEW_CULL_MARGIN)
+                && nodeMinY <= canvasMaxY + EditorScale.of(PREVIEW_CULL_MARGIN);
     }
 
     private void renderTitleDebug(GraphNode node, GraphInstance instance) {
@@ -1056,7 +1058,7 @@ public final class GraphEditorView {
         int fireCount = instance.nodeFireCount(node.id());
         if (fireCount > 0) {
             ImGui.sameLine();
-            ImGui.textDisabled("x" + fireCount);
+            Texts.muted("x" + fireCount);
         }
     }
 
@@ -1104,7 +1106,7 @@ public final class GraphEditorView {
     private void renderStateNameSetting(OpenGraph graph, GraphNode node) {
         String bufferKey = "setting-" + node.id() + "-" + StateNodes.STATE_NAME_SETTING;
         ImString buffer = graph.textBuffer(bufferKey, StateNodes.stateName(node));
-        ImGui.setNextItemWidth(scaledWidth(VECTOR_LITERAL_WIDTH));
+        ImGui.setNextItemWidth(scaledWidth(EditorScale.of(VECTOR_LITERAL_WIDTH)));
         if (ImGui.inputText("##state-name", buffer)) {
             node.values().put(StateNodes.STATE_NAME_SETTING, buffer.get().replace("\0", ""));
             graph.dirty = true;
@@ -1142,7 +1144,7 @@ public final class GraphEditorView {
     }
 
     private void renderPriorityRow(OpenGraph graph, GraphNode node) {
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PRIORITY));
+        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PRIORITY));
         ImGui.sameLine();
         renderWholeNumberSetting(graph, node, TRANSITION_PRIORITY_SETTING);
     }
@@ -1150,7 +1152,7 @@ public final class GraphEditorView {
     private void renderGenericSettings(OpenGraph graph, GraphNode node) {
         Optional<NodeDefinition> definition = registry.find(node.typeKey());
         if (definition.isEmpty()) {
-            ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_UNKNOWN_NODE_TYPE));
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_UNKNOWN_NODE_TYPE));
             return;
         }
         List<NodeSetting> settings = definition.get().settings();
@@ -1201,9 +1203,9 @@ public final class GraphEditorView {
         }
         ImNodes.beginStaticAttribute(node.id() * PIN_STRIDE + TEXTURE_PREVIEW_SLOT_OFFSET);
         thumbnails.get(path).ifPresentOrElse(
-                texture -> ImGui.image(texture, scaledWidth(TEXTURE_PREVIEW_SIZE),
-                        scaledWidth(TEXTURE_PREVIEW_SIZE)),
-                () -> ImGui.textDisabled(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_PREVIEW)));
+                texture -> ImGui.image(texture, scaledWidth(EditorScale.of(TEXTURE_PREVIEW_SIZE)),
+                        scaledWidth(EditorScale.of(TEXTURE_PREVIEW_SIZE))),
+                () -> Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_PREVIEW)));
         ImNodes.endStaticAttribute();
     }
 
@@ -1277,7 +1279,7 @@ public final class GraphEditorView {
 
     private void renderCustomInputCountSetting(OpenGraph graph, GraphNode node, NodeSetting setting) {
         int[] value = {GraphValues.asInt(node.values().getOrDefault(setting.key(), setting.defaultValue()))};
-        ImGui.setNextItemWidth(scaledWidth(LITERAL_WIDTH));
+        ImGui.setNextItemWidth(scaledWidth(EditorScale.of(LITERAL_WIDTH)));
         if (ImGui.dragInt("##setting-" + setting.key(), value, 0.1f, 0, ShaderNodes.CUSTOM_CODE_MAX_INPUTS)) {
             node.values().put(setting.key(),
                     Math.clamp(value[0], 0, ShaderNodes.CUSTOM_CODE_MAX_INPUTS));
@@ -1324,7 +1326,7 @@ public final class GraphEditorView {
                                    List<String> options) {
         String current = GraphValues.asString(node.values()
                 .getOrDefault(setting.key(), setting.defaultValue()));
-        ImGui.setNextItemWidth(scaledWidth(LITERAL_WIDTH));
+        ImGui.setNextItemWidth(scaledWidth(EditorScale.of(LITERAL_WIDTH)));
         if (!ImGui.beginCombo("##setting-" + setting.key(), current)) {
             return;
         }
@@ -1339,7 +1341,7 @@ public final class GraphEditorView {
 
     private void renderWholeNumberSetting(OpenGraph graph, GraphNode node, NodeSetting setting) {
         int[] value = {GraphValues.asInt(node.values().getOrDefault(setting.key(), setting.defaultValue()))};
-        ImGui.setNextItemWidth(scaledWidth(LITERAL_WIDTH));
+        ImGui.setNextItemWidth(scaledWidth(EditorScale.of(LITERAL_WIDTH)));
         if (ImGui.dragInt("##setting-" + setting.key(), value, 0.1f, 1, 16)) {
             node.values().put(setting.key(), Math.max(1, value[0]));
             graph.dirty = true;
@@ -1348,7 +1350,7 @@ public final class GraphEditorView {
 
     private void renderNumberSetting(OpenGraph graph, GraphNode node, NodeSetting setting) {
         float[] value = {GraphValues.asFloat(node.values().getOrDefault(setting.key(), setting.defaultValue()))};
-        ImGui.setNextItemWidth(scaledWidth(LITERAL_WIDTH));
+        ImGui.setNextItemWidth(scaledWidth(EditorScale.of(LITERAL_WIDTH)));
         if (ImGui.dragFloat("##setting-" + setting.key(), value, 0.05f)) {
             node.values().put(setting.key(), value[0]);
             graph.dirty = true;
@@ -1367,7 +1369,7 @@ public final class GraphEditorView {
         String bufferKey = "setting-" + node.id() + "-" + setting.key();
         String current = GraphValues.asString(node.values().getOrDefault(setting.key(), setting.defaultValue()));
         ImString buffer = graph.textBuffer(bufferKey, current);
-        ImGui.setNextItemWidth(scaledWidth(VECTOR_LITERAL_WIDTH));
+        ImGui.setNextItemWidth(scaledWidth(EditorScale.of(VECTOR_LITERAL_WIDTH)));
         if (ImGui.inputText("##setting-" + setting.key(), buffer)) {
             node.values().put(setting.key(), buffer.get().replace("\0", ""));
             graph.dirty = true;
@@ -1456,8 +1458,8 @@ public final class GraphEditorView {
 
     private static float literalWidthFor(PinType type) {
         return switch (type) {
-            case VECTOR2, VECTOR3, VECTOR4 -> VECTOR_LITERAL_WIDTH;
-            default -> LITERAL_WIDTH;
+            case VECTOR2, VECTOR3, VECTOR4 -> EditorScale.of(VECTOR_LITERAL_WIDTH);
+            default -> EditorScale.of(LITERAL_WIDTH);
         };
     }
 
@@ -1469,9 +1471,9 @@ public final class GraphEditorView {
             graph.pinsById.put(attributeId, new PinReference(node, pin, true));
             ImNodes.pushColorStyle(ImNodesCol.Pin, colorFor(pin.type()));
             ImNodes.beginOutputAttribute(attributeId, shapeFor(pin.type()));
-            ImGui.indent(scaledWidth(LITERAL_WIDTH));
+            ImGui.indent(scaledWidth(EditorScale.of(LITERAL_WIDTH)));
             ImGui.textUnformatted(pin.name());
-            ImGui.unindent(scaledWidth(LITERAL_WIDTH));
+            ImGui.unindent(scaledWidth(EditorScale.of(LITERAL_WIDTH)));
             ImNodes.endOutputAttribute();
             ImNodes.popColorStyle();
         }

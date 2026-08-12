@@ -4,12 +4,21 @@ import fr.epistudio.epysia.assets.AssetRegistry;
 import fr.epistudio.epysia.concurrent.BackgroundTasks;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.net.NetworkService;
+import fr.epistudio.epysia.steam.SteamService;
 import fr.epistudio.epysia.render.PreRenderPass;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.render.backend.RenderBackend;
+import fr.epistudio.epysia.save.SaveGames;
+
+import java.nio.file.Path;
+import fr.epistudio.epysia.web.WebService;
 import fr.epistudio.epysia.render.postfx.PostEffects;
 import fr.epistudio.epysia.render.text.FontRegistry;
+import fr.epistudio.epysia.audio.AudioSystem;
+
+import java.util.Optional;
 import fr.epistudio.epysia.input.action.InputActions;
+import fr.epistudio.epysia.navigation.NavigationService;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.Hud;
 import fr.epistudio.epysia.scripting.Scheduler;
@@ -40,8 +49,31 @@ public interface EngineServices {
 
     PostEffects postEffects();
 
+    default SaveGames saves() {
+        return SaveGames.beside(Path.of(System.getProperty("user.dir", ".")));
+    }
+
+    default WebService web() {
+        return new WebService(backgroundTasks());
+    }
+
     default NetworkService network() {
         return NetworkService.detached();
+    }
+
+    default SteamService steam() {
+        return SteamService.detached();
+    }
+
+    default Optional<AudioSystem> audio() {
+        return Optional.empty();
+    }
+
+    default NavigationService navigation() {
+        return NavigationService.detached();
+    }
+
+    default void requestCatchUpSteps(int steps) {
     }
 
     void addPreRenderPass(PreRenderPass pass);

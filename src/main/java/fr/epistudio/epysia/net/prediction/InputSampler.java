@@ -35,15 +35,23 @@ public final class InputSampler {
     }
 
     public InputSample sample(int tick, InputActions actions, InputState input) {
+        return sample(tick, actions, input, 0.0f, 0.0f);
+    }
+
+    public InputSample sample(int tick, InputActions actions, InputState input, float yaw, float pitch) {
         long downMask = 0L;
+        long pressedMask = 0L;
         float[] axisValues = new float[actionNames.size()];
         for (int index = 0; index < actionNames.size(); index++) {
             String name = actionNames.get(index);
             if (actions.isDown(name, input)) {
                 downMask |= 1L << index;
             }
+            if (actions.wasPressed(name, input)) {
+                pressedMask |= 1L << index;
+            }
             axisValues[index] = actions.value(name, input);
         }
-        return new InputSample(tick, downMask, axisValues);
+        return new InputSample(tick, downMask, pressedMask, yaw, pitch, axisValues).looking(yaw, pitch);
     }
 }

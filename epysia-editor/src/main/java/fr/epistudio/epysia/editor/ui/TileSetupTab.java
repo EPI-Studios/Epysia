@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasGrid;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlasRegion;
@@ -9,6 +12,7 @@ import fr.epistudio.epysia.assets.epytilemap.TileData;
 import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.assets.SpriteOpaqueBounds;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.type.ImInt;
 
@@ -63,8 +67,8 @@ public final class TileSetupTab {
     }
 
     private boolean renderCollisionColumn(SpriteTilemap tilemap, SpriteAtlas atlas) {
-        ImGui.beginChild("tileSetupCenter", CENTER_COLUMN_WIDTH, 0.0f, true);
-        ImGui.text("Tile " + brush.tileIndex() + " collision");
+        ImGui.beginChild("tileSetupCenter", EditorScale.of(CENTER_COLUMN_WIDTH), 0.0f, true);
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_TILE_SETUP_TAB_TILE_COLLISION, brush.tileIndex()));
         boolean changed = renderPresets(tilemap);
         changed |= renderPolygonEditor(tilemap, atlas);
         ImGui.endChild();
@@ -88,7 +92,7 @@ public final class TileSetupTab {
 
     private boolean renderSolidToggle(SpriteTilemap tilemap, TileData data) {
         boolean solid = tilemap.isSolidTile(brush.tileIndex()) && data.collisionShapes().isEmpty();
-        boolean clicked = ImGui.checkbox("Whole cell is solid", solid);
+        boolean clicked = ImGui.checkbox(I18n.translate(TextKey.EDITOR_TILE_SETUP_TAB_SOLID), solid);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip("Full cells merge into large boxes, which is the cheapest collision.\n"
                     + "Adding a polygon below replaces this.");
@@ -117,9 +121,9 @@ public final class TileSetupTab {
     }
 
     private boolean clearButton(SpriteTilemap tilemap, TileData data) {
-        boolean clicked = ImGui.button("No collision");
+        boolean clicked = ImGui.button(I18n.translate(TextKey.EDITOR_TILE_SETUP_TAB_NO_COLLISION));
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("This tile stops blocking anything.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_SETUP_TAB_NO_COLLISION_HINT));
         }
         if (!clicked) {
             return false;
@@ -133,17 +137,17 @@ public final class TileSetupTab {
         Optional<ImagePreviewTexture.PreviewImage> image = palette.atlasImage(tilemap, atlas);
         Optional<SpriteAtlasRegion> region = atlas.region(Integer.toString(brush.tileIndex()));
         if (image.isEmpty() || region.isEmpty()) {
-            ImGui.textDisabled("Tile preview unavailable.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILE_SETUP_TAB_PREVIEW_UNAVAILABLE));
             return false;
         }
         boolean changed = renderFitRow(tilemap, atlas);
         changed |= renderShapeOperations(tilemap);
         renderSnapControl(atlas);
-        ImGui.textDisabled("Drag a handle, click an edge to add one, right click one to remove it."
+        Texts.muted(I18n.translate(TextKey.EDITOR_TILE_SETUP_TAB_HANDLES_HINT)
                 + " Hold Shift to ignore the grid.");
         return changed | polygonEditor.render(tilemap.tileData(brush.tileIndex()), image.get().textureId(),
                 region.get().minU(), region.get().minV(), region.get().maxU(), region.get().maxV(),
-                PREVIEW_SIZE, snapDivisions.get());
+                EditorScale.of(PREVIEW_SIZE), snapDivisions.get());
     }
 
     private boolean renderFitRow(SpriteTilemap tilemap, SpriteAtlas atlas) {
@@ -227,10 +231,10 @@ public final class TileSetupTab {
 
     private void renderSnapControl(SpriteAtlas atlas) {
         atlas.grid().ifPresent(grid -> defaultSnapFrom(grid));
-        ImGui.setNextItemWidth(SNAP_FIELD_WIDTH);
+        ImGui.setNextItemWidth(EditorScale.of(SNAP_FIELD_WIDTH));
         ImGui.inputInt("Snap steps", snapDivisions);
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Handles land on this many steps across the tile."
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TILE_SETUP_TAB_STEPS_HINT)
                     + "\nSet it to the tile pixel size for pixel perfect shapes, or zero to snap freely.");
         }
         snapDivisions.set(Math.clamp(snapDivisions.get(), 0, MAXIMUM_SNAP_DIVISIONS));

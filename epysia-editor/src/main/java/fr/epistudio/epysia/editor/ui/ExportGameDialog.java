@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.export.ExportRequest;
 import fr.epistudio.epysia.editor.export.ExportStage;
 import fr.epistudio.epysia.editor.export.ExportTask;
@@ -11,6 +12,7 @@ import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImString;
@@ -108,7 +110,7 @@ public final class ExportGameDialog {
     private void renderProgress() {
         ImGui.textUnformatted(I18n.translate(stageKey(exportTask.stage())));
         float completion = exportTask.completion();
-        ImGui.progressBar(completion, FIELD_WIDTH, 0.0f, Math.round(completion * PERCENT) + "%");
+        ImGui.progressBar(completion, EditorScale.of(FIELD_WIDTH), 0.0f, Math.round(completion * PERCENT) + "%");
     }
 
     private static TextKey stageKey(ExportStage stage) {
@@ -119,11 +121,12 @@ public final class ExportGameDialog {
             case COPYING_PROJECT -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_COPYING_PROJECT;
             case WRITING_LAUNCHER -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_WRITING_LAUNCHER;
             case ARCHIVING -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_ARCHIVING;
+            case VALIDATING -> TextKey.EDITOR_EXPORT_GAME_DIALOG_STAGE_VALIDATING;
         };
     }
 
     private void renderFields() {
-        ImGui.setNextItemWidth(FIELD_WIDTH);
+        ImGui.setNextItemWidth(EditorScale.of(FIELD_WIDTH));
         ImGui.inputText(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_GAME_TITLE,
                 "export-game-title"), titleInput);
         renderSceneCombo();
@@ -133,22 +136,22 @@ public final class ExportGameDialog {
     }
 
     private void renderIconRow() {
-        if (ImGui.button("Choose icon...###export-game-icon")) {
+        if (ImGui.button(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_CHOOSE_ICON, "export-game-icon"))) {
             FileDialogs.pickFile("Game icon", project.rootDirectory(), "*.png", "PNG image")
                     .ifPresent(path -> iconFile = path);
         }
         ImGui.sameLine();
-        ImGui.textDisabled(iconFile == null ? "Default Epysia icon" : iconFile.getFileName().toString());
+        Texts.muted(iconFile == null ? "Default Epysia icon" : iconFile.getFileName().toString());
         if (iconFile != null) {
             ImGui.sameLine();
-            if (ImGui.button("Clear###export-game-icon-clear")) {
+            if (ImGui.button(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_CLEAR_ICON, "export-game-icon-clear"))) {
                 iconFile = null;
             }
         }
     }
 
     private void renderPlatformCombo() {
-        ImGui.setNextItemWidth(FIELD_WIDTH);
+        ImGui.setNextItemWidth(EditorScale.of(FIELD_WIDTH));
         if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_PLATFORM,
                 "export-game-platform"), I18n.translate(platformKey(platforms[selectedPlatformIndex])))) {
             return;
@@ -173,7 +176,7 @@ public final class ExportGameDialog {
         String preview = sceneFileNames.isEmpty()
                 ? I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_NO_SCENES)
                 : sceneFileNames.get(selectedSceneIndex);
-        ImGui.setNextItemWidth(FIELD_WIDTH);
+        ImGui.setNextItemWidth(EditorScale.of(FIELD_WIDTH));
         if (!ImGui.beginCombo(I18n.label(TextKey.EDITOR_EXPORT_GAME_DIALOG_SCENE,
                 "export-game-scene"), preview)) {
             return;
@@ -194,7 +197,7 @@ public final class ExportGameDialog {
                     .ifPresent(path -> outputDirectory = path);
         }
         ImGui.sameLine();
-        ImGui.textDisabled(outputDirectory == null
+        Texts.muted(outputDirectory == null
                 ? I18n.translate(TextKey.EDITOR_EXPORT_GAME_DIALOG_NO_FOLDER_SELECTED)
                 : outputDirectory.toString());
     }

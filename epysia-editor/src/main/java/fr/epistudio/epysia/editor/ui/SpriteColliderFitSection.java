@@ -13,6 +13,8 @@ import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.physics.components.BoxCollider2D;
 import fr.epistudio.epysia.physics.components.CharacterController2D;
 import fr.epistudio.epysia.physics.components.CircleCollider2D;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 
 import java.nio.file.Files;
@@ -34,7 +36,7 @@ public final class SpriteColliderFitSection {
         }
         Optional<SpriteOpaqueBounds.UnitBounds> bounds = spriteBounds(gameObject);
         ImGui.beginDisabled(bounds.isEmpty());
-        boolean clicked = ImGui.button("Fit to sprite");
+        boolean clicked = ImGui.button(I18n.translate(TextKey.EDITOR_SPRITE_COLLIDER_FIT_SECTION_FIT));
         ImGui.endDisabled();
         renderTooltip(bounds);
         return clicked && bounds.isPresent() && apply(gameObject, component, bounds.get());

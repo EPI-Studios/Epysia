@@ -160,7 +160,9 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
     }
 
     private Font fontFor(UiFontStyle style) {
-        return fontRegistry.resolve(engine.assets().locator(), style.path(), style.size());
+        SamplerFilter filter = style.magnified() ? SamplerFilter.NEAREST : SamplerFilter.LINEAR;
+        return fontRegistry.resolve(engine.assets().locator(), style.path(), style.bakeSize(), filter,
+                style.edgeCutoff());
     }
 
     private Optional<TextureHandle> textureFor(String path) {
@@ -200,12 +202,12 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
 
     @Override
     public float measureTextWidth(String text, UiFontStyle style) {
-        return fontFor(style).measureWidth(text);
+        return fontFor(style).measureWidth(text) * style.magnification();
     }
 
     @Override
     public float lineHeight(UiFontStyle style) {
-        return fontFor(style).pixelHeight();
+        return fontFor(style).pixelHeight() * style.magnification();
     }
 
     public int collectCount() {
@@ -270,6 +272,8 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
             return;
         }
         lastElementCount++;
+        PipelineHandle restored = activePipeline;
+        activePipeline = element.shader().map(this::pipelineFor).orElse(activePipeline);
         element.paintInto(this);
         boolean clipped = element.clipChildren() && clipStack.push(element.computedRect());
         for (UiElement child : element.children()) {
@@ -278,6 +282,12 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         if (clipped) {
             clipStack.pop();
         }
+        activePipeline = restored;
+    }
+
+    private PipelineHandle pipelineFor(UiShader shader) {
+        return customPipelines.computeIfAbsent(shader,
+                requested -> createPipeline(requested.vertexPath(), requested.fragmentPath()));
     }
 
     @Override
@@ -306,7 +316,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         }
         Font font = fontFor(style);
         drawList.setState(activePipeline, font.atlasTexture(), clipStack.current());
-        UiTextShaper.appendText(drawList, font, text, x, y, color);
+        UiTextShaper.appendText(drawList, font, text, x, y, style.magnification(), color);
     }
 
     private void writeUbo() {

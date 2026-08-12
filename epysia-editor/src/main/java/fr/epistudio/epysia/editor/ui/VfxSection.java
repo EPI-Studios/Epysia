@@ -8,6 +8,7 @@ import fr.epistudio.epysia.assets.AssetLocator;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.vfx.ParticleBurst;
 import fr.epistudio.epysia.vfx.ParticleEffect;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 
 import java.io.IOException;
@@ -62,7 +63,7 @@ public final class VfxSection {
     private static void renderBurstFit(ParticleEffect effect) {
         float duration = effect.durationSeconds();
         for (ParticleBurst burst : effect.burstsExceedingDuration()) {
-            ImGui.textColored(EditorStyle.COLOR_WARNING, String.format(Locale.ROOT,
+            Texts.colored(EditorStyle.COLOR_WARNING, String.format(Locale.ROOT,
                     I18n.translate(TextKey.EDITOR_VFX_SECTION_BURST_WARNING, "%.2f", "%d", "%d", "%.2f", "%.2f"),
                     burst.timeSeconds(), burst.repeatsWithin(duration), burst.repeatCount(),
                     burst.requiredDurationSeconds(), duration));

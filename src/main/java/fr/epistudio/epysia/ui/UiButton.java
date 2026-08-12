@@ -20,10 +20,21 @@ public final class UiButton extends UiElement {
     private Runnable onClick = () -> {
     };
 
+    public UiButton setColors(UiColor idle, UiColor hover, UiColor pressedColour) {
+        UiColors.copyInto(idle, idleColor);
+        UiColors.copyInto(hover, hoverColor);
+        UiColors.copyInto(pressedColour, this.pressedColor);
+        return this;
+    }
+
     public UiButton setOnClick(Runnable listener) {
         this.onClick = listener == null ? () -> {
         } : listener;
         return this;
+    }
+
+    public boolean hovered() {
+        return hovered;
     }
 
     public boolean pressed() {

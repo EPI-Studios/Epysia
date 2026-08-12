@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.AssetMetaFile;
 import fr.epistudio.epysia.assets.AssetVariant;
 import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
@@ -7,6 +10,7 @@ import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.render.backend.SamplerFilter;
 import fr.epistudio.epysia.render.backend.TextureFormat;
 import fr.epistudio.epysia.render.backend.TextureWrap;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 
 import java.nio.file.Files;
@@ -51,15 +55,15 @@ public final class TextureInspectorSection {
     private void renderPreview(Path path) {
         Optional<ImagePreviewTexture.PreviewImage> image = preview.get(path);
         if (image.isEmpty()) {
-            ImGui.textDisabled("Preview unavailable");
+            Texts.muted(I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_PREVIEW_UNAVAILABLE));
             return;
         }
-        ImGui.textDisabled(image.get().width() + " x " + image.get().height() + " px");
+        Texts.muted(image.get().width() + " x " + image.get().height() + " px");
         float width = Math.max(32.0f, ImGui.getContentRegionAvailX());
         float height = width * image.get().height() / image.get().width();
-        if (height > PREVIEW_MAX_HEIGHT) {
-            width = width * PREVIEW_MAX_HEIGHT / height;
-            height = PREVIEW_MAX_HEIGHT;
+        if (height > EditorScale.of(PREVIEW_MAX_HEIGHT)) {
+            width = width * EditorScale.of(PREVIEW_MAX_HEIGHT) / height;
+            height = EditorScale.of(PREVIEW_MAX_HEIGHT);
         }
         ImGui.image(image.get().textureId(), width, height);
     }
@@ -74,12 +78,11 @@ public final class TextureInspectorSection {
     }
 
     private void renderMipmapCheckbox(Path path, TextureImportSettings settings) {
-        if (ImGui.checkbox("Mipmaps", settings.mipmaps())) {
+        if (ImGui.checkbox(I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_MIPMAPS), settings.mipmaps())) {
             apply(path, TextureImportSettings.MIPMAPS_KEY, Boolean.toString(!settings.mipmaps()));
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Off by default for point filtering, on for linear. "
-                    + "Without them a surface seen at an angle shimmers.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_MIPMAPS_HINT));
         }
     }
 
@@ -92,7 +95,7 @@ public final class TextureInspectorSection {
             apply(path, TextureImportSettings.ANISOTROPY_KEY, Integer.toString(level[0]));
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Clamped to what the GPU reports. 1 disables it.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_ANISOTROPY_HINT));
         }
     }
 
@@ -102,13 +105,13 @@ public final class TextureInspectorSection {
 
     private void renderFilterCombo(Path path, TextureImportSettings settings) {
         boolean point = settings.filter() == SamplerFilter.NEAREST;
-        if (!ImGui.beginCombo("Filter", point ? "Point" : "Linear")) {
+        if (!ImGui.beginCombo("Filter", point ? I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_POINT) : I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_LINEAR))) {
             return;
         }
-        if (ImGui.selectable("Linear", !point) && point) {
+        if (ImGui.selectable(I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_LINEAR), !point) && point) {
             apply(path, TextureImportSettings.FILTER_KEY, TextureImportSettings.FILTER_LINEAR);
         }
-        if (ImGui.selectable("Point", point) && !point) {
+        if (ImGui.selectable(I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_POINT), point) && !point) {
             apply(path, TextureImportSettings.FILTER_KEY, TextureImportSettings.FILTER_POINT);
         }
         ImGui.endCombo();
@@ -143,7 +146,7 @@ public final class TextureInspectorSection {
                     ? TextureImportSettings.COLOR_SPACE_LINEAR : TextureImportSettings.COLOR_SPACE_SRGB);
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Colour space is applied when the texture is uploaded. Reopen the scene to see it.");
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_TEXTURE_INSPECTOR_SECTION_COLOUR_SPACE_HINT));
         }
     }
 

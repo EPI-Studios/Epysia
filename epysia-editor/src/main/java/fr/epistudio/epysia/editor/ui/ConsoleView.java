@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.log.EditorConsole;
 import fr.epistudio.epysia.editor.play.PlayController;
 import fr.epistudio.epysia.editor.play.PlayLogLine;
@@ -142,10 +143,10 @@ public final class ConsoleView {
     }
 
     private void drawLevelMarker(PlayLogLine.Level level) {
-        float centerX = ImGui.getCursorScreenPosX() + LEVEL_MARKER_RADIUS;
+        float centerX = ImGui.getCursorScreenPosX() + EditorScale.of(LEVEL_MARKER_RADIUS);
         float centerY = ImGui.getCursorScreenPosY() + ImGui.getTextLineHeight() * 0.5f;
-        ImGui.getWindowDrawList().addCircleFilled(centerX, centerY, LEVEL_MARKER_RADIUS, colorForLevel(level));
-        ImGui.dummy(LEVEL_MARKER_RADIUS * 2.0f + 2.0f, 1.0f);
+        ImGui.getWindowDrawList().addCircleFilled(centerX, centerY, EditorScale.of(LEVEL_MARKER_RADIUS), colorForLevel(level));
+        ImGui.dummy(EditorScale.of(LEVEL_MARKER_RADIUS) * 2.0f + 2.0f, 1.0f);
         ImGui.sameLine();
     }
 

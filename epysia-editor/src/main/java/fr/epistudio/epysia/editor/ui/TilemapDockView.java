@@ -1,5 +1,8 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.i18n.I18n;
+import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.epyatlas.SpriteAtlas;
 import fr.epistudio.epysia.assets.epytilemap.SpriteTilemap;
@@ -8,6 +11,7 @@ import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.tilemap.TileBrush;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
 
@@ -70,7 +74,7 @@ public final class TilemapDockView {
         if (!visible) {
             return;
         }
-        if (!ImGui.begin(WINDOW_TITLE, ImGuiWindowFlags.NoCollapse)) {
+        if (!ImGui.begin(I18n.label(TextKey.EDITOR_TILEMAP_DOCK_VIEW_TITLE, WINDOW_TITLE), ImGuiWindowFlags.NoCollapse)) {
             ImGui.end();
             return;
         }
@@ -86,8 +90,8 @@ public final class TilemapDockView {
     }
 
     private static void renderNoSelection() {
-        ImGui.textDisabled("Select a Tilemap object to paint.");
-        ImGui.textDisabled("GameObject menu, then Tilemap, creates one.");
+        Texts.muted(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_SELECT_OBJECT));
+        Texts.muted(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_CREATE_HINT));
     }
 
     private void renderTabs(TilemapRenderer renderer) {
@@ -109,20 +113,20 @@ public final class TilemapDockView {
 
     private void renderMissingSetup(Optional<SpriteTilemap> tilemap, Optional<SpriteAtlas> atlas) {
         if (tilemap.isEmpty()) {
-            ImGui.textDisabled("This object has no tilemap asset yet.");
-            ImGui.textDisabled("Assign one in the Inspector, or right click an atlas and choose Create Tilemap.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_NO_ASSET));
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_NO_ASSET_HINT));
             return;
         }
         if (atlas.isEmpty()) {
-            ImGui.textDisabled("The tilemap points at no atlas.");
-            ImGui.textDisabled("Right click a spritesheet in the Asset Browser and choose Create Sprite Atlas.");
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_NO_ATLAS));
+            Texts.muted(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_NO_ATLAS_HINT));
             return;
         }
-        ImGui.textDisabled("The atlas has no grid. Open it and set Cell W and Cell H first.");
+        Texts.muted(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_NO_GRID));
     }
 
     private void renderPaintTab(TilemapRenderer renderer, SpriteTilemap tilemap, SpriteAtlas atlas) {
-        if (!ImGui.beginTabItem("Paint")) {
+        if (!ImGui.beginTabItem(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_PAINT))) {
             return;
         }
         renderPaintReadiness();
@@ -135,7 +139,7 @@ public final class TilemapDockView {
     }
 
     private void renderToolColumn() {
-        ImGui.beginChild("tileTools", TOOL_COLUMN_WIDTH, 0.0f, true);
+        ImGui.beginChild("tileTools", EditorScale.of(TOOL_COLUMN_WIDTH), 0.0f, true);
         if (toolBar.renderTools()) {
             enablePainting.run();
         }
@@ -148,12 +152,12 @@ public final class TilemapDockView {
         if (twoDimensionalView.getAsBoolean()) {
             return;
         }
-        ImGui.textColored(EditorStyle.COLOR_DANGER,
-                "The viewport is in 3D. Turn on 2D in the toolbar to paint.");
+        Texts.colored(EditorStyle.COLOR_DANGER,
+                I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_NEEDS_2D));
     }
 
     private void renderPaletteColumn(TilemapRenderer renderer, SpriteTilemap tilemap) {
-        float width = Math.max(120.0f, ImGui.getContentRegionAvailX() - SIDE_COLUMN_WIDTH);
+        float width = Math.max(120.0f, ImGui.getContentRegionAvailX() - EditorScale.of(SIDE_COLUMN_WIDTH));
         ImGui.beginChild("tilePalette", width, 0.0f, true);
         toolBar.renderLayerSelector(tilemap);
         palette.render(renderer);
@@ -165,7 +169,7 @@ public final class TilemapDockView {
         boolean changed = layersSection.render(tilemap);
         changed |= terrainsSection.render(tilemap);
         ImGui.separator();
-        if (ImGui.button("Configure this tile in Setup")) {
+        if (ImGui.button(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_CONFIGURE_HINT))) {
             setupRequested = true;
         }
         ImGui.endChild();
@@ -175,10 +179,10 @@ public final class TilemapDockView {
     private void renderSetupTab(TilemapRenderer renderer, SpriteTilemap tilemap, SpriteAtlas atlas) {
         int flags = setupRequested ? imgui.flag.ImGuiTabItemFlags.SetSelected : 0;
         setupRequested = false;
-        if (!ImGui.beginTabItem("Setup", flags)) {
+        if (!ImGui.beginTabItem(I18n.translate(TextKey.EDITOR_TILEMAP_DOCK_VIEW_SETUP), flags)) {
             return;
         }
-        ImGui.beginChild("tileSetupLeft", SETUP_LEFT_WIDTH, 0.0f, true);
+        ImGui.beginChild("tileSetupLeft", EditorScale.of(SETUP_LEFT_WIDTH), 0.0f, true);
         palette.render(renderer);
         ImGui.endChild();
         ImGui.sameLine();

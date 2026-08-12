@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
@@ -7,6 +8,7 @@ import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
@@ -50,7 +52,7 @@ public final class NewProjectDialog {
             ImGui.openPopup(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_TITLE, "new-project-dialog"));
             openRequested = false;
         }
-        ImGui.setNextWindowSize(DIALOG_WIDTH, 0.0f, ImGuiCond.Appearing);
+        ImGui.setNextWindowSize(EditorScale.of(DIALOG_WIDTH), 0.0f, ImGuiCond.Appearing);
         if (!ImGui.beginPopupModal(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_TITLE, "new-project-dialog"),
                 ImGuiWindowFlags.AlwaysAutoResize)) {
             return;
@@ -70,7 +72,7 @@ public final class NewProjectDialog {
                 "new-project-browse"))) {
             browseParent();
         }
-        ImGui.textDisabled(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_FINAL_PATH, previewPath()));
+        Texts.muted(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_FINAL_PATH, previewPath()));
     }
 
     private void browseParent() {
@@ -82,7 +84,7 @@ public final class NewProjectDialog {
 
     private void renderValidationAndButtons() {
         Optional<String> error = validationError();
-        error.ifPresent(message -> ImGui.textColored(EditorStyle.COLOR_DANGER, message));
+        error.ifPresent(message -> Texts.colored(EditorStyle.COLOR_DANGER, message));
         ImGui.separator();
         ImGui.beginDisabled(error.isPresent());
         if (ImGui.button(I18n.label(TextKey.EDITOR_NEW_PROJECT_DIALOG_CREATE,

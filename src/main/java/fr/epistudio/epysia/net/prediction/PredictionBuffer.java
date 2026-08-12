@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.net.prediction;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 
@@ -17,6 +18,14 @@ public final class PredictionBuffer {
 
     public Optional<PredictedTransform> at(int tick) {
         return Optional.ofNullable(statesByTick.get(tick));
+    }
+
+    public Optional<PredictedTransform> nearestAtOrBefore(int tick, int maximumSkewTicks) {
+        Map.Entry<Integer, PredictedTransform> entry = statesByTick.floorEntry(tick);
+        if (entry == null || tick - entry.getKey() > maximumSkewTicks) {
+            return Optional.empty();
+        }
+        return Optional.of(entry.getValue());
     }
 
     public void forgetThrough(int tick) {

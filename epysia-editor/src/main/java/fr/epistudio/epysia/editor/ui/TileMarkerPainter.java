@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.assets.epytilemap.TileCollisionShape;
 import imgui.ImDrawList;
 import org.joml.Vector2f;
@@ -27,9 +28,9 @@ public final class TileMarkerPainter {
 
     public static void drawSolidMarker(ImDrawList drawList,
                                        float cellMinX, float cellMinY, float cellMaxX, float cellMaxY) {
-        drawList.addRect(cellMinX + SOLID_INSET, cellMinY + SOLID_INSET,
-                cellMaxX - SOLID_INSET, cellMaxY - SOLID_INSET,
-                COLOR_SOLID, NO_ROUNDING, NO_CORNER_FLAGS, SOLID_THICKNESS);
+        drawList.addRect(cellMinX + EditorScale.of(SOLID_INSET), cellMinY + EditorScale.of(SOLID_INSET),
+                cellMaxX - EditorScale.of(SOLID_INSET), cellMaxY - EditorScale.of(SOLID_INSET),
+                COLOR_SOLID, NO_ROUNDING, NO_CORNER_FLAGS, EditorScale.of(SOLID_THICKNESS));
     }
 
     public static void drawCollisionShapes(ImDrawList drawList, List<TileCollisionShape> shapes,
@@ -43,17 +44,17 @@ public final class TileMarkerPainter {
 
     public static void drawTerrainDot(ImDrawList drawList,
                                       float cellMinX, float cellMinY, float cellMaxX, float cellMaxY) {
-        float centerX = cellMaxX - CORNER_INSET - TERRAIN_RADIUS;
-        float centerY = cellMinY + CORNER_INSET + TERRAIN_RADIUS;
-        drawList.addCircleFilled(centerX, centerY, TERRAIN_RADIUS, COLOR_TERRAIN);
+        float centerX = cellMaxX - EditorScale.of(CORNER_INSET) - EditorScale.of(TERRAIN_RADIUS);
+        float centerY = cellMinY + EditorScale.of(CORNER_INSET) + EditorScale.of(TERRAIN_RADIUS);
+        drawList.addCircleFilled(centerX, centerY, EditorScale.of(TERRAIN_RADIUS), COLOR_TERRAIN);
     }
 
     public static void drawSceneMarker(ImDrawList drawList,
                                        float cellMinX, float cellMinY, float cellMaxX, float cellMaxY) {
-        float centerX = cellMaxX - CORNER_INSET - SCENE_RADIUS;
-        float centerY = cellMaxY - CORNER_INSET - SCENE_RADIUS;
-        drawList.addQuadFilled(centerX, centerY - SCENE_RADIUS, centerX + SCENE_RADIUS, centerY,
-                centerX, centerY + SCENE_RADIUS, centerX - SCENE_RADIUS, centerY, COLOR_SCENE);
+        float centerX = cellMaxX - EditorScale.of(CORNER_INSET) - EditorScale.of(SCENE_RADIUS);
+        float centerY = cellMaxY - EditorScale.of(CORNER_INSET) - EditorScale.of(SCENE_RADIUS);
+        drawList.addQuadFilled(centerX, centerY - EditorScale.of(SCENE_RADIUS), centerX + EditorScale.of(SCENE_RADIUS), centerY,
+                centerX, centerY + EditorScale.of(SCENE_RADIUS), centerX - EditorScale.of(SCENE_RADIUS), centerY, COLOR_SCENE);
     }
 
     private static void drawOutline(ImDrawList drawList, List<Vector2f> points,
@@ -65,7 +66,7 @@ public final class TileMarkerPainter {
             Vector2f start = points.get(index);
             Vector2f end = points.get((index + 1) % points.size());
             drawList.addLine(cellMinX + start.x * width, cellMaxY - start.y * height,
-                    cellMinX + end.x * width, cellMaxY - end.y * height, COLOR_SHAPE, SHAPE_THICKNESS);
+                    cellMinX + end.x * width, cellMaxY - end.y * height, COLOR_SHAPE, EditorScale.of(SHAPE_THICKNESS));
         }
     }
 }

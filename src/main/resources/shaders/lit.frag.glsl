@@ -1,4 +1,7 @@
 #version 430 core
+#ifdef MATERIAL_EARLY_DEPTH_TESTED
+layout(early_fragment_tests) in;
+#endif
 #include "lib/frame_uniforms.glsl"
 #include "lib/lighting.glsl"
 #include "lib/pbr.glsl"

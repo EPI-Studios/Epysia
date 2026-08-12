@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.command.builtin.SetSurfaceUniformCommand;
@@ -105,7 +106,7 @@ public final class SurfaceUniformRows {
     private void renderTexture(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {
         ImGui.pushID(declaration.name());
         String currentPath = currentTexturePath(material, declaration);
-        if (ImGui.button(textureButtonLabel(currentPath), TEXTURE_BUTTON_WIDTH, 0.0f)) {
+        if (ImGui.button(textureButtonLabel(currentPath), EditorScale.of(TEXTURE_BUTTON_WIDTH), 0.0f)) {
             filePicker.open(TEXTURE_EXTENSIONS, true,
                     picked -> commitTexture(material, declaration, currentPath, picked));
         }

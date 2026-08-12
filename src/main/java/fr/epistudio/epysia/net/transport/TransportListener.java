@@ -7,5 +7,9 @@ public interface TransportListener {
 
     void onPacketReceived(int connection, NetChannel channel, NetReader reader);
 
+    default void onPacketReceived(int connection, NetChannel channel, NetReader reader, long arrivalNanos) {
+        onPacketReceived(connection, channel, reader);
+    }
+
     void onConnectionClosed(int connection);
 }

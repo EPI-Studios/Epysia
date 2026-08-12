@@ -16,7 +16,8 @@ public enum MessageType {
     RPC(9),
     ACK(10),
     VOICE(11),
-    HEARTBEAT(12);
+    HEARTBEAT(12),
+    PEER_ROSTER(15);
 
     private static final MessageType[] BY_CODE = buildLookupTable();
 

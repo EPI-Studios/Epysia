@@ -4,6 +4,7 @@ import fr.epistudio.epysia.assets.loaders.ClipAssetLoader;
 import fr.epistudio.epysia.assets.loaders.InstancesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MaterialAssetLoader;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
+import fr.epistudio.epysia.assets.loaders.AudioBufferLoaderAsset;
 import fr.epistudio.epysia.assets.loaders.PhysicsMaterialLoader;
 import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteAtlasAssetLoader;
@@ -42,11 +43,20 @@ public final class HeadlessRunner {
     private HeadlessRunner() {
     }
 
+    private static double runDurationSeconds;
+
+    public static void setRunDurationSeconds(double seconds) {
+        runDurationSeconds = Math.max(0.0, seconds);
+    }
+
     public static void setFixedTimestepSeconds(double seconds) {
         fixedTimestepSeconds = seconds;
     }
 
-    public static void run(StandaloneRunner.ScenePopulator populator) {
+    private static boolean populateFailed;
+
+    public static boolean run(StandaloneRunner.ScenePopulator populator) {
+        populateFailed = false;
         Window window = Window.headless(WINDOW_TITLE, DECLARED_WIDTH, DECLARED_HEIGHT);
         NullRenderBackend backend = new NullRenderBackend();
         EpysiaEngine engine = new EpysiaEngine(window, backend);
@@ -65,12 +75,14 @@ public final class HeadlessRunner {
         engine.endPlay();
         engine.shutdown();
         backend.shutdown();
+        return !populateFailed;
     }
 
     private static void registerAssetLoaders(EpysiaEngine engine, NullRenderBackend backend) {
         engine.assets().register(new MeshAssetLoader(BuiltinMeshes.uploadAll(backend)));
         engine.assets().register(new TextureAssetLoader());
         engine.assets().register(new PhysicsMaterialLoader());
+        engine.assets().register(new AudioBufferLoaderAsset());
         engine.assets().register(new MaterialAssetLoader());
         engine.assets().register(new ClipAssetLoader());
         engine.assets().register(new ProbesAssetLoader());
@@ -121,6 +133,7 @@ public final class HeadlessRunner {
                 invokeOnLoad(engine, gameObject);
             }
         } catch (Exception error) {
+            populateFailed = true;
             engine.logger().error("[HeadlessRunner] Scene populate failed", error);
             engine.requestShutdown();
         }
@@ -137,10 +150,18 @@ public final class HeadlessRunner {
         }
     }
 
+    private static long deadlineFrom(long startNanos) {
+        return runDurationSeconds <= 0.0
+                ? Long.MAX_VALUE
+                : startNanos + (long) (runDurationSeconds * NANOS_PER_SECOND);
+    }
+
     private static void loop(EpysiaEngine engine, Window window) {
         long previousNanos = System.nanoTime();
+        long deadlineNanos = deadlineFrom(previousNanos);
         double accumulator = 0.0;
-        while (!window.shouldClose() && !engine.isShutdownRequested()) {
+        while (!window.shouldClose() && !engine.isShutdownRequested()
+                && System.nanoTime() < deadlineNanos) {
             consumeRuntimeCommands(engine);
             long currentNanos = System.nanoTime();
             double frameSeconds = Math.min((currentNanos - previousNanos) / NANOS_PER_SECOND, MAX_FRAME_SECONDS);
@@ -152,7 +173,8 @@ public final class HeadlessRunner {
 
     private static double drainFixedSteps(EpysiaEngine engine, double accumulator) {
         float step = (float) fixedTimestepSeconds;
-        double remaining = accumulator;
+        double remaining = Math.max(-fixedTimestepSeconds,
+                accumulator + engine.consumeCatchUpSteps() * fixedTimestepSeconds);
         while (remaining >= fixedTimestepSeconds) {
             engine.tick(InputState.inactive(), step);
             remaining -= fixedTimestepSeconds;

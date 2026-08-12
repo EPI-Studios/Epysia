@@ -109,6 +109,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
     }
 
+    private final List<FixedStepListener> fixedStepListeners = new ArrayList<>();
+
     public void setFixedTimestepHertz(int hertz) {
         fixedStepSeconds = 1.0f / Math.clamp(hertz, MINIMUM_STEP_HERTZ, MAXIMUM_STEP_HERTZ);
         stepAccumulator = 0.0f;
@@ -236,10 +238,27 @@ public final class PhysicsSystem implements IPhysicsSystem {
         return worldAnchor;
     }
 
+    public void addFixedStepListener(FixedStepListener listener) {
+        if (listener != null && !fixedStepListeners.contains(listener)) {
+            fixedStepListeners.add(listener);
+        }
+    }
+
+    public void removeFixedStepListener(FixedStepListener listener) {
+        fixedStepListeners.remove(listener);
+    }
+
+    private void notifyFixedStep(Scene scene) {
+        for (FixedStepListener listener : List.copyOf(fixedStepListeners)) {
+            listener.onFixedStep(scene, fixedStepSeconds);
+        }
+    }
+
     private void advanceFixedSteps(Scene scene, float deltaTimeSeconds) {
         stepAccumulator += Math.max(0.0f, deltaTimeSeconds);
         int steps = 0;
         while (stepAccumulator >= fixedStepSeconds && steps < MAXIMUM_CATCHUP_STEPS) {
+            notifyFixedStep(scene);
             capturePreviousPoses(scene);
             world.step(fixedStepSeconds);
             capturePoses(scene, currentPoses);
@@ -378,7 +397,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private void stepCharacterControllers(Scene scene, float deltaTimeSeconds) {
         for (CharacterControllerComponent controller : scene.componentsOf(CharacterControllerComponent.class)) {
             GameObject owner = controller.ownerOrNull();
-            if (owner != null) {
+            if (owner != null && controller.simulated()) {
                 stepCharacterController(owner, controller, deltaTimeSeconds);
             }
         }
@@ -431,6 +450,25 @@ public final class PhysicsSystem implements IPhysicsSystem {
         controller.setMoveResult(result.groundNormal(), result.clippedDelta(), result.contacts());
         if (controller.applyGravity()) {
             controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
+        }
+    }
+
+    public void syncCharacterToTransform(GameObject gameObject) {
+        CharacterControllerComponent controller =
+                gameObject.getComponentOrNull(CharacterControllerComponent.class);
+        Transform3D transform = gameObject.getComponentOrNull(Transform3D.class);
+        if (controller == null || transform == null || !controller.bodyHandle().isValid()) {
+            return;
+        }
+        world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(
+                new Vector3f(transform.position()), new Quaternionf(transform.rotation())));
+    }
+
+    public void stepCharacter(GameObject gameObject, float deltaTimeSeconds) {
+        CharacterControllerComponent controller =
+                gameObject.getComponentOrNull(CharacterControllerComponent.class);
+        if (controller != null) {
+            stepCharacterController(gameObject, controller, deltaTimeSeconds);
         }
     }
 

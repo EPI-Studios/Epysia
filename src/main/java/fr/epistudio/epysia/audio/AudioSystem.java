@@ -86,6 +86,7 @@ public final class AudioSystem implements GameSystem {
         }
         ALC10.alcMakeContextCurrent(context);
         AL.createCapabilities(alcCapabilities);
+        AudioDevice.markReady(true);
     }
 
     public void setReverbPreset(AudioReverbPreset preset) {
@@ -96,7 +97,7 @@ public final class AudioSystem implements GameSystem {
     }
 
     public Optional<AudioPlayback> playOneShot(OneShotRequest request) {
-        if (request.buffer() == null) {
+        if (request.buffer() == null || !request.buffer().playable()) {
             return Optional.empty();
         }
         AudioSource source = pool.acquire();
@@ -197,10 +198,16 @@ public final class AudioSystem implements GameSystem {
     }
 
     private AudioListenerComponent findListener(Scene scene) {
+        AudioListenerComponent fallback = null;
         for (AudioListenerComponent listener : scene.componentsOf(AudioListenerComponent.class)) {
-            return listener;
+            if (listener.active()) {
+                return listener;
+            }
+            if (fallback == null) {
+                fallback = listener;
+            }
         }
-        return null;
+        return fallback;
     }
 
     private void updateComponentSources(Scene scene) {
@@ -327,6 +334,7 @@ public final class AudioSystem implements GameSystem {
 
     @Override
     public void shutdown() {
+        AudioDevice.markReady(false);
         for (AudioStream stream : streams) {
             stream.streaming().destroy();
         }
