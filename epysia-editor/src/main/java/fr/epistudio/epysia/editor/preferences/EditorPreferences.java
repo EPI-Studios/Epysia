@@ -16,7 +16,8 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                                 GpuPreference gpuPreference, boolean detachableWindows,
                                 boolean shaderNodePreviewsEnabled, boolean viewport2DMode,
                                 float sceneNear, float sceneFar, float sceneFieldOfView,
-                                float lookSensitivity, boolean invertLookY) {
+                                float lookSensitivity, boolean invertLookY,
+                                float uiScale) {
 
     public static final float MIN_OVERLAY_THICKNESS = 0.5f;
     public static final float MAX_OVERLAY_THICKNESS = 3.0f;
@@ -49,13 +50,16 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
     public static final float MAX_SCENE_FIELD_OF_VIEW = 170.0f;
     public static final float MIN_LOOK_SENSITIVITY = 0.0005f;
     public static final float MAX_LOOK_SENSITIVITY = 0.02f;
+    public static final float AUTOMATIC_UI_SCALE = 0.0f;
+    public static final float MIN_UI_SCALE = 0.75f;
+    public static final float MAX_UI_SCALE = 3.0f;
 
     public static EditorPreferences defaults() {
         return new EditorPreferences(DEFAULT_CAMERA_SPEED, DEFAULT_CAMERA_BOOST,
                 false, DEFAULT_AUTOSAVE_INTERVAL_SECONDS, true, false,
                 DEFAULT_OVERLAY_THICKNESS, DEFAULT_GRID_FADE_DISTANCE, GpuPreference.SYSTEM_DEFAULT, true, true,
                 false, DEFAULT_SCENE_NEAR, DEFAULT_SCENE_FAR, DEFAULT_SCENE_FIELD_OF_VIEW,
-                DEFAULT_LOOK_SENSITIVITY, false);
+                DEFAULT_LOOK_SENSITIVITY, false, AUTOMATIC_UI_SCALE);
     }
 
     public static Path defaultFile() {
@@ -98,7 +102,12 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                         MIN_SCENE_FIELD_OF_VIEW, MAX_SCENE_FIELD_OF_VIEW),
                 clamp(floatOr(root, "lookSensitivity", base.lookSensitivity()),
                         MIN_LOOK_SENSITIVITY, MAX_LOOK_SENSITIVITY),
-                boolOr(root, "invertLookY", base.invertLookY()));
+                boolOr(root, "invertLookY", base.invertLookY()),
+                clampUiScale(floatOr(root, "uiScale", base.uiScale())));
+    }
+
+    private static float clampUiScale(float value) {
+        return value <= AUTOMATIC_UI_SCALE ? AUTOMATIC_UI_SCALE : clamp(value, MIN_UI_SCALE, MAX_UI_SCALE);
     }
 
     public void save(Path file) throws IOException {
@@ -121,6 +130,7 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
                 .key("sceneFieldOfView").valueNumber(sceneFieldOfView)
                 .key("lookSensitivity").valueNumber(lookSensitivity)
                 .key("invertLookY").valueBoolean(invertLookY)
+                .key("uiScale").valueNumber(uiScale)
                 .endObject();
         Files.writeString(file, writer.toString());
     }
@@ -129,35 +139,42 @@ public record EditorPreferences(float cameraSpeed, float cameraBoost,
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 visible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
                 shaderNodePreviewsEnabled, viewport2DMode,
-                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY, uiScale);
     }
 
     public EditorPreferences withSnapEnabled(boolean enabled) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, enabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
                 shaderNodePreviewsEnabled, viewport2DMode,
-                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY, uiScale);
     }
 
     public EditorPreferences withGpuPreference(GpuPreference preference) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, snapEnabled, overlayThickness, gridFadeDistance, preference, detachableWindows,
                 shaderNodePreviewsEnabled, viewport2DMode,
-                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY, uiScale);
     }
 
     public EditorPreferences withShaderNodePreviewsEnabled(boolean enabled) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
                 enabled, viewport2DMode,
-                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY, uiScale);
     }
 
     public EditorPreferences withViewport2DMode(boolean enabled) {
         return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
                 gridVisible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
                 shaderNodePreviewsEnabled, enabled,
-                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY);
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY, uiScale);
+    }
+
+    public EditorPreferences withUiScale(float scale) {
+        return new EditorPreferences(cameraSpeed, cameraBoost, autosaveEnabled, autosaveIntervalSeconds,
+                gridVisible, snapEnabled, overlayThickness, gridFadeDistance, gpuPreference, detachableWindows,
+                shaderNodePreviewsEnabled, viewport2DMode,
+                sceneNear, sceneFar, sceneFieldOfView, lookSensitivity, invertLookY, clampUiScale(scale));
     }
 
     private static float floatOr(Map<String, Object> root, String key, float fallback) {
