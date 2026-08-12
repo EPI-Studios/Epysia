@@ -51,9 +51,11 @@ map.
 60 Hz by default, but you can push it anywhere from 10 to 480 Hz, with frame
 pacing and interpolated rendering between simulation steps.
 
-**Rendering.** Forward PBR on OpenGL 4.3. Metallic-roughness materials,
-clustered lights, cascaded sun shadows, spot and point shadow atlases,
-image-based lighting, GPU and CPU culling, hardware instancing, and LOD.
+**Rendering.** Forward PBR on OpenGL 4.3 or Vulkan. Metallic-roughness
+materials, clustered lights, cascaded sun shadows, spot and point shadow
+atlases, image-based lighting, GPU and CPU culling, hardware instancing, and
+LOD. The backend is picked at launch and falls back to OpenGL if Vulkan
+cannot start, so a driver that refuses one still runs the game.
 
 ```java
 LitMaterial material = new LitMaterial();
@@ -122,6 +124,24 @@ reflection.
 **Audio.** OpenAL underneath, with a bus mixer and ducking, spatial
 sources, a 48-voice one-shot pool, streaming, and EFX reverb.
 
+**Navigation.** Navmeshes baked from the geometry a surface declares, walked
+by agents that path around what you put in front of them.
+
+**Shipping.** An exported game reads `epysia-settings.json` sitting beside it
+before the window exists, so a player can change the render backend, adapter,
+resolution, vsync and frame cap without a rebuild. Saves are written
+atomically into `saves/` so an interrupted write cannot corrupt progress, and
+an uncaught exception leaves a crash report the next launch can collect.
+
+**Steam.** Lobbies, achievements, cloud saves, rich presence and the overlay,
+plus friends, avatars, DLC and the app you were launched as. The app id lives
+in the project and ships in `steam_appid.txt`, so a build either identifies
+itself or carries no Steam dependency at all.
+
+**Web requests.** `services.web()` runs a request off the main thread and
+hands the response back on it, so a script can touch the scene in the
+callback. Failures arrive as a response rather than an exception.
+
 **Scripting.** `Behaviour` subclasses get compiled and hot reloaded while
 the editor's open. Slap `@EpysiaComponent` on a class and it shows up in the
 Add Component menu; `@Export` puts a field in the inspector and in the scene
@@ -151,7 +171,9 @@ public final class Spinner extends Behaviour {
 
 **Editor.** A Dear ImGui editor with the scene view, inspector, asset
 browser, graph canvas, sprite and tilemap authoring, profiler, lighting
-bakes, and export, all in one place.
+bakes, and export, all in one place. Code editing highlights Java, Kotlin and
+GLSL, every action is reachable from one command palette, and the interface
+scales with Ctrl +/- from 80% to 150%.
 
 **Extending it.** Subsystems are just `EngineModule` services discovered
 through `ServiceLoader`. They load into both the editor and the standalone
