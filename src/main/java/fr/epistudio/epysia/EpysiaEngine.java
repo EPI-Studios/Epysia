@@ -8,6 +8,7 @@ import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.concurrent.BackgroundTasks;
 import fr.epistudio.epysia.concurrent.MainThread;
 import fr.epistudio.epysia.debug.DebugDraw;
+import fr.epistudio.epysia.events.EventBus;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.input.InputState;
@@ -89,6 +90,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private final long[] cpuTimingsNanosArray = new long[CpuTimings.values().length];
     private final FrameProfiler profiler = new FrameProfiler();
     private final DebugDraw debugDraw = new DebugDraw();
+    private final EventBus eventBus = new EventBus();
     private SceneLoader sceneLoader;
     private final AnimationClock animationClock = new AnimationClock();
     private final TransformResolver transformResolver = new TransformResolver();
@@ -256,6 +258,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
             captureTransformInterpolationSnapshots(activeScene);
             animationClock.advance(activeScene, deltaTimeSeconds);
             debugDraw.advance(deltaTimeSeconds);
+            eventBus.deliverDeferred();
             updateGameSystems(input, deltaTimeSeconds);
         }
         sweepUnusedAssets(deltaTimeSeconds);
@@ -577,6 +580,11 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     @Override
     public DebugDraw debug() {
         return debugDraw;
+    }
+
+    @Override
+    public EventBus events() {
+        return eventBus;
     }
 
     @Override
