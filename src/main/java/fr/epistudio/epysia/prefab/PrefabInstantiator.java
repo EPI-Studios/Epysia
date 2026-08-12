@@ -23,11 +23,24 @@ public final class PrefabInstantiator {
     }
 
     public GameObject instantiate(Path path, Scene scene, EngineServices services) throws IOException {
-        return instantiate(Files.readString(path), scene, services);
+        return instantiate(Files.readString(path), scene, services, portableSource(path, services));
+    }
+
+    private static String portableSource(Path path, EngineServices services) {
+        if (services == null) {
+            return path.toString();
+        }
+        String uri = services.assets().locator().fromFile(path).toString();
+        return uri.isEmpty() ? path.toString() : uri;
+    }
+
+    public GameObject instantiate(String text, Scene scene, EngineServices services) {
+        return instantiate(text, scene, services, "");
     }
 
     @SuppressWarnings("unchecked")
-    public GameObject instantiate(String text, Scene scene, EngineServices services) {
+    public GameObject instantiate(String text, Scene scene, EngineServices services,
+                                  String prefabSource) {
         Map<String, Object> root = new JsonReader(text).readRootObject();
         List<Object> gameObjectsJson = (List<Object>) root.getOrDefault("gameObjects", List.of());
         List<GameObject> instantiated = codec.readGameObjectArray(
@@ -35,11 +48,21 @@ public final class PrefabInstantiator {
         if (instantiated.isEmpty()) {
             throw new EpysiaException("Prefab contains no game objects");
         }
+        linkToPrefab(instantiated, prefabSource);
         for (GameObject gameObject : instantiated) {
             scene.addGameObject(gameObject);
         }
         scene.advanceTick();
         codec.invokeOnLoad(instantiated, services);
         return instantiated.get(0);
+    }
+
+    private static void linkToPrefab(List<GameObject> instantiated, String prefabSource) {
+        if (prefabSource.isEmpty()) {
+            return;
+        }
+        for (int index = 0; index < instantiated.size(); index++) {
+            instantiated.get(index).linkToPrefab(prefabSource, index).clearOverrides();
+        }
     }
 }

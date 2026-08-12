@@ -67,6 +67,7 @@ public final class GameObjectJsonCodec {
         writer.endArray();
         writer.key("active").valueBoolean(gameObject.active());
         writer.key("keepOnSceneChange").valueBoolean(gameObject.keepOnSceneChange());
+        writePrefabLink(writer, gameObject);
         writer.key("parentIndex").valueNumber(resolveParentIndex(gameObject, indexByGameObject));
         writer.key("components").beginArray();
         for (ComponentRegistry.Entry entry : componentRegistry.entries()) {
@@ -92,6 +93,19 @@ public final class GameObjectJsonCodec {
                 .flatMap(Transform3D::owner)
                 .map(parent -> indexByGameObject.getOrDefault(parent, -1))
                 .orElse(-1);
+    }
+
+    private static void writePrefabLink(JsonWriter writer, GameObject gameObject) {
+        if (!gameObject.isPrefabInstance()) {
+            return;
+        }
+        writer.key("prefabSource").valueString(gameObject.prefabSource());
+        writer.key("prefabObjectId").valueNumber(gameObject.prefabObjectId());
+        writer.key("prefabOverrides").beginArray();
+        for (String key : gameObject.overriddenProperties()) {
+            writer.valueString(key);
+        }
+        writer.endArray();
     }
 
     private void writeComponent(JsonWriter writer, ComponentRegistry.Entry entry, IComponent component,
@@ -290,6 +304,22 @@ public final class GameObjectJsonCodec {
             }
             if (gameObjectJson.get("keepOnSceneChange") instanceof Boolean keep) {
                 gameObject.setKeepOnSceneChange(keep);
+            }
+            applyPrefabLink(gameObject, gameObjectJson);
+        }
+
+        private void applyPrefabLink(GameObject gameObject, Map<String, Object> gameObjectJson) {
+            if (!(gameObjectJson.get("prefabSource") instanceof String source)
+                    || !(gameObjectJson.get("prefabObjectId") instanceof Number objectId)) {
+                return;
+            }
+            gameObject.linkToPrefab(source, objectId.intValue());
+            if (gameObjectJson.get("prefabOverrides") instanceof List<?> overrides) {
+                for (Object key : overrides) {
+                    if (key instanceof String text) {
+                        gameObject.markOverridden(text);
+                    }
+                }
             }
         }
 

@@ -9,11 +9,15 @@ import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.editor.command.CommandContext;
 import fr.epistudio.epysia.editor.command.EditorCommand;
+import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.reflection.ExportedProperty;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public final class SetPropertyCommand implements EditorCommand {
 
@@ -21,17 +25,26 @@ public final class SetPropertyCommand implements EditorCommand {
     private final ExportedProperty property;
     private final Object beforeValue;
     private final Object afterValue;
+    private final boolean overriddenAfterApply;
+    private boolean overriddenBeforeApply;
 
     public SetPropertyCommand(IComponent owner, ExportedProperty property,
                               Object beforeValue, Object afterValue) {
+        this(owner, property, beforeValue, afterValue, true);
+    }
+
+    private SetPropertyCommand(IComponent owner, ExportedProperty property,
+                               Object beforeValue, Object afterValue, boolean overriddenAfterApply) {
         this.owner = owner;
         this.property = property;
         this.beforeValue = snapshot(beforeValue);
         this.afterValue = snapshot(afterValue);
+        this.overriddenAfterApply = overriddenAfterApply;
     }
 
     @Override
     public void apply(CommandContext context) {
+        recordPrefabOverride();
         if (property.kind() == ExportedProperty.Kind.ASSET_REF) {
             writeAssetRef(context.services().assets(), (String) afterValue);
         } else {
@@ -50,7 +63,30 @@ public final class SetPropertyCommand implements EditorCommand {
 
     @Override
     public EditorCommand invert(CommandContext context) {
-        return new SetPropertyCommand(owner, property, afterValue, beforeValue);
+        return new SetPropertyCommand(owner, property, afterValue, beforeValue,
+                overriddenBeforeApply);
+    }
+
+    private void recordPrefabOverride() {
+        GameObject instance = owner.ownerOrNull();
+        if (instance == null || !instance.isPrefabInstance()) {
+            return;
+        }
+        overriddenBeforeApply = instance.isOverridden(owner.getClass(), property.fieldName());
+        if (overriddenAfterApply) {
+            instance.markOverridden(owner.getClass(), property.fieldName());
+        } else {
+            forgetOverride(instance);
+        }
+    }
+
+    private void forgetOverride(GameObject instance) {
+        List<String> kept = new ArrayList<>(instance.overriddenProperties());
+        kept.remove(GameObject.overrideKey(owner.getClass(), property.fieldName()));
+        instance.clearOverrides();
+        for (String key : kept) {
+            instance.markOverridden(key);
+        }
     }
 
     @Override

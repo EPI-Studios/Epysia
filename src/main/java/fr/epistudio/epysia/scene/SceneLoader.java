@@ -3,6 +3,7 @@ package fr.epistudio.epysia.scene;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.gameobjects.GameObject;
+import fr.epistudio.epysia.prefab.PrefabRefresher;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 
 import java.io.IOException;
@@ -23,6 +24,7 @@ public final class SceneLoader {
     private final Deque<SceneLoadRequest> pending = new ArrayDeque<>();
     private final Map<String, String> preloaded = new ConcurrentHashMap<>();
     private final Set<String> loadedSources = new LinkedHashSet<>();
+    private PrefabRefresher prefabRefresher;
 
     public SceneLoader(EngineServices services, SceneSerializer serializer) {
         this.services = services;
@@ -91,10 +93,31 @@ public final class SceneLoader {
         }
         serializer.deserializeInto(services.scene(), text, services,
                 request.mode(), request.scenePath());
+        refreshPrefabInstances();
         loadedSources.add(request.scenePath());
         preloaded.remove(request.scenePath());
         services.logger().info("[SceneLoader] " + request.mode() + " " + request.scenePath()
                 + " (" + services.scene().gameObjects().size() + " objects live)");
+    }
+
+    public int refreshPrefabInstances() {
+        int refreshed = prefabRefresher().refresh(services.scene());
+        if (refreshed > 0) {
+            services.logger().info("[SceneLoader] Refreshed " + refreshed
+                    + " prefab instances from their source");
+        }
+        return refreshed;
+    }
+
+    private PrefabRefresher prefabRefresher() {
+        if (prefabRefresher == null) {
+            prefabRefresher = new PrefabRefresher(this::readPrefabText, serializer::applyFields);
+        }
+        return prefabRefresher;
+    }
+
+    private Optional<String> readPrefabText(String prefabPath) {
+        return resolve(prefabPath).flatMap(SceneLoader::readFile);
     }
 
     private Optional<String> readSceneText(String scenePath) {

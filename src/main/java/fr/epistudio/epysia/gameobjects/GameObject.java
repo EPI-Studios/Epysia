@@ -18,6 +18,8 @@ import java.util.Set;
 import java.util.UUID;
 
 public final class GameObject implements IGameObject {
+    public static final int NOT_A_PREFAB_INSTANCE = -1;
+
     private static final Runnable NO_LISTENER = () -> {
     };
 
@@ -29,6 +31,9 @@ public final class GameObject implements IGameObject {
     private boolean persistent = true;
     private boolean keepOnSceneChange;
     private String sourceId = "";
+    private String prefabSource = "";
+    private int prefabObjectId = NOT_A_PREFAB_INSTANCE;
+    private Set<String> overriddenProperties = Set.of();
     private final Map<Class<?>, IComponent> componentsByType = new HashMap<>();
     private Transform3D cachedTransform3D;
     private final List<IComponent> attachedComponents = new ArrayList<>();
@@ -152,6 +157,60 @@ public final class GameObject implements IGameObject {
 
     public GameObject setSourceId(String value) {
         this.sourceId = value == null ? "" : value;
+        return this;
+    }
+
+    public String prefabSource() {
+        return prefabSource;
+    }
+
+    public int prefabObjectId() {
+        return prefabObjectId;
+    }
+
+    public boolean isPrefabInstance() {
+        return !prefabSource.isEmpty() && prefabObjectId != NOT_A_PREFAB_INSTANCE;
+    }
+
+    public GameObject linkToPrefab(String source, int objectId) {
+        this.prefabSource = source == null ? "" : source;
+        this.prefabObjectId = objectId;
+        return this;
+    }
+
+    public GameObject unlinkFromPrefab() {
+        this.prefabSource = "";
+        this.prefabObjectId = NOT_A_PREFAB_INSTANCE;
+        this.overriddenProperties = Set.of();
+        return this;
+    }
+
+    public static String overrideKey(Class<?> componentClass, String fieldName) {
+        return componentClass.getName() + "." + fieldName;
+    }
+
+    public Set<String> overriddenProperties() {
+        return Collections.unmodifiableSet(overriddenProperties);
+    }
+
+    public boolean isOverridden(Class<?> componentClass, String fieldName) {
+        return overriddenProperties.contains(overrideKey(componentClass, fieldName));
+    }
+
+    public GameObject markOverridden(Class<?> componentClass, String fieldName) {
+        return markOverridden(overrideKey(componentClass, fieldName));
+    }
+
+    public GameObject markOverridden(String key) {
+        if (overriddenProperties.isEmpty()) {
+            overriddenProperties = new LinkedHashSet<>();
+        }
+        overriddenProperties.add(key);
+        return this;
+    }
+
+    public GameObject clearOverrides() {
+        overriddenProperties = Set.of();
         return this;
     }
 
