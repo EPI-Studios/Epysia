@@ -20,6 +20,7 @@ import fr.epistudio.epysia.reflection.ExportedProperty;
 import fr.epistudio.epysia.reflection.Reflection;
 import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
+import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiColorEditFlags;
 import imgui.type.ImString;
 import org.joml.Quaternionf;
@@ -37,6 +38,10 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 public final class PropertyRows {
+
+    private static final float OVERRIDE_RED = 0.45f;
+    private static final float OVERRIDE_GREEN = 0.78f;
+    private static final float OVERRIDE_BLUE = 1.0f;
 
     private static final float DRAG_STEP_FALLBACK = 0.05f;
     private static final float COLOR_DRAG_STEP = 0.01f;
@@ -72,6 +77,10 @@ public final class PropertyRows {
 
     public void renderProperty(IComponent owner, ExportedProperty property, String key) {
         ImGui.pushID(key);
+        boolean overridden = isOverriddenFromPrefab(owner, property);
+        if (overridden) {
+            ImGui.pushStyleColor(ImGuiCol.Text, OVERRIDE_RED, OVERRIDE_GREEN, OVERRIDE_BLUE, 1.0f);
+        }
         switch (property.kind()) {
             case FLOAT -> renderFloat(owner, property);
             case INT -> renderInt(owner, property);
@@ -87,7 +96,19 @@ public final class PropertyRows {
             case OBJECT_LIST -> renderObjectList(owner, property, key);
             default -> ImGui.labelText(property.label(), I18n.translate(TextKey.EDITOR_PROPERTY_ROWS_UNSUPPORTED));
         }
+        if (overridden) {
+            ImGui.popStyleColor();
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Overridden on this instance, the prefab no longer drives it");
+            }
+        }
         ImGui.popID();
+    }
+
+    private static boolean isOverriddenFromPrefab(IComponent owner, ExportedProperty property) {
+        GameObject instance = owner.ownerOrNull();
+        return instance != null && instance.isPrefabInstance()
+                && instance.isOverridden(owner.getClass(), property.fieldName());
     }
 
     @SuppressWarnings("unchecked")

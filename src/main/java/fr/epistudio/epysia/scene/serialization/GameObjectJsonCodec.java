@@ -34,6 +34,7 @@ public final class GameObjectJsonCodec {
 
     private final ComponentRegistry componentRegistry;
     private final ComponentFieldsCodec fieldsCodec = new ComponentFieldsCodec();
+    private boolean writePrefabLinks = true;
     private final MaterialJsonCodec materialCodec = new MaterialJsonCodec();
     private final PostEffectStackJsonCodec postEffectCodec = new PostEffectStackJsonCodec();
     private List<String> lastIncompatibleComponents = List.of();
@@ -95,8 +96,13 @@ public final class GameObjectJsonCodec {
                 .orElse(-1);
     }
 
-    private static void writePrefabLink(JsonWriter writer, GameObject gameObject) {
-        if (!gameObject.isPrefabInstance()) {
+    public GameObjectJsonCodec omitPrefabLinks() {
+        this.writePrefabLinks = false;
+        return this;
+    }
+
+    private void writePrefabLink(JsonWriter writer, GameObject gameObject) {
+        if (!writePrefabLinks || !gameObject.isPrefabInstance()) {
             return;
         }
         writer.key("prefabSource").valueString(gameObject.prefabSource());

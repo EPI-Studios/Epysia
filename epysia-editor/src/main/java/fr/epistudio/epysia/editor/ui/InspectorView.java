@@ -24,6 +24,10 @@ import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.MergeIntoMultiMeshCommand;
 import fr.epistudio.epysia.editor.command.builtin.RemoveComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetComponentEnabledCommand;
+import fr.epistudio.epysia.assets.AssetUri;
+import fr.epistudio.epysia.prefab.PrefabApplier;
+import fr.epistudio.epysia.prefab.PrefabRefresher;
+import fr.epistudio.epysia.scene.serialization.SceneSerializer;
 import fr.epistudio.epysia.editor.icons.ComponentIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -43,6 +47,8 @@ import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImString;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,6 +89,7 @@ public final class InspectorView {
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
     private final EngineServices engineServices;
+    private PrefabRefresher prefabRefresher;
     private final SpriteTextureLookup spriteTextures;
     private final SurfaceUniformRows spriteUniformRows;
 
@@ -253,6 +260,66 @@ public final class InspectorView {
                 ? I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_SINGULAR, componentCount)
                 : I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_PLURAL, componentCount));
         Category.draw(gameObject.name(), 0);
+        renderPrefabSection(gameObject);
+    }
+
+    private void renderPrefabSection(GameObject gameObject) {
+        if (!gameObject.isPrefabInstance()) {
+            return;
+        }
+        Texts.muted("Prefab " + gameObject.prefabSource()
+                + " (" + gameObject.overriddenProperties().size() + " overridden)");
+        if (ImGui.button("Revert all")) {
+            prefabRefresher().revertEverything(gameObject);
+            notifier.show("Reverted to " + gameObject.prefabSource());
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Apply to prefab")) {
+            applyInstanceToPrefab(gameObject);
+        }
+        ImGui.spacing();
+    }
+
+    private void applyInstanceToPrefab(GameObject gameObject) {
+        Optional<Path> file = resolvePrefabFile(gameObject.prefabSource());
+        if (file.isEmpty()) {
+            notifier.show("Prefab not found: " + gameObject.prefabSource());
+            return;
+        }
+        try {
+            new PrefabApplier(componentRegistry).applyToPrefab(gameObject, file.get());
+            prefabRefresher().refresh(activeDocument.get().scene());
+            notifier.show("Applied to " + gameObject.prefabSource());
+        } catch (IOException failure) {
+            notifier.show("Could not write the prefab: " + failure.getMessage());
+        }
+    }
+
+    private PrefabRefresher prefabRefresher() {
+        if (prefabRefresher == null) {
+            prefabRefresher = new PrefabRefresher(this::readPrefabText,
+                    new SceneSerializer(componentRegistry)::applyFields);
+        }
+        return prefabRefresher;
+    }
+
+    private Optional<String> readPrefabText(String prefabSource) {
+        return resolvePrefabFile(prefabSource).flatMap(file -> {
+            try {
+                return Optional.of(Files.readString(file));
+            } catch (IOException unreadable) {
+                return Optional.empty();
+            }
+        });
+    }
+
+    private Optional<Path> resolvePrefabFile(String prefabSource) {
+        Path direct = Path.of(prefabSource);
+        if (Files.isRegularFile(direct)) {
+            return Optional.of(direct);
+        }
+        return AssetUri.parse(prefabSource)
+                .flatMap(uri -> engineServices.assets().locator().file(uri));
     }
 
     private void renderComponentBlock(GameObject gameObject, IComponent component) {

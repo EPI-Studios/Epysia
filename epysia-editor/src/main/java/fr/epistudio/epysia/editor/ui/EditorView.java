@@ -58,6 +58,7 @@ import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.input.action.InputAction;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.prefab.PrefabRefresher;
 import fr.epistudio.epysia.prefab.PrefabWriter;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
@@ -1386,9 +1387,32 @@ public final class EditorView implements FrameView {
             new PrefabWriter(componentRegistry).write(root, target);
             toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_PREFAB_SAVED, target.getFileName()));
             assetBrowserView.refreshAssets();
+            refreshPrefabInstances();
         } catch (IOException error) {
             toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_PREFAB_SAVE_FAILED,
                     error.getMessage()));
+        }
+    }
+
+    private void refreshPrefabInstances() {
+        new PrefabRefresher(this::readPrefabText,
+                new SceneSerializer(componentRegistry)::applyFields)
+                .refresh(workspace.active().scene());
+    }
+
+    private Optional<String> readPrefabText(String prefabSource) {
+        Path direct = Path.of(prefabSource);
+        Optional<Path> file = Files.isRegularFile(direct)
+                ? Optional.of(direct)
+                : AssetUri.parse(prefabSource).flatMap(uri -> project.locator().file(uri));
+        return file.flatMap(EditorView::readFileQuietly);
+    }
+
+    private static Optional<String> readFileQuietly(Path path) {
+        try {
+            return Optional.of(Files.readString(path));
+        } catch (IOException unreadable) {
+            return Optional.empty();
         }
     }
 

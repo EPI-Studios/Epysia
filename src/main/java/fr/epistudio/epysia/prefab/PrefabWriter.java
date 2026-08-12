@@ -17,7 +17,7 @@ public final class PrefabWriter {
     private final GameObjectJsonCodec codec;
 
     public PrefabWriter(ComponentRegistry componentRegistry) {
-        this.codec = new GameObjectJsonCodec(componentRegistry);
+        this.codec = new GameObjectJsonCodec(componentRegistry).omitPrefabLinks();
     }
 
     public void write(GameObject root, Path path) throws IOException {
