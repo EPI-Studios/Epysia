@@ -1,7 +1,6 @@
 rootProject.name = 'Epysia'
 
 include 'epysia-editor'
-
 def box3dLocation = [
         file('box3d-java'),
         file('../box3d-java'),
@@ -14,3 +13,21 @@ if (box3dLocation == null) {
 }
 
 includeBuild(box3dLocation)
+
+def imguiLocation = [
+        file('imgui-java'),
+        file('../imgui-java'),
+        System.getenv('IMGUI_JAVA_HOME') == null ? null : file(System.getenv('IMGUI_JAVA_HOME'))
+].findAll { it != null }.find { new File(it, 'settings.gradle.kts').isFile() }
+
+if (imguiLocation == null) {
+    throw new GradleException('imgui-java not found. Clone the Epysia fork next to Epysia, inside it, '
+            + 'or point IMGUI_JAVA_HOME at it.')
+}
+
+includeBuild(imguiLocation) {
+    dependencySubstitution {
+        substitute module('io.github.spair:imgui-java-binding') using project(':imgui-binding')
+        substitute module('io.github.spair:imgui-java-lwjgl3') using project(':imgui-lwjgl3')
+    }
+}
