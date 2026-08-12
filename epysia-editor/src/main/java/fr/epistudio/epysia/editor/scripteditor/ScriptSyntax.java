@@ -1,6 +1,6 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
-import imgui.extension.texteditor.TextEditorLanguageDefinition;
+import imgui.extension.texteditor.TextEditorLanguage;
 
 import java.util.Set;
 
@@ -10,7 +10,7 @@ public interface ScriptSyntax {
 
     Set<String> sourceExtensions();
 
-    TextEditorLanguageDefinition create(JavaSymbols symbols);
+    TextEditorLanguage create(JavaSymbols symbols);
 
     ImportStyle importStyle();
 }

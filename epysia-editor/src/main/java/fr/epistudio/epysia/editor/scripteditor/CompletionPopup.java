@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
 import fr.epistudio.epysia.editor.shell.EditorStyle;
+import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiKey;
@@ -104,7 +105,7 @@ public final class CompletionPopup {
     private float popupHeight() {
         int visibleRows = Math.min(items.size(), MAX_VISIBLE_ROWS);
         return visibleRows * ImGui.getTextLineHeightWithSpacing()
-                + 2.0f * EditorStyle.WINDOW_PADDING;
+                + 2.0f * EditorStyle.windowPadding();
     }
 
     private Optional<CompletionSymbol> renderRows() {
@@ -131,13 +132,13 @@ public final class CompletionPopup {
         float offsetX = POPUP_WIDTH - detailWidth - DETAIL_MARGIN;
         if (offsetX > labelWidth + DETAIL_MARGIN * 2.0f) {
             ImGui.sameLine(offsetX);
-            ImGui.textDisabled(packageName);
+            Texts.muted(packageName);
         }
     }
 
     private void renderTag(CompletionKind kind) {
         ImGui.pushStyleColor(ImGuiCol.Text, tagColor(kind));
-        ImGui.text(kind.tag());
+        ImGui.textUnformatted(kind.tag());
         ImGui.popStyleColor();
     }
 

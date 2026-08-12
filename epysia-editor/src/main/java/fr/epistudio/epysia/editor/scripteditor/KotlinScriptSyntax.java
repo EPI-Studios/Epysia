@@ -1,6 +1,6 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
-import imgui.extension.texteditor.TextEditorLanguageDefinition;
+import imgui.extension.texteditor.TextEditorLanguage;
 
 import java.util.List;
 import java.util.Set;
@@ -24,7 +24,7 @@ public final class KotlinScriptSyntax implements ScriptSyntax {
     }
 
     @Override
-    public TextEditorLanguageDefinition create(JavaSymbols symbols) {
+    public TextEditorLanguage create(JavaSymbols symbols) {
         return KotlinLanguageDefinition.create(symbols);
     }
 

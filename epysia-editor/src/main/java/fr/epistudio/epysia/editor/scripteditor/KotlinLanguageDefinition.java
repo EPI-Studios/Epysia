@@ -1,8 +1,9 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
-import imgui.extension.texteditor.TextEditorLanguageDefinition;
+import imgui.extension.texteditor.TextEditorLanguage;
 
 import java.util.List;
+import java.util.Set;
 
 public final class KotlinLanguageDefinition {
 
@@ -17,21 +18,19 @@ public final class KotlinLanguageDefinition {
             "noinline", "open", "operator", "out", "override", "private", "protected", "public",
             "reified", "sealed", "suspend", "tailrec", "vararg");
 
+    private static final Set<String> DECLARATIONS = Set.of(
+            "abstract", "actual", "annotation", "class", "companion", "const", "crossinline",
+            "data", "enum", "expect", "external", "final", "fun", "infix", "init", "inline",
+            "inner", "interface", "internal", "lateinit", "noinline", "object", "open", "operator",
+            "out", "override", "private", "protected", "public", "reified", "sealed", "suspend",
+            "tailrec", "typealias", "val", "var", "vararg");
+
     private KotlinLanguageDefinition() {
     }
 
-    public static TextEditorLanguageDefinition create(JavaSymbols symbols) {
-        TextEditorLanguageDefinition definition = new TextEditorLanguageDefinition();
-        definition.setName("Kotlin");
-        definition.setKeywords(KEYWORDS.toArray(String[]::new));
-        definition.setIdentifiers(SourceTokenRegexes.knownIdentifiers(symbols));
-        definition.setCommentStart("/*");
-        definition.setCommentEnd("*/");
-        definition.setSingleLineComment("//");
-        definition.setAutoIndentation(true);
-        definition.setmCaseSensitive(true);
-        definition.setTokenRegexStrings(SourceTokenRegexes.curlyBraceFamily());
-        return definition;
+    public static TextEditorLanguage create(JavaSymbols symbols) {
+        return CurlyBraceLanguage.create("Kotlin",
+                CurlyBraceLanguage.without(KEYWORDS, DECLARATIONS), DECLARATIONS, symbols);
     }
 
     public static List<String> keywords() {

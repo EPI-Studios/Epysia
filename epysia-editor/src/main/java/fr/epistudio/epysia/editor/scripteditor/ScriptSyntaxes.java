@@ -1,6 +1,6 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
-import imgui.extension.texteditor.TextEditorLanguageDefinition;
+import imgui.extension.texteditor.TextEditorLanguage;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,11 +12,11 @@ import java.util.ServiceLoader;
 
 public final class ScriptSyntaxes {
 
-    private static final String PLAIN_TEXT_NAME = "Text";
 
     private final List<ScriptSyntax> syntaxes;
-    private final Map<String, TextEditorLanguageDefinition> definitionsByExtension = new HashMap<>();
-    private TextEditorLanguageDefinition plainText;
+    private final Map<String, TextEditorLanguage> definitionsByExtension = new HashMap<>();
+    private final List<TextEditorLanguage> ownedDefinitions = new ArrayList<>();
+    private TextEditorLanguage plainText;
 
     private ScriptSyntaxes(List<ScriptSyntax> syntaxes) {
         this.syntaxes = syntaxes;
@@ -36,16 +36,19 @@ public final class ScriptSyntaxes {
     }
 
     public void rebuild(JavaSymbols symbols) {
+        ownedDefinitions.forEach(TextEditorLanguage::destroy);
+        ownedDefinitions.clear();
         definitionsByExtension.clear();
         for (ScriptSyntax syntax : syntaxes) {
-            TextEditorLanguageDefinition definition = syntax.create(symbols);
+            TextEditorLanguage definition = syntax.create(symbols);
+            ownedDefinitions.add(definition);
             syntax.sourceExtensions().forEach(extension ->
                     definitionsByExtension.put(extension, definition));
         }
         plainText = plainTextDefinition();
     }
 
-    public TextEditorLanguageDefinition definitionFor(Path path) {
+    public TextEditorLanguage definitionFor(Path path) {
         return matching(path).orElse(plainText);
     }
 
@@ -60,7 +63,7 @@ public final class ScriptSyntaxes {
                 .findFirst();
     }
 
-    private Optional<TextEditorLanguageDefinition> matching(Path path) {
+    private Optional<TextEditorLanguage> matching(Path path) {
         String name = path.getFileName().toString();
         return definitionsByExtension.entrySet().stream()
                 .filter(entry -> name.endsWith(entry.getKey()))
@@ -68,14 +71,7 @@ public final class ScriptSyntaxes {
                 .findFirst();
     }
 
-    private static TextEditorLanguageDefinition plainTextDefinition() {
-        TextEditorLanguageDefinition definition = new TextEditorLanguageDefinition();
-        definition.setName(PLAIN_TEXT_NAME);
-        definition.setKeywords(new String[0]);
-        definition.setIdentifiers(Map.of());
-        definition.setAutoIndentation(true);
-        definition.setmCaseSensitive(true);
-        definition.setTokenRegexStrings(SourceTokenRegexes.curlyBraceFamily());
-        return definition;
+    private static TextEditorLanguage plainTextDefinition() {
+        return TextEditorLanguage.Markdown();
     }
 }

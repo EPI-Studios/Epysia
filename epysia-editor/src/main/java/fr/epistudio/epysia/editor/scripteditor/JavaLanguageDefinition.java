@@ -1,23 +1,23 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
-import imgui.extension.texteditor.TextEditorLanguageDefinition;
+import imgui.extension.texteditor.TextEditorLanguage;
+
+import java.util.Set;
 
 public final class JavaLanguageDefinition {
+
+    private static final Set<String> DECLARATIONS = Set.of(
+            "abstract", "boolean", "byte", "char", "class", "double", "enum", "extends", "final",
+            "float", "implements", "int", "interface", "long", "native", "permits", "private",
+            "protected", "public", "record", "sealed", "short", "static", "strictfp",
+            "synchronized", "transient", "var", "void", "volatile");
 
     private JavaLanguageDefinition() {
     }
 
-    public static TextEditorLanguageDefinition create(JavaSymbols symbols) {
-        TextEditorLanguageDefinition definition = new TextEditorLanguageDefinition();
-        definition.setName("Java");
-        definition.setKeywords(JavaSymbols.keywords().toArray(String[]::new));
-        definition.setIdentifiers(SourceTokenRegexes.knownIdentifiers(symbols));
-        definition.setCommentStart("/*");
-        definition.setCommentEnd("*/");
-        definition.setSingleLineComment("//");
-        definition.setAutoIndentation(true);
-        definition.setmCaseSensitive(true);
-        definition.setTokenRegexStrings(SourceTokenRegexes.curlyBraceFamily());
-        return definition;
+    public static TextEditorLanguage create(JavaSymbols symbols) {
+        return CurlyBraceLanguage.create("Java",
+                CurlyBraceLanguage.without(JavaSymbols.keywords(), DECLARATIONS),
+                DECLARATIONS, symbols);
     }
 }

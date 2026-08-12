@@ -5,24 +5,23 @@ import imgui.extension.texteditor.TextEditorLanguage;
 import java.util.List;
 import java.util.Set;
 
-public final class JavaScriptSyntax implements ScriptSyntax {
+public final class GlslScriptSyntax implements ScriptSyntax {
 
-    private static final ImportStyle IMPORT_STYLE = ImportStyle.of(";", Set.of("java.lang"),
-            List.of("class", "interface", "enum", "record"));
+    private static final ImportStyle IMPORT_STYLE = ImportStyle.of("", Set.of(), List.of());
 
     @Override
     public String displayName() {
-        return "Java";
+        return "GLSL";
     }
 
     @Override
     public Set<String> sourceExtensions() {
-        return Set.of(".java");
+        return Set.of(".glsl", ".vert", ".frag", ".geom", ".comp", ".tesc", ".tese");
     }
 
     @Override
     public TextEditorLanguage create(JavaSymbols symbols) {
-        return JavaLanguageDefinition.create(symbols);
+        return GlslLanguageDefinition.create(symbols);
     }
 
     @Override
