@@ -50,6 +50,10 @@ jobs:
           distribution: temurin
           java-version: 25
 
+      - name: Keep line endings verbatim
+        shell: bash
+        run: git config --global core.autocrlf false
+
       - name: Checkout imgui-java
         uses: actions/checkout@v4
         with:
@@ -75,7 +79,7 @@ jobs:
             echo "::error::imgui-java/bin/binding.sha1 is missing, the natives cannot be matched to the binding"
             exit 1
           fi
-          stale=$(cd imgui-java && sha1sum -c bin/binding.sha1 --quiet 2>/dev/null | cut -d: -f1)
+          stale=$( { cd imgui-java && sha1sum -c bin/binding.sha1 --quiet 2>/dev/null || true; } | cut -d: -f1 )
           if [ -n "$stale" ]; then
             echo "::error::the imgui natives were built from different binding sources, so $native is stale"
             echo "::error::rebuild the natives in the imgui-java fork and regenerate bin/binding.sha1"
