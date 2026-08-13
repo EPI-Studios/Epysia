@@ -91,6 +91,7 @@ tasks.named('run', JavaExec) {
     systemProperty 'epysia.gpu.profiling', 'true'
     if (imguiNativesDirectory != null) {
         systemProperty 'imgui.library.path', imguiNativesDirectory.absolutePath
+        doFirst { verifyImguiNativesMatchBinding(imguiNativesDirectory) }
     }
     systemProperties System.getProperties().findAll { it.key.toString().startsWith('epysia.') }
 }
@@ -165,4 +166,48 @@ tasks.register('exportGame', JavaExec) {
         def icon = project.findProperty('exportIcon')
         if (icon) args += ['--icon', icon.toString()]
     }
+}
+
+/// The natives and the Java binding are built together in the imgui-java fork. A checkout that is
+/// behind loads a native missing whatever the binding gained since, which surfaces as an
+/// UnsatisfiedLinkError on a random method deep inside ImGui setup. bin/binding.sha1 is the fork's
+/// own record of what the natives were built from, so comparing against it says so plainly instead.
+def verifyImguiNativesMatchBinding(File nativesDirectory) {
+    File manifest = new File(nativesDirectory, 'binding.sha1')
+    if (!manifest.isFile()) {
+        return
+    }
+    File root = nativesDirectory.parentFile
+    List<String> stale = []
+    manifest.eachLine('UTF-8') { line ->
+        int separator = line.indexOf('  ')
+        if (separator < 0) {
+            return
+        }
+        String expected = line.substring(0, separator)
+        File source = new File(root, line.substring(separator + 2))
+        if (source.isFile() && sha1Of(source) != expected) {
+            stale << source.name
+        }
+    }
+    if (!stale.isEmpty()) {
+        throw new GradleException(
+                "The imgui-java natives in ${nativesDirectory} were built from older binding sources, "
+                        + "so the editor would die on a missing native method.\n"
+                        + "Changed since the natives were built: ${stale.take(5).join(', ')}"
+                        + (stale.size() > 5 ? " and ${stale.size() - 5} more" : '') + "\n"
+                        + "Pull the imgui-java fork, or rebuild its natives and regenerate bin/binding.sha1.")
+    }
+}
+
+def sha1Of(File file) {
+    java.security.MessageDigest digest = java.security.MessageDigest.getInstance('SHA-1')
+    file.withInputStream { stream ->
+        byte[] buffer = new byte[65536]
+        int read
+        while ((read = stream.read(buffer)) > 0) {
+            digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().encodeHex().toString()
 }
