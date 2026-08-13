@@ -24,6 +24,7 @@ import fr.epistudio.epysia.editor.command.builtin.AddComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.MergeIntoMultiMeshCommand;
 import fr.epistudio.epysia.editor.command.builtin.RemoveComponentCommand;
 import fr.epistudio.epysia.editor.command.builtin.SetComponentEnabledCommand;
+import fr.epistudio.epysia.editor.command.builtin.SetGameObjectFlagCommand;
 import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.editor.command.builtin.ApplyInstanceToPrefabCommand;
 import fr.epistudio.epysia.editor.command.builtin.RevertPrefabOverridesCommand;
@@ -256,7 +257,8 @@ public final class InspectorView {
     private void renderObjectHeader(GameObject gameObject) {
         boolean active = gameObject.active();
         if (Switches.draw("##active", active) != active) {
-            gameObject.setActive(!active);
+            history().execute(new SetGameObjectFlagCommand(gameObject,
+                    SetGameObjectFlagCommand.Flag.ACTIVE, !active));
         }
         ImGui.sameLine();
         int componentCount = gameObject.components().size();
@@ -264,7 +266,23 @@ public final class InspectorView {
                 ? I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_SINGULAR, componentCount)
                 : I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_PLURAL, componentCount));
         Category.draw(gameObject.name(), 0);
+        renderKeepOnSceneChange(gameObject);
         renderPrefabSection(gameObject);
+    }
+
+    private void renderKeepOnSceneChange(GameObject gameObject) {
+        boolean keep = gameObject.keepOnSceneChange();
+        ImBoolean flag = new ImBoolean(keep);
+        if (ImGui.checkbox("##keep-on-scene-change", flag)) {
+            history().execute(new SetGameObjectFlagCommand(gameObject,
+                    SetGameObjectFlagCommand.Flag.KEEP_ON_SCENE_CHANGE, flag.get()));
+        }
+        ImGui.sameLine();
+        Texts.muted("Keep on scene change");
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Survives load and unload, so the object carries state between levels."
+                    + "\nThis is not autoload: nothing creates it for you, it has to exist already.");
+        }
     }
 
     private void renderPrefabSection(GameObject gameObject) {
