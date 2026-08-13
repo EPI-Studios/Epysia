@@ -126,6 +126,24 @@ public abstract class UiElement extends Component {
     }
 
     protected void onChildrenLaidOut() {
+        UiLayout layout = layoutOrNull();
+        if (layout != null) {
+            layout.arrange(computedRect, children());
+        }
+    }
+
+    private UiLayout layoutOrNull() {
+        GameObject owner = ownerOrNull();
+        return owner == null ? null : owner.getComponentOrNull(UiLayout.class);
+    }
+
+    final void placeAt(UiRect rect) {
+        computedRect = rect;
+        UiRect childParentRect = childParentRect();
+        for (UiElement child : children()) {
+            child.layout(childParentRect);
+        }
+        onChildrenLaidOut();
     }
 
     protected UiRect computeRect(UiRect parentRect) {
