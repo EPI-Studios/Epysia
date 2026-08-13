@@ -6,6 +6,7 @@ import fr.epistudio.epysia.debug.DebugDraw;
 import fr.epistudio.epysia.events.EventBus;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.net.NetworkService;
+import fr.epistudio.epysia.pool.ObjectPools;
 import fr.epistudio.epysia.steam.SteamService;
 import fr.epistudio.epysia.render.PreRenderPass;
 import fr.epistudio.epysia.render.RenderSystem;
@@ -63,6 +64,8 @@ public interface EngineServices {
     default EventBus events() {
         return EventBus.detached();
     }
+
+    ObjectPools pools();
 
     default SaveGames saves() {
         return SaveGames.beside(Path.of(System.getProperty("user.dir", ".")));

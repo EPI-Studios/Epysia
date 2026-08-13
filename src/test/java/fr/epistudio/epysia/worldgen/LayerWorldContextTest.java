@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.worldgen;
 
+import fr.epistudio.epysia.pool.ObjectPools;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.SystemRegistry;
 import fr.epistudio.epysia.assets.AssetRegistry;
@@ -164,6 +165,13 @@ class LayerWorldContextTest {
     }
 
     private static final class HeadlessServices implements EngineServices {
+
+    private final ObjectPools pools = new ObjectPools(this);
+
+    @Override
+    public ObjectPools pools() {
+        return pools;
+    }
 
         private final Logger logger = new SilentLogger();
         private final BackgroundTasks tasks = new BackgroundTasks(() -> logger);

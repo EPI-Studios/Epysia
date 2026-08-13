@@ -23,6 +23,12 @@ public abstract class Behaviour extends Component implements PhysicsEventListene
     public void onLateUpdate(InputState input, float deltaTimeSeconds) {
     }
 
+    public void onSpawn() {
+    }
+
+    public void onDespawn() {
+    }
+
     public void onDisable() {
     }
 

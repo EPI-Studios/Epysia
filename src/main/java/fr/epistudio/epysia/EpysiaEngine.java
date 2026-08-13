@@ -9,6 +9,7 @@ import fr.epistudio.epysia.concurrent.BackgroundTasks;
 import fr.epistudio.epysia.concurrent.MainThread;
 import fr.epistudio.epysia.debug.DebugDraw;
 import fr.epistudio.epysia.events.EventBus;
+import fr.epistudio.epysia.pool.ObjectPools;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.input.InputState;
@@ -92,6 +93,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private final FrameProfiler profiler = new FrameProfiler();
     private final DebugDraw debugDraw = new DebugDraw();
     private final EventBus eventBus = new EventBus();
+    private final ObjectPools objectPools = new ObjectPools(this);
     private SceneLoader sceneLoader;
     private final AnimationClock animationClock = new AnimationClock();
     private final TransformResolver transformResolver = new TransformResolver();
@@ -597,6 +599,11 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     @Override
     public EventBus events() {
         return eventBus;
+    }
+
+    @Override
+    public ObjectPools pools() {
+        return objectPools;
     }
 
     @Override
