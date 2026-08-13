@@ -1554,9 +1554,6 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private boolean tileVisible(MeshInstanceBatch batch, int tile) {
-        if (batch.tileCount() == 1) {
-            return true;
-        }
         batch.tileBounds(tile, scratchTileMin, scratchTileMax);
         if (withinRange(batch.visibilityRangeBegin(), batch.visibilityRangeEnd())) {
             return false;
