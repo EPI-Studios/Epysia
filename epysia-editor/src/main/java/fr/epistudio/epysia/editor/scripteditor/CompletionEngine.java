@@ -201,12 +201,16 @@ public final class CompletionEngine {
         List<Ranked> ranked = new ArrayList<>();
         for (CompletionSymbol symbol : pool) {
             int rank = matchRank(symbol.insertText(), prefix);
-            if (rank >= 0 && !symbol.insertText().equals(prefix)) {
+            if (rank >= 0 && !isRedundantLocal(symbol, prefix)) {
                 ranked.add(new Ranked(symbol, rank));
             }
         }
         ranked.sort(Comparator.comparingInt(Ranked::rank).thenComparing(entry -> entry.symbol().label()));
         return ranked.stream().limit(MAX_RESULTS).map(Ranked::symbol).toList();
+    }
+
+    private static boolean isRedundantLocal(CompletionSymbol symbol, String prefix) {
+        return symbol.kind() == CompletionKind.LOCAL && symbol.insertText().equals(prefix);
     }
 
     private static int matchRank(String candidate, String prefix) {
