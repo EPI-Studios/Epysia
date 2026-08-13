@@ -12,7 +12,7 @@ WINDOWS_ICON="$(pwd)/packaging/epysia.ico"
 LINUX_ICON="$(pwd)/src/main/resources/branding/epysia-icon-256.png"
 GAME_MODULES="java.base,java.logging,java.management,java.naming,java.net.http,java.xml,jdk.unsupported,jdk.zipfs"
 SERVER_MODULES="java.base,java.logging,java.management,java.naming,java.net.http,java.xml,jdk.unsupported,jdk.zipfs"
-EDITOR_MODULES="${GAME_MODULES},java.compiler,jdk.compiler"
+EDITOR_MODULES="${GAME_MODULES},java.compiler,jdk.compiler,jdk.management"
 
 JLINK="${JAVA_HOME}/bin/jlink"
 JPACKAGE="${JAVA_HOME}/bin/jpackage"

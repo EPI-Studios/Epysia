@@ -25,8 +25,12 @@ public final class AllocationMeter {
     private double smoothedMegabytesPerSecond;
 
     private static ThreadMXBean resolveThreadBean() {
-        java.lang.management.ThreadMXBean bean = ManagementFactory.getThreadMXBean();
-        return bean instanceof ThreadMXBean detailed ? detailed : null;
+        try {
+            java.lang.management.ThreadMXBean bean = ManagementFactory.getThreadMXBean();
+            return bean instanceof ThreadMXBean detailed ? detailed : null;
+        } catch (LinkageError withoutJdkManagement) {
+            return null;
+        }
     }
 
     public void sample() {
