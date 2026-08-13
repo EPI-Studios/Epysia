@@ -274,6 +274,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         lastElementCount++;
         PipelineHandle restored = activePipeline;
         activePipeline = element.shader().map(this::pipelineFor).orElse(activePipeline);
+        boolean rotated = pushRotationOf(element);
         element.paintInto(this);
         boolean clipped = element.clipChildren() && clipStack.push(element.computedRect());
         for (UiElement child : element.children()) {
@@ -282,7 +283,20 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         if (clipped) {
             clipStack.pop();
         }
+        if (rotated) {
+            drawList.popTransform();
+        }
         activePipeline = restored;
+    }
+
+    private boolean pushRotationOf(UiElement element) {
+        if (!element.rotated()) {
+            return false;
+        }
+        UiRect rect = element.computedRect();
+        drawList.pushRotation(rect.x() + rect.width() * 0.5f,
+                rect.y() + rect.height() * 0.5f, element.rotationRadians());
+        return true;
     }
 
     private PipelineHandle pipelineFor(UiShader shader) {

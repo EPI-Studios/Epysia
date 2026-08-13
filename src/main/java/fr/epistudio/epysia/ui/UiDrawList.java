@@ -7,6 +7,8 @@ import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 
 public final class UiDrawList {
@@ -61,12 +63,45 @@ public final class UiDrawList {
     private int vertexCount;
     private int indexCount;
     private float scale = 1.0f;
+    private final Deque<float[]> transformStack = new ArrayDeque<>();
+    private float rotationCos = 1.0f;
+    private float rotationSin;
+    private float pivotX;
+    private float pivotY;
 
     public void setScale(float scale) {
         this.scale = scale;
     }
 
+    public void pushRotation(float centerX, float centerY, float radians) {
+        transformStack.push(new float[]{rotationCos, rotationSin, pivotX, pivotY});
+        rotationCos = (float) Math.cos(radians);
+        rotationSin = (float) Math.sin(radians);
+        pivotX = centerX;
+        pivotY = centerY;
+    }
+
+    public void popTransform() {
+        float[] restored = transformStack.poll();
+        if (restored == null) {
+            return;
+        }
+        rotationCos = restored[0];
+        rotationSin = restored[1];
+        pivotX = restored[2];
+        pivotY = restored[3];
+    }
+
+    public boolean isRotated() {
+        return rotationSin != 0.0f || rotationCos != 1.0f;
+    }
+
     public void clear() {
+        transformStack.clear();
+        rotationCos = 1.0f;
+        rotationSin = 0.0f;
+        pivotX = 0.0f;
+        pivotY = 0.0f;
         scale = 1.0f;
         commands.clear();
         vertices.clear();
@@ -123,7 +158,11 @@ public final class UiDrawList {
 
     private void appendVertex(float x, float y, float u, float v, UiColor color) {
         int offset = vertexCount * VERTEX_BYTES;
-        vertices.putFloat(offset, x * scale).putFloat(offset + 4, y * scale)
+        float localX = x - pivotX;
+        float localY = y - pivotY;
+        float rotatedX = pivotX + localX * rotationCos - localY * rotationSin;
+        float rotatedY = pivotY + localX * rotationSin + localY * rotationCos;
+        vertices.putFloat(offset, rotatedX * scale).putFloat(offset + 4, rotatedY * scale)
                 .putFloat(offset + 8, u).putFloat(offset + 12, v)
                 .putFloat(offset + 16, color.red()).putFloat(offset + 20, color.green())
                 .putFloat(offset + 24, color.blue()).putFloat(offset + 28, color.alpha());

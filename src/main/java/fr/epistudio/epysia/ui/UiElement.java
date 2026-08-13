@@ -21,6 +21,8 @@ public abstract class UiElement extends Component {
     private final Vector4f size = new Vector4f(0.0f, 160.0f, 0.0f, 48.0f);
     @Export(label = "Anchor point", min = 0.0f, max = 1.0f, step = 0.05f)
     private final Vector2f anchorPoint = new Vector2f();
+    @Export(label = "Rotation", min = -360.0f, max = 360.0f, step = 1.0f)
+    private float rotationDegrees;
     @Export(label = "Z index", step = 1.0f)
     private int zIndex;
     @Export(label = "Visible")
@@ -40,6 +42,23 @@ public abstract class UiElement extends Component {
 
     public Vector2f anchorPoint() {
         return anchorPoint;
+    }
+
+    public float rotationDegrees() {
+        return rotationDegrees;
+    }
+
+    public UiElement setRotationDegrees(float value) {
+        rotationDegrees = value;
+        return this;
+    }
+
+    public boolean rotated() {
+        return Math.abs(rotationDegrees) > 1.0e-4f;
+    }
+
+    public float rotationRadians() {
+        return (float) Math.toRadians(rotationDegrees);
     }
 
     public int zIndex() {
