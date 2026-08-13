@@ -16,4 +16,12 @@ public interface Scheduler {
     default ScheduledAction every(IComponent owner, float seconds, Runnable action) {
         return every(seconds, action);
     }
+
+    default ScheduledSequence sequence() {
+        return new ScheduledSequence(this, null);
+    }
+
+    default ScheduledSequence sequence(IComponent owner) {
+        return new ScheduledSequence(this, owner);
+    }
 }
