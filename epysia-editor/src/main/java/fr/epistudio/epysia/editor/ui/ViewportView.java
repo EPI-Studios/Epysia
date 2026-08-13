@@ -1572,7 +1572,12 @@ public final class ViewportView {
                     ? TextKey.EDITOR_VIEWPORT_VIEW_CAMERA_PREVIEW_UNPIN
                     : TextKey.EDITOR_VIEWPORT_VIEW_CAMERA_PREVIEW_PIN));
         }
-        ImGui.setCursorScreenPos(restoreX, restoreY);
+        restoreCursor(restoreX, restoreY);
+    }
+
+    private static void restoreCursor(float x, float y) {
+        ImGui.setCursorScreenPos(x, y);
+        ImGui.dummy(0.0f, 0.0f);
     }
 
     private void togglePin(GameObject cameraObject) {
