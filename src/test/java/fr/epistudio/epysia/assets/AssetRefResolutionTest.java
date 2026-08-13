@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.assets;
 
 import fr.epistudio.epysia.pool.ObjectPools;
+import fr.epistudio.epysia.tween.Tweens;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.SystemRegistry;
 import fr.epistudio.epysia.assets.loaders.TextureImportSettings;
@@ -111,7 +112,14 @@ class AssetRefResolutionTest {
 
     private static final class HeadlessServices implements EngineServices {
 
-    private final ObjectPools pools = new ObjectPools(this);
+        private final Tweens tweens = new Tweens();
+
+    @Override
+    public Tweens tweens() {
+        return tweens;
+    }
+
+private final ObjectPools pools = new ObjectPools(this);
 
     @Override
     public ObjectPools pools() {
