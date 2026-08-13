@@ -109,7 +109,7 @@ jobs:
 
       - name: Install packaging tools (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y fakeroot binutils zip
+        run: sudo apt-get update && sudo apt-get install -y fakeroot binutils zip rpm
 
       - name: Build fat jars
         shell: bash
