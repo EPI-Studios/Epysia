@@ -8,6 +8,10 @@ import fr.epistudio.epysia.logging.Logger;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -19,6 +23,8 @@ import java.util.function.Supplier;
 public final class AssetRegistry {
     private final Map<Class<?>, AssetLoader<?>> loadersByType = new HashMap<>();
     private final Map<String, Entry> cache = new HashMap<>();
+    private final Deque<PendingUpload> readyForUpload = new ArrayDeque<>();
+    private final Set<String> preloading = new HashSet<>();
     private final EngineServices services;
     private Optional<AssetDatabase> database = Optional.empty();
     private AssetLocator locator = AssetLocator.withoutProject();
@@ -85,6 +91,70 @@ public final class AssetRegistry {
 
     public <T> Optional<T> acquire(Class<T> type, AssetUri uri, AssetVariant variant) {
         return lookup(type, uri, variant, true);
+    }
+
+    private record PendingUpload(Class<?> type, String key, AssetLoader<?> loader,
+                                 AssetLoadRequest request, Object read) {
+    }
+
+    public void preload(Class<?> type, AssetUri uri, AssetVariant variant) {
+        MainThread.require("AssetRegistry.preload");
+        String key = cacheKey(type, uri, variant);
+        if (uri.isEmpty() || cache.containsKey(key) || !preloading.add(key)) {
+            return;
+        }
+        AssetLoader<?> loader = loadersByType.get(type);
+        if (loader == null) {
+            preloading.remove(key);
+            return;
+        }
+        submitRead(type, key, loader, new AssetLoadRequest(uri, variant));
+    }
+
+    private void submitRead(Class<?> type, String key, AssetLoader<?> loader,
+                            AssetLoadRequest request) {
+        AssetLocator snapshot = locator;
+        services.backgroundTasks().submit(
+                () -> loader.readOffThread(snapshot, request),
+                read -> readyForUpload.add(new PendingUpload(type, key, loader, request,
+                        read.orElse(null))),
+                failure -> {
+                    preloading.remove(key);
+                    logger().error("[AssetRegistry] Preload failed for " + request.uri(), failure);
+                });
+    }
+
+    public int pendingUploadCount() {
+        return readyForUpload.size();
+    }
+
+    public boolean isPreloading() {
+        return !preloading.isEmpty() || !readyForUpload.isEmpty();
+    }
+
+    public int drainReadyUploads(int maximumUploads) {
+        MainThread.require("AssetRegistry.drainReadyUploads");
+        int applied = 0;
+        while (applied < maximumUploads && !readyForUpload.isEmpty()) {
+            applyUpload(readyForUpload.poll());
+            applied++;
+        }
+        return applied;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyUpload(PendingUpload pending) {
+        preloading.remove(pending.key());
+        if (cache.containsKey(pending.key())) {
+            return;
+        }
+        AssetLoader<Object> loader = (AssetLoader<Object>) pending.loader();
+        Object value = pending.read() == null
+                ? loader.load(services, pending.request())
+                : loader.loadFromRead(services, pending.request(), pending.read());
+        if (value != null) {
+            cache.put(pending.key(), new Entry(value, loader));
+        }
     }
 
     public void release(Class<?> type, AssetUri uri, AssetVariant variant) {

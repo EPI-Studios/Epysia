@@ -66,6 +66,7 @@ import fr.epistudio.epysia.render.ProfiledRenderSystem;
 
 public final class EpysiaEngine implements StageConfigurer, EngineServices, SceneCapture {
     private static final float ASSET_SWEEP_INTERVAL_SECONDS = 5.0f;
+    private static final int DEFAULT_UPLOADS_PER_TICK = 4;
     private static final int MAXIMUM_CATCH_UP_STEPS = 4;
 
     private PassClear defaultClear = PassClear.color(0.10f, 0.12f, 0.18f);
@@ -109,6 +110,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private boolean initialized;
     private boolean playing;
     private float secondsSinceAssetSweep;
+    private int uploadsPerTick = DEFAULT_UPLOADS_PER_TICK;
     private int pendingCatchUpSteps;
     private final BackgroundTasks backgroundTasks = new BackgroundTasks(this::logger);
 
@@ -250,6 +252,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
         long deliveryStart = System.nanoTime();
         backgroundTasks.deliverCompleted();
         profiler.record(FrameProfiler.BACKGROUND_DELIVERY_SECTION, System.nanoTime() - deliveryStart);
+        assetRegistry.drainReadyUploads(uploadsPerTick);
         scheduler.tick(deltaTimeSeconds);
         if (activeScene != null) {
             applyPendingSceneLoads();
@@ -264,6 +267,14 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
         }
         sweepUnusedAssets(deltaTimeSeconds);
         profiler.record(FrameProfiler.TICK_SECTION, System.nanoTime() - tickStart);
+    }
+
+    public int uploadsPerTick() {
+        return uploadsPerTick;
+    }
+
+    public void setUploadsPerTick(int value) {
+        uploadsPerTick = Math.max(1, value);
     }
 
     private void sweepUnusedAssets(float deltaTimeSeconds) {

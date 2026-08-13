@@ -52,7 +52,12 @@ public final class Texture2D {
 
     public static TextureHandle loadFrom(RenderBackend backend, AssetSource source, TextureFormat format,
             TextureWrap wrap, SamplerFilter filter, SamplingOptions sampling) {
-        return decodeAndUpload(backend, copyToDirectBuffer(readBytes(source)), format, wrap, filter, sampling);
+        return loadFromEncodedBytes(backend, readBytes(source), format, wrap, filter, sampling);
+    }
+
+    public static TextureHandle loadFromEncodedBytes(RenderBackend backend, byte[] encoded,
+            TextureFormat format, TextureWrap wrap, SamplerFilter filter, SamplingOptions sampling) {
+        return decodeAndUpload(backend, copyToDirectBuffer(encoded), format, wrap, filter, sampling);
     }
 
     public static TextureHandle load(RenderBackend backend, String path) {
