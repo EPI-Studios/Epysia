@@ -78,6 +78,11 @@ public interface PhysicsWorld extends AutoCloseable {
 
     Optional<RaycastHit> raycast(Vector3fc origin, Vector3fc direction, float maxDistance, QueryFilter filter);
 
+    default List<RaycastHit> raycastAll(Vector3fc origin, Vector3fc direction, float maxDistance,
+                                        QueryFilter filter, int maximumHits) {
+        return raycast(origin, direction, maxDistance, filter).map(List::of).orElseGet(List::of);
+    }
+
     Optional<ShapeCastHit> shapeCast(ShapeDescriptor shape, RigidBodyPose from, Vector3fc direction, float maxDistance, QueryFilter filter);
 
     long[] overlap(ShapeDescriptor shape, RigidBodyPose pose, QueryFilter filter);

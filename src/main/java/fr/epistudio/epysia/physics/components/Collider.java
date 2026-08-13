@@ -3,6 +3,7 @@ package fr.epistudio.epysia.physics.components;
 import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.Export;
+import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
@@ -10,6 +11,8 @@ import org.joml.Vector3fc;
 import java.util.Optional;
 
 public abstract class Collider extends Component {
+    private static final float SCALE_EPSILON = 1.0e-4f;
+
     @Export(label = "Offset", step = 0.05f)
     private final Vector3f offset = new Vector3f(0.0f, 0.0f, 0.0f);
 
@@ -24,6 +27,7 @@ public abstract class Collider extends Component {
 
     private PhysicsMaterial resolvedMaterial = PhysicsMaterial.DEFAULT;
     private boolean registered;
+    private final Vector3f registeredScale = new Vector3f(1.0f, 1.0f, 1.0f);
 
     public abstract ShapeDescriptor shape();
 
@@ -33,6 +37,7 @@ public abstract class Collider extends Component {
 
     public void markRegistered() {
         this.registered = true;
+        currentScale().ifPresent(registeredScale::set);
     }
 
     public void clearRegistered() {
@@ -40,7 +45,19 @@ public abstract class Collider extends Component {
     }
 
     public boolean requiresRebuild() {
-        return false;
+        return scaleChanged();
+    }
+
+    public final boolean scaleChanged() {
+        return currentScale()
+                .map(scale -> !scale.equals(registeredScale, SCALE_EPSILON))
+                .orElse(false);
+    }
+
+    private Optional<Vector3fc> currentScale() {
+        return owner()
+                .map(gameObject -> gameObject.getComponentOrNull(Transform3D.class))
+                .map(Transform3D::scale);
     }
 
     public Vector3fc offset() {

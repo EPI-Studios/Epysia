@@ -48,7 +48,7 @@ public final class MeshCollider extends Collider {
 
     @Override
     public boolean requiresRebuild() {
-        return isRegistered() && geometryChanged;
+        return super.requiresRebuild() || isRegistered() && geometryChanged;
     }
 
     @Override

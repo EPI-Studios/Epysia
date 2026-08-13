@@ -68,6 +68,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private static final int MINIMUM_STEP_HERTZ = 10;
     private static final int MAXIMUM_STEP_HERTZ = 240;
     private static final int MAXIMUM_CATCHUP_STEPS = 5;
+    private static final int DEFAULT_MAXIMUM_HITS = 32;
     private static final float DEFAULT_STEP_SECONDS = 1.0f / 60.0f;
 
     private final Vector3f defaultGravity = new Vector3f(0.0f, -9.81f, 0.0f);
@@ -505,12 +506,26 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (!rigidBody.isRegistered() || !rigidBody.handle().isValid()) {
             return;
         }
-        if (rigidBody.kind() == RigidBodyKind.KINEMATIC || rigidBody.kind() == RigidBodyKind.STATIC) {
-            Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
-            scratchPosition.set(transform.position());
-            scratchRotation.set(transform.rotation());
-            world.setBodyPose(rigidBody.handle(), new RigidBodyPose(scratchPosition, scratchRotation));
+        if (rigidBody.kind() != RigidBodyKind.KINEMATIC && rigidBody.kind() != RigidBodyKind.STATIC) {
+            return;
         }
+        Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
+        scratchPosition.set(transform.position());
+        scratchRotation.set(transform.rotation());
+        if (rigidBody.kind() == RigidBodyKind.KINEMATIC
+                && rigidBody.dynamicProperties().continuousCollisionDetection()) {
+            sweepKinematicToTarget(rigidBody);
+            return;
+        }
+        world.setBodyPose(rigidBody.handle(), new RigidBodyPose(scratchPosition, scratchRotation));
+    }
+
+    private void sweepKinematicToTarget(RigidBodyComponent rigidBody) {
+        RigidBodyPose current = world.getBodyPose(rigidBody.handle());
+        Vector3f delta = new Vector3f(scratchPosition).sub(current.position());
+        world.setLinearVelocity(rigidBody.handle(), delta.mul(1.0f / fixedStepSeconds));
+        world.setBodyPose(rigidBody.handle(),
+                new RigidBodyPose(current.position(), new Quaternionf(scratchRotation)));
     }
 
     private void ensureRegistered(GameObject gameObject) {
@@ -1134,6 +1149,16 @@ public final class PhysicsSystem implements IPhysicsSystem {
     public Optional<RaycastHit> raycast(Vector3fc origin, Vector3fc direction, float maxDistance) {
         requireWorld();
         return world.raycast(origin, direction, maxDistance, QueryFilter.ALL);
+    }
+
+    public List<RaycastHit> raycastAll(Vector3fc origin, Vector3fc direction, float maxDistance) {
+        return raycastAll(origin, direction, maxDistance, QueryFilter.ALL, DEFAULT_MAXIMUM_HITS);
+    }
+
+    public List<RaycastHit> raycastAll(Vector3fc origin, Vector3fc direction, float maxDistance,
+                                       QueryFilter filter, int maximumHits) {
+        requireWorld();
+        return world.raycastAll(origin, direction, maxDistance, filter, Math.max(1, maximumHits));
     }
 
     public Optional<RaycastHit2D> raycast2D(Vector2fc origin, Vector2fc direction, float maxDistance) {

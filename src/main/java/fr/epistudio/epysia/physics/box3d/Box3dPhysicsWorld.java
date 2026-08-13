@@ -11,6 +11,9 @@ import org.joml.Vector3fc;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -313,6 +316,37 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
         if (nativeJoint != null) {
             nativeJoint.destroy();
         }
+    }
+
+    @Override
+    public List<RaycastHit> raycastAll(Vector3fc origin, Vector3fc direction, float maxDistance,
+                                       QueryFilter filter, int maximumHits) {
+        List<RaycastHit> hits = new ArrayList<>();
+        Set<Long> alreadyHit = new HashSet<>();
+        Vector3f normalized = new Vector3f(direction).normalize();
+        Vec3 start = new Vec3(origin.x(), origin.y(), origin.z());
+        float traveled = 0.0f;
+        int attempts = 0;
+        int attemptBudget = bodies.size() * 2 + 2;
+        while (hits.size() < maximumHits && traveled < maxDistance && attempts < attemptBudget) {
+            attempts++;
+            float remaining = maxDistance - traveled;
+            B3World.RayHit hit = world.castRayClosest(start, scaled(normalized, remaining), queryFilterOf(filter));
+            if (!hit.hit() || hit.body() == null) {
+                break;
+            }
+            float hitDistance = (float) (hit.fraction() * remaining);
+            long key = hit.body().key();
+            if (key != filter.excludedBodyId() && !isAreaBody(key) && alreadyHit.add(key)) {
+                hits.add(new RaycastHit(new BodyHandle(key), toVector(hit.point()),
+                        toVector(hit.normal()), traveled + hitDistance));
+            }
+            float advance = hitDistance + QUERY_SKIP_EPSILON;
+            start = start.add(normalized.x * advance, normalized.y * advance, normalized.z * advance);
+            traveled += advance;
+        }
+        hits.sort(Comparator.comparingDouble(RaycastHit::distance));
+        return hits;
     }
 
     @Override
