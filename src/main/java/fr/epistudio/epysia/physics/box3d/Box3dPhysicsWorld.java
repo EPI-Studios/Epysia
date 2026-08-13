@@ -502,6 +502,27 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
         }
     }
 
+
+    private static void fillFromManifold(B3Body first, B3Body second, Vector3f point, Vector3f normal) {
+        List<B3Body.ContactPoint> touching = first.contactPoints();
+        int matched = 0;
+        for (B3Body.ContactPoint contact : touching) {
+            if (contact.other() != second) {
+                continue;
+            }
+            point.add((float) contact.point().x(), (float) contact.point().y(), (float) contact.point().z());
+            normal.add((float) contact.normal().x(), (float) contact.normal().y(), (float) contact.normal().z());
+            matched++;
+        }
+        if (matched == 0) {
+            return;
+        }
+        point.div(matched);
+        if (normal.lengthSquared() > 1.0e-8f) {
+            normal.normalize();
+        }
+    }
+
     private void addContactEvent(B3Body first, B3Body second, Map<BodyPair, B3Events.ContactHit> hitsByPair,
                                  boolean started) {
         if (first == null || second == null) {
@@ -511,6 +532,9 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
         Vector3f point = hit != null ? toVector(hit.point()) : new Vector3f();
         Vector3f normal = hit != null ? toVector(hit.normal()) : new Vector3f();
         float approachSpeed = hit != null ? hit.approachSpeed() : 0.0f;
+        if (hit == null && started) {
+            fillFromManifold(first, second, point, normal);
+        }
         pendingContactEvents.add(new ContactEvent(new BodyHandle(first.key()), new BodyHandle(second.key()),
                 point, normal, approachSpeed, started));
     }
