@@ -119,6 +119,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
 
     public void addScene(Scene scene) {
         scenes.add(scene);
+        scene.setRemovalListener(this::dispatchDestruction);
         if (activeScene == null) {
             activeScene = scene;
         }

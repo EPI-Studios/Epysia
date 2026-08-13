@@ -79,6 +79,7 @@ public final class SceneLoader {
         if (request.mode() == null) {
             serializer.unloadSource(services.scene(), request.scenePath());
             loadedSources.remove(request.scenePath());
+            services.assets().unloadUnused();
             return;
         }
         readSceneText(request.scenePath())
@@ -93,6 +94,9 @@ public final class SceneLoader {
         }
         serializer.deserializeInto(services.scene(), text, services,
                 request.mode(), request.scenePath());
+        if (request.mode() == SceneLoadMode.REPLACE) {
+            services.assets().unloadUnused();
+        }
         refreshPrefabInstances();
         loadedSources.add(request.scenePath());
         preloaded.remove(request.scenePath());
