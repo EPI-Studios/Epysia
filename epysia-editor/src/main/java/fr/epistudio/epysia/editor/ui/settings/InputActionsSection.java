@@ -11,6 +11,7 @@ import fr.epistudio.epysia.input.action.InputAction;
 import fr.epistudio.epysia.input.action.InputActions;
 import fr.epistudio.epysia.input.action.InputBinding;
 import imgui.ImGui;
+import org.lwjgl.glfw.GLFW;
 import imgui.type.ImString;
 
 import java.util.ArrayList;
@@ -169,8 +170,12 @@ public final class InputActionsSection {
                 return Optional.of(InputBinding.mouse(button));
             }
         }
+        long window = GLFW.glfwGetCurrentContext();
+        if (window == 0L) {
+            return Optional.empty();
+        }
         for (KeyCode key : KeyCode.values()) {
-            if (ImGui.isKeyPressed(key.glfwCode())) {
+            if (GLFW.glfwGetKey(window, key.glfwCode()) == GLFW.GLFW_PRESS) {
                 return Optional.of(InputBinding.key(key));
             }
         }
