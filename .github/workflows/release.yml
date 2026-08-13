@@ -71,6 +71,19 @@ jobs:
             exit 1
           fi
           echo "found imgui-java/bin/$native"
+          if [ ! -f imgui-java/bin/binding.sha1 ]; then
+            echo "::error::imgui-java/bin/binding.sha1 is missing, the natives cannot be matched to the binding"
+            exit 1
+          fi
+          stale=$(cd imgui-java && sha1sum -c bin/binding.sha1 --quiet 2>/dev/null | cut -d: -f1)
+          if [ -n "$stale" ]; then
+            echo "::error::the imgui natives were built from different binding sources, so $native is stale"
+            echo "::error::rebuild the natives in the imgui-java fork and regenerate bin/binding.sha1"
+            echo "changed since the natives were built:"
+            echo "$stale"
+            exit 1
+          fi
+          echo "natives match the binding sources"
 
       - name: Checkout box3d-java
         uses: actions/checkout@v4
