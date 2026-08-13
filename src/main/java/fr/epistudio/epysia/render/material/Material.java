@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.render.material;
 
+import fr.epistudio.epysia.assets.AcquiredAssets;
 import fr.epistudio.epysia.render.shader.ShaderUniformValues;
 import fr.epistudio.epysia.render.shader.SurfaceUniformHost;
 
@@ -13,6 +14,7 @@ public abstract class Material implements SurfaceUniformHost {
     private final String vertexShaderPath;
     private final String fragmentShaderPath;
     private final Map<String, String> texturePaths = new LinkedHashMap<>();
+    private final AcquiredAssets ownedTextures = new AcquiredAssets();
     private final ShaderUniformValues surfaceUniforms = new ShaderUniformValues();
     private boolean transparent;
     private boolean doubleSided;
@@ -33,6 +35,14 @@ public abstract class Material implements SurfaceUniformHost {
 
     public final ShaderUniformValues surfaceUniforms() {
         return surfaceUniforms;
+    }
+
+    public final AcquiredAssets ownedTextures() {
+        return ownedTextures;
+    }
+
+    public final boolean isAssetBacked() {
+        return !assetPath.isEmpty();
     }
 
     public final String assetPath() {

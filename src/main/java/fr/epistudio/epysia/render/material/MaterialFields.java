@@ -61,15 +61,12 @@ public final class MaterialFields {
     }
 
     public static void resolveTextures(Material material, AssetRegistry assets) {
-        for (Field field : textureFields(material.getClass())) {
-            Optional<String> path = material.texturePath(field.getName());
-            if (path.isEmpty() || read(material, field) != null) {
-                continue;
-            }
-            assets.resolve(TextureHandle.class, LegacyAssetReferences.interpret(path.get(), assets),
-                            variantFor(field))
-                    .ifPresent(handle -> write(material, field, handle));
-        }
+        material.ownedTextures().releaseAll(assets);
+        acquireTextures(material, assets, material.ownedTextures());
+    }
+
+    public static void releaseTextures(Material material, AssetRegistry assets) {
+        material.ownedTextures().releaseAll(assets);
     }
 
     public static void acquireTextures(Material material, AssetRegistry assets, AcquiredAssets into) {

@@ -191,6 +191,15 @@ public final class MeshRenderer extends Component implements MeshRenderSource {
     public void onDestroy(EngineServices services) {
         super.onDestroy(services);
         ownedTextures.releaseAll(services.assets());
+        releaseInlineMaterialTextures(services);
+    }
+
+    private void releaseInlineMaterialTextures(EngineServices services) {
+        for (Material material : materials) {
+            if (!material.isAssetBacked()) {
+                MaterialFields.releaseTextures(material, services.assets());
+            }
+        }
     }
 
     private void resolveMeshAndMaterials(EngineServices services) {

@@ -48,6 +48,12 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
     }
 
     @Override
+    public void dispose(EngineServices services, Material value) {
+        MaterialFields.releaseTextures(value, services.assets());
+        loadedByPath.values().remove(value);
+    }
+
+    @Override
     public void unloadAll() {
         loadedByPath.clear();
     }
