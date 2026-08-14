@@ -5,6 +5,7 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -212,6 +213,26 @@ public final class Transform3D extends Component {
 
     public Quaternionf worldRotation(Quaternionf destination) {
         return worldMatrix().getNormalizedRotation(destination);
+    }
+
+    public Vector3f worldScale(Vector3f destination) {
+        return worldMatrix().getScale(destination);
+    }
+
+    public Transform3D setWorldPosition(float x, float y, float z) {
+        if (parent == null) {
+            return setPosition(x, y, z);
+        }
+        Vector3f local = parent.worldMatrix().invertAffine(new Matrix4f())
+                .transformPosition(new Vector3f(x, y, z));
+        return setPosition(local.x, local.y, local.z);
+    }
+
+    public Transform3D setWorldRotation(Quaternionfc source) {
+        if (parent == null) {
+            return setRotation(new Quaternionf(source));
+        }
+        return setRotation(parent.worldRotation(new Quaternionf()).invert().mul(source));
     }
 
     public void captureInterpolationSnapshot() {

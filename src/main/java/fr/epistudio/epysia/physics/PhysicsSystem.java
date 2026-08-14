@@ -89,6 +89,9 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private CollisionLayers collisionLayers = CollisionLayers.allColliding();
     private final Map<BodyPair, ContactEvent> activeContacts = new LinkedHashMap<>();
     private final Set<BodyPair> activeTriggers = new LinkedHashSet<>();
+    private final Set<Long> passableBodies = new HashSet<>();
+    private final Map<Long, Set<Long>> characterContacts = new HashMap<>();
+    private final List<ContactEvent> pendingCharacterEvents = new ArrayList<>();
     private final Set<GameObject> warnedMixedPhysics = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Long, RigidBodyPose> previousPoses = new HashMap<>();
     private final Map<Long, RigidBodyPose> currentPoses = new HashMap<>();
@@ -138,6 +141,9 @@ public final class PhysicsSystem implements IPhysicsSystem {
         bodyOwners.clear();
         activeContacts.clear();
         activeTriggers.clear();
+        passableBodies.clear();
+        characterContacts.clear();
+        pendingCharacterEvents.clear();
         warnedMixedPhysics.clear();
         previousPoses.clear();
         currentPoses.clear();
@@ -185,6 +191,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         syncKinematicBodiesToPhysics(scene);
         ensureCharacterControllers(scene);
         destroyOrphanBodies(scene);
+        refreshPassableBodies();
         registerSceneJoints(scene);
         advanceFixedSteps(scene, deltaTimeSeconds);
         writeInterpolatedTransforms(scene);
@@ -354,6 +361,12 @@ public final class PhysicsSystem implements IPhysicsSystem {
                 syncRigidBody2DToPhysics(owner, rigidBody);
             }
         }
+        for (CharacterControllerComponent controller : scene.componentsOf(CharacterControllerComponent.class)) {
+            GameObject owner = controller.ownerOrNull();
+            if (owner != null) {
+                syncCharacterToTransform(owner);
+            }
+        }
     }
 
     private void ensureCharacterControllers(Scene scene) {
@@ -440,24 +453,35 @@ public final class PhysicsSystem implements IPhysicsSystem {
         float vertical = verticalVelocityFor(controller, deltaTimeSeconds);
         scratchDisplacement.set(scratchHorizontal.x * deltaTimeSeconds, vertical * deltaTimeSeconds, scratchHorizontal.z * deltaTimeSeconds);
         boolean snap = controller.snapToGround() && vertical <= 0.0f;
+        controller.nativeController().setBodyFilter(this::blocksCharacter);
         Box3dCharacterController.MoveResult result = controller.nativeController()
                 .move(controller.bodyHandle(), scratchDisplacement, controller.stepHeight(), snap);
-        Vector3fc corrected = result.correctedDisplacement();
-        if (corrected.lengthSquared() > RESTING_DISPLACEMENT_SQUARED) {
-            Vector3f position = transform.position();
-            float newX = position.x + corrected.x();
-            float newY = position.y + corrected.y();
-            float newZ = position.z + corrected.z();
-            transform.setPosition(newX, newY, newZ);
-            scratchPosition.set(newX, newY, newZ);
-            scratchRotation.set(transform.rotation());
-            world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(new Vector3f(scratchPosition), new Quaternionf(scratchRotation)));
-        }
+        applyControllerDisplacement(transform, result.correctedDisplacement());
+        writeControllerPose(controller, transform);
         controller.setGrounded(result.grounded());
         controller.setMoveResult(result.groundNormal(), result.clippedDelta(), result.contacts());
+        recordCharacterContacts(controller.bodyHandle(), result.contacts(), deltaTimeSeconds);
         if (controller.applyGravity()) {
             controller.setVerticalVelocity(result.grounded() && vertical < 0.0f ? 0.0f : vertical);
         }
+    }
+
+    private void applyControllerDisplacement(Transform3D transform, Vector3fc corrected) {
+        if (corrected.lengthSquared() <= RESTING_DISPLACEMENT_SQUARED) {
+            return;
+        }
+        transform.worldPosition(scratchPosition);
+        transform.setWorldPosition(scratchPosition.x + corrected.x(),
+                scratchPosition.y + corrected.y(),
+                scratchPosition.z + corrected.z());
+    }
+
+    private void writeControllerPose(CharacterControllerComponent controller, Transform3D transform) {
+        world.setBodyPose(controller.bodyHandle(), worldPoseOf(transform));
+    }
+
+    private boolean blocksCharacter(long bodyKey) {
+        return !passableBodies.contains(bodyKey);
     }
 
     public void syncCharacterToTransform(GameObject gameObject) {
@@ -467,8 +491,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (controller == null || transform == null || !controller.bodyHandle().isValid()) {
             return;
         }
-        world.setBodyPose(controller.bodyHandle(), new RigidBodyPose(
-                new Vector3f(transform.position()), new Quaternionf(transform.rotation())));
+        writeControllerPose(controller, transform);
     }
 
     public void stepCharacter(GameObject gameObject, float deltaTimeSeconds) {
@@ -483,10 +506,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (!controller.consumeTeleport(scratchPosition)) {
             return false;
         }
-        transform.setPosition(scratchPosition.x, scratchPosition.y, scratchPosition.z);
-        scratchRotation.set(transform.rotation());
-        world.setBodyPose(controller.bodyHandle(),
-                new RigidBodyPose(new Vector3f(scratchPosition), new Quaternionf(scratchRotation)));
+        transform.setWorldPosition(scratchPosition.x, scratchPosition.y, scratchPosition.z);
+        writeControllerPose(controller, transform);
         transform.resetInterpolation();
         controller.consumeDesiredHorizontalMove(scratchHorizontal);
         return true;
@@ -511,8 +532,8 @@ public final class PhysicsSystem implements IPhysicsSystem {
             return;
         }
         Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
-        scratchPosition.set(transform.position());
-        scratchRotation.set(transform.rotation());
+        transform.worldPosition(scratchPosition);
+        transform.worldRotation(scratchRotation);
         if (rigidBody.kind() == RigidBodyKind.KINEMATIC
                 && rigidBody.dynamicProperties().continuousCollisionDetection()) {
             sweepKinematicToTarget(rigidBody);
@@ -569,7 +590,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         Transform3D transform = gameObject.getComponent(Transform3D.class)
                 .orElseThrow(() -> new EpysiaException("Physics body requires Transform3D on " + gameObject.name()));
         RigidBodyKind kind = rigidBodyOptional.map(RigidBodyComponent::kind).orElse(RigidBodyKind.STATIC);
-        RigidBodyPose pose = new RigidBodyPose(new Vector3f(transform.position()), new Quaternionf(transform.rotation()));
+        RigidBodyPose pose = worldPoseOf(transform);
         DynamicProperties properties = rigidBodyOptional.map(RigidBodyComponent::dynamicProperties)
                 .orElse(DynamicProperties.defaults());
         boolean canSleep = rigidBodyOptional.map(RigidBodyComponent::canSleep).orElse(true);
@@ -600,26 +621,30 @@ public final class PhysicsSystem implements IPhysicsSystem {
 
     private void attachColliders(GameObject gameObject, Transform3D transform, RigidBodyKind kind,
                                  BodyHandle body, List<Collider> colliders) {
+        Vector3fc scale = transform.worldScale(new Vector3f());
         for (Collider collider : colliders) {
             guardDynamicTriangleMesh(gameObject, kind, collider);
             PhysicsMaterial material = collider.resolvedMaterial();
-            ShapeDescriptor shape = scaledShape(collider.shape(), transform);
+            ShapeDescriptor shape = scaledShape(collider.shape(), scale);
             int group = collisionLayers.groupFor(collider.collisionLayer());
             int mask = collisionLayers.maskFor(collider.collisionLayer());
-            Vector3f offset = scaledOffset(collider.offset(), transform);
+            Vector3f offset = scaledOffset(collider.offset(), scale);
             world.addCollider(body, shape, offset, collider.isTrigger(), material, group, mask);
         }
     }
 
-    private static Vector3f scaledOffset(Vector3fc offset, Transform3D transform) {
-        Vector3fc scale = transform.scale();
+    private static RigidBodyPose worldPoseOf(Transform3D transform) {
+        return new RigidBodyPose(transform.worldPosition(new Vector3f()),
+                transform.worldRotation(new Quaternionf()));
+    }
+
+    private static Vector3f scaledOffset(Vector3fc offset, Vector3fc scale) {
         return new Vector3f(offset.x() * Math.abs(scale.x()),
                 offset.y() * Math.abs(scale.y()),
                 offset.z() * Math.abs(scale.z()));
     }
 
-    private static ShapeDescriptor scaledShape(ShapeDescriptor shape, Transform3D transform) {
-        Vector3fc scale = transform.scale();
+    private static ShapeDescriptor scaledShape(ShapeDescriptor shape, Vector3fc scale) {
         float scaleX = Math.abs(scale.x());
         float scaleY = Math.abs(scale.y());
         float scaleZ = Math.abs(scale.z());
@@ -888,12 +913,15 @@ public final class PhysicsSystem implements IPhysicsSystem {
     }
 
     private boolean isPassable(long bodyKey, float horizontal, float vertical) {
+        if (passableBodies.contains(bodyKey)) {
+            return true;
+        }
         GameObject owner = bodyOwners.get(bodyKey);
         if (owner == null) {
             return false;
         }
-        for (Collider2D collider : colliders2DOf(owner)) {
-            if (collider.isTrigger() || collider.passableAlong(horizontal, vertical)) {
+        for (IComponent component : owner.components()) {
+            if (component instanceof Collider2D collider && collider.passableAlong(horizontal, vertical)) {
                 return true;
             }
         }
@@ -931,6 +959,33 @@ public final class PhysicsSystem implements IPhysicsSystem {
             }
         }
         return colliders;
+    }
+
+    private void refreshPassableBodies() {
+        passableBodies.clear();
+        for (Map.Entry<Long, GameObject> entry : bodyOwners.entrySet()) {
+            if (onlyTriggers(entry.getValue())) {
+                passableBodies.add(entry.getKey());
+            }
+        }
+    }
+
+    private static boolean onlyTriggers(GameObject gameObject) {
+        boolean sawCollider = false;
+        for (IComponent component : gameObject.components()) {
+            if (component instanceof Collider collider) {
+                if (!collider.isTrigger()) {
+                    return false;
+                }
+                sawCollider = true;
+            } else if (component instanceof Collider2D collider) {
+                if (!collider.isTrigger()) {
+                    return false;
+                }
+                sawCollider = true;
+            }
+        }
+        return sawCollider;
     }
 
     private static List<Collider> collidersOf(GameObject gameObject) {
@@ -995,27 +1050,57 @@ public final class PhysicsSystem implements IPhysicsSystem {
         }
         Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
         RigidBodyPose pose = displayedPose(rigidBody.handle(), rigidBody.interpolate(), alpha);
-        transform.setPosition(pose.position().x(), pose.position().y(), pose.position().z());
-        scratchRotation.set(pose.rotation());
-        transform.setRotation(scratchRotation);
+        transform.setWorldPosition(pose.position().x(), pose.position().y(), pose.position().z());
+        transform.setWorldRotation(pose.rotation());
     }
 
     private void dispatchPhysicsEvents() {
         for (ContactEvent event : world.drainContactEvents()) {
             handleContactEvent(event);
         }
+        for (ContactEvent event : pendingCharacterEvents) {
+            handleContactEvent(event);
+        }
+        pendingCharacterEvents.clear();
         for (AreaEvent event : world.drainAreaEvents()) {
             handleAreaEvent(event);
         }
         fireStayEvents();
     }
 
+    private void recordCharacterContacts(BodyHandle body, List<CharacterContact> contacts, float deltaTimeSeconds) {
+        Set<Long> previous = characterContacts.getOrDefault(body.id(), Set.of());
+        Set<Long> current = new LinkedHashSet<>();
+        for (CharacterContact contact : contacts) {
+            if (current.add(contact.body().id()) && !previous.contains(contact.body().id())) {
+                pendingCharacterEvents.add(new ContactEvent(body, contact.body(), contact.point(),
+                        contact.normal(), approachSpeedAlong(contact.normal(), deltaTimeSeconds), true));
+            }
+        }
+        for (long departed : previous) {
+            if (!current.contains(departed)) {
+                pendingCharacterEvents.add(new ContactEvent(body, new BodyHandle(departed),
+                        new Vector3f(), new Vector3f(), 0.0f, false));
+            }
+        }
+        characterContacts.put(body.id(), current);
+    }
+
+    private float approachSpeedAlong(Vector3fc normal, float deltaTimeSeconds) {
+        float along = -scratchDisplacement.dot(normal);
+        if (along <= 0.0f || deltaTimeSeconds <= 0.0f) {
+            return 0.0f;
+        }
+        return along / deltaTimeSeconds;
+    }
+
     private void handleContactEvent(ContactEvent event) {
         BodyPair pair = BodyPair.of(event.first().id(), event.second().id());
-        if (event.started()) {
-            activeContacts.put(pair, event);
-        } else {
-            activeContacts.remove(pair);
+        if (event.started() && activeContacts.put(pair, event) != null) {
+            return;
+        }
+        if (!event.started() && activeContacts.remove(pair) == null) {
+            return;
         }
         GameObject first = bodyOwners.get(event.first().id());
         GameObject second = bodyOwners.get(event.second().id());
@@ -1138,8 +1223,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
         if (!(component.shape() instanceof ShapeDescriptor.Capsule capsule)) {
             throw new EpysiaException("Character controller requires a capsule shape.");
         }
-        RigidBodyPose pose = new RigidBodyPose(new Vector3f(transform.position()), new Quaternionf(transform.rotation()));
-        BodyHandle handle = world.addKinematicBody(capsule, pose, CollisionMask.DEFAULT);
+        BodyHandle handle = world.addKinematicBody(capsule, worldPoseOf(transform), CollisionMask.DEFAULT);
         Box3dCharacterController controller = new Box3dCharacterController(world, capsule.radius(),
                 capsule.halfHeight(), component.maxSlopeDegrees());
         ownedControllers.add(controller);
