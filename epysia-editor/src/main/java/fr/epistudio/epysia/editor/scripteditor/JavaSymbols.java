@@ -4,12 +4,7 @@ import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scripting.Behaviour;
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector2f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -38,9 +33,7 @@ public final class JavaSymbols {
             "this", "throw", "throws", "transient", "try", "var", "void", "volatile", "while",
             "yield", "true", "false", "null");
 
-    private static final List<Class<?>> MATH_CLASSES = List.of(
-            Vector2f.class, Vector3f.class, Vector4f.class,
-            Matrix3f.class, Matrix4f.class, Quaternionf.class);
+    private static final String MATH_PACKAGE = "org.joml";
 
     private final Map<String, Class<?>> typesBySimpleName = new TreeMap<>();
     private final Map<String, String> qualifiedBySimpleName = new TreeMap<>();
@@ -55,7 +48,7 @@ public final class JavaSymbols {
 
     private static List<Class<?>> discoverTypes(ComponentRegistry registry, ProjectLibraries libraries,
                                                 Path compiledScriptsDirectory) {
-        List<Class<?>> classes = new ArrayList<>(MATH_CLASSES);
+        List<Class<?>> classes = new ArrayList<>(ClasspathTypeScanner.typesUnder(Vector3f.class, MATH_PACKAGE));
         classes.addAll(ClasspathTypeScanner.typesUnder(Behaviour.class, ENGINE_PACKAGE));
         classes.addAll(ClasspathTypeScanner.typesUnder(EngineServices.class, ENGINE_PACKAGE));
         classes.addAll(ClasspathTypeScanner.typesIn(projectRoots(libraries, compiledScriptsDirectory),
