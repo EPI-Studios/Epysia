@@ -223,7 +223,18 @@ match.
 git tag v0.1.0
 git push origin v0.1.0
 ```
+## Support and bugs 
 
+You found a bug ? 
+You can submit your detailed bug report with the "issues" tab on github or on our discord: 
+https://discord.gg/zHBNkSHkc5 
+- Choose the "report a bug" tab during onboarding
+- Go to the "bugs" channel
+- Read the rules and submit the bug!
+
+We will then discuss with you, fix the bug and add you to the credentials ! 
+No bug bounty reward except credit will be offered.
+  
 ## Third-party
 
 - Editor icons are derived from the Godot Engine icon set (MIT).
