@@ -27,11 +27,19 @@ public final class CompletionEngine {
         }
     }
 
+    private record ResolvedType(String name, Optional<String> element) {
+    }
+
     private static final Pattern IDENTIFIER_PATTERN =
             Pattern.compile("\\b[A-Za-z_][A-Za-z0-9_]{2,}\\b");
     private static final Pattern IMPORT_LINE_PATTERN =
             Pattern.compile("^\\s*import\\s+(static\\s+)?([A-Za-z0-9_.]*)$");
+    private static final Pattern CLASS_LITERAL_PATTERN =
+            Pattern.compile("\\b([A-Z][A-Za-z0-9_]*)\\s*\\.\\s*class\\b");
+    private static final Pattern ENCLOSING_TYPE_PATTERN =
+            Pattern.compile("\\b(?:class|record|enum|interface)\\s+([A-Za-z_][A-Za-z0-9_]*)");
     private static final String BEHAVIOUR_TYPE_NAME = "Behaviour";
+    private static final String SELF_RECEIVER = "this";
     private static final int MAX_RESULTS = 50;
     private static final int MINIMUM_PREFIX_LENGTH = 2;
     private static final char PACKAGE_SEPARATOR = '.';
@@ -136,44 +144,77 @@ public final class CompletionEngine {
     private List<CompletionSymbol> memberPool(String receiver, String fullText) {
         List<String> segments = ReceiverChain.segmentsOf(receiver);
         if (segments.size() == 1 && symbols.knowsType(segments.getFirst())) {
-            return symbols.staticMembersOf(segments.getFirst());
+            return typeMembersOf(segments.getFirst());
         }
-        Optional<String> resolved = resolveChain(segments, fullText);
-        if (resolved.isPresent()) {
-            return symbols.instanceMembersOf(resolved.get());
-        }
-        return symbols.globalPool().stream()
-                .filter(symbol -> symbol.kind() != CompletionKind.KEYWORD)
-                .toList();
+        return resolveChain(segments, fullText)
+                .map(resolved -> symbols.instanceMembersOf(resolved.name()))
+                .orElseGet(List::of);
     }
 
-    private Optional<String> resolveChain(List<String> segments, String fullText) {
-        Optional<String> currentType = rootTypeOf(segments.getFirst(), fullText);
-        for (int index = 1; index < segments.size() && currentType.isPresent(); index++) {
-            currentType = symbols.memberTypeOf(currentType.get(),
-                    ReceiverChain.memberNameOf(segments.get(index)));
-        }
-        return currentType.filter(symbols::knowsType);
+    private List<CompletionSymbol> typeMembersOf(String typeName) {
+        List<CompletionSymbol> members = new ArrayList<>(symbols.staticMembersOf(typeName));
+        members.addAll(symbols.instanceMembersOf(typeName));
+        return members;
     }
 
-    private Optional<String> rootTypeOf(String segment, String fullText) {
+    private Optional<ResolvedType> resolveChain(List<String> segments, String fullText) {
+        Optional<ResolvedType> current = rootTypeOf(segments.getFirst(), fullText);
+        for (int index = 1; index < segments.size() && current.isPresent(); index++) {
+            current = memberOf(current.get(), segments.get(index));
+        }
+        return current.filter(resolved -> symbols.knowsType(resolved.name()));
+    }
+
+    private Optional<ResolvedType> memberOf(ResolvedType receiver, String segment) {
+        return symbols.memberTypeOf(receiver.name(), ReceiverChain.memberNameOf(segment))
+                .flatMap(memberType -> substituted(memberType, receiver, segment));
+    }
+
+    private static Optional<ResolvedType> substituted(MemberType memberType, ResolvedType receiver,
+                                                      String segment) {
+        Optional<String> element = referenceValue(memberType.element(), receiver, segment);
+        return referenceValue(memberType.outer(), receiver, segment)
+                .map(name -> new ResolvedType(name, element));
+    }
+
+    private static Optional<String> referenceValue(TypeReference reference, ResolvedType receiver,
+                                                   String segment) {
+        return switch (reference.origin()) {
+            case CONCRETE -> Optional.of(reference.name());
+            case CALL_CLASS_ARGUMENT -> firstMatchOf(CLASS_LITERAL_PATTERN, segment);
+            case RECEIVER_ELEMENT -> receiver.element();
+            case UNKNOWN -> Optional.empty();
+        };
+    }
+
+    private Optional<ResolvedType> rootTypeOf(String segment, String fullText) {
         String name = ReceiverChain.memberNameOf(segment);
         if (symbols.knowsType(name)) {
-            return Optional.of(name);
+            return Optional.of(new ResolvedType(name, Optional.empty()));
+        }
+        if (name.equals(SELF_RECEIVER)) {
+            return firstMatchOf(ENCLOSING_TYPE_PATTERN, fullText)
+                    .map(enclosing -> new ResolvedType(enclosing, Optional.empty()));
         }
         if (segment.contains("(")) {
-            return symbols.memberTypeOf(BEHAVIOUR_TYPE_NAME, name);
+            return memberOf(new ResolvedType(BEHAVIOUR_TYPE_NAME, Optional.empty()), segment);
         }
         return declaredTypeOf(name, fullText);
     }
 
-    private static Optional<String> declaredTypeOf(String receiver, String fullText) {
+    private static Optional<ResolvedType> declaredTypeOf(String receiver, String fullText) {
         if (receiver.isEmpty()) {
             return Optional.empty();
         }
-        Pattern declaration = Pattern.compile(
-                "\\b([A-Z][A-Za-z0-9_]*)(?:<[^<>]*>)?\\s+" + Pattern.quote(receiver) + "\\b");
-        Matcher matcher = declaration.matcher(fullText);
+        Matcher matcher = Pattern.compile("\\b([A-Z][A-Za-z0-9_]*)(?:<\\s*([A-Za-z0-9_]+)\\s*>)?\\s+"
+                + Pattern.quote(receiver) + "\\b").matcher(fullText);
+        return matcher.find()
+                ? Optional.of(new ResolvedType(matcher.group(1), Optional.ofNullable(matcher.group(2))))
+                : Optional.empty();
+    }
+
+    private static Optional<String> firstMatchOf(Pattern pattern, String text) {
+        Matcher matcher = pattern.matcher(text);
         return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
     }
 

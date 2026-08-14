@@ -106,15 +106,17 @@ public final class JavaSymbols {
         return cache.computeIfAbsent(simpleTypeName, ignored -> collectMembers(type, wantStatic));
     }
 
-    public Optional<String> memberTypeOf(String simpleTypeName, String memberName) {
-        for (CompletionSymbol symbol : instanceMembersOf(simpleTypeName)) {
+    public Optional<MemberType> memberTypeOf(String simpleTypeName, String memberName) {
+        Optional<MemberType> instanceMember = typeOfMember(instanceMembersOf(simpleTypeName), memberName);
+        return instanceMember.isPresent()
+                ? instanceMember
+                : typeOfMember(staticMembersOf(simpleTypeName), memberName);
+    }
+
+    private static Optional<MemberType> typeOfMember(List<CompletionSymbol> members, String memberName) {
+        for (CompletionSymbol symbol : members) {
             if (symbol.name().equals(memberName)) {
-                return symbol.memberTypeName();
-            }
-        }
-        for (CompletionSymbol symbol : staticMembersOf(simpleTypeName)) {
-            if (symbol.name().equals(memberName)) {
-                return symbol.memberTypeName();
+                return symbol.memberType();
             }
         }
         return Optional.empty();
@@ -139,7 +141,7 @@ public final class JavaSymbols {
 
     private static CompletionSymbol fieldSymbol(Field field) {
         return new CompletionSymbol(field.getName(), field.getName(), CompletionKind.FIELD,
-                Optional.empty(), Optional.of(field.getType().getSimpleName()));
+                Optional.empty(), Optional.of(MemberType.ofField(field)));
     }
 
     private static CompletionSymbol methodSymbol(Method method) {
@@ -152,7 +154,7 @@ public final class JavaSymbols {
                 ? method.getName() + "()"
                 : method.getName() + "(";
         return new CompletionSymbol(label, insertText, CompletionKind.METHOD,
-                Optional.empty(), Optional.of(method.getReturnType().getSimpleName()));
+                Optional.empty(), Optional.of(MemberType.ofMethod(method)));
     }
 
     public boolean knowsType(String simpleTypeName) {

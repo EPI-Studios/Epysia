@@ -3,7 +3,7 @@ package fr.epistudio.epysia.editor.scripteditor;
 import java.util.Optional;
 
 public record CompletionSymbol(String label, String insertText, CompletionKind kind,
-                               Optional<String> qualifiedName, Optional<String> memberTypeName) {
+                               Optional<String> qualifiedName, Optional<MemberType> memberType) {
 
     public CompletionSymbol(String label, String insertText, CompletionKind kind) {
         this(label, insertText, kind, Optional.empty(), Optional.empty());
