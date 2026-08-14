@@ -20,6 +20,7 @@ import fr.epistudio.epysia.logging.LogFile;
 import fr.epistudio.epysia.logging.Logger;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
 import fr.epistudio.epysia.profiling.BenchmarkHarness;
+import fr.epistudio.epysia.profiling.FrameProfiler;
 import fr.epistudio.epysia.render.mesh.BuiltinMeshes;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.render.GraphicsApi;
@@ -233,32 +234,28 @@ public final class StandaloneRunner {
         while (!window.shouldClose() && !engine.isShutdownRequested()) {
             long pollStart = System.nanoTime();
             frameStartNanos = pollStart;
+            engine.profiler().begin(FrameProfiler.POLL_SECTION);
             pollInput(window, inputState);
             handleResizeIfNeeded(window, engine);
-            long pollEnd = System.nanoTime();
+            engine.profiler().end();
             consumeRuntimeCommands(engine);
             long currentNanos = System.nanoTime();
             double frameSeconds = Math.min((currentNanos - previousNanos) / NANOS_PER_SECOND, MAX_FRAME_SECONDS);
             previousNanos = currentNanos;
-            long updateStart = System.nanoTime();
+            engine.profiler().begin(FrameProfiler.UPDATE_SECTION);
             if (benchmark == null || !benchmark.simulationFrozen()) {
                 accumulator = drainFixedSteps(engine, window, inputState, accumulator + frameSeconds);
             }
-            long updateEnd = System.nanoTime();
+            engine.profiler().end();
             float interpolationAlpha = Math.clamp((float) (accumulator / fixedTimestepSeconds), 0.0f, 1.0f);
             List<Camera3D> activeCameras = collectActiveCameras(engine.scene());
             updateCameraAspect(activeCameras, window.framebufferWidth(), window.framebufferHeight());
-            long renderStart = System.nanoTime();
             engine.render(activeCameras, RenderTargetHandle.SCREEN, interpolationAlpha);
-            long renderEnd = System.nanoTime();
             frameCapture.ifPresent(FrameCaptureSchedule::onFrameRendered);
-            long swapStart = System.nanoTime();
+            engine.profiler().begin(FrameProfiler.SWAP_BUFFERS_SECTION);
             window.swapBuffers();
+            engine.profiler().end();
             long swapEnd = System.nanoTime();
-            engine.setCpuTimingNanos(CpuTimings.POLL, pollEnd - pollStart);
-            engine.setCpuTimingNanos(CpuTimings.UPDATE, updateEnd - updateStart);
-            engine.setCpuTimingNanos(CpuTimings.RENDER, renderEnd - renderStart);
-            engine.setCpuTimingNanos(CpuTimings.SWAP_BUFFERS, swapEnd - swapStart);
             throttle(frameStartNanos);
             if (benchmark != null && recordBenchmarkFrame(benchmark, engine, swapEnd - pollStart)) {
                 return;
@@ -293,10 +290,6 @@ public final class StandaloneRunner {
         double frameMillis = elapsedNanos / NANOS_PER_MILLI / frames;
         StringBuilder report = new StringBuilder();
         report.append(String.format("%.2f ms/frame (%.0f fps)", frameMillis, frames * NANOS_PER_SECOND / elapsedNanos));
-        for (CpuTimings slot : CpuTimings.values()) {
-            report.append(String.format(" | cpu.%s %.3f", slot.label(),
-                    engine.cpuTimingNanos(slot) / NANOS_PER_MILLI));
-        }
         for (Map.Entry<String, Long> entry : engine.profiler().sections().entrySet()) {
             report.append(String.format(" | %s %.3f", entry.getKey(), entry.getValue() / NANOS_PER_MILLI));
         }

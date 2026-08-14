@@ -12,7 +12,7 @@ import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.gameobjects.GameObject;
-import fr.epistudio.epysia.profiling.FrameProfiler;
+import fr.epistudio.epysia.profiling.ProfileFrame;
 import fr.epistudio.epysia.render.backend.DrawStatistics;
 import fr.epistudio.epysia.render.mesh.ShadowStatistics;
 import fr.epistudio.epysia.editor.ui.kit.Texts;
@@ -52,6 +52,7 @@ public final class ProfilerView {
     private final AllocationMeter allocationMeter = new AllocationMeter();
     private final SectionAverages gpuAverages = new SectionAverages(HISTORY_LENGTH);
     private final SectionAverages cpuAverages = new SectionAverages(HISTORY_LENGTH);
+    private final CpuProfileSection cpuSection = new CpuProfileSection(cpuAverages);
     private boolean visible = true;
     private boolean preferencesApplied;
     private boolean recenterRequested;
@@ -144,9 +145,7 @@ public final class ProfilerView {
         for (Map.Entry<String, Long> entry : gpuTimings().entrySet()) {
             gpuAverages.record(entry.getKey(), entry.getValue() / NANOS_PER_MILLISECOND);
         }
-        for (Map.Entry<String, Long> entry : cpuTimings().entrySet()) {
-            cpuAverages.record(entry.getKey(), entry.getValue() / NANOS_PER_MILLISECOND);
-        }
+        cpuSection.sample(sceneHost.engine().profiler().frame());
     }
 
     private static float frameMilliseconds() {
@@ -155,10 +154,6 @@ public final class ProfilerView {
 
     private Map<String, Long> gpuTimings() {
         return sceneHost.backend().latestProfileTimingsNanos();
-    }
-
-    private Map<String, Long> cpuTimings() {
-        return sceneHost.engine().profiler().sections();
     }
 
     private void renderFrameSummary() {
@@ -297,23 +292,14 @@ public final class ProfilerView {
 
     private void renderCpuTable() {
         ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_CPU_SECTIONS));
-        Map<String, Long> timings = cpuTimings();
-        if (timings.isEmpty()) {
+        ProfileFrame frame = sceneHost.engine().profiler().frame();
+        if (frame.roots().isEmpty()) {
             Texts.muted(I18n.translate(TextKey.EDITOR_PROFILER_VIEW_NO_SAMPLES));
             return;
         }
-        float engineMilliseconds = milliseconds(timings, FrameProfiler.RENDER_SECTION)
-                + milliseconds(timings, FrameProfiler.TICK_SECTION);
-        if (!beginTimingTable("##cpu-timings")) {
-            return;
-        }
-        for (Map.Entry<String, Long> entry : sortedByCostDescending(timings)) {
-            float value = entry.getValue() / NANOS_PER_MILLISECOND;
-            appendTimingRow(entry.getKey(), value, cpuAverages.average(entry.getKey()),
-                    percentOf(value, engineMilliseconds));
-        }
-        ImGui.endTable();
-        ImGui.textUnformatted(String.format("Engine CPU %.3f ms", engineMilliseconds));
+        cpuSection.render(frame);
+        ImGui.textUnformatted(String.format("Engine CPU %.3f ms",
+                frame.totalNanos() / NANOS_PER_MILLISECOND));
         renderEditorShellTimings();
     }
 
@@ -460,10 +446,6 @@ public final class ProfilerView {
 
     private static float percentOf(float value, float total) {
         return total <= 0.0f ? 0.0f : value / total * PERCENT_SCALE;
-    }
-
-    private static float milliseconds(Map<String, Long> timings, String sectionName) {
-        return timings.getOrDefault(sectionName, 0L) / NANOS_PER_MILLISECOND;
     }
 
     private static List<Map.Entry<String, Long>> sortedByCostDescending(Map<String, Long> timings) {

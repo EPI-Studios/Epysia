@@ -79,6 +79,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private final List<Scene> scenes = new ArrayList<>();
     private Scene activeScene;
     private final List<GameSystem> gameSystems = new ArrayList<>();
+    private final List<String> gameSystemSectionNames = new ArrayList<>();
     private final SystemRegistryImpl systemRegistry = new SystemRegistryImpl();
     private final List<RenderSystem> renderSystems = new ArrayList<>();
     private final List<PreRenderPass> preRenderPasses = new ArrayList<>();
@@ -90,7 +91,6 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     private final Map<RenderPass, RenderPass> stageFollowers = new HashMap<>();
     private final Map<SceneTexture, TextureHandle> sceneTextures = new EnumMap<>(SceneTexture.class);
     private final AssetRegistry assetRegistry = new AssetRegistry(this);
-    private final long[] cpuTimingsNanosArray = new long[CpuTimings.values().length];
     private final FrameProfiler profiler = new FrameProfiler();
     private final DebugDraw debugDraw = new DebugDraw();
     private final EventBus eventBus = new EventBus();
@@ -155,6 +155,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
             system.initialize(this);
         }
         gameSystems.add(system);
+        gameSystemSectionNames.add(FrameProfiler.SYSTEM_PREFIX + system.getClass().getSimpleName());
         systemRegistry.add(system);
     }
 
@@ -251,27 +252,31 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     }
 
     public void tick(InputState input, float deltaTimeSeconds) {
-        long tickStart = System.nanoTime();
+        profiler.begin(FrameProfiler.TICK_SECTION);
         hud.clear();
-        long deliveryStart = System.nanoTime();
+        profiler.begin(FrameProfiler.BACKGROUND_DELIVERY_SECTION);
         backgroundTasks.deliverCompleted();
-        profiler.record(FrameProfiler.BACKGROUND_DELIVERY_SECTION, System.nanoTime() - deliveryStart);
+        profiler.end();
         assetRegistry.drainReadyUploads(uploadsPerTick);
         scheduler.tick(deltaTimeSeconds);
         if (activeScene != null) {
-            applyPendingSceneLoads();
-            activeScene.advanceTick();
-            dispatchDeactivations(activeScene);
-            dispatchActivations(activeScene);
-            captureTransformInterpolationSnapshots(activeScene);
-            animationClock.advance(activeScene, deltaTimeSeconds);
-            debugDraw.advance(deltaTimeSeconds);
-            eventBus.deliverDeferred();
-            tweens.advance(deltaTimeSeconds);
-            updateGameSystems(input, deltaTimeSeconds);
+            advanceActiveScene(input, deltaTimeSeconds);
         }
         sweepUnusedAssets(deltaTimeSeconds);
-        profiler.record(FrameProfiler.TICK_SECTION, System.nanoTime() - tickStart);
+        profiler.end();
+    }
+
+    private void advanceActiveScene(InputState input, float deltaTimeSeconds) {
+        applyPendingSceneLoads();
+        activeScene.advanceTick();
+        dispatchDeactivations(activeScene);
+        dispatchActivations(activeScene);
+        captureTransformInterpolationSnapshots(activeScene);
+        animationClock.advance(activeScene, deltaTimeSeconds);
+        debugDraw.advance(deltaTimeSeconds);
+        eventBus.deliverDeferred();
+        tweens.advance(deltaTimeSeconds);
+        updateGameSystems(input, deltaTimeSeconds);
     }
 
     public int uploadsPerTick() {
@@ -352,11 +357,10 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     }
 
     private void updateGameSystems(InputState input, float deltaTimeSeconds) {
-        for (GameSystem system : gameSystems) {
-            long systemStart = System.nanoTime();
-            system.update(activeScene, input, deltaTimeSeconds);
-            profiler.record(FrameProfiler.SYSTEM_PREFIX + system.getClass().getSimpleName(),
-                    System.nanoTime() - systemStart);
+        for (int index = 0; index < gameSystems.size(); index++) {
+            profiler.begin(gameSystemSectionNames.get(index));
+            gameSystems.get(index).update(activeScene, input, deltaTimeSeconds);
+            profiler.end();
         }
         lateUpdateGameSystems(input, deltaTimeSeconds);
     }
@@ -436,17 +440,17 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
 
     public void render(List<Camera3D> activeCameras, RenderTargetHandle screenTarget, float interpolationAlpha) {
         runPreRenderPasses(interpolationAlpha);
-        long renderStart = System.nanoTime();
+        profiler.begin(FrameProfiler.RENDER_SECTION);
         resolveTransforms(interpolationAlpha);
         frame.reset();
         renderBackend.beginFrame();
         collectRenderSystems(RenderContext.of(activeCameras, screenTarget, interpolationAlpha,
                 animationClock.generation()));
-        long drainStart = System.nanoTime();
+        profiler.begin(FrameProfiler.DRAIN_SECTION);
         drainStages(screenTarget);
         renderBackend.endFrame();
-        profiler.record(FrameProfiler.DRAIN_SECTION, System.nanoTime() - drainStart);
-        profiler.record(FrameProfiler.RENDER_SECTION, System.nanoTime() - renderStart);
+        profiler.end();
+        profiler.end();
         profiler.publishFrame();
     }
 
@@ -454,13 +458,13 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
         if (activeScene == null) {
             return;
         }
-        long collectStart = System.nanoTime();
+        profiler.begin(FrameProfiler.COLLECT_SECTION);
         for (int index = 0; index < renderSystems.size(); index++) {
-            long systemStart = System.nanoTime();
+            profiler.begin(renderSystemSectionNames.get(index));
             renderSystems.get(index).collect(activeScene, frame, context);
-            profiler.record(renderSystemSectionNames.get(index), System.nanoTime() - systemStart);
+            profiler.end();
         }
-        profiler.record(FrameProfiler.COLLECT_SECTION, System.nanoTime() - collectStart);
+        profiler.end();
     }
 
     public void onResize(int width, int height) {
@@ -472,11 +476,11 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
 
     public void shutdown() {
         backgroundTasks.shutdown();
-        for (GameSystem system : gameSystems) {
-            system.shutdown();
+        for (int index = gameSystems.size() - 1; index >= 0; index--) {
+            gameSystems.get(index).shutdown();
         }
-        for (RenderSystem system : renderSystems) {
-            system.shutdown(renderBackend);
+        for (int index = renderSystems.size() - 1; index >= 0; index--) {
+            renderSystems.get(index).shutdown(renderBackend);
         }
         if (pickingPass != null) {
             pickingPass.shutdown();
@@ -713,14 +717,6 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
 
     public RuntimeChannel runtimeChannel() {
         return runtimeChannel;
-    }
-
-    public long cpuTimingNanos(CpuTimings slot) {
-        return cpuTimingsNanosArray[slot.ordinal()];
-    }
-
-    public void setCpuTimingNanos(CpuTimings slot, long nanos) {
-        cpuTimingsNanosArray[slot.ordinal()] = nanos;
     }
 
     private void drainStages(RenderTargetHandle screenTarget) {
