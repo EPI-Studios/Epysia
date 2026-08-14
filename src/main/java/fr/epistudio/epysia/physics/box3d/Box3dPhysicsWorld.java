@@ -376,10 +376,10 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
     @Override
     public Optional<ShapeCastHit> shapeCast(ShapeDescriptor shape, RigidBodyPose from, Vector3fc direction,
                                             float maxDistance, QueryFilter filter) {
-        float radius = Box3dShapeAttacher.boundingRadius(shape);
+        Box3dQueryProxy proxy = Box3dQueryProxy.of(shape, from.rotation());
         Vector3f normalized = new Vector3f(direction).normalize();
-        B3World.ShapeHit hit = world.castSphereClosest(Box3dShapeAttacher.toVec(from.position()), radius,
-                scaled(normalized, maxDistance), queryFilterOf(filter));
+        B3World.ShapeHit hit = world.castShapeClosest(Box3dShapeAttacher.toVec(from.position()),
+                proxy.points(), proxy.radius(), scaled(normalized, maxDistance), queryFilterOf(filter));
         if (!hit.hit() || hit.body() == null || hit.body().key() == filter.excludedBodyId()
                 || isAreaBody(hit.body().key())) {
             return Optional.empty();
@@ -390,11 +390,9 @@ public final class Box3dPhysicsWorld implements PhysicsWorld {
 
     @Override
     public long[] overlap(ShapeDescriptor shape, RigidBodyPose pose, QueryFilter filter) {
-        float radius = Box3dShapeAttacher.boundingRadius(shape);
-        Vector3fc position = pose.position();
-        Vec3 minimum = new Vec3(position.x() - radius, position.y() - radius, position.z() - radius);
-        Vec3 maximum = new Vec3(position.x() + radius, position.y() + radius, position.z() + radius);
-        return world.overlapAABB(minimum, maximum).stream()
+        Box3dQueryProxy proxy = Box3dQueryProxy.of(shape, pose.rotation());
+        return world.overlapShape(Box3dShapeAttacher.toVec(pose.position()), proxy.points(),
+                        proxy.radius(), queryFilterOf(filter)).stream()
                 .map(B3Body::key)
                 .filter(key -> key != filter.excludedBodyId())
                 .filter(key -> categoryMatches(key, filter.mask()))

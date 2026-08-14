@@ -22,6 +22,7 @@ import fr.epistudio.epysia.physics.api.RaycastHit;
 import fr.epistudio.epysia.physics.api.RaycastHit2D;
 import fr.epistudio.epysia.physics.api.RigidBodyKind;
 import fr.epistudio.epysia.physics.api.RigidBodyPose;
+import fr.epistudio.epysia.physics.api.ShapeCastHit;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 import fr.epistudio.epysia.physics.box3d.Box3dPhysicsWorld;
@@ -1159,6 +1160,30 @@ public final class PhysicsSystem implements IPhysicsSystem {
                                        QueryFilter filter, int maximumHits) {
         requireWorld();
         return world.raycastAll(origin, direction, maxDistance, filter, Math.max(1, maximumHits));
+    }
+
+    public Optional<ShapeCastHit> shapeCast(ShapeDescriptor shape, RigidBodyPose from, Vector3fc direction,
+                                            float maxDistance) {
+        return shapeCast(shape, from, direction, maxDistance, QueryFilter.ALL);
+    }
+
+    public Optional<ShapeCastHit> shapeCast(ShapeDescriptor shape, RigidBodyPose from, Vector3fc direction,
+                                            float maxDistance, QueryFilter filter) {
+        requireWorld();
+        return world.shapeCast(shape, from, direction, maxDistance, filter);
+    }
+
+    public List<GameObject> overlap(ShapeDescriptor shape, RigidBodyPose pose) {
+        return overlap(shape, pose, QueryFilter.ALL);
+    }
+
+    public List<GameObject> overlap(ShapeDescriptor shape, RigidBodyPose pose, QueryFilter filter) {
+        requireWorld();
+        List<GameObject> found = new ArrayList<>();
+        for (long key : world.overlap(shape, pose, filter)) {
+            ownerOf(new BodyHandle(key)).ifPresent(found::add);
+        }
+        return found;
     }
 
     public Optional<RaycastHit2D> raycast2D(Vector2fc origin, Vector2fc direction, float maxDistance) {
