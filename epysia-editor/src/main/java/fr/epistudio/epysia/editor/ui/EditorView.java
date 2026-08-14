@@ -245,7 +245,7 @@ public final class EditorView implements FrameView {
                 graphEditorView::open, spriteEditorWindow::open, importPipeline);
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onNetworkSaved, this::onSteamSaved, this::onRenderSaved,
-                this::onViewportTuningChanged);
+                this::onViewportTuningChanged, icons);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
         this.librariesSection = new LibrariesSection(toasts, this::reloadScripts);
         this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView, panelTimings);
@@ -1678,6 +1678,7 @@ public final class EditorView implements FrameView {
         imagePreview.dispose();
         spriteEditorWindow.dispose();
         tilePalettePanel.dispose();
+        settingsDialog.dispose();
         meshThumbnailer.shutdown();
     }
 }

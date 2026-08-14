@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +27,7 @@ public final class ProjectStore {
 
     public static final String CURRENT_ENGINE_VERSION = "0.1";
     private static final String RECENTS_FILENAME = "recents.json";
+    private static final String PINNED_KEY = "pinned";
     private static final String EPYSIA_DIRECTORY_NAME = ".epysia";
 
     private final Path recentsFile;
@@ -100,16 +102,71 @@ public final class ProjectStore {
     }
 
     public void saveRecents(List<Project> projects) throws IOException {
+        saveRecents(projects, loadPinnedPaths());
+    }
+
+    public void removeRecent(Path rootDirectory) throws IOException {
+        List<Project> recents = loadRecents();
+        recents.removeIf(project -> project.rootDirectory().equals(rootDirectory));
+        Set<String> pinned = new LinkedHashSet<>(loadPinnedPaths());
+        pinned.remove(absolutePathOf(rootDirectory));
+        saveRecents(recents, pinned);
+    }
+
+    public Set<String> loadPinnedPaths() {
+        if (!Files.isRegularFile(recentsFile)) {
+            return Set.of();
+        }
+        try {
+            Object raw = new JsonReader(Files.readString(recentsFile)).readRootObject().get(PINNED_KEY);
+            if (!(raw instanceof List<?> entries)) {
+                return Set.of();
+            }
+            Set<String> pinned = new LinkedHashSet<>();
+            for (Object entry : entries) {
+                if (entry instanceof String path) {
+                    pinned.add(path);
+                }
+            }
+            return pinned;
+        } catch (IOException unreadable) {
+            return Set.of();
+        }
+    }
+
+    public boolean isPinned(Path rootDirectory) {
+        return loadPinnedPaths().contains(absolutePathOf(rootDirectory));
+    }
+
+    public void setPinned(Path rootDirectory, boolean pinned) throws IOException {
+        Set<String> paths = new LinkedHashSet<>(loadPinnedPaths());
+        if (pinned) {
+            paths.add(absolutePathOf(rootDirectory));
+        } else {
+            paths.remove(absolutePathOf(rootDirectory));
+        }
+        saveRecents(loadRecents(), paths);
+    }
+
+    private void saveRecents(List<Project> projects, Set<String> pinned) throws IOException {
         Files.createDirectories(recentsFile.getParent());
         JsonWriter writer = new JsonWriter().beginObject().key("projects").beginArray();
         for (Project project : projects) {
             writer.beginObject()
-                    .key("path").valueString(project.rootDirectory().toAbsolutePath().toString())
+                    .key("path").valueString(absolutePathOf(project.rootDirectory()))
                     .key("lastOpenedMillis").valueNumber(project.lastOpenedMillis())
                     .endObject();
         }
+        writer.endArray().key(PINNED_KEY).beginArray();
+        for (String path : pinned) {
+            writer.valueString(path);
+        }
         writer.endArray().endObject();
         Files.writeString(recentsFile, writer.toString());
+    }
+
+    private static String absolutePathOf(Path directory) {
+        return directory.toAbsolutePath().toString();
     }
 
     public void recordOpened(Project project) throws IOException {

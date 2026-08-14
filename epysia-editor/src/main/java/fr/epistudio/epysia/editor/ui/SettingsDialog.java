@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
@@ -7,6 +8,7 @@ import fr.epistudio.epysia.editor.ui.kit.Notices;
 import fr.epistudio.epysia.editor.ui.settings.CollisionMatrixSection;
 import fr.epistudio.epysia.editor.ui.settings.InputActionsSection;
 import fr.epistudio.epysia.editor.ui.settings.NetworkSection;
+import fr.epistudio.epysia.editor.ui.settings.ProjectIconSection;
 import fr.epistudio.epysia.editor.ui.settings.SteamSection;
 import fr.epistudio.epysia.editor.ui.settings.ViewportSection;
 import fr.epistudio.epysia.editor.ui.settings.WindowSection;
@@ -174,6 +176,7 @@ public final class SettingsDialog implements SettingsChrome {
     private final CollisionMatrixSection collisionMatrixSection = new CollisionMatrixSection(this);
     private final NetworkSection networkSection = new NetworkSection(this);
     private final WindowSection windowSection = new WindowSection(this);
+    private final ProjectIconSection projectIconSection;
     private final ViewportSection viewportSection;
     private final SteamSection steamSection = new SteamSection(this);
     private final ImString searchFilter = new ImString(SEARCH_CAPACITY);
@@ -190,7 +193,9 @@ public final class SettingsDialog implements SettingsChrome {
                           Consumer<NetworkSettings> onNetworkSaved,
                           Consumer<SteamSettings> onSteamSaved,
                           Consumer<RenderSettings> onRenderSaved,
-                          ViewportTuningListener viewportTuningListener) {
+                          ViewportTuningListener viewportTuningListener,
+                          IconWidgets icons) {
+        this.projectIconSection = new ProjectIconSection(icons);
         this.onSettingsSaved = onSettingsSaved;
         this.onPreferencesSaved = onPreferencesSaved;
         this.onNetworkSaved = onNetworkSaved;
@@ -599,7 +604,13 @@ public final class SettingsDialog implements SettingsChrome {
         row("Engine version", () -> ImGui.textUnformatted(project.engineVersion()));
         row("Root directory", () -> ImGui.textUnformatted(project.rootDirectory().toString()));
         row("Default scene", () -> ImGui.textUnformatted(project.defaultScenePath().getFileName().toString()));
+        row("Icon", () -> projectIconSection.render(project));
     }
+
+    public void dispose() {
+        projectIconSection.dispose();
+    }
+
 
     private void renderWindowCategory() {
         windowSection.render();

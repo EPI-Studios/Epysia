@@ -20,12 +20,20 @@ public final class SegmentedControl {
     private SegmentedControl() {
     }
 
+    public static float width(List<String> labels) {
+        return labels.isEmpty() ? 0.0f : segmentWidth(labels) * labels.size();
+    }
+
+    public static float height() {
+        return ImGui.getTextLineHeight() + EditorScale.of(PADDING_Y) * 2.0f;
+    }
+
     public static int render(String id, List<String> labels, int selectedIndex) {
         if (labels.isEmpty()) {
             return selectedIndex;
         }
-        float height = ImGui.getTextLineHeight() + EditorScale.of(PADDING_Y) * 2.0f;
-        float segmentWidth = widestLabel(labels) + EditorScale.of(PADDING_X) * 2.0f;
+        float height = height();
+        float segmentWidth = segmentWidth(labels);
         float left = ImGui.getCursorScreenPosX();
         float top = ImGui.getCursorScreenPosY();
         float rounding = EditorScale.of(ROUNDING);
@@ -91,6 +99,10 @@ public final class SegmentedControl {
             return ImDrawFlags.RoundCornersRight;
         }
         return ImDrawFlags.RoundCornersNone;
+    }
+
+    private static float segmentWidth(List<String> labels) {
+        return widestLabel(labels) + EditorScale.of(PADDING_X) * 2.0f;
     }
 
     private static float widestLabel(List<String> labels) {

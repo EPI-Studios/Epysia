@@ -1,20 +1,30 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.editor.assets.FileManagerReveal;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.icons.ProjectIcons;
 import fr.epistudio.epysia.editor.notify.Notifier;
+import fr.epistudio.epysia.editor.shell.EditorMotion;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectStore;
+import fr.epistudio.epysia.editor.ui.kit.FuzzyScore;
+import fr.epistudio.epysia.editor.ui.kit.IconButtons;
+import fr.epistudio.epysia.editor.ui.kit.SearchField;
+import fr.epistudio.epysia.editor.ui.kit.SegmentedControl;
 import fr.epistudio.epysia.editor.ui.kit.Texts;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiKey;
+import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
+import imgui.type.ImString;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,31 +35,57 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 public final class ProjectSelectorView implements FrameView {
 
-    private static final String WINDOW_TITLE = "Epysia Projects";
     private static final DateTimeFormatter ABSOLUTE_DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy");
     private static final int HOST_WINDOW_FLAGS = ImGuiWindowFlags.NoDecoration
             | ImGuiWindowFlags.NoMove
             | ImGuiWindowFlags.NoDocking
             | ImGuiWindowFlags.NoBringToFrontOnFocus
             | ImGuiWindowFlags.NoSavedSettings;
-    private static final float CONTENT_MAX_WIDTH = 1080.0f;
-    private static final float RECENTS_COLUMN_RATIO = 0.62f;
-    private static final float ACTION_BUTTON_HEIGHT = 42.0f;
-    private static final float CARD_HEIGHT = 56.0f;
+    private static final float CONTENT_MAX_WIDTH = 940.0f;
+    private static final float SIDE_MARGIN = 48.0f;
+    private static final float TOP_MARGIN = 44.0f;
+    private static final float HEADER_GAP = 28.0f;
+    private static final float SEARCH_GAP = 20.0f;
+    private static final float FOOTER_GAP = 16.0f;
+    private static final float ACTION_BUTTON_WIDTH = 176.0f;
+    private static final float ACTION_BUTTON_HEIGHT = 38.0f;
+    private static final float ROW_HEIGHT = 66.0f;
+    private static final float ROW_GAP = 8.0f;
+    private static final float ROW_PADDING = 18.0f;
+    private static final float ROW_TEXT_GAP = 6.0f;
+    private static final float LOGO_SIZE = 40.0f;
+    private static final float LOGO_GAP = 14.0f;
+    private static final float PROJECT_ICON_SIZE = 34.0f;
+    private static final float PIN_COLUMN_WIDTH = 28.0f;
+    private static final float PIN_RADIUS = 4.5f;
+    private static final float SELECTION_BAR_WIDTH = 3.0f;
+    private static final float HOVER_ALPHA = 0.55f;
+    private static final int SEARCH_CAPACITY = 128;
+    private static final int FILTER_ALL = 0;
+    private static final int FILTER_PINNED = 1;
+    private static final int FILTER_BROKEN = 2;
 
     private final ProjectStore store;
     private final Notifier notifier;
     private final IconWidgets icons;
     private final Consumer<Project> onProjectOpened;
     private final NewProjectDialog newProjectDialog;
+    private final ProjectIcons projectIcons = new ProjectIcons();
+    private final ImString search = new ImString("", SEARCH_CAPACITY);
     private List<RecentEntry> recents = List.of();
+    private String selectedPath = "";
+    private int filter = FILTER_ALL;
     private boolean confirmClearRequested;
+    private boolean focusSearchRequested;
+    private boolean searchActive;
 
     public ProjectSelectorView(ProjectStore store, Notifier notifier, IconWidgets icons,
                                Consumer<Project> onProjectOpened) {
@@ -62,11 +98,20 @@ public final class ProjectSelectorView implements FrameView {
     }
 
     private void reloadRecents() {
+        Set<String> pinned = store.loadPinnedPaths();
         List<RecentEntry> entries = new ArrayList<>();
         for (Project project : store.loadRecents()) {
-            entries.add(new RecentEntry(project, Files.isRegularFile(project.markerFile())));
+            entries.add(new RecentEntry(project, Files.isRegularFile(project.markerFile()),
+                    pinned.contains(project.rootDirectory().toAbsolutePath().toString())));
         }
+        entries.sort(Comparator.comparing(RecentEntry::pinned).reversed()
+                .thenComparing(Comparator.comparingLong(RecentEntry::lastOpenedMillis).reversed()));
         recents = List.copyOf(entries);
+    }
+
+    @Override
+    public void dispose() {
+        projectIcons.dispose();
     }
 
     @Override
@@ -84,31 +129,124 @@ public final class ProjectSelectorView implements FrameView {
     }
 
     private void renderContent() {
-        float contentWidth = Math.min(EditorScale.of(CONTENT_MAX_WIDTH), ImGui.getContentRegionAvailX());
-        float indent = (ImGui.getContentRegionAvailX() - contentWidth) * 0.5f;
-        if (indent > 0.0f) {
-            ImGui.indent(indent);
+        ImGui.dummy(0.0f, EditorScale.of(TOP_MARGIN));
+        float available = ImGui.getContentRegionAvailX();
+        float contentWidth = Math.min(EditorScale.of(CONTENT_MAX_WIDTH),
+                available - EditorScale.of(SIDE_MARGIN) * 2.0f);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + (available - contentWidth) * 0.5f);
+        ImGui.beginChild("##content", contentWidth, 0.0f, false, ImGuiWindowFlags.NoScrollbar);
+        renderColumn(ImGui.getContentRegionAvailX());
+        ImGui.endChild();
+    }
+
+    private void renderColumn(float contentWidth) {
+        renderHeader(contentWidth);
+        ImGui.dummy(0.0f, EditorScale.of(HEADER_GAP));
+        renderSearchRow(contentWidth);
+        ImGui.dummy(0.0f, EditorScale.of(SEARCH_GAP));
+        List<RecentEntry> visible = visibleEntries();
+        renderList(contentWidth, visible);
+        renderFooter();
+        handleShortcuts(visible);
+    }
+
+    private void renderHeader(float contentWidth) {
+        float titleTop = ImGui.getCursorPosY();
+        renderTitle();
+        float buttonWidth = EditorScale.of(ACTION_BUTTON_WIDTH);
+        ImGui.setCursorPosY(titleTop);
+        ImGui.sameLine(contentWidth - buttonWidth * 2.0f - EditorStyle.itemSpacingX());
+        if (IconButtons.withLabel(icons, "new-project", EditorIcon.ADD,
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NEW_PROJECT), buttonWidth,
+                EditorScale.of(ACTION_BUTTON_HEIGHT))) {
+            newProjectDialog.open();
         }
-        float recentsWidth = contentWidth * RECENTS_COLUMN_RATIO;
-        renderRecentsColumn(recentsWidth);
         ImGui.sameLine();
-        renderActionsColumn(contentWidth - recentsWidth - EditorStyle.itemSpacingX());
-        if (indent > 0.0f) {
-            ImGui.unindent(indent);
+        if (IconButtons.withLabel(icons, "open-folder", EditorIcon.FOLDER,
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_OPEN_FOLDER), buttonWidth,
+                EditorScale.of(ACTION_BUTTON_HEIGHT))) {
+            pickProjectFolder();
         }
     }
 
-    private void renderRecentsColumn(float width) {
-        ImGui.beginChild("##recents", width, 0.0f, false);
+    private void renderTitle() {
+        float logoSize = EditorScale.of(LOGO_SIZE);
+        ImGui.image(icons.atlasTextureId(EditorIcon.EPYSIA_LOGO), logoSize, logoSize);
+        ImGui.sameLine(0.0f, EditorScale.of(LOGO_GAP));
+        ImGui.beginGroup();
+        EditorStyle.titleFont().ifPresent(font -> ImGui.pushFont(font, EditorStyle.titleFontPixelHeight()));
+        ImGui.textUnformatted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TITLE));
+        EditorStyle.titleFont().ifPresent(font -> ImGui.popFont());
+        EditorStyle.smallFont().ifPresent(font -> ImGui.pushFont(font, EditorStyle.smallFontPixelHeight()));
         Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_RECENT_PROJECTS));
-        ImGui.separator();
+        EditorStyle.smallFont().ifPresent(font -> ImGui.popFont());
+        ImGui.endGroup();
+    }
+
+    private void renderSearchRow(float contentWidth) {
+        List<String> filters = List.of(
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FILTER_ALL),
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FILTER_PINNED),
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FILTER_BROKEN));
+        float filterWidth = SegmentedControl.width(filters);
+        if (focusSearchRequested) {
+            ImGui.setKeyboardFocusHere();
+            focusSearchRequested = false;
+        }
+        float rowTop = ImGui.getCursorPosY();
+        SearchField.render("##project-search",
+                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_SEARCH_HINT), search,
+                contentWidth - filterWidth - EditorStyle.itemSpacingX() * 2.0f);
+        searchActive = ImGui.isItemActive();
+        ImGui.sameLine(contentWidth - filterWidth);
+        ImGui.setCursorPosY(rowTop + (ImGui.getFrameHeight() - SegmentedControl.height()) * 0.5f);
+        filter = SegmentedControl.render("##project-filter", filters, filter);
+    }
+
+    private List<RecentEntry> visibleEntries() {
+        String query = search.get().trim();
+        List<RecentEntry> matching = new ArrayList<>();
+        for (RecentEntry entry : recents) {
+            if (matchesFilter(entry) && (query.isEmpty() || scoreOf(entry, query) > FuzzyScore.NO_MATCH)) {
+                matching.add(entry);
+            }
+        }
+        if (!query.isEmpty()) {
+            matching.sort(Comparator.comparingInt((RecentEntry entry) -> scoreOf(entry, query)).reversed());
+        }
+        return matching;
+    }
+
+    private boolean matchesFilter(RecentEntry entry) {
+        return switch (filter) {
+            case FILTER_PINNED -> entry.pinned();
+            case FILTER_BROKEN -> !entry.readable();
+            default -> true;
+        };
+    }
+
+    private static int scoreOf(RecentEntry entry, String query) {
+        int byName = FuzzyScore.of(entry.project().name(), query);
+        int byPath = FuzzyScore.of(entry.project().rootDirectory().toString(), query);
+        return Math.max(byName, byPath);
+    }
+
+    private void renderList(float contentWidth, List<RecentEntry> visible) {
+        float footerHeight = ImGui.getTextLineHeightWithSpacing() + ImGui.getFrameHeightWithSpacing()
+                + EditorScale.of(FOOTER_GAP + TOP_MARGIN);
+        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0.0f, EditorScale.of(ROW_GAP));
+        ImGui.beginChild("##project-list", contentWidth, -footerHeight, false);
         if (recents.isEmpty()) {
             renderEmptyRecents();
+        } else if (visible.isEmpty()) {
+            Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NO_MATCH));
         } else {
-            renderRecentCards();
-            renderClearLink();
+            for (RecentEntry entry : visible) {
+                renderRow(entry);
+            }
         }
         ImGui.endChild();
+        ImGui.popStyleVar();
     }
 
     private void renderEmptyRecents() {
@@ -117,50 +255,167 @@ public final class ProjectSelectorView implements FrameView {
         Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FIRST_PROJECT_HELP));
     }
 
-    private void renderRecentCards() {
-        for (RecentEntry entry : recents) {
-            renderCard(entry);
-        }
-    }
-
-    private void renderCard(RecentEntry entry) {
-        ImGui.beginDisabled(!entry.exists());
-        ImGui.pushID(entry.project().rootDirectory().toString());
-        boolean clicked = ImGui.button("##card", ImGui.getContentRegionAvailX(), EditorScale.of(CARD_HEIGHT));
-        renderCardOverlay(entry);
+    private void renderRow(RecentEntry entry) {
+        String id = entry.absolutePath();
+        ImGui.pushID(id);
+        boolean clicked = ImGui.button("##row", ImGui.getContentRegionAvailX(), EditorScale.of(ROW_HEIGHT));
+        boolean hovered = ImGui.isItemHovered();
+        paintRow(entry, EditorMotion.towards(id, hovered || id.equals(selectedPath)));
+        boolean pinClicked = hovered && clicked && withinPinColumn();
+        renderRowMenu(entry);
         ImGui.popID();
-        ImGui.endDisabled();
-        if (clicked && entry.exists()) {
+        if (pinClicked) {
+            togglePinned(entry);
+        } else if (clicked && entry.readable()) {
             openExistingProject(entry.project());
         }
     }
 
-    private void renderCardOverlay(RecentEntry entry) {
-        float cardMinX = ImGui.getItemRectMinX();
-        float cardMinY = ImGui.getItemRectMinY();
-        float cardMaxX = ImGui.getItemRectMaxX();
-        var drawList = ImGui.getWindowDrawList();
-        float iconSize = EditorStyle.iconSizeMedium();
-        float padding = EditorStyle.windowPadding();
-        float textX = cardMinX + padding + iconSize + padding;
-        drawList.addImage(icons.atlasTextureId(EditorIcon.FOLDER), cardMinX + padding, cardMinY + (EditorScale.of(CARD_HEIGHT) - iconSize) * 0.5f,
-                cardMinX + padding + iconSize, cardMinY + (EditorScale.of(CARD_HEIGHT) + iconSize) * 0.5f);
-        drawList.addText(textX, cardMinY + padding, EditorStyle.COLOR_TEXT, entry.project().name());
-        String pathLine = entry.exists()
-                ? entry.project().rootDirectory().toString()
-                : I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FOLDER_NOT_FOUND);
-        drawList.addText(textX, cardMinY + padding + ImGui.getTextLineHeight() + 2.0f,
-                EditorStyle.COLOR_TEXT_MUTED, pathLine);
-        String date = relativeDateText(entry.project().lastOpenedMillis());
-        float dateWidth = ImGui.calcTextSize(date).x;
-        drawList.addText(cardMaxX - padding - dateWidth, cardMinY + padding, EditorStyle.COLOR_TEXT_MUTED, date);
+    private static boolean withinPinColumn() {
+        return ImGui.getMousePosX() < ImGui.getItemRectMinX() + EditorScale.of(PIN_COLUMN_WIDTH + ROW_PADDING);
     }
 
-    private void renderClearLink() {
-        ImGui.spacing();
-        if (ImGui.smallButton(I18n.label(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CLEAR_LIST,
-                "project-selector-clear-list"))) {
+    private void paintRow(RecentEntry entry, float emphasis) {
+        float minX = ImGui.getItemRectMinX();
+        float minY = ImGui.getItemRectMinY();
+        float maxX = ImGui.getItemRectMaxX();
+        float maxY = ImGui.getItemRectMaxY();
+        var drawList = ImGui.getWindowDrawList();
+        drawList.addRectFilled(minX, minY, maxX, maxY,
+                EditorStyle.withAlpha(EditorStyle.COLOR_ACCENT, emphasis * HOVER_ALPHA * 0.12f),
+                EditorStyle.frameRounding());
+        if (entry.absolutePath().equals(selectedPath)) {
+            drawList.addRectFilled(minX, minY, minX + EditorScale.of(SELECTION_BAR_WIDTH), maxY,
+                    EditorStyle.COLOR_ACCENT);
+        }
+        paintPin(entry, minX, (minY + maxY) * 0.5f, emphasis);
+        paintRowText(entry, minX, minY, maxX);
+    }
+
+    private void paintPin(RecentEntry entry, float minX, float centerY, float emphasis) {
+        float centerX = minX + EditorScale.of(ROW_PADDING + PIN_COLUMN_WIDTH * 0.5f);
+        float radius = EditorScale.of(PIN_RADIUS);
+        var drawList = ImGui.getWindowDrawList();
+        if (entry.pinned()) {
+            drawList.addCircleFilled(centerX, centerY, radius, EditorStyle.COLOR_HIGHLIGHT);
+            return;
+        }
+        if (emphasis > 0.0f) {
+            drawList.addCircle(centerX, centerY, radius,
+                    EditorStyle.withAlpha(EditorStyle.COLOR_TEXT_FAINT, emphasis), 0, 1.5f);
+        }
+    }
+
+    private void paintRowText(RecentEntry entry, float minX, float minY, float maxX) {
+        float padding = EditorScale.of(ROW_PADDING);
+        float iconSize = EditorScale.of(PROJECT_ICON_SIZE);
+        float iconX = minX + padding + EditorScale.of(PIN_COLUMN_WIDTH);
+        float centerY = minY + EditorScale.of(ROW_HEIGHT) * 0.5f;
+        var drawList = ImGui.getWindowDrawList();
+        projectIcons.of(entry.project().rootDirectory()).ifPresent(texture ->
+                drawList.addImage(texture, iconX, centerY - iconSize * 0.5f,
+                        iconX + iconSize, centerY + iconSize * 0.5f));
+        float textX = iconX + iconSize + padding;
+        float lineHeight = ImGui.getTextLineHeight();
+        float gap = EditorScale.of(ROW_TEXT_GAP);
+        float nameY = centerY - lineHeight - gap * 0.5f;
+        drawList.addText(textX, nameY,
+                entry.readable() ? EditorStyle.COLOR_TEXT : EditorStyle.COLOR_TEXT_FAINT,
+                entry.project().name());
+        drawList.addText(textX, nameY + lineHeight + gap,
+                entry.readable() ? EditorStyle.COLOR_TEXT_MUTED : EditorStyle.COLOR_WARNING,
+                entry.readable()
+                        ? entry.project().rootDirectory().toString()
+                        : I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_FOLDER_NOT_FOUND));
+        String date = relativeDateText(entry.lastOpenedMillis());
+        drawList.addText(maxX - padding - ImGui.calcTextSizeX(date), nameY,
+                EditorStyle.COLOR_TEXT_MUTED, date);
+    }
+
+    private void renderRowMenu(RecentEntry entry) {
+        if (!ImGui.beginPopupContextItem("##row-menu")) {
+            return;
+        }
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_OPEN)) && entry.readable()) {
+            openExistingProject(entry.project());
+        }
+        if (ImGui.menuItem(I18n.translate(entry.pinned()
+                ? TextKey.EDITOR_PROJECT_SELECTOR_VIEW_UNPIN
+                : TextKey.EDITOR_PROJECT_SELECTOR_VIEW_PIN))) {
+            togglePinned(entry);
+        }
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_REVEAL))) {
+            FileManagerReveal.reveal(entry.project().rootDirectory()).ifPresent(notifier::show);
+        }
+        if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_REMOVE))) {
+            removeEntry(entry);
+        }
+        ImGui.endPopup();
+    }
+
+    private void renderFooter() {
+        ImGui.dummy(0.0f, EditorScale.of(FOOTER_GAP));
+        EditorStyle.smallFont().ifPresent(font -> ImGui.pushFont(font, EditorStyle.smallFontPixelHeight()));
+        Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_SHORTCUTS));
+        EditorStyle.smallFont().ifPresent(font -> ImGui.popFont());
+        if (!recents.isEmpty() && ImGui.smallButton(I18n.label(
+                TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CLEAR_LIST, "project-selector-clear-list"))) {
             confirmClearRequested = true;
+        }
+    }
+
+    private void handleShortcuts(List<RecentEntry> visible) {
+        if (ImGui.getIO().getKeyCtrl() && ImGui.isKeyPressed(ImGuiKey.F)) {
+            focusSearchRequested = true;
+        }
+        if (visible.isEmpty()) {
+            return;
+        }
+        int index = selectedIndexIn(visible);
+        if (ImGui.isKeyPressed(ImGuiKey.DownArrow)) {
+            selectedPath = visible.get(Math.min(index + 1, visible.size() - 1)).absolutePath();
+        }
+        if (ImGui.isKeyPressed(ImGuiKey.UpArrow)) {
+            selectedPath = visible.get(Math.max(index - 1, 0)).absolutePath();
+        }
+        RecentEntry selected = visible.get(selectedIndexIn(visible));
+        if (ImGui.isKeyPressed(ImGuiKey.Enter) && selected.readable()) {
+            openExistingProject(selected.project());
+        }
+        if (!searchActive && ImGui.isKeyPressed(ImGuiKey.Delete)) {
+            removeEntry(selected);
+        }
+    }
+
+    private int selectedIndexIn(List<RecentEntry> visible) {
+        for (int index = 0; index < visible.size(); index++) {
+            if (visible.get(index).absolutePath().equals(selectedPath)) {
+                return index;
+            }
+        }
+        return 0;
+    }
+
+    private void togglePinned(RecentEntry entry) {
+        try {
+            store.setPinned(entry.project().rootDirectory(), !entry.pinned());
+            reloadRecents();
+        } catch (IOException error) {
+            notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_COULD_NOT_UPDATE,
+                    error.getMessage()));
+        }
+    }
+
+    private void removeEntry(RecentEntry entry) {
+        try {
+            store.removeRecent(entry.project().rootDirectory());
+            projectIcons.forget(entry.project().rootDirectory());
+            reloadRecents();
+            notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_REMOVED,
+                    entry.project().name()));
+        } catch (IOException error) {
+            notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_COULD_NOT_UPDATE,
+                    error.getMessage()));
         }
     }
 
@@ -187,44 +442,6 @@ public final class ProjectSelectorView implements FrameView {
             ImGui.closeCurrentPopup();
         }
         ImGui.endPopup();
-    }
-
-    private void renderActionsColumn(float width) {
-        ImGui.beginChild("##actions", width, 0.0f, false);
-        Texts.muted(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_GET_STARTED));
-        ImGui.separator();
-        if (actionButton("new-project", EditorIcon.ADD,
-                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_NEW_PROJECT))) {
-            newProjectDialog.open();
-        }
-        if (actionButton("open-folder", EditorIcon.FOLDER,
-                I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_OPEN_FOLDER))) {
-            pickProjectFolder();
-        }
-        ImGui.endChild();
-    }
-
-    private boolean actionButton(String id, EditorIcon icon, String label) {
-        ImGui.pushID(id);
-        boolean clicked = ImGui.button("##" + id, ImGui.getContentRegionAvailX(), EditorScale.of(ACTION_BUTTON_HEIGHT));
-        drawButtonContent(icon, label);
-        ImGui.popID();
-        return clicked;
-    }
-
-    private void drawButtonContent(EditorIcon icon, String label) {
-        float minX = ImGui.getItemRectMinX();
-        float minY = ImGui.getItemRectMinY();
-        float width = ImGui.getItemRectMaxX() - minX;
-        float iconSize = EditorStyle.iconSizeMedium();
-        float labelWidth = ImGui.calcTextSize(label).x;
-        float startX = minX + (width - iconSize - EditorStyle.innerSpacing() - labelWidth) * 0.5f;
-        float iconY = minY + (EditorScale.of(ACTION_BUTTON_HEIGHT) - iconSize) * 0.5f;
-        var drawList = ImGui.getWindowDrawList();
-        drawList.addImage(icons.atlasTextureId(icon), startX, iconY, startX + iconSize, iconY + iconSize);
-        drawList.addText(startX + iconSize + EditorStyle.innerSpacing(),
-                minY + (EditorScale.of(ACTION_BUTTON_HEIGHT) - ImGui.getTextLineHeight()) * 0.5f,
-                EditorStyle.COLOR_TEXT, label);
     }
 
     private void pickProjectFolder() {
@@ -257,6 +474,7 @@ public final class ProjectSelectorView implements FrameView {
     private void clearRecents() {
         try {
             store.clearRecents();
+            projectIcons.dispose();
             reloadRecents();
             notifier.show(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_TOAST_RECENT_CLEARED));
         } catch (IOException error) {
@@ -282,6 +500,14 @@ public final class ProjectSelectorView implements FrameView {
                 : date.format(ABSOLUTE_DATE_FORMAT);
     }
 
-    private record RecentEntry(Project project, boolean exists) {
+    private record RecentEntry(Project project, boolean readable, boolean pinned) {
+
+        private String absolutePath() {
+            return project.rootDirectory().toAbsolutePath().toString();
+        }
+
+        private long lastOpenedMillis() {
+            return project.lastOpenedMillis();
+        }
     }
 }
