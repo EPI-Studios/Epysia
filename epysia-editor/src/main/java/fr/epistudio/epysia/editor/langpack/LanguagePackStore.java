@@ -15,9 +15,13 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public final class LanguagePackStore {
 
@@ -26,7 +30,7 @@ public final class LanguagePackStore {
             "https://github.com/" + REPOSITORY + "/releases/latest/download/language-packs.json";
     private static final String ASSET_URL_PATTERN =
             "https://github.com/" + REPOSITORY + "/releases/download/v%s/%s";
-    private static final String ARCHIVE_PREFIX = "epysia-lang-";
+    private static final String ARCHIVE_BUNDLE_SUFFIX = ".zip";
     private static final String CHECKSUM_ALGORITHM = "SHA-256";
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final int STATUS_OK = 200;
@@ -46,42 +50,74 @@ public final class LanguagePackStore {
     }
 
     public void install(Project project, LanguagePack pack) throws IOException, InterruptedException {
-        Path directory = project.languagePacksDirectory();
-        Files.createDirectories(directory);
-        Path pending = downloadInto(directory, pack.archiveName(), urlOf(pack), pack.checksum());
-        Path pendingRuntime = pack.hasRuntimeArchive()
-                ? downloadInto(directory, pack.runtimeArchiveName(),
-                        urlOf(pack, pack.runtimeUrl(), pack.runtimeArchiveName()), pack.runtimeChecksum())
-                : null;
-        removeArchivesOf(project, pack.identifier());
-        Files.move(pending, directory.resolve(pack.archiveName()), StandardCopyOption.REPLACE_EXISTING);
-        if (pendingRuntime != null) {
-            Files.move(pendingRuntime, directory.resolve(pack.runtimeArchiveName()),
-                    StandardCopyOption.REPLACE_EXISTING);
+        Path staging = project.languagePacksDirectory().resolve(pack.identifier() + ".part");
+        deleteTree(staging);
+        Files.createDirectories(staging);
+        fetchInto(staging, pack.archiveName(), urlOf(pack), pack.checksum());
+        if (pack.hasRuntimeArchive()) {
+            fetchInto(staging, pack.runtimeArchiveName(),
+                    urlOf(pack, pack.runtimeUrl(), pack.runtimeArchiveName()), pack.runtimeChecksum());
         }
+        Path installed = directoryOf(project, pack.identifier());
+        deleteTree(installed);
+        Files.move(staging, installed);
         pinsOf(project).with(pack.identifier(), pack.version()).writeTo(project.languagePacksFile());
     }
 
     public void remove(Project project, String identifier) throws IOException {
-        removeArchivesOf(project, identifier);
+        deleteTree(directoryOf(project, identifier));
         pinsOf(project).without(identifier).writeTo(project.languagePacksFile());
     }
 
     public Optional<String> installedVersion(Project project, String identifier) {
         return pinsOf(project).versionOf(identifier)
-                .filter(version -> Files.isRegularFile(archiveOf(project, identifier, version)));
+                .filter(version -> Files.isDirectory(directoryOf(project, identifier)));
+    }
+
+    private static Path directoryOf(Project project, String identifier) {
+        return project.languagePacksDirectory().resolve(identifier);
+    }
+
+    private void fetchInto(Path directory, String archiveName, String url, String checksum)
+            throws IOException, InterruptedException {
+        Path downloaded = downloadInto(directory, archiveName, url, checksum);
+        Path target = directory.resolve(archiveName);
+        Files.move(downloaded, target, StandardCopyOption.REPLACE_EXISTING);
+        if (archiveName.endsWith(ARCHIVE_BUNDLE_SUFFIX)) {
+            unpack(target, directory);
+            Files.delete(target);
+        }
+    }
+
+    private static void unpack(Path bundle, Path directory) throws IOException {
+        try (ZipFile archive = new ZipFile(bundle.toFile())) {
+            Enumeration<? extends ZipEntry> entries = archive.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                Path target = directory.resolve(Path.of(entry.getName()).getFileName().toString());
+                if (entry.isDirectory() || !target.getFileName().toString().endsWith(".jar")) {
+                    continue;
+                }
+                try (InputStream content = archive.getInputStream(entry)) {
+                    Files.copy(content, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path entry : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(entry);
+            }
+        }
     }
 
     private static ProjectLanguagePacks pinsOf(Project project) {
         return ProjectLanguagePacks.read(project.languagePacksFile());
-    }
-
-    private static Path archiveOf(Project project, String identifier, String version) {
-        return project.languagePacksDirectory().resolve(archiveNameOf(identifier, version));
-    }
-
-    public static String archiveNameOf(String identifier, String version) {
-        return ARCHIVE_PREFIX + identifier + "-" + version + ".jar";
     }
 
     private static String urlOf(LanguagePack pack) {
@@ -138,18 +174,4 @@ public final class LanguagePackStore {
         }
     }
 
-    private static void removeArchivesOf(Project project, String identifier) throws IOException {
-        Path directory = project.languagePacksDirectory();
-        if (!Files.isDirectory(directory)) {
-            return;
-        }
-        String prefix = ARCHIVE_PREFIX + identifier + "-";
-        try (Stream<Path> entries = Files.list(directory)) {
-            for (Path entry : entries.toList()) {
-                if (entry.getFileName().toString().startsWith(prefix)) {
-                    Files.deleteIfExists(entry);
-                }
-            }
-        }
-    }
 }
