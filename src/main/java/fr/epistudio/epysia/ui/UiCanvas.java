@@ -11,7 +11,8 @@ import java.util.List;
 import java.util.Optional;
 import fr.epistudio.epysia.components.Component;
 
-@EpysiaComponent(name = "Ui Canvas", category = "UI")
+@EpysiaComponent(name = "Ui Canvas", category = "UI",
+        description = "Root of a UI tree. Sets the reference resolution its elements scale to.")
 @RequiresComponent(Transform3D.class)
 public final class UiCanvas extends Component {
     @Export(label = "Reference width", min = 0.0f, max = 7680.0f, step = 1.0f)

@@ -10,7 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-@EpysiaComponent(name = "Transform 2D", category = "Core")
+@EpysiaComponent(name = "Transform 2D", category = "Core",
+        description = "Position, rotation and scale in the 2D plane.")
 public final class Transform2D extends Component {
     @Export(label = "Position")
     private final Vector2f position = new Vector2f();

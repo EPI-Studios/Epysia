@@ -14,7 +14,8 @@ import fr.epistudio.epysia.render.mesh.MeshData;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Mesh Collider", category = "Physics")
+@EpysiaComponent(name = "Mesh Collider", category = "Physics",
+        description = "Collision built from a mesh, for level geometry that never moves.")
 public final class MeshCollider extends Collider {
 
     @Export(label = "Mesh")

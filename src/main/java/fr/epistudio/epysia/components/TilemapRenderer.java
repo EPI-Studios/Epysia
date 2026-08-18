@@ -12,7 +12,8 @@ import org.joml.Vector4f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Tilemap Renderer", category = "Rendering")
+@EpysiaComponent(name = "Tilemap Renderer", category = "Rendering",
+        description = "Draws a tilemap asset, layer by layer.")
 @RequiresComponent(Transform2D.class)
 public final class TilemapRenderer extends Component {
 

@@ -16,7 +16,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-@EpysiaComponent(name = "Rigid Body", category = "Physics")
+@EpysiaComponent(name = "Rigid Body", category = "Physics",
+        description = "Body driven by the physics solver. Needs a Collider on the same object.")
 public final class RigidBodyComponent extends Component {
     @Export(label = "Kind")
     private RigidBodyKind kind = RigidBodyKind.DYNAMIC;

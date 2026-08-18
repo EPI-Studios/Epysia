@@ -75,7 +75,7 @@ public final class ComponentRegistry {
     private static Entry toEntry(DiscoveredComponent discovered) {
         Supplier<IComponent> factory = defaultFactoryFor(discovered.componentClass());
         return new Entry(discovered.displayName(), discovered.category(), discovered.icon(),
-                discovered.componentClass(), factory);
+                discovered.description(), discovered.componentClass(), factory);
     }
 
     private static Supplier<IComponent> defaultFactoryFor(Class<? extends IComponent> componentClass) {
@@ -107,6 +107,7 @@ public final class ComponentRegistry {
             String displayName,
             String category,
             String icon,
+            String description,
             Class<? extends IComponent> componentClass,
             Supplier<IComponent> factory
     ) {

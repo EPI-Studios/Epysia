@@ -14,7 +14,8 @@ import org.joml.Vector3fc;
 
 import java.util.List;
 
-@EpysiaComponent(name = "Character Controller", category = "Physics")
+@EpysiaComponent(name = "Character Controller", category = "Physics",
+        description = "Moves a capsule along the ground and up steps without being pushed by physics.")
 @RequiresComponent(Transform3D.class)
 public class CharacterControllerComponent extends Component {
 

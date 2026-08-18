@@ -6,7 +6,8 @@ import fr.epistudio.epysia.components.EditorAction;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 
-@EpysiaComponent(name = "Nav Mesh Surface", category = "Navigation")
+@EpysiaComponent(name = "Nav Mesh Surface", category = "Navigation",
+        description = "Bakes the walkable surface that agents navigate.")
 public final class NavMeshSurface extends Component {
 
     @Export(label = "Bake On Load")

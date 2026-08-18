@@ -8,7 +8,8 @@ import fr.epistudio.epysia.input.KeyCode;
 
 import java.util.function.Consumer;
 
-@EpysiaComponent(name = "Ui Text Field", category = "UI")
+@EpysiaComponent(name = "Ui Text Field", category = "UI",
+        description = "Single line text entry with a caret and selection.")
 public final class UiTextField extends UiElement {
     private static final float TEXT_PADDING = 6.0f;
     private static final float CARET_WIDTH = 1.5f;

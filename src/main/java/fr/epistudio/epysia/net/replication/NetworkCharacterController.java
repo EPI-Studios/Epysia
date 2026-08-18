@@ -11,7 +11,8 @@ import fr.epistudio.epysia.physics.components.CharacterControllerComponent;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Network Character Controller", category = "Networking")
+@EpysiaComponent(name = "Network Character Controller", category = "Networking",
+        description = "Server authoritative movement with client prediction and reconciliation.")
 @RequiresComponent(NetworkObject.class)
 public final class NetworkCharacterController extends Component implements PredictedMovement {
     @Replicated

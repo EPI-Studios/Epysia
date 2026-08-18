@@ -9,7 +9,8 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
-@EpysiaComponent(name = "Density Volume", category = "Rendering")
+@EpysiaComponent(name = "Density Volume", category = "Rendering",
+        description = "Voxel grid holding the density that the volumetric passes read.")
 @RequiresComponent(Transform3D.class)
 public final class DensityVolume extends Component {
     public static final int MAXIMUM_VOXELS = 4_194_304;

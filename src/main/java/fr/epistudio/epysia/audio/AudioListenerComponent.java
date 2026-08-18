@@ -6,7 +6,8 @@ import fr.epistudio.epysia.components.Export;
 import fr.epistudio.epysia.components.RequiresComponent;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 
-@EpysiaComponent(name = "Audio Listener", category = "Audio")
+@EpysiaComponent(name = "Audio Listener", category = "Audio",
+        description = "The ear of the scene. Every sound is mixed relative to this object.")
 @RequiresComponent(Transform3D.class)
 public final class AudioListenerComponent extends Component {
 

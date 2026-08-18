@@ -16,7 +16,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
 
-@EpysiaComponent(name = "Tilemap Scene Spawner", category = "2D")
+@EpysiaComponent(name = "Tilemap Scene Spawner", category = "2D",
+        description = "Instantiates a scene for every marked tile of a tilemap.")
 @RequiresComponent(Transform2D.class)
 public final class TilemapSceneSpawner extends Component {
     @Export(label = "Tilemap")

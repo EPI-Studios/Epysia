@@ -14,4 +14,6 @@ public @interface EpysiaComponent {
     String category() default "General";
 
     String icon() default "";
+
+    String description() default "";
 }

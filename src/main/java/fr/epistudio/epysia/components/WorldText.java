@@ -5,7 +5,8 @@ import org.joml.Vector3f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "World Text", category = "Rendering")
+@EpysiaComponent(name = "World Text", category = "Rendering",
+        description = "Text drawn in the 3D world, optionally turned to face the camera.")
 public final class WorldText extends Component {
 
     @Export(label = "Text")
