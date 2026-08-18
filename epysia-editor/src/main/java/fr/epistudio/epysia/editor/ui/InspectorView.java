@@ -128,7 +128,7 @@ public final class InspectorView {
                 new VfxSection(activeDocument, project),
                 new CameraPostEffectsSection(new PostEffectsSection(project, thumbnails),
                         () -> activeDocument.get().markDirty()),
-                new GraphSection(activeDocument, onOpenGraph),
+                new GraphSection(activeDocument, onOpenGraph, project.locator()),
                 new ColliderFitSection(new SpriteColliderFitSection(project.locator()),
                         new MeshColliderFitSection(),
                         () -> activeDocument.get().markDirty(),
@@ -343,12 +343,7 @@ public final class InspectorView {
     }
 
     private Optional<Path> resolvePrefabFile(String prefabSource) {
-        Path direct = Path.of(prefabSource);
-        if (Files.isRegularFile(direct)) {
-            return Optional.of(direct);
-        }
-        return AssetUri.parse(prefabSource)
-                .flatMap(uri -> engineServices.assets().locator().file(uri));
+        return engineServices.assets().locator().file(prefabSource);
     }
 
     private void renderComponentBlock(GameObject gameObject, IComponent component) {

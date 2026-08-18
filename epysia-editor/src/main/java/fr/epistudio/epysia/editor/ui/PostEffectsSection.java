@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.AssetPaths;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
@@ -35,7 +36,7 @@ import java.util.Set;
 public final class PostEffectsSection {
 
     private static final Set<String> POST_EFFECT_EXTENSIONS = Set.of(".post.glsl");
-    private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
+    private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp", ".epynoise", ".epygradient", ".epycurve");
     private static final String POST_EFFECT_SUFFIX = ".post.glsl";
     private static final float FLOAT_DRAG_STEP = 0.01f;
     private static final float TEXTURE_WELL_SIZE = 32.0f;
@@ -69,7 +70,7 @@ public final class PostEffectsSection {
     }
 
     private void addEffect(PostEffectStack stack, String path, Runnable onChanged) {
-        String fileName = Path.of(path).getFileName().toString();
+        String fileName = AssetPaths.fileNameOf(path);
         String baseName = fileName.endsWith(POST_EFFECT_SUFFIX)
                 ? fileName.substring(0, fileName.length() - POST_EFFECT_SUFFIX.length()) : fileName;
         stack.add(uniqueName(stack, baseName), path, PostEffectInsertionPoint.AFTER_TONEMAP);
@@ -106,7 +107,7 @@ public final class PostEffectsSection {
                                   Runnable onChanged) {
         renderOrderButtons(stack, effect, index, count, onChanged);
         renderInsertionCombo(effect, onChanged);
-        Texts.muted(Path.of(effect.shaderPath()).getFileName().toString());
+        Texts.muted(AssetPaths.fileNameOf(effect.shaderPath()));
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(effect.shaderPath());
         }
@@ -372,7 +373,7 @@ public final class PostEffectsSection {
     }
 
     private CachedParse cachedParse(String shaderPath) {
-        Path file = Path.of(shaderPath);
+        Path file = locator.file(shaderPath).orElseGet(() -> Path.of(AssetPaths.fileNameOf(shaderPath)));
         long modified = modifiedMillis(file);
         CachedParse cached = parseCache.get(shaderPath);
         if (cached != null && cached.modifiedMillis() == modified) {

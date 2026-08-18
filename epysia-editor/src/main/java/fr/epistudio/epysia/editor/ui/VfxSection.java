@@ -5,6 +5,7 @@ import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.AssetPaths;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.vfx.ParticleBurst;
 import fr.epistudio.epysia.vfx.ParticleEffect;
@@ -74,7 +75,7 @@ public final class VfxSection {
         if (effect.graphPath().isEmpty()) {
             return I18n.translate(TextKey.EDITOR_VFX_SECTION_NONE);
         }
-        return stemOf(Path.of(effect.graphPath()));
+        return AssetPaths.stemOf(effect.graphPath());
     }
 
     private void renderNoneOption(ParticleEffect effect) {

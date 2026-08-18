@@ -1,5 +1,11 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.AssetPaths;
+import fr.epistudio.epysia.editor.icons.EditorIcon;
+import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.ui.kit.IconButtons;
+import fr.epistudio.epysia.editor.ui.kit.Sections;
+import fr.epistudio.epysia.editor.ui.kit.Toolbars;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
@@ -465,7 +471,7 @@ public final class GraphEditorView {
         if (meshPath.equals(ShaderGraphPreviewService.PLANE_MESH)) {
             return I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_MESH_PLANE);
         }
-        return Path.of(meshPath).getFileName().toString();
+        return AssetPaths.fileNameOf(meshPath);
     }
 
     private void renderPreviewToggles() {
@@ -1773,7 +1779,7 @@ public final class GraphEditorView {
         node.values().put(texturePathSettingFor(typeKey.get()), texturePath);
         applyTextureParameterName(node, texturePath);
         notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_ADDED_NODE_FOR_ASSET,
-                titleOf(graph, node), Path.of(texturePath).getFileName()));
+                titleOf(graph, node), AssetPaths.fileNameOf(texturePath)));
     }
 
     private Optional<String> textureNodeTypeFor(GraphKind kind) {
@@ -1797,7 +1803,7 @@ public final class GraphEditorView {
         if (!node.typeKey().equals(ShaderNodes.PARAMETER_TEXTURE)) {
             return;
         }
-        String fileName = Path.of(texturePath).getFileName().toString();
+        String fileName = AssetPaths.fileNameOf(texturePath);
         int dot = fileName.lastIndexOf('.');
         String baseName = dot > 0 ? fileName.substring(0, dot) : fileName;
         node.values().put(ShaderNodes.NAME_SETTING, baseName.replaceAll("[^A-Za-z0-9_]", "_"));

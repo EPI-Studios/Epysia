@@ -1404,11 +1404,7 @@ public final class EditorView implements FrameView {
     }
 
     private Optional<String> readPrefabText(String prefabSource) {
-        Path direct = Path.of(prefabSource);
-        Optional<Path> file = Files.isRegularFile(direct)
-                ? Optional.of(direct)
-                : AssetUri.parse(prefabSource).flatMap(uri -> project.locator().file(uri));
-        return file.flatMap(EditorView::readFileQuietly);
+        return project.locator().file(prefabSource).flatMap(EditorView::readFileQuietly);
     }
 
     private static Optional<String> readFileQuietly(Path path) {

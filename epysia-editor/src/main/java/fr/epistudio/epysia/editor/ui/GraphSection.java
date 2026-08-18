@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.AssetPaths;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
 import fr.epistudio.epysia.graph.GraphAsset;
@@ -27,15 +29,18 @@ public final class GraphSection {
 
     private final Supplier<SceneDocument> activeDocument;
     private final Consumer<Path> onOpenGraph;
+    private final AssetLocator locator;
     private final GraphJsonCodec codec = new GraphJsonCodec();
     private final Map<String, ImString> textBuffers = new HashMap<>();
     private String cachedPath = "";
     private long cachedModifiedMillis;
     private GraphAsset cachedAsset = new GraphAsset();
 
-    public GraphSection(Supplier<SceneDocument> activeDocument, Consumer<Path> onOpenGraph) {
+    public GraphSection(Supplier<SceneDocument> activeDocument, Consumer<Path> onOpenGraph,
+                        AssetLocator locator) {
         this.activeDocument = activeDocument;
         this.onOpenGraph = onOpenGraph;
+        this.locator = locator;
     }
 
     public void render(GraphComponent component) {
@@ -48,7 +53,7 @@ public final class GraphSection {
     private void renderPathRow(GraphComponent component) {
         String fileName = component.graphPath().isEmpty()
                 ? I18n.translate(TextKey.EDITOR_GRAPH_SECTION_DROP_HINT)
-                : Path.of(component.graphPath()).getFileName().toString();
+                : AssetPaths.fileNameOf(component.graphPath());
         Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_SECTION_GRAPH));
         ImGui.sameLine();
         ImGui.button(fileName, ImGui.getContentRegionAvailX(), 0.0f);
@@ -71,7 +76,7 @@ public final class GraphSection {
         ImGui.beginDisabled(component.graphPath().isEmpty());
         if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_SECTION_OPEN_IN_GRAPH_EDITOR,
                 "graph-section-open"), ImGui.getContentRegionAvailX(), 0.0f)) {
-            onOpenGraph.accept(Path.of(component.graphPath()));
+            locator.file(component.graphPath()).ifPresent(onOpenGraph);
         }
         ImGui.endDisabled();
     }
@@ -183,8 +188,8 @@ public final class GraphSection {
         if (pathText.isEmpty()) {
             return Optional.empty();
         }
-        Path path = Path.of(pathText);
-        if (!Files.isRegularFile(path)) {
+        Path path = locator.file(pathText).orElse(null);
+        if (path == null || !Files.isRegularFile(path)) {
             return Optional.empty();
         }
         reloadIfChanged(pathText, path);
