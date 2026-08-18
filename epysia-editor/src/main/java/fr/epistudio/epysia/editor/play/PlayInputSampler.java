@@ -28,6 +28,7 @@ public final class PlayInputSampler {
         if (scrollDelta != 0.0f) {
             inputState.onScroll(scrollDelta);
         }
+        inputState.pollGamepads();
     }
 
     private void releaseAll() {
@@ -37,5 +38,6 @@ public final class PlayInputSampler {
         for (MouseButton button : MouseButton.values()) {
             inputState.onMouseButton(button, false);
         }
+        inputState.gamepads().releaseAll();
     }
 }
