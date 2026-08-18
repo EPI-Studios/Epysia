@@ -7,8 +7,9 @@ release_url="https://github.com/$repository/releases/download/v$version"
 destination="dist/language-packs.json"
 mkdir -p dist
 
-pack="dist/epysia-lang-kotlin-$version.jar"
-runtime="dist/epysia-lang-kotlin-runtime-$version.jar"
+kotlin_pack="dist/epysia-lang-kotlin-$version.jar"
+kotlin_runtime="dist/epysia-lang-kotlin-runtime-$version.jar"
+python_pack="dist/epysia-lang-python-$version.zip"
 
 cat > "$destination" <<JSON
 {
@@ -19,13 +20,23 @@ cat > "$destination" <<JSON
       "name": "Kotlin",
       "description": "Kotlin scripts, with the compiler, highlighting and completion.",
       "version": "$version",
-      "asset": "$(basename "$pack")",
-      "url": "$release_url/$(basename "$pack")",
-      "sizeBytes": $(stat -c%s "$pack"),
-      "sha256": "$(sha256sum "$pack" | cut -d' ' -f1)",
-      "runtimeAsset": "$(basename "$runtime")",
-      "runtimeUrl": "$release_url/$(basename "$runtime")",
-      "runtimeSha256": "$(sha256sum "$runtime" | cut -d' ' -f1)"
+      "asset": "$(basename "$kotlin_pack")",
+      "url": "$release_url/$(basename "$kotlin_pack")",
+      "sizeBytes": $(stat -c%s "$kotlin_pack"),
+      "sha256": "$(sha256sum "$kotlin_pack" | cut -d' ' -f1)",
+      "runtimeAsset": "$(basename "$kotlin_runtime")",
+      "runtimeUrl": "$release_url/$(basename "$kotlin_runtime")",
+      "runtimeSha256": "$(sha256sum "$kotlin_runtime" | cut -d' ' -f1)"
+    },
+    {
+      "id": "python",
+      "name": "Python",
+      "description": "Python scripts on GraalPy, with highlighting and completion.",
+      "version": "$version",
+      "asset": "$(basename "$python_pack")",
+      "url": "$release_url/$(basename "$python_pack")",
+      "sizeBytes": $(stat -c%s "$python_pack"),
+      "sha256": "$(sha256sum "$python_pack" | cut -d' ' -f1)"
     }
   ]
 }
