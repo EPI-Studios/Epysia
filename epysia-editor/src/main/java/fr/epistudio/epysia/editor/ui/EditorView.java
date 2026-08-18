@@ -39,6 +39,7 @@ import fr.epistudio.epysia.editor.preview.ShaderGraphPreviewService;
 import fr.epistudio.epysia.editor.preview.VfxPreviewPanel;
 import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.editor.runtime.EditorCamera;
+import fr.epistudio.epysia.editor.runtime.ToolScriptTicker;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
@@ -169,6 +170,7 @@ public final class EditorView implements FrameView {
     private final LibrariesSection librariesSection;
     private final MeshBakeDialog meshBakeDialog;
     private final ExportGameDialog exportGameDialog;
+    private final ToolScriptTicker toolScripts = new ToolScriptTicker();
     private final AssetReloadService assetReloads;
     private final ProceduralTexturePreview proceduralPreview;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
@@ -427,16 +429,18 @@ public final class EditorView implements FrameView {
 
     private void tickEditorComponents(float deltaSeconds) {
         if (playSession.isActive() || playController.isRunning()) {
+            toolScripts.reset();
             return;
         }
         Scene scene = workspace.active().scene();
         List<EditorTickable> tickables = List.copyOf(scene.componentsOf(EditorTickable.class));
-        if (tickables.isEmpty()) {
-            return;
-        }
         sceneHost.engine().backgroundTasks().deliverCompleted();
         for (EditorTickable tickable : tickables) {
             tickEditorComponent(tickable, deltaSeconds);
+        }
+        boolean toolsRan = toolScripts.tick(scene, sceneHost.engine(), deltaSeconds, toasts::show);
+        if (tickables.isEmpty() && !toolsRan) {
+            return;
         }
         scene.advanceTick();
         sceneHost.requestViewportRedraw();
