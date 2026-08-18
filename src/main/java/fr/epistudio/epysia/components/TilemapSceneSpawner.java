@@ -87,8 +87,13 @@ public final class TilemapSceneSpawner extends Component {
 
     private void spawnCell(EngineServices services, SpriteTilemap map, PrefabInstantiator instantiator,
                            String path, int layerIndex, int cellX, int cellY) {
+        Optional<Path> file = services.assets().locator().file(path);
+        if (file.isEmpty()) {
+            services.logger().warn("[TilemapSceneSpawner] cannot spawn '" + path + "': file not found");
+            return;
+        }
         try {
-            GameObject spawned = instantiator.instantiate(Path.of(path), services.scene(), services);
+            GameObject spawned = instantiator.instantiate(file.get(), services.scene(), services);
             placeAtCell(spawned, map, cellX, cellY);
             if (clearPaintedCells) {
                 map.setTile(layerIndex, cellX, cellY, SpriteTilemap.EMPTY_TILE_INDEX);

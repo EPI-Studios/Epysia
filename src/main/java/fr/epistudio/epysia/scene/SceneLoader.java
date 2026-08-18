@@ -1,7 +1,6 @@
 package fr.epistudio.epysia.scene;
 
 import fr.epistudio.epysia.EngineServices;
-import fr.epistudio.epysia.assets.AssetUri;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.prefab.PrefabRefresher;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
@@ -133,11 +132,7 @@ public final class SceneLoader {
     }
 
     private Optional<Path> resolve(String scenePath) {
-        Path direct = Path.of(scenePath);
-        if (Files.isRegularFile(direct)) {
-            return Optional.of(direct);
-        }
-        return AssetUri.parse(scenePath).flatMap(uri -> services.assets().locator().file(uri));
+        return services.assets().locator().file(scenePath);
     }
 
     private static Optional<String> readFile(Path path) {
