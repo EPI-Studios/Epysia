@@ -1,4 +1,4 @@
-package fr.epistudio.epysia.editor.scripts;
+package fr.epistudio.epysia.lang.kotlin;
 
 import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.scripting.compile.ScriptCompileResult;

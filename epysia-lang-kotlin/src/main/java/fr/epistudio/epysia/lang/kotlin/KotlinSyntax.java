@@ -1,13 +1,11 @@
-package fr.epistudio.epysia.editor.scripteditor;
-
-import imgui.extension.texteditor.TextEditorLanguage;
+package fr.epistudio.epysia.lang.kotlin;
 
 import java.util.List;
 import java.util.Set;
 
-public final class KotlinLanguageDefinition {
+final class KotlinSyntax {
 
-    private static final List<String> KEYWORDS = List.of(
+    static final List<String> KEYWORDS = List.of(
             "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
             "interface", "is", "null", "object", "package", "return", "super", "this", "throw",
             "true", "try", "typealias", "typeof", "val", "var", "when", "while",
@@ -18,22 +16,18 @@ public final class KotlinLanguageDefinition {
             "noinline", "open", "operator", "out", "override", "private", "protected", "public",
             "reified", "sealed", "suspend", "tailrec", "vararg");
 
-    private static final Set<String> DECLARATIONS = Set.of(
+    static final Set<String> DECLARATIONS = Set.of(
             "abstract", "actual", "annotation", "class", "companion", "const", "crossinline",
             "data", "enum", "expect", "external", "final", "fun", "infix", "init", "inline",
             "inner", "interface", "internal", "lateinit", "noinline", "object", "open", "operator",
             "out", "override", "private", "protected", "public", "reified", "sealed", "suspend",
             "tailrec", "typealias", "val", "var", "vararg");
 
-    private KotlinLanguageDefinition() {
-    }
+    static final Set<String> IMPLICIT_PACKAGES = Set.of(
+            "kotlin", "kotlin.annotation", "kotlin.collections", "kotlin.comparisons",
+            "kotlin.io", "kotlin.jvm", "kotlin.ranges", "kotlin.sequences", "kotlin.text",
+            "java.lang");
 
-    public static TextEditorLanguage create(JavaSymbols symbols) {
-        return CurlyBraceLanguage.create("Kotlin",
-                CurlyBraceLanguage.without(KEYWORDS, DECLARATIONS), DECLARATIONS, symbols);
-    }
-
-    public static List<String> keywords() {
-        return KEYWORDS;
+    private KotlinSyntax() {
     }
 }

@@ -118,6 +118,9 @@ public final class AssetScanner {
         if (lower.endsWith(".glsl") || lower.endsWith(".vert") || lower.endsWith(".frag")) {
             return AssetType.SHADER;
         }
+        if (lower.endsWith(".epynoise") || lower.endsWith(".epygradient") || lower.endsWith(".epycurve")) {
+            return AssetType.TEXTURE;
+        }
         if (lower.endsWith(".epyprefab")) {
             return AssetType.PREFAB;
         }

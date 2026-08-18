@@ -10,6 +10,9 @@ import fr.epistudio.epysia.assets.loaders.ProbesAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteAtlasAssetLoader;
 import fr.epistudio.epysia.assets.loaders.SpriteTilemapAssetLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
+import fr.epistudio.epysia.assets.procedural.CurveTextureLoader;
+import fr.epistudio.epysia.assets.procedural.GradientTextureLoader;
+import fr.epistudio.epysia.assets.procedural.NoiseTextureLoader;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.input.InputState;
@@ -81,6 +84,9 @@ public final class HeadlessRunner {
     private static void registerAssetLoaders(EpysiaEngine engine, NullRenderBackend backend) {
         engine.assets().register(new MeshAssetLoader(BuiltinMeshes.uploadAll(backend)));
         engine.assets().register(new TextureAssetLoader());
+        engine.assets().register(new NoiseTextureLoader());
+        engine.assets().register(new GradientTextureLoader());
+        engine.assets().register(new CurveTextureLoader());
         engine.assets().register(new PhysicsMaterialLoader());
         engine.assets().register(new AudioBufferLoaderAsset());
         engine.assets().register(new MaterialAssetLoader());

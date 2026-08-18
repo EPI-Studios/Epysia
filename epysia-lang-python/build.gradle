@@ -1,0 +1,41 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'henkelmax.public'
+        url = 'https://maven.maxhenkel.de/repository/public'
+        content { includeGroupByRegex 'de\\.maxhenkel.*' }
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+dependencies {
+    compileOnly rootProject
+    compileOnly 'org.joml:joml:1.10.8'
+    implementation 'org.graalvm.polyglot:polyglot:24.2.1'
+    implementation 'org.graalvm.python:python-language:24.2.1'
+    implementation 'org.graalvm.python:python-resources:24.2.1'
+    implementation 'org.graalvm.truffle:truffle-runtime:24.2.1'
+}
+
+jar {
+    archiveBaseName = 'epysia-lang-python'
+}
+
+tasks.register('packArchive', Zip) {
+    archiveBaseName = 'epysia-lang-python'
+    archiveClassifier = ''
+    destinationDirectory = layout.buildDirectory.dir('pack')
+    from jar
+    from configurations.runtimeClasspath.filter { it.name.endsWith('.jar') }
+}
+
+build.dependsOn packArchive

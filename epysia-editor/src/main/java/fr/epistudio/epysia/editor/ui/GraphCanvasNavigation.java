@@ -40,6 +40,10 @@ final class GraphCanvasNavigation {
     private float viewportWidth = 1.0f;
     private float viewportHeight = 1.0f;
 
+    boolean lowDetail() {
+        return zoom.lowDetail();
+    }
+
     float factor() {
         return zoom.factor();
     }
@@ -52,7 +56,7 @@ final class GraphCanvasNavigation {
         return zoom.unscaled(screenExtent);
     }
 
-    void renderToolbar() {
+    void renderToolbarControls() {
         renderZoomButtons();
         ImGui.sameLine();
         renderFramingButtons();
@@ -100,11 +104,14 @@ final class GraphCanvasNavigation {
         viewportWidth = Math.max(1.0f, ImGui.getContentRegionAvailX());
         viewportHeight = Math.max(1.0f, ImGui.getContentRegionAvailY());
         ImGui.setWindowFontScale(zoom.factor());
+        GraphCanvasStyle.applyBase();
         pushScaledWidgetStyle();
         pushScaledNodeStyle();
+        GraphCanvasStyle.pushColors();
     }
 
     void endCanvas() {
+        GraphCanvasStyle.popColors();
         for (int index = 0; index < SCALED_NODE_STYLE_VARS; index++) {
             ImNodes.popStyleVar();
         }
@@ -123,10 +130,13 @@ final class GraphCanvasNavigation {
                 style.getItemInnerSpacingX() * scale, style.getItemInnerSpacingY() * scale);
     }
 
+    private static final float MINIMUM_GRID_PIXELS = 14.0f;
+
     private void pushScaledNodeStyle() {
         ImNodesStyle style = ImNodes.getStyle();
         float scale = zoom.factor();
-        ImNodes.pushStyleVar(ImNodesStyleVar.GridSpacing, style.getGridSpacing() * scale);
+        ImNodes.pushStyleVar(ImNodesStyleVar.GridSpacing,
+                Math.max(MINIMUM_GRID_PIXELS, style.getGridSpacing() * scale));
         ImNodes.pushStyleVar(ImNodesStyleVar.NodeCornerRounding, style.getNodeCornerRounding() * scale);
         ImNodes.pushStyleVar(ImNodesStyleVar.NodePadding,
                 style.getNodePaddingX() * scale, style.getNodePaddingY() * scale);

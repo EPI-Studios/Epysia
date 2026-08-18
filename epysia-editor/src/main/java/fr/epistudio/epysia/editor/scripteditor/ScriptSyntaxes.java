@@ -1,5 +1,7 @@
 package fr.epistudio.epysia.editor.scripteditor;
 
+import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 import imgui.extension.texteditor.TextEditorLanguage;
 
 import java.nio.file.Path;
@@ -23,8 +25,16 @@ public final class ScriptSyntaxes {
     }
 
     public static ScriptSyntaxes discover() {
+        return discover(ScriptLanguages.discover());
+    }
+
+    public static ScriptSyntaxes discover(ScriptLanguages languages) {
         List<ScriptSyntax> discovered = new ArrayList<>();
         ServiceLoader.load(ScriptSyntax.class).forEach(discovered::add);
+        for (ScriptLanguage language : languages.authoringOrder()) {
+            language.syntax().ifPresent(descriptor ->
+                    discovered.add(new DescriptorScriptSyntax(language, descriptor)));
+        }
         if (discovered.isEmpty()) {
             discovered.add(new JavaScriptSyntax());
         }
@@ -35,10 +45,14 @@ public final class ScriptSyntaxes {
         return syntaxes;
     }
 
-    public void rebuild(JavaSymbols symbols) {
+    public void release() {
         ownedDefinitions.forEach(TextEditorLanguage::destroy);
         ownedDefinitions.clear();
         definitionsByExtension.clear();
+    }
+
+    public void rebuild(JavaSymbols symbols) {
+        release();
         for (ScriptSyntax syntax : syntaxes) {
             TextEditorLanguage definition = syntax.create(symbols);
             ownedDefinitions.add(definition);

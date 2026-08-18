@@ -145,6 +145,8 @@ public final class ProbeRefreshSystem implements GameSystem {
             engine.renderSystem(PostProcessSystem.class).rebindStageTargets();
             return;
         }
+        engine.bindStageTarget(RenderPasses.PREPASS_3D, RenderTargetHandle.SCREEN,
+                PassClear.color(0.10f, 0.12f, 0.18f));
         engine.bindStageTarget(RenderPasses.OPAQUE_3D, RenderTargetHandle.SCREEN,
                 PassClear.color(0.10f, 0.12f, 0.18f));
         engine.bindStageTarget(RenderPasses.TRANSPARENT_3D, RenderTargetHandle.SCREEN, PassClear.none());

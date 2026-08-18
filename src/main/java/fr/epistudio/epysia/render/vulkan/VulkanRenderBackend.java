@@ -857,6 +857,11 @@ public final class VulkanRenderBackend implements RenderBackend {
     }
 
     @Override
+    public boolean hasTexture(TextureHandle handle) {
+        return textures.containsKey(handle.id());
+    }
+
+    @Override
     public int textureWidth(TextureHandle handle) {
         return requireTexture(handle).width();
     }

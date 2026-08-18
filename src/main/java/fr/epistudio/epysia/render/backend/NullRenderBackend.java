@@ -132,6 +132,11 @@ public final class NullRenderBackend implements RenderBackend {
     }
 
     @Override
+    public boolean hasTexture(TextureHandle handle) {
+        return true;
+    }
+
+    @Override
     public int textureWidth(TextureHandle handle) {
         return textureShapes.getOrDefault(handle.id(), TextureShape.UNKNOWN).width();
     }

@@ -1449,6 +1449,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
                 glBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE,
                         GL11.GL_ONE, GL11.GL_ONE);
             }
+            case MULTIPLY -> {
+                glEnable(GL_BLEND);
+                glBlendFuncSeparate(GL11.GL_DST_COLOR, GL11.GL_ZERO,
+                        GL11.GL_DST_ALPHA, GL11.GL_ZERO);
+            }
         }
     }
 
@@ -1563,6 +1568,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
         glBindTexture(glTarget, resource.textureId());
         glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, wrapToGl(wrap));
         glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, wrapToGl(wrap));
+    }
+
+    @Override
+    public boolean hasTexture(TextureHandle handle) {
+        return textures.containsKey(handle.id());
     }
 
     private TextureResource requireTexture(TextureHandle handle) {

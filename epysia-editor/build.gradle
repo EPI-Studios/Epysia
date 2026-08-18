@@ -51,8 +51,6 @@ dependencies {
 
     implementation 'de.javagl:jgltf-model:2.0.4'
     implementation 'org.apache.maven.resolver:maven-resolver-supplier:1.9.22'
-    implementation 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.20'
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.20'
 
     testImplementation platform('org.junit:junit-bom:6.0.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'

@@ -5,6 +5,9 @@ import fr.epistudio.epysia.editor.command.EditorCommand;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.gameobjects.GameObject;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class AddGameObjectCommand implements EditorCommand {
 
     private final GameObject gameObject;
@@ -17,13 +20,28 @@ public final class AddGameObjectCommand implements EditorCommand {
 
     @Override
     public void apply(CommandContext context) {
-        context.scene().addGameObject(gameObject);
-        for (IComponent component : gameObject.components()) {
-            component.onLoad(context.services());
+        for (GameObject member : subtreeOf(gameObject)) {
+            context.scene().addGameObject(member);
+            for (IComponent component : member.components()) {
+                component.onLoad(context.services());
+            }
         }
         context.scene().advanceTick();
         if (selectAfter) {
             context.selection().select(gameObject);
+        }
+    }
+
+    private static List<GameObject> subtreeOf(GameObject root) {
+        List<GameObject> collected = new ArrayList<>();
+        collect(root, collected);
+        return collected;
+    }
+
+    private static void collect(GameObject current, List<GameObject> collected) {
+        collected.add(current);
+        for (GameObject child : current.children()) {
+            collect(child, collected);
         }
     }
 

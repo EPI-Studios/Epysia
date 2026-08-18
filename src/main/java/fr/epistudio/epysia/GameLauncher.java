@@ -190,11 +190,11 @@ public final class GameLauncher {
 
     private static ScriptLoadResult loadScripts(Path projectRoot, Optional<Path> precompiledScripts) {
         ProjectLibraries libraries = ProjectLibraries.forProjectRoot(projectRoot);
+        Path scripts = projectRoot.resolve(Project.SCRIPTS_DIRECTORY_NAME);
         if (precompiledScripts.isPresent()) {
-            return ScriptModule.loadPrecompiled(precompiledScripts.get(), libraries);
+            return ScriptModule.loadPrecompiled(precompiledScripts.get(), scripts, libraries);
         }
-        return ScriptModule.load(projectRoot.resolve(Project.SCRIPTS_DIRECTORY_NAME),
-                projectRoot.resolve(".epysia/scripts-out"), libraries);
+        return ScriptModule.load(scripts, projectRoot.resolve(".epysia/scripts-out"), libraries);
     }
 
     private static void attachAssetDatabase(EngineServices services, Path projectRoot, Logger logger) {

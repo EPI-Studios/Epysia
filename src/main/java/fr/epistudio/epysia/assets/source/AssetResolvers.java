@@ -1,10 +1,19 @@
 package fr.epistudio.epysia.assets.source;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class AssetResolvers {
+
+    private static Optional<Path> asPath(String path) {
+        try {
+            return Optional.of(Path.of(path));
+        } catch (InvalidPathException unusableOnThisFilesystem) {
+            return Optional.empty();
+        }
+    }
 
     private static final String PROJECT_PREFIX = "res://";
 
@@ -26,9 +35,9 @@ public final class AssetResolvers {
         if (withinProject.isPresent()) {
             return absoluteLocation(withinProject.get());
         }
-        Path candidate = Path.of(path);
-        if (candidate.isAbsolute()) {
-            return absoluteLocation(candidate);
+        Optional<Path> candidate = asPath(path);
+        if (candidate.isPresent() && candidate.get().isAbsolute()) {
+            return absoluteLocation(candidate.get());
         }
         String normalized = path.replace('\\', '/');
         int lastSlash = normalized.lastIndexOf('/');

@@ -599,10 +599,19 @@ public final class HierarchyView {
     }
 
     private GameObject buildCopy(GameObject source) {
-        GameObject copy = new GameObject(
+        GameObject copy = copyWithName(source,
                 UniqueObjectName.in(activeDocument.get().scene(), source.name()));
+        source.parent().ifPresent(copy::setParent);
+        return copy;
+    }
+
+    private GameObject copyWithName(GameObject source, String name) {
+        GameObject copy = new GameObject(name);
         for (IComponent component : new ArrayList<>(source.components())) {
             copyComponentInto(copy, component);
+        }
+        for (GameObject child : source.children()) {
+            copyWithName(child, child.name()).setParent(copy);
         }
         return copy;
     }

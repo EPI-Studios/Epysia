@@ -232,6 +232,20 @@ public class CharacterControllerComponent extends Component {
         this.desiredHorizontalMovement.set(velocityMetersPerSecond.x(), 0.0f, velocityMetersPerSecond.z());
     }
 
+    public void moveInDirection(Vector3fc direction) {
+        moveInDirection(direction.x(), direction.z());
+    }
+
+    public void moveInDirection(float x, float z) {
+        float length = (float) Math.sqrt(x * x + z * z);
+        if (length <= 0.0f) {
+            desiredHorizontalMovement.set(0.0f);
+            return;
+        }
+        float scale = moveSpeedMetersPerSecond / length * Math.min(length, 1.0f);
+        desiredHorizontalMovement.set(x * scale, 0.0f, z * scale);
+    }
+
     public boolean isGrounded() {
         return grounded;
     }

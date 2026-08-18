@@ -46,6 +46,7 @@ public final class Sections {
         float height = ImGui.getTextLineHeight() + EditorScale.of(HEADER_PADDING_Y) * 2.0f;
         float left = ImGui.getCursorScreenPosX();
         float top = ImGui.getCursorScreenPosY();
+        ImGui.setNextItemAllowOverlap();
         ImGui.invisibleButton(label, width, height);
         if (ImGui.isItemClicked()) {
             open = !open;

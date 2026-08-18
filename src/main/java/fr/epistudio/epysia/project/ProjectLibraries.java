@@ -37,6 +37,22 @@ public record ProjectLibraries(List<Path> archives) {
     public static ProjectLibraries forProjectRoot(Path projectRoot) {
         List<Path> merged = new ArrayList<>(in(projectRoot.resolve(Project.LIBRARIES_DIRECTORY_NAME)).archives());
         merged.addAll(in(projectRoot.resolve(Project.LIBRARIES_CACHE_DIRECTORY_NAME)).archives());
+        merged.addAll(inTree(projectRoot.resolve(Project.LANGUAGE_PACKS_DIRECTORY_NAME)).archives());
+        return new ProjectLibraries(List.copyOf(merged));
+    }
+
+    public static ProjectLibraries inTree(Path root) {
+        if (root == null || !Files.isDirectory(root)) {
+            return none();
+        }
+        List<Path> merged = new ArrayList<>(in(root).archives());
+        try (Stream<Path> entries = Files.list(root)) {
+            entries.filter(Files::isDirectory)
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                    .forEach(directory -> merged.addAll(in(directory).archives()));
+        } catch (IOException unreadable) {
+            return new ProjectLibraries(List.copyOf(merged));
+        }
         return new ProjectLibraries(List.copyOf(merged));
     }
 

@@ -14,6 +14,9 @@ import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.SpriteAtlasFactory;
 import fr.epistudio.epysia.editor.assets.SpriteTilemapFactory;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.assets.procedural.CurveTextureLoader;
+import fr.epistudio.epysia.assets.procedural.GradientTextureLoader;
+import fr.epistudio.epysia.assets.procedural.NoiseTextureLoader;
 import fr.epistudio.epysia.editor.icons.AssetTypeIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -65,6 +68,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class AssetBrowserView {
 
@@ -102,7 +106,6 @@ public final class AssetBrowserView {
     private static final String EFFECTS_CATEGORY = "Effects";
     private static final String VFX_GRAPH_TEMPLATE_RESOURCE = "/templates/NewVfxGraph.epygraph";
 
-    private static final ScriptLanguages SCRIPT_LANGUAGES = ScriptLanguages.discover();
     private static final String VERTEX_SHADER_SUFFIX = ".vert.glsl";
     private static final String FRAGMENT_SHADER_SUFFIX = ".frag.glsl";
     private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
@@ -117,6 +120,7 @@ public final class AssetBrowserView {
 
     private final Project project;
     private final Notifier notifier;
+    private final Supplier<ScriptLanguages> scriptLanguages;
     private final IconWidgets icons;
     private final ThumbnailCache thumbnails;
     private final MeshThumbnailer meshThumbnails;
@@ -151,7 +155,9 @@ public final class AssetBrowserView {
                             Consumer<Path> onOpenScript, Consumer<Path> onBakeMesh,
                             Consumer<Path> onInstantiatePrefab, Consumer<Path> onOpenScene,
                             Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph,
-                            Consumer<Path> onOpenAtlas, AssetImportPipeline importPipeline) {
+                            Consumer<Path> onOpenAtlas, AssetImportPipeline importPipeline,
+                            Supplier<ScriptLanguages> scriptLanguages) {
+        this.scriptLanguages = scriptLanguages;
         this.project = project;
         this.notifier = notifier;
         this.icons = icons;
@@ -514,7 +520,8 @@ public final class AssetBrowserView {
 
     private List<NewAssetDialog.AssetKind> assetKinds() {
         List<NewAssetDialog.AssetKind> kinds = new ArrayList<>(fixedAssetKinds());
-        for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
+        kinds.addAll(proceduralAssetKinds());
+        for (ScriptLanguage language : scriptLanguages.get().authoringOrder()) {
             kinds.add(kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SCRIPT,
                             language.displayName()),
                     I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SCRIPTING),
@@ -554,6 +561,40 @@ public final class AssetBrowserView {
         Path scripts = project.scriptsDirectory();
         Path target = targetDirectory();
         return target.toAbsolutePath().startsWith(scripts.toAbsolutePath()) ? target : scripts;
+    }
+
+    private List<NewAssetDialog.AssetKind> proceduralAssetKinds() {
+        return List.of(
+                kind("Noise Texture", "Textures",
+                        "texture de bruit générée, bouclable, utilisable partout",
+                        EditorIcon.TEXTURE_2D, "MyNoise",
+                        name -> createProcedural(name, NoiseTextureLoader.EXTENSION)),
+                kind("Gradient Texture", "Textures",
+                        "dégradé de couleurs cuit en texture",
+                        EditorIcon.TEXTURE_2D, "MyGradient",
+                        name -> createProcedural(name, GradientTextureLoader.EXTENSION)),
+                kind("Curve Texture", "Textures",
+                        "courbe cuite en rampe de gris",
+                        EditorIcon.TEXTURE_2D, "MyCurve",
+                        name -> createProcedural(name, CurveTextureLoader.EXTENSION)));
+    }
+
+    private void createProcedural(String requestedName, String extension) {
+        String name = assetBaseName(requestedName);
+        if (name.isEmpty()) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_FILE_NAME,
+                    requestedName));
+            return;
+        }
+        try {
+            Path file = targetDirectory().resolve(name + extension);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, ProceduralDocumentModel.defaultDocument(extension));
+            refresh();
+        } catch (IOException | InvalidPathException error) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_COULD_NOT_LIST_DIRECTORY,
+                    error.getMessage()));
+        }
     }
 
     private List<NewAssetDialog.AssetKind> fixedAssetKinds() {

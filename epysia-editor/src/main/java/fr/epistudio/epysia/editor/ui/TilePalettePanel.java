@@ -180,13 +180,12 @@ public final class TilePalettePanel {
         }
     }
 
-    private static Optional<Path> tilemapFile(TilemapRenderer renderer) {
+    private Optional<Path> tilemapFile(TilemapRenderer renderer) {
         String path = renderer.tilemapRef().path();
         if (path.isEmpty()) {
             return Optional.empty();
         }
-        Path file = Path.of(path);
-        return Files.isRegularFile(file) ? Optional.of(file) : Optional.empty();
+        return services.assets().locator().file(path).filter(Files::isRegularFile);
     }
 
     private void renderPalette(SpriteTilemap tilemap, SpriteAtlas atlas) {
