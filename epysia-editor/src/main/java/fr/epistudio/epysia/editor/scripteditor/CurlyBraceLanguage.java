@@ -14,11 +14,17 @@ final class CurlyBraceLanguage {
 
     static TextEditorLanguage create(String name, Collection<String> keywords,
                                      Set<String> declarations, JavaSymbols symbols) {
+        return create(name, keywords, declarations, symbols, "//");
+    }
+
+    static TextEditorLanguage create(String name, Collection<String> keywords,
+                                     Set<String> declarations, JavaSymbols symbols,
+                                     String lineComment) {
         TextEditorLanguage language = TextEditorLanguage.copyOf(TextEditorLanguage.Cpp());
         language.setName(name);
         language.setCaseSensitive(true);
         language.setPreprocess(0);
-        language.setSingleLineComment("//");
+        language.setSingleLineComment(lineComment);
         language.setCommentStart("/*");
         language.setCommentEnd("*/");
         language.setHasSingleQuotedStrings(true);

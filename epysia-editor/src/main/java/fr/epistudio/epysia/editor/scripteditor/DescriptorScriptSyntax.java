@@ -33,7 +33,7 @@ public final class DescriptorScriptSyntax implements ScriptSyntax {
         List<String> plainKeywords = new ArrayList<>(descriptor.keywords());
         plainKeywords.removeAll(descriptor.declarationKeywords());
         return CurlyBraceLanguage.create(descriptor.displayName(), plainKeywords,
-                descriptor.declarationKeywords(), symbols);
+                descriptor.declarationKeywords(), symbols, descriptor.lineComment());
     }
 
     @Override
