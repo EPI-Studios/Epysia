@@ -71,6 +71,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private static final int MAXIMUM_CATCHUP_STEPS = 5;
     private static final int DEFAULT_MAXIMUM_HITS = 32;
     private static final float DEFAULT_STEP_SECONDS = 1.0f / 60.0f;
+    private static final float KINEMATIC_TELEPORT_DISTANCE = 10.0f;
 
     private final Vector3f defaultGravity = new Vector3f(0.0f, -9.81f, 0.0f);
     private Set<GameObject> residentSnapshot;
@@ -80,6 +81,7 @@ public final class PhysicsSystem implements IPhysicsSystem {
     private final Quaternionf scratchRotation = new Quaternionf();
     private final Vector3f scratchHorizontal = new Vector3f();
     private final Vector3f scratchDisplacement = new Vector3f();
+    private final Vector3f scratchDelta = new Vector3f();
     private final Map<Long, Matrix3x2f> platformPoses = new HashMap<>();
     private final Set<Long> platformsThisStep = new HashSet<>();
     private final Matrix3x2f scratchPlatformPose = new Matrix3x2f();
@@ -575,20 +577,33 @@ public final class PhysicsSystem implements IPhysicsSystem {
         Transform3D transform = gameObject.getComponent(Transform3D.class).orElseThrow();
         transform.worldPosition(scratchPosition);
         transform.worldRotation(scratchRotation);
-        if (rigidBody.kind() == RigidBodyKind.KINEMATIC
-                && rigidBody.dynamicProperties().continuousCollisionDetection()) {
-            sweepKinematicToTarget(rigidBody);
+        if (rigidBody.kind() == RigidBodyKind.KINEMATIC) {
+            driveKinematicToTarget(rigidBody);
             return;
         }
         world.setBodyPose(rigidBody.handle(), new RigidBodyPose(scratchPosition, scratchRotation));
     }
 
-    private void sweepKinematicToTarget(RigidBodyComponent rigidBody) {
+    private void driveKinematicToTarget(RigidBodyComponent rigidBody) {
         RigidBodyPose current = world.getBodyPose(rigidBody.handle());
-        Vector3f delta = new Vector3f(scratchPosition).sub(current.position());
-        world.setLinearVelocity(rigidBody.handle(), delta.mul(1.0f / fixedStepSeconds));
+        scratchDelta.set(scratchPosition).sub(current.position());
+        float travelled = scratchDelta.lengthSquared();
+        if (travelled > KINEMATIC_TELEPORT_DISTANCE * KINEMATIC_TELEPORT_DISTANCE) {
+            teleportKinematic(rigidBody);
+            return;
+        }
+        world.setLinearVelocity(rigidBody.handle(), scratchDelta.mul(1.0f / fixedStepSeconds));
         world.setBodyPose(rigidBody.handle(),
                 new RigidBodyPose(current.position(), new Quaternionf(scratchRotation)));
+        if (travelled > 0.0f) {
+            world.wakeBody(rigidBody.handle());
+        }
+    }
+
+    private void teleportKinematic(RigidBodyComponent rigidBody) {
+        world.setLinearVelocity(rigidBody.handle(), scratchDelta.zero());
+        world.setBodyPose(rigidBody.handle(), new RigidBodyPose(scratchPosition, scratchRotation));
+        world.wakeBody(rigidBody.handle());
     }
 
     private void ensureRegistered(GameObject gameObject) {
