@@ -2,7 +2,10 @@ package fr.epistudio.epysia.scripting.compile;
 
 import fr.epistudio.epysia.project.ProjectLibraries;
 
+import java.io.File;
 import java.io.IOException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -11,11 +14,10 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.stream.Stream;
-import java.io.File;
-import java.util.Optional;
 
 public final class ScriptLanguages {
 
@@ -28,8 +30,20 @@ public final class ScriptLanguages {
     }
 
     public static ScriptLanguages discover() {
+        return discoverWith(ScriptLanguages.class.getClassLoader());
+    }
+
+    public static ScriptLanguages discover(ProjectLibraries libraries) {
+        if (libraries.isEmpty()) {
+            return discover();
+        }
+        return discoverWith(new URLClassLoader("epysia-language-packs",
+                libraries.urls().toArray(URL[]::new), ScriptLanguages.class.getClassLoader()));
+    }
+
+    private static ScriptLanguages discoverWith(ClassLoader loader) {
         List<ScriptLanguage> discovered = new ArrayList<>();
-        ServiceLoader.load(ScriptLanguage.class).forEach(discovered::add);
+        ServiceLoader.load(ScriptLanguage.class, loader).forEach(discovered::add);
         if (discovered.stream().noneMatch(language -> language instanceof JavaScriptLanguage)) {
             discovered.add(new JavaScriptLanguage());
         }

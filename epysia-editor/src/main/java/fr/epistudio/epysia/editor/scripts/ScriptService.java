@@ -26,7 +26,7 @@ import java.util.stream.Stream;
 
 public final class ScriptService {
 
-    private final ScriptLanguages languages = ScriptLanguages.discover();
+    private ScriptLanguages languages = ScriptLanguages.discover();
     private final Project project;
     private final ComponentRegistry registry;
     private final SceneSerializer serializer;
@@ -74,8 +74,13 @@ public final class ScriptService {
         }
     }
 
+    public ScriptLanguages languages() {
+        return languages;
+    }
+
     public void reload() {
-        KotlinRuntimeInstaller.ensureStandardLibrary(project, languages).ifPresent(log);
+        languages = ScriptLanguages.discover(project.libraries());
+        ScriptRuntimeInstaller.ensureRuntimes(project, languages).forEach(log);
         ScriptLoadResult result = ScriptModule.load(project.scriptsDirectory(),
                 project.compiledScriptsDirectory(), project.libraries());
         for (String message : result.messages()) {

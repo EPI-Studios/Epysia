@@ -1,7 +1,8 @@
-package fr.epistudio.epysia.editor.scripts;
+package fr.epistudio.epysia.lang.kotlin;
 
 import fr.epistudio.epysia.scripting.compile.ScriptCompileResult;
 import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
+import fr.epistudio.epysia.scripting.editor.SyntaxDescriptor;
 import org.jetbrains.kotlin.cli.common.ExitCode;
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments;
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity;
@@ -13,12 +14,8 @@ import org.jetbrains.kotlin.config.Services;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
-import fr.epistudio.epysia.EngineServices;
-import fr.epistudio.epysia.components.EpysiaComponent;
-import fr.epistudio.epysia.components.Export;
-import fr.epistudio.epysia.input.InputState;
-import fr.epistudio.epysia.scripting.Behaviour;
 
 public final class KotlinScriptLanguage implements ScriptLanguage {
 
@@ -69,6 +66,27 @@ public final class KotlinScriptLanguage implements ScriptLanguage {
     @Override
     public int order() {
         return ORDER;
+    }
+
+    @Override
+    public Optional<SyntaxDescriptor> syntax() {
+        return Optional.of(SyntaxDescriptor.curlyBrace("Kotlin",
+                KotlinSyntax.KEYWORDS, KotlinSyntax.DECLARATIONS, "", KotlinSyntax.IMPLICIT_PACKAGES));
+    }
+
+    @Override
+    public List<Path> runtimeArchives() {
+        return KotlinRuntimeArchives.located();
+    }
+
+    @Override
+    public List<String> gradlePlugins() {
+        return List.of("id 'org.jetbrains.kotlin.jvm' version '2.2.20'");
+    }
+
+    @Override
+    public String sourceDirectoryName() {
+        return "kotlin";
     }
 
     @Override

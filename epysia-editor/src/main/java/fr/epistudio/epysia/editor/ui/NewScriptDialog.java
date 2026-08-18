@@ -14,6 +14,7 @@ import imgui.type.ImString;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 public final class NewScriptDialog {
 
@@ -21,21 +22,22 @@ public final class NewScriptDialog {
     private static final int NAME_CAPACITY = 128;
     private static final float DIALOG_WIDTH = 420.0f;
 
-    private final ScriptLanguages scriptLanguages;
+    private final Supplier<ScriptLanguages> scriptLanguages;
     private final BiConsumer<ScriptLanguage, String> onCreate;
     private final ImString className = new ImString(NAME_CAPACITY);
     private int selectedLanguage;
     private boolean openRequested;
     private boolean focusRequested;
 
-    public NewScriptDialog(ScriptLanguages scriptLanguages, BiConsumer<ScriptLanguage, String> onCreate) {
+    public NewScriptDialog(Supplier<ScriptLanguages> scriptLanguages,
+                           BiConsumer<ScriptLanguage, String> onCreate) {
         this.scriptLanguages = scriptLanguages;
         this.onCreate = onCreate;
     }
 
     public void open() {
         className.set(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCRIPT_DEFAULT_NAME));
-        selectedLanguage = languages().indexOf(scriptLanguages.defaultLanguage());
+        selectedLanguage = languages().indexOf(scriptLanguages.get().defaultLanguage());
         openRequested = true;
         focusRequested = true;
     }
@@ -124,7 +126,7 @@ public final class NewScriptDialog {
     }
 
     private List<ScriptLanguage> languages() {
-        return scriptLanguages.authoringOrder();
+        return scriptLanguages.get().authoringOrder();
     }
 
     private static List<String> displayNames(List<ScriptLanguage> languages) {

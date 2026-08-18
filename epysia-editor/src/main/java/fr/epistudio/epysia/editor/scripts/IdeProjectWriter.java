@@ -1,7 +1,8 @@
 package fr.epistudio.epysia.editor.scripts;
 
 import fr.epistudio.epysia.project.Project;
-import kotlin.KotlinVersion;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,10 +31,14 @@ public final class IdeProjectWriter {
     }
 
     public static Optional<String> write(Project project) {
+        return write(project, ScriptLanguages.discover(project.libraries()));
+    }
+
+    public static Optional<String> write(Project project, ScriptLanguages languages) {
         Path root = project.rootDirectory();
         try {
             Files.writeString(root.resolve(SETTINGS_FILENAME), settingsScript(project));
-            Files.writeString(root.resolve(BUILD_FILENAME), buildScript(project));
+            Files.writeString(root.resolve(BUILD_FILENAME), buildScript(project, languages));
             writeEngineClasspath(root);
             writeGitignore(root);
             return Optional.empty();
@@ -46,22 +51,21 @@ public final class IdeProjectWriter {
         return "rootProject.name = '" + quoted(project.name()) + "'\n";
     }
 
-    private static String buildScript(Project project) {
-        boolean usesKotlin = KotlinRuntimeInstaller.hasKotlinSources(project.scriptsDirectory());
+    private static String buildScript(Project project, ScriptLanguages languages) {
         StringBuilder script = new StringBuilder();
-        appendPlugins(script, usesKotlin);
+        appendPlugins(script, languages);
         appendToolchain(script);
-        appendSourceSets(script, usesKotlin);
+        appendSourceSets(script, languages);
         appendEngineClasspath(script);
         appendDependencies(script);
         return script.toString();
     }
 
-    private static void appendPlugins(StringBuilder script, boolean usesKotlin) {
+    private static void appendPlugins(StringBuilder script, ScriptLanguages languages) {
         line(script, 0, "plugins {");
         line(script, 1, "id 'java'");
-        if (usesKotlin) {
-            line(script, 1, "id 'org.jetbrains.kotlin.jvm' version '" + KotlinVersion.CURRENT + "'");
+        for (ScriptLanguage language : languages.authoringOrder()) {
+            language.gradlePlugins().forEach(plugin -> line(script, 1, plugin));
         }
         line(script, 0, "}");
         script.append('\n');
@@ -76,12 +80,14 @@ public final class IdeProjectWriter {
         script.append('\n');
     }
 
-    private static void appendSourceSets(StringBuilder script, boolean usesKotlin) {
+    private static void appendSourceSets(StringBuilder script, ScriptLanguages languages) {
         line(script, 0, "sourceSets {");
         line(script, 1, "main {");
         appendSourceDirectory(script, "java");
-        if (usesKotlin) {
-            appendSourceDirectory(script, "kotlin");
+        for (ScriptLanguage language : languages.authoringOrder()) {
+            if (!language.sourceDirectoryName().isEmpty()) {
+                appendSourceDirectory(script, language.sourceDirectoryName());
+            }
         }
         line(script, 2, "resources {");
         line(script, 3, "srcDirs = []");

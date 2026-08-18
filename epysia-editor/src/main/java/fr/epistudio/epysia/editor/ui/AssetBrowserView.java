@@ -68,6 +68,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class AssetBrowserView {
 
@@ -105,7 +106,6 @@ public final class AssetBrowserView {
     private static final String EFFECTS_CATEGORY = "Effects";
     private static final String VFX_GRAPH_TEMPLATE_RESOURCE = "/templates/NewVfxGraph.epygraph";
 
-    private static final ScriptLanguages SCRIPT_LANGUAGES = ScriptLanguages.discover();
     private static final String VERTEX_SHADER_SUFFIX = ".vert.glsl";
     private static final String FRAGMENT_SHADER_SUFFIX = ".frag.glsl";
     private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
@@ -120,6 +120,7 @@ public final class AssetBrowserView {
 
     private final Project project;
     private final Notifier notifier;
+    private final Supplier<ScriptLanguages> scriptLanguages;
     private final IconWidgets icons;
     private final ThumbnailCache thumbnails;
     private final MeshThumbnailer meshThumbnails;
@@ -154,7 +155,9 @@ public final class AssetBrowserView {
                             Consumer<Path> onOpenScript, Consumer<Path> onBakeMesh,
                             Consumer<Path> onInstantiatePrefab, Consumer<Path> onOpenScene,
                             Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph,
-                            Consumer<Path> onOpenAtlas, AssetImportPipeline importPipeline) {
+                            Consumer<Path> onOpenAtlas, AssetImportPipeline importPipeline,
+                            Supplier<ScriptLanguages> scriptLanguages) {
+        this.scriptLanguages = scriptLanguages;
         this.project = project;
         this.notifier = notifier;
         this.icons = icons;
@@ -518,7 +521,7 @@ public final class AssetBrowserView {
     private List<NewAssetDialog.AssetKind> assetKinds() {
         List<NewAssetDialog.AssetKind> kinds = new ArrayList<>(fixedAssetKinds());
         kinds.addAll(proceduralAssetKinds());
-        for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
+        for (ScriptLanguage language : scriptLanguages.get().authoringOrder()) {
             kinds.add(kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SCRIPT,
                             language.displayName()),
                     I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SCRIPTING),

@@ -37,6 +37,7 @@ public record ProjectLibraries(List<Path> archives) {
     public static ProjectLibraries forProjectRoot(Path projectRoot) {
         List<Path> merged = new ArrayList<>(in(projectRoot.resolve(Project.LIBRARIES_DIRECTORY_NAME)).archives());
         merged.addAll(in(projectRoot.resolve(Project.LIBRARIES_CACHE_DIRECTORY_NAME)).archives());
+        merged.addAll(in(projectRoot.resolve(Project.LANGUAGE_PACKS_DIRECTORY_NAME)).archives());
         return new ProjectLibraries(List.copyOf(merged));
     }
 

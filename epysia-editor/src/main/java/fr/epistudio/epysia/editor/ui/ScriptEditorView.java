@@ -14,6 +14,7 @@ import fr.epistudio.epysia.editor.scripteditor.ImportStyle;
 import fr.epistudio.epysia.editor.scripteditor.JavaSymbols;
 import fr.epistudio.epysia.editor.scripteditor.ScriptSyntaxes;
 import fr.epistudio.epysia.project.ProjectLibraries;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.ui.kit.Chips;
 import fr.epistudio.epysia.editor.ui.kit.DocumentTabs;
@@ -86,8 +87,8 @@ public final class ScriptEditorView {
     private final ComponentRegistry componentRegistry;
     private CompletionEngine completionEngine;
     private final CompletionPopup completionPopup = new CompletionPopup();
-    private final ScriptSyntaxes syntaxes = ScriptSyntaxes.discover();
-    private final Pattern diagnosticPattern = diagnosticPatternFor(syntaxes);
+    private ScriptSyntaxes syntaxes = ScriptSyntaxes.discover();
+    private Pattern diagnosticPattern = diagnosticPatternFor(syntaxes);
     private final Map<Path, OpenScript> openScripts = new LinkedHashMap<>();
     private final List<Diagnostic> diagnostics = new ArrayList<>();
     private final TextEditorCursorPosition cursorPosition = new TextEditorCursorPosition();
@@ -106,8 +107,15 @@ public final class ScriptEditorView {
     }
 
     public void refreshSymbols(ProjectLibraries libraries, Path compiledScriptsDirectory) {
+        adoptSyntaxes(ScriptSyntaxes.discover(ScriptLanguages.discover(libraries)));
         applySymbols(new JavaSymbols(componentRegistry, libraries, compiledScriptsDirectory));
         openScripts.forEach((path, script) -> script.editor().setLanguage(syntaxes.definitionFor(path)));
+    }
+
+    private void adoptSyntaxes(ScriptSyntaxes discovered) {
+        syntaxes.release();
+        syntaxes = discovered;
+        diagnosticPattern = diagnosticPatternFor(syntaxes);
     }
 
     private void applySymbols(JavaSymbols javaSymbols) {

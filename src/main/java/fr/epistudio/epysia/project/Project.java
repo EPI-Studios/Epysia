@@ -12,6 +12,8 @@ public record Project(String name, Path rootDirectory, String engineVersion, lon
     public static final String LIBRARIES_DIRECTORY_NAME = "libs";
     public static final String COMPILED_SCRIPTS_DIRECTORY_NAME = ".epysia/scripts-out";
     public static final String LIBRARIES_CACHE_DIRECTORY_NAME = ".epysia/libs-cache";
+    public static final String LANGUAGE_PACKS_DIRECTORY_NAME = ".epysia/language-packs";
+    public static final String LANGUAGE_PACKS_FILENAME = "language-packs.txt";
     public static final String DEPENDENCIES_FILENAME = "dependencies.txt";
     public static final String DEFAULT_SCENE_NAME = "main";
     public static final String SCENE_EXTENSION = ".epyscene";
@@ -42,6 +44,18 @@ public record Project(String name, Path rootDirectory, String engineVersion, lon
 
     public Path librariesCacheDirectory() {
         return rootDirectory.resolve(LIBRARIES_CACHE_DIRECTORY_NAME);
+    }
+
+    public Path languagePacksDirectory() {
+        return rootDirectory.resolve(LANGUAGE_PACKS_DIRECTORY_NAME);
+    }
+
+    public Path languagePacksFile() {
+        return rootDirectory.resolve(LANGUAGE_PACKS_FILENAME);
+    }
+
+    public ProjectLanguagePacks languagePacks() {
+        return ProjectLanguagePacks.read(languagePacksFile());
     }
 
     public Path dependenciesFile() {
