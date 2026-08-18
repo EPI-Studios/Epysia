@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.scripting.compile;
 
 import fr.epistudio.epysia.scripting.editor.SyntaxDescriptor;
+import fr.epistudio.epysia.scripting.foreign.ForeignScriptRuntime;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -22,6 +23,10 @@ public interface ScriptLanguage {
     ScriptCompileResult compile(List<Path> sources, Path outputDirectory, String classpath);
 
     default Optional<SyntaxDescriptor> syntax() {
+        return Optional.empty();
+    }
+
+    default Optional<ForeignScriptRuntime> foreignRuntime() {
         return Optional.empty();
     }
 
