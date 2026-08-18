@@ -7,6 +7,7 @@ import fr.epistudio.epysia.editor.ui.kit.IconButtons;
 import fr.epistudio.epysia.editor.ui.kit.Sections;
 import fr.epistudio.epysia.editor.ui.kit.Toolbars;
 import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
@@ -120,16 +121,16 @@ public final class GraphEditorView {
     private static final int COLOR_OBJECT = 0xFFB0B0B0;
     private static final int COLOR_FLASH = 0xFF3AC4FF;
     private static final int COLOR_STATE_TITLE = 0xFF6A4A26;
-    private static final int[] CATEGORY_TITLE_COLORS = {
-            0xFF6A4A26, 0xFF4A542C, 0xFF603A4A, 0xFF284660,
-            0xFF60543A, 0xFF3A3A64, 0xFF305846, 0xFF604038};
     private static final float TITLE_HOVER_LIGHTEN = 0.18f;
     private static final float TITLE_SELECTED_LIGHTEN = 0.30f;
     private static final float LINK_HIGHLIGHT_LIGHTEN = 0.45f;
+    private static final float LINK_HOVER_LIGHTEN = 0.65f;
     private static final float LINK_THICKNESS_EXEC = 3.6f;
     private static final float LINK_THICKNESS_WIDE = 3.0f;
     private static final float LINK_THICKNESS_DEFAULT = 2.4f;
     private static final float LINK_THICKNESS_HIGHLIGHT = 1.2f;
+    private static final float PALETTE_HEIGHT_RATIO = 0.55f;
+    private static final float INSPECTOR_HEIGHT_RATIO = 0.5f;
     private static final float SEARCH_POPUP_WIDTH = 320.0f;
     private static final float SEARCH_POPUP_HEIGHT = 360.0f;
     private static final String VFX_TEXTURE_TYPE_KEY = "vfx.texture";
@@ -152,6 +153,7 @@ public final class GraphEditorView {
     private static final List<PinType> VARIABLE_TYPES = List.of(PinType.FLOAT, PinType.INT,
             PinType.BOOLEAN, PinType.STRING, PinType.VECTOR3);
 
+    private final IconWidgets icons;
     private final ComponentRegistry componentRegistry;
     private final Notifier notifier;
     private final Supplier<SceneDocument> activeDocument;
@@ -190,7 +192,8 @@ public final class GraphEditorView {
                            Consumer<Path> onGeneratedShaderSaved, ShaderGraphPreviewService previews,
                            VfxPreviewPanel vfxPreview, AssetPicker assetPicker,
                            BooleanSupplier nodePreviewsEnabled, Consumer<Boolean> onNodePreviewsToggled,
-                           Supplier<List<String>> actionNames) {
+                           Supplier<List<String>> actionNames, IconWidgets icons) {
+        this.icons = icons;
         this.componentRegistry = componentRegistry;
         this.notifier = notifier;
         this.activeDocument = activeDocument;
@@ -322,15 +325,16 @@ public final class GraphEditorView {
 
     private void renderGraph(Path path, OpenGraph graph) {
         handleSaveShortcut(path, graph);
-        renderPanelToggles(graph);
+        renderCanvasToolbar(path, graph);
         if (sidePanelVisible) {
             renderVariablesPanel(path, graph);
             ImGui.sameLine();
             sidePanelWidth = renderVerticalSplitter("##graph-side-splitter", sidePanelWidth, true);
             ImGui.sameLine();
         }
+        Optional<GraphNode> inspected = selectedNode(graph);
         boolean previewVisible = hasPreview(graph.asset.kind()) && previewPanelVisible;
-        if (!previewVisible) {
+        if (!previewVisible && inspected.isEmpty()) {
             renderCanvas(path, graph);
             return;
         }
@@ -340,11 +344,36 @@ public final class GraphEditorView {
         ImGui.sameLine();
         previewPanelWidth = renderVerticalSplitter("##graph-preview-splitter", previewPanelWidth, false);
         ImGui.sameLine();
+        if (!previewVisible) {
+            renderInspectorPanel(graph, inspected.get(), 0.0f);
+            return;
+        }
+        if (inspected.isEmpty()) {
+            renderPreviewColumn(path, graph);
+            return;
+        }
+        ImGui.beginChild("##graph-right-column", 0.0f, 0.0f, false);
+        renderInspectorPanel(graph, inspected.get(), inspectorSharedHeight());
+        renderPreviewColumn(path, graph);
+        ImGui.endChild();
+    }
+
+    private void renderPreviewColumn(Path path, OpenGraph graph) {
         if (graph.asset.kind() == GraphKind.VFX) {
             renderVfxPreviewPanel(path);
             return;
         }
         renderPreviewPanel(path, graph);
+    }
+
+    private void renderInspectorPanel(OpenGraph graph, GraphNode node, float height) {
+        ImGui.beginChild("##graph-inspector", 0.0f, height, true);
+        renderNodeInspector(graph, node);
+        ImGui.endChild();
+    }
+
+    private static float inspectorSharedHeight() {
+        return ImGui.getContentRegionAvailY() * INSPECTOR_HEIGHT_RATIO;
     }
 
     private static boolean hasPreview(GraphKind kind) {
@@ -358,22 +387,43 @@ public final class GraphEditorView {
         ImGui.endChild();
     }
 
-    private void renderPanelToggles(OpenGraph graph) {
-        TextKey sidePanelKey = sidePanelVisible
-                ? TextKey.EDITOR_GRAPH_EDITOR_VIEW_SIDE_PANEL_HIDDEN
-                : TextKey.EDITOR_GRAPH_EDITOR_VIEW_SIDE_PANEL_VISIBLE;
-        if (ImGui.smallButton(I18n.label(sidePanelKey, "graph-side-panel-toggle"))) {
+    private void renderCanvasToolbar(Path path, OpenGraph graph) {
+        if (icons.toggleButton("graph-side-panel-toggle", EditorIcon.GRID,
+                EditorStyle.iconSizeSmall(), sidePanelVisible)) {
             sidePanelVisible = !sidePanelVisible;
         }
-        if (hasPreview(graph.asset.kind())) {
-            ImGui.sameLine();
-            TextKey previewPanelKey = previewPanelVisible
-                    ? TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW_PANEL_VISIBLE
-                    : TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW_PANEL_HIDDEN;
-            if (ImGui.smallButton(I18n.label(previewPanelKey, "graph-preview-panel-toggle"))) {
-                previewPanelVisible = !previewPanelVisible;
-            }
+        IconButtons.tooltip(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_SIDE_PANEL_VISIBLE));
+        ImGui.sameLine();
+        if (icons.iconButton("graph-save", EditorIcon.SAVE, EditorStyle.iconSizeSmall())) {
+            save(path, graph);
         }
+        IconButtons.tooltip(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_SAVE));
+        ImGui.sameLine();
+        if (icons.iconButton("graph-add-node", EditorIcon.ADD, EditorStyle.iconSizeSmall())) {
+            nodeSearchRequested = true;
+        }
+        IconButtons.tooltip(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_NODE));
+        ImGui.sameLine();
+        if (icons.iconButton("graph-center-view", EditorIcon.TOOL_PIVOT, EditorStyle.iconSizeSmall())) {
+            centerViewRequested = true;
+        }
+        IconButtons.tooltip(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_CENTER_VIEW_TOOLTIP));
+        ImGui.sameLine();
+        navigation.renderToolbarControls();
+        renderPreviewToggles(graph);
+        Texts.muted(kindLabel(graph.asset.kind()));
+    }
+
+    private void renderPreviewToggles(OpenGraph graph) {
+        if (!hasPreview(graph.asset.kind())) {
+            return;
+        }
+        ImGui.sameLine();
+        if (icons.toggleButton("graph-preview-panel-toggle", EditorIcon.VISIBILITY_VISIBLE,
+                EditorStyle.iconSizeSmall(), previewPanelVisible)) {
+            previewPanelVisible = !previewPanelVisible;
+        }
+        IconButtons.tooltip(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_PREVIEW_PANEL_VISIBLE));
     }
 
     private float renderVerticalSplitter(String id, float width, boolean growsWithDrag) {
@@ -532,37 +582,23 @@ public final class GraphEditorView {
 
     private void renderVariablesPanel(Path path, OpenGraph graph) {
         ImGui.beginChild("##graph-variables", sidePanelWidth, 0.0f, true);
-        renderPanelActions(path, graph);
-        ImGui.separator();
+        renderPalettePanel(graph);
+        Sections.divider();
         if (graph.asset.kind().isShader()) {
-            renderShaderPanel(path, graph);
-        } else {
+            renderShaderSection(path, graph);
+        } else if (Sections.header(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_VARIABLES))) {
             renderVariablesSection(graph);
         }
-        renderPalettePanel(graph);
         ImGui.endChild();
     }
 
-    private void renderPanelActions(Path path, OpenGraph graph) {
-        Texts.muted(kindLabel(graph.asset.kind()));
-        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_SAVE, "graph-save"), -1.0f, 0.0f)) {
-            save(path, graph);
-        }
-        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_CENTER_VIEW,
-                "graph-center-view"), -1.0f, 0.0f)) {
-            centerViewRequested = true;
-        }
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_CENTER_VIEW_TOOLTIP));
-        }
-        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_NODE,
-                "graph-add-node"), -1.0f, 0.0f)) {
-            nodeSearchRequested = true;
+    private void renderShaderSection(Path path, OpenGraph graph) {
+        if (Sections.header(kindLabel(graph.asset.kind()))) {
+            renderShaderPanel(path, graph);
         }
     }
 
     private void renderVariablesSection(OpenGraph graph) {
-        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_VARIABLES));
         int removeIndex = -1;
         for (int index = 0; index < graph.asset.variables().size(); index++) {
             if (renderVariableRow(graph, index)) {
@@ -570,18 +606,21 @@ public final class GraphEditorView {
             }
         }
         removeVariableIfRequested(graph, removeIndex);
-        if (ImGui.button(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_VARIABLE,
-                "graph-add-variable"), -1.0f, 0.0f)) {
+        if (IconButtons.withLabel(icons, "graph-add-variable", EditorIcon.ADD,
+                I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ADD_VARIABLE), -1.0f,
+                Toolbars.buttonHeight())) {
             addVariable(graph);
         }
     }
 
     private void renderPalettePanel(OpenGraph graph) {
-        ImGui.separator();
-        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES));
-        Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES_HELP));
-        dockedPalette.render(0.0f, 0.0f, graph.asset, registry,
+        Sections.caption(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES));
+        dockedPalette.render(0.0f, paletteHeight(), graph.asset, registry,
                 entry -> spawnPaletteEntry(graph, entry, panelSpawnX(), panelSpawnY()));
+    }
+
+    private static float paletteHeight() {
+        return ImGui.getContentRegionAvailY() * PALETTE_HEIGHT_RATIO;
     }
 
     private float panelSpawnX() {
@@ -806,12 +845,66 @@ public final class GraphEditorView {
         return Optional.empty();
     }
 
+    private Optional<GraphNode> selectedNode(OpenGraph graph) {
+        if (graph.selectedNodes.size() != 1) {
+            return Optional.empty();
+        }
+        int selectedId = graph.selectedNodes.iterator().next();
+        for (GraphNode node : graph.asset.nodes()) {
+            if (node.id() == selectedId) {
+                return Optional.of(node);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private void renderNodeInspector(OpenGraph graph, GraphNode node) {
+        Sections.title(titleOf(graph, node));
+        Texts.muted(registry.find(node.typeKey()).map(NodeDefinition::category).orElse(""));
+        Sections.divider();
+        renderSettings(graph, node);
+        renderInspectorLiterals(graph, node);
+    }
+
+    private void renderInspectorLiterals(OpenGraph graph, GraphNode node) {
+        List<PinDefinition> pins = registry.effectiveInputPins(graph.asset, node);
+        boolean anyRendered = false;
+        for (PinDefinition pin : pins) {
+            if (pin.type() == PinType.EXEC || graph.asset.edgeInto(node.id(), pin.name()).isPresent()) {
+                continue;
+            }
+            anyRendered |= renderInspectorLiteral(graph, node, pin);
+        }
+        if (!anyRendered) {
+            Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NODES_HELP));
+        }
+    }
+
+    private boolean renderInspectorLiteral(OpenGraph graph, GraphNode node, PinDefinition pin) {
+        if (pin.type() == PinType.GAME_OBJECT || pin.type() == PinType.OBJECT
+                || ShaderNodes.defaultsToUv(node.typeKey(), pin.name())
+                || ShaderNodes.isOutput(node.typeKey())) {
+            return false;
+        }
+        Texts.muted(pin.name());
+        ImGui.setNextItemWidth(-1.0f);
+        String bufferKey = "literal-" + node.id() + "-" + pin.name();
+        Object current = node.values().containsKey(pin.name())
+                ? node.values().get(pin.name())
+                : ShaderNodes.defaultPinValue(node.typeKey(), pin);
+        renderLiteralWidget(graph, node, pin, bufferKey, current)
+                .ifPresent(value -> {
+                    node.values().put(pin.name(), value);
+                    graph.dirty = true;
+                });
+        return true;
+    }
+
     private void renderCanvas(Path path, OpenGraph graph) {
         ImGui.beginChild("##graph-canvas", 0.0f, 0.0f, false);
         Optional<GraphInstance> debugInstance = debugInstanceFor(path);
         graph.pinsById.clear();
         graph.graphPath = path;
-        navigation.renderToolbar();
         captureCanvasRect();
         graph.vfxSettings.setSwatchScale(navigation.factor());
         renderNodeEditor(graph, debugInstance);
@@ -847,7 +940,7 @@ public final class GraphEditorView {
         handleDeletions(graph);
         applyFraming(graph);
         navigation.handleInput();
-        handleContextMenu();
+        handleContextMenu(graph);
         renderNodeSearchPopup(graph);
     }
 
@@ -944,8 +1037,7 @@ public final class GraphEditorView {
         String category = registry.find(node.typeKey())
                 .map(NodeDefinition::category)
                 .orElse("");
-        int index = Math.floorMod(category.hashCode(), CATEGORY_TITLE_COLORS.length);
-        return CATEGORY_TITLE_COLORS[index];
+        return GraphCanvasStyle.titleColorFor(category);
     }
 
     private static int lighten(int color, float amount) {
@@ -970,10 +1062,11 @@ public final class GraphEditorView {
         }
         debugInstance.ifPresent(instance -> renderTitleDebug(node, instance));
         ImNodes.endNodeTitleBar();
-        renderSettings(graph, node);
         renderInputPins(graph, node);
         renderOutputPins(graph, node);
-        renderNodePreview(graph, node);
+        if (!navigation.lowDetail()) {
+            renderNodePreview(graph, node);
+        }
         ImNodes.endNode();
     }
 
@@ -1100,13 +1193,11 @@ public final class GraphEditorView {
     }
 
     private void renderStateSettings(OpenGraph graph, GraphNode node) {
-        ImNodes.beginStaticAttribute(node.id() * PIN_STRIDE + SETTING_SLOT_OFFSET);
         renderStateNameSetting(graph, node);
         if (ImGui.checkbox(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_INITIAL,
                 "state-initial-" + node.id()), StateNodes.markedInitial(node))) {
             markInitial(graph, node);
         }
-        ImNodes.endStaticAttribute();
     }
 
     private void renderStateNameSetting(OpenGraph graph, GraphNode node) {
@@ -1127,7 +1218,6 @@ public final class GraphEditorView {
     }
 
     private void renderTransitionSettings(OpenGraph graph, GraphNode node) {
-        ImNodes.beginStaticAttribute(node.id() * PIN_STRIDE + SETTING_SLOT_OFFSET);
         boolean always = StateNodes.alwaysTaken(node);
         if (ImGui.checkbox(I18n.label(TextKey.EDITOR_GRAPH_EDITOR_VIEW_ALWAYS,
                 "transition-always-" + node.id()), always)) {
@@ -1138,7 +1228,6 @@ public final class GraphEditorView {
             renderConditionRow(graph, node);
         }
         renderPriorityRow(graph, node);
-        ImNodes.endStaticAttribute();
     }
 
     private void renderConditionRow(OpenGraph graph, GraphNode node) {
@@ -1166,9 +1255,7 @@ public final class GraphEditorView {
             if (hiddenShaderSetting(graph, node, settings.get(index))) {
                 continue;
             }
-            ImNodes.beginStaticAttribute(node.id() * PIN_STRIDE + SETTING_SLOT_OFFSET + index);
             renderSettingWidget(graph, node, settings.get(index));
-            ImNodes.endStaticAttribute();
         }
         renderTexturePreview(graph, node);
     }
@@ -1207,12 +1294,10 @@ public final class GraphEditorView {
         if (path.isEmpty()) {
             return;
         }
-        ImNodes.beginStaticAttribute(node.id() * PIN_STRIDE + TEXTURE_PREVIEW_SLOT_OFFSET);
         thumbnails.get(path).ifPresentOrElse(
-                texture -> ImGui.image(texture, scaledWidth(EditorScale.of(TEXTURE_PREVIEW_SIZE)),
-                        scaledWidth(EditorScale.of(TEXTURE_PREVIEW_SIZE))),
+                texture -> ImGui.image(texture, EditorScale.of(TEXTURE_PREVIEW_SIZE),
+                        EditorScale.of(TEXTURE_PREVIEW_SIZE)),
                 () -> Texts.muted(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_NO_PREVIEW)));
-        ImNodes.endStaticAttribute();
     }
 
     private void renderSettingWidget(OpenGraph graph, GraphNode node, NodeSetting setting) {
@@ -1418,29 +1503,6 @@ public final class GraphEditorView {
 
     private void renderInputPinContent(OpenGraph graph, GraphNode node, PinDefinition pin) {
         ImGui.textUnformatted(pin.name());
-        if (pin.type() == PinType.EXEC || graph.asset.edgeInto(node.id(), pin.name()).isPresent()) {
-            return;
-        }
-        renderPinLiteral(graph, node, pin);
-    }
-
-    private void renderPinLiteral(OpenGraph graph, GraphNode node, PinDefinition pin) {
-        if (pin.type() == PinType.GAME_OBJECT || pin.type() == PinType.OBJECT
-                || ShaderNodes.defaultsToUv(node.typeKey(), pin.name())
-                || ShaderNodes.isOutput(node.typeKey())) {
-            return;
-        }
-        ImGui.sameLine();
-        ImGui.setNextItemWidth(scaledWidth(literalWidthFor(pin.type())));
-        String bufferKey = "literal-" + node.id() + "-" + pin.name();
-        Object current = node.values().containsKey(pin.name())
-                ? node.values().get(pin.name())
-                : ShaderNodes.defaultPinValue(node.typeKey(), pin);
-        renderLiteralWidget(graph, node, pin, bufferKey, current)
-                .ifPresent(value -> {
-                    node.values().put(pin.name(), value);
-                    graph.dirty = true;
-                });
     }
 
     private Optional<Object> renderLiteralWidget(OpenGraph graph, GraphNode node, PinDefinition pin,
@@ -1505,11 +1567,16 @@ public final class GraphEditorView {
         PinType type = graph.pinsById.get(fromId).pin().type();
         boolean highlighted = graph.selectedNodes.contains(edge.fromNode())
                 || graph.selectedNodes.contains(edge.toNode());
-        ImNodes.pushColorStyle(ImNodesCol.Link, linkColor(type, flash, highlighted));
+        int color = linkColor(type, flash, highlighted);
+        ImNodes.pushColorStyle(ImNodesCol.Link, color);
+        ImNodes.pushColorStyle(ImNodesCol.LinkHovered, lighten(color, LINK_HOVER_LIGHTEN));
+        ImNodes.pushColorStyle(ImNodesCol.LinkSelected, EditorStyle.COLOR_ACCENT);
         ImNodes.pushStyleVar(ImNodesStyleVar.LinkThickness,
                 scaledWidth(linkThickness(type, highlighted)));
         ImNodes.link(linkId, fromId, toId);
         ImNodes.popStyleVar();
+        ImNodes.popColorStyle();
+        ImNodes.popColorStyle();
         ImNodes.popColorStyle();
     }
 
@@ -1705,8 +1772,11 @@ public final class GraphEditorView {
                 .orElse(false);
     }
 
-    private void handleContextMenu() {
+    private void handleContextMenu(OpenGraph graph) {
         boolean rightClicked = ImGui.isWindowHovered() && ImGui.isMouseClicked(ImGuiMouseButton.Right);
+        if (rightClicked && removeHoveredLink(graph)) {
+            return;
+        }
         if (rightClicked || nodeSearchRequested) {
             popupSpawnX = rightClicked ? ImGui.getMousePosX()
                     : ImGui.getWindowPosX() + ImGui.getWindowWidth() * 0.4f;
@@ -1715,6 +1785,18 @@ public final class GraphEditorView {
             ImGui.openPopup(NODE_SEARCH_POPUP);
             nodeSearchRequested = false;
         }
+    }
+
+    private boolean removeHoveredLink(OpenGraph graph) {
+        ImInt linkId = new ImInt();
+        if (!ImNodes.isLinkHovered(linkId)
+                || linkId.get() < 0 || linkId.get() >= graph.asset.edges().size()) {
+            return false;
+        }
+        graph.asset.edges().remove(linkId.get());
+        graph.dirty = true;
+        ImNodes.clearLinkSelection();
+        return true;
     }
 
     private void renderNodeSearchPopup(OpenGraph graph) {

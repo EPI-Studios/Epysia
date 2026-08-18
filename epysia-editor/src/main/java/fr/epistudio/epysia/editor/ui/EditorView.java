@@ -225,7 +225,7 @@ public final class EditorView implements FrameView {
         this.graphEditorView = new GraphEditorView(componentRegistry, toasts, active,
                 thumbnailCache, this::onShaderGraphGenerated, shaderGraphPreviews, vfxPreviewPanel,
                 new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
-                this::onShaderNodePreviewsToggled, this::projectActionNames);
+                this::onShaderNodePreviewsToggled, this::projectActionNames, icons);
         this.proceduralPreview = new ProceduralTexturePreview(sceneHost.backend());
         this.assetReloads = new AssetReloadService(project.rootDirectory(), sceneHost::engine,
                 workspace::documents);
