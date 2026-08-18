@@ -77,7 +77,7 @@ public final class AssetQuery {
     }
 
     private boolean matchesType(AssetEntry entry) {
-        return typeFilter == null || entry.type() == typeFilter;
+        return typeFilter == null || entry.isFolder() || entry.type() == typeFilter;
     }
 
     private Comparator<AssetEntry> comparator() {
@@ -87,6 +87,7 @@ public final class AssetQuery {
             case SIZE -> Comparator.comparingLong(AssetEntry::byteSize);
             case MODIFIED -> Comparator.comparingLong(AssetEntry::modifiedMillis);
         };
-        return ascending ? byField : byField.reversed();
+        Comparator<AssetEntry> ordered = ascending ? byField : byField.reversed();
+        return Comparator.comparing((AssetEntry entry) -> entry.isFolder() ? 0 : 1).thenComparing(ordered);
     }
 }

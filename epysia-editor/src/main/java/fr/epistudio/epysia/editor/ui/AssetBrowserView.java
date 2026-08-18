@@ -24,12 +24,15 @@ import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.ui.kit.Breadcrumb;
+import fr.epistudio.epysia.editor.ui.kit.Disabled;
 import fr.epistudio.epysia.editor.ui.kit.SearchField;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
+import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiPopupFlags;
 import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImString;
@@ -139,6 +142,7 @@ public final class AssetBrowserView {
     private final ImString searchInput = new ImString(SEARCH_CAPACITY);
     private final AssetEntryGrid grid;
     private Path currentDirectory;
+    private boolean revealCurrentDirectory;
     private String selectedPath = "";
     private boolean initialized;
 
@@ -256,8 +260,28 @@ public final class AssetBrowserView {
             refresh();
         }
         ImGui.sameLine();
+        renderUpButton();
+        ImGui.sameLine();
         renderBreadcrumb();
         renderSearchField();
+    }
+
+    private void renderUpButton() {
+        Optional<Path> parent = parentDirectory();
+        Disabled.push(parent.isEmpty());
+        boolean clicked = ImGui.arrowButton("##assets-up", ImGuiDir.Up);
+        Disabled.pop(parent.isEmpty());
+        if (clicked) {
+            parent.ifPresent(this::navigateTo);
+        }
+    }
+
+    private Optional<Path> parentDirectory() {
+        if (showingBuiltins || currentDirectory.equals(project.rootDirectory())) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(currentDirectory.getParent())
+                .filter(parent -> parent.startsWith(project.rootDirectory()));
     }
 
     private void renderBreadcrumb() {
@@ -322,6 +346,7 @@ public final class AssetBrowserView {
         ImGui.separator();
         renderBuiltinFolderNode();
         ImGui.endChild();
+        revealCurrentDirectory = false;
     }
 
     private void renderBuiltinFolderNode() {
@@ -347,7 +372,11 @@ public final class AssetBrowserView {
         if (directory.equals(project.rootDirectory())) {
             flags |= ImGuiTreeNodeFlags.DefaultOpen;
         }
-        boolean opened = ImGui.treeNodeEx(directory.toString(), flags, label);
+        if (revealCurrentDirectory && currentDirectory.startsWith(directory)) {
+            ImGui.setNextItemOpen(true, ImGuiCond.Always);
+        }
+        boolean opened = ImGui.treeNodeEx(directory.toString(), flags, iconSpacing() + label);
+        paintFolderIcon();
         acceptAssetDrop(directory);
         if (ImGui.isItemClicked() && !ImGui.isItemToggledOpen()) {
             navigateTo(directory);
@@ -356,6 +385,22 @@ public final class AssetBrowserView {
             renderChildFolders(directory);
             ImGui.treePop();
         }
+    }
+
+    private void paintFolderIcon() {
+        float size = EditorStyle.iconSizeSmall();
+        float left = ImGui.getItemRectMinX() + ImGui.getTextLineHeight()
+                + EditorStyle.framePaddingX() * 2.0f;
+        float top = ImGui.getItemRectMinY()
+                + (ImGui.getItemRectMaxY() - ImGui.getItemRectMinY() - size) * 0.5f;
+        ImGui.getWindowDrawList().addImage(icons.atlasTextureId(EditorIcon.FOLDER), left, top,
+                left + size, top + size);
+    }
+
+    private static String iconSpacing() {
+        float spaceWidth = Math.max(1.0f, ImGui.calcTextSizeX(" "));
+        float needed = EditorStyle.iconSizeSmall() + EditorStyle.innerSpacing();
+        return " ".repeat((int) Math.ceil(needed / spaceWidth));
     }
 
     private void renderChildFolders(Path directory) {
@@ -443,6 +488,9 @@ public final class AssetBrowserView {
             query.setTypeFilter(null);
         }
         for (AssetType type : AssetType.values()) {
+            if (type == AssetType.FOLDER) {
+                continue;
+            }
             if (ImGui.selectable(I18n.label(assetTypeKey(type), "asset-type-" + type.name()),
                     query.typeFilter().orElse(null) == type)) {
                 query.setTypeFilter(type);
@@ -948,6 +996,7 @@ public final class AssetBrowserView {
     private void activateEntry(AssetEntry entry) {
         Path path = Path.of(entry.assetPath());
         switch (entry.type()) {
+            case FOLDER -> navigateTo(path);
             case SCRIPT, SHADER -> onOpenScript.accept(path);
             case ATLAS -> onOpenAtlas.accept(path);
             case PREFAB -> onInstantiatePrefab.accept(path);
@@ -1170,6 +1219,7 @@ public final class AssetBrowserView {
     private void navigateTo(Path directory) {
         showingBuiltins = false;
         currentDirectory = directory;
+        revealCurrentDirectory = true;
         refresh();
     }
 
@@ -1255,6 +1305,7 @@ public final class AssetBrowserView {
             case CLIP -> TextKey.EDITOR_ASSET_TYPE_CLIPS;
             case ATLAS -> TextKey.EDITOR_ASSET_TYPE_ATLASES;
             case OTHER -> TextKey.EDITOR_ASSET_TYPE_OTHER;
+            case FOLDER -> TextKey.EDITOR_ASSET_TYPE_FOLDERS;
         };
     }
 
@@ -1269,7 +1320,7 @@ public final class AssetBrowserView {
             case MATERIAL -> AssetMimeTypes.MATERIAL;
             case CLIP -> AssetMimeTypes.CLIP;
             case ATLAS -> AssetMimeTypes.ATLAS;
-            case SCENE, SCRIPT, OTHER -> AssetMimeTypes.NONE;
+            case SCENE, SCRIPT, OTHER, FOLDER -> AssetMimeTypes.NONE;
         };
     }
 

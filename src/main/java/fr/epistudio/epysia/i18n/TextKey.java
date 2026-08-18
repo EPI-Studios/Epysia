@@ -13,6 +13,7 @@ public enum TextKey {
     EDITOR_NEW_SCRIPT_DIALOG_LANGUAGE("editor.new-script-dialog.language"),
     EDITOR_NEW_SCRIPT_DIALOG_CREATE("editor.new-script-dialog.create"),
     EDITOR_NEW_SCRIPT_DIALOG_INVALID_NAME("editor.new-script-dialog.invalid-name"),
+    EDITOR_ASSET_TYPE_FOLDERS("editor.asset-type.folders"),
     EDITOR_ANIMATOR_SECTION_ANIMATION("editor.animator-section.animation"),
     EDITOR_ANIMATOR_SECTION_NONE("editor.animator-section.none"),
     EDITOR_ANIMATOR_SECTION_LAYERS("editor.animator-section.layers"),
