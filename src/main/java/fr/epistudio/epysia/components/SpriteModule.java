@@ -14,5 +14,6 @@ public final class SpriteModule implements EngineModule {
     public void registerSystems(SystemRegistry registry) {
         registry.add(new FlipbookSystem());
         registry.add(new FollowTransformSystem());
+        registry.add(new CameraTextureSystem());
     }
 }
