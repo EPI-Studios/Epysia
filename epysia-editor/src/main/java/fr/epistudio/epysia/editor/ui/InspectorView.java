@@ -48,6 +48,7 @@ import fr.epistudio.epysia.EngineServices;
 import fr.epistudio.epysia.reflection.ComponentAction;
 import fr.epistudio.epysia.reflection.Reflection;
 import imgui.ImGui;
+import imgui.flag.ImGuiMouseButton;
 import imgui.type.ImBoolean;
 import imgui.type.ImString;
 
@@ -61,9 +62,9 @@ import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import javax.lang.model.SourceVersion;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.ui.kit.Fields;
+import javax.lang.model.SourceVersion;
 import fr.epistudio.epysia.editor.ui.kit.Texts;
 
 public final class InspectorView {
@@ -71,8 +72,9 @@ public final class InspectorView {
 
     public static final String WINDOW_TITLE = "Inspector";
 
-    private static final String ADD_COMPONENT_POPUP = "##add-component-popup";
+    private static final String QUICK_ADD_POPUP = "##quick-add-component";
     private static final int SEARCH_CAPACITY = 128;
+
 
     private final Supplier<SceneDocument> activeDocument;
     private final ComponentRegistry componentRegistry;
@@ -83,10 +85,12 @@ public final class InspectorView {
     private final ConfirmDialog removeConfirm = new ConfirmDialog(
             I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_TITLE),
             I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_REMOVE_COMPONENT_CONFIRM));
-    private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private boolean playModeActive;
     private final ComponentSections componentSections;
     private final PropertyKeyCache propertyKeys = new PropertyKeyCache();
+    private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
+    private final AddComponentBrowser addComponentBrowser;
+    private Optional<GameObject> addComponentTarget = Optional.empty();
     private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
     private final BiConsumer<String, GameObject> onCreateScriptForObject;
     private final Supplier<Optional<Path>> selectedAssetPath;
@@ -141,6 +145,8 @@ public final class InspectorView {
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
         this.engineServices = dependencies.engineServices();
+        this.addComponentBrowser = new AddComponentBrowser(this.componentRegistry, this.icons,
+                this::addComponentToTarget, this::requestNewScript);
     }
 
     private static ShaderLoader projectShaderLoader(Project project) {
@@ -177,6 +183,7 @@ public final class InspectorView {
         assetPicker.render();
         removeConfirm.render();
         scriptNameDialog.render();
+        addComponentTarget.ifPresent(addComponentBrowser::render);
         ImGui.end();
     }
 
@@ -441,14 +448,18 @@ public final class InspectorView {
     private void renderAddComponentButton(GameObject gameObject) {
         if (ImGui.button(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_ADD_COMPONENT,
                 "inspector-add-component"), ImGui.getContentRegionAvailX(), 0.0f)) {
-            componentSearch.set("");
-            ImGui.openPopup(ADD_COMPONENT_POPUP);
+            addComponentTarget = Optional.of(gameObject);
+            addComponentBrowser.open();
         }
-        renderAddComponentPopup(gameObject);
+        if (ImGui.isItemClicked(ImGuiMouseButton.Right)) {
+            addComponentTarget = Optional.of(gameObject);
+            componentSearch.set("");
+        }
+        renderQuickAddMenu(gameObject);
     }
 
-    private void renderAddComponentPopup(GameObject gameObject) {
-        if (!ImGui.beginPopup(ADD_COMPONENT_POPUP)) {
+    private void renderQuickAddMenu(GameObject gameObject) {
+        if (!ImGui.beginPopupContextItem(QUICK_ADD_POPUP)) {
             return;
         }
         Fields.underlined("##component-search",
@@ -478,10 +489,16 @@ public final class InspectorView {
     private void renderNewScriptOption(GameObject gameObject) {
         if (ImGui.selectable(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT,
                 "inspector-new-script"))) {
-            scriptNameDialog.open(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT_CLASS_NAME), "MyBehaviour",
-                    name -> requestScriptCreation(name, gameObject));
+            scriptNameDialog.open(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT_CLASS_NAME),
+                    "MyBehaviour", name -> requestScriptCreation(name, gameObject));
             ImGui.closeCurrentPopup();
         }
+    }
+
+    private void requestNewScript() {
+        addComponentTarget.ifPresent(target -> scriptNameDialog.open(
+                I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT_CLASS_NAME), "MyBehaviour",
+                name -> requestScriptCreation(name, target)));
     }
 
     private void requestScriptCreation(String requestedName, GameObject gameObject) {
@@ -500,6 +517,10 @@ public final class InspectorView {
             return trimmed;
         }
         return trimmed.substring(0, 1).toUpperCase(Locale.ROOT) + trimmed.substring(1);
+    }
+
+    private void addComponentToTarget(ComponentRegistry.Entry entry) {
+        addComponentTarget.ifPresent(target -> addComponent(target, entry));
     }
 
     private void addComponent(GameObject gameObject, ComponentRegistry.Entry entry) {

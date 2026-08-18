@@ -1,6 +1,13 @@
 package fr.epistudio.epysia.i18n;
 
 public enum TextKey {
+    EDITOR_ADD_COMPONENT_BROWSER_TITLE("editor.add-component-browser.title"),
+    EDITOR_ADD_COMPONENT_BROWSER_ALL("editor.add-component-browser.all"),
+    EDITOR_ADD_COMPONENT_BROWSER_ALREADY_ADDED("editor.add-component-browser.already-added"),
+    EDITOR_ADD_COMPONENT_BROWSER_NO_MATCH("editor.add-component-browser.no-match"),
+    EDITOR_ADD_COMPONENT_BROWSER_NO_DESCRIPTION("editor.add-component-browser.no-description"),
+    EDITOR_ADD_COMPONENT_BROWSER_ADD("editor.add-component-browser.add"),
+    EDITOR_ADD_COMPONENT_BROWSER_CANCEL("editor.add-component-browser.cancel"),
     EDITOR_ANIMATOR_SECTION_ANIMATION("editor.animator-section.animation"),
     EDITOR_ANIMATOR_SECTION_NONE("editor.animator-section.none"),
     EDITOR_ANIMATOR_SECTION_LAYERS("editor.animator-section.layers"),
