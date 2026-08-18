@@ -1419,7 +1419,9 @@ public final class EditorView implements FrameView {
     }
 
     private void instantiatePrefabAtOrigin(Path prefabPath) {
-        history().execute(new InstantiatePrefabCommand(prefabPath, new Vector3f()));
+        history().execute(workspace.active().selection().get()
+                .map(parent -> new InstantiatePrefabCommand(prefabPath, parent))
+                .orElseGet(() -> new InstantiatePrefabCommand(prefabPath, new Vector3f())));
     }
 
     private void promptNewScript(ScriptLanguage language) {
