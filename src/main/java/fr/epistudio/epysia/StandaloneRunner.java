@@ -38,6 +38,7 @@ import fr.epistudio.epysia.render.text.TextRenderSystem;
 import fr.epistudio.epysia.render.text.WorldTextRenderSystem;
 import fr.epistudio.epysia.ui.UiInputSystem;
 import fr.epistudio.epysia.ui.UiRenderSystem;
+import fr.epistudio.epysia.render.decal.DecalRenderSystem;
 import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.runtime.RuntimeCommand;
@@ -126,6 +127,7 @@ public final class StandaloneRunner {
         vfxRenderSystem.useProject(() -> engine.assets().locator());
         engine.addRenderSystem(vfxRenderSystem);
         engine.addRenderSystem(new VolumetricRenderSystem(shaderLoader, window, engine.logger()));
+        engine.addRenderSystem(new DecalRenderSystem(shaderLoader, engine.logger()));
         SpriteRenderSystem spriteRenderSystem = new SpriteRenderSystem(shaderLoader, shaderWatcher, meshRenderSystem, engine.logger());
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(new TilemapRenderSystem(spriteRenderSystem, engine.logger()));

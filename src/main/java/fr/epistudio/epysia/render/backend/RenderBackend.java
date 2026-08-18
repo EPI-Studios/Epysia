@@ -58,6 +58,8 @@ public interface RenderBackend {
 
     void updateMeshRange(MeshHandle handle, int firstIndex, int indexCount);
 
+    boolean hasTexture(TextureHandle handle);
+
     int textureWidth(TextureHandle handle);
 
     int textureHeight(TextureHandle handle);

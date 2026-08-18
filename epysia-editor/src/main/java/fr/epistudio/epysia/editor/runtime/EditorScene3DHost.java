@@ -40,6 +40,7 @@ import fr.epistudio.epysia.render.sprite.TilemapRenderSystem;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
+import fr.epistudio.epysia.render.decal.DecalRenderSystem;
 import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
 import fr.epistudio.epysia.vfx.VfxRenderSystem;
 import fr.epistudio.epysia.render.text.TextRenderSystem;
@@ -178,6 +179,7 @@ public final class EditorScene3DHost {
         engine.addRenderSystem(meshRenderSystem);
         engine.addRenderSystem(vfxRenderSystem);
         engine.addRenderSystem(new VolumetricRenderSystem(shaderLoader, renderSurface, engine.logger()));
+        engine.addRenderSystem(new DecalRenderSystem(shaderLoader, engine.logger()));
         engine.addRenderSystem(spriteRenderSystem);
         engine.addRenderSystem(tilemapRenderSystem);
         engine.addRenderSystem(postProcessSystem);

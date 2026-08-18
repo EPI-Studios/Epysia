@@ -519,6 +519,10 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     }
 
     @Override
+    public Optional<AssetRegistry> assetRegistry() {
+        return Optional.of(assetRegistry);
+    }
+
     public void publishSceneTexture(SceneTexture slot, TextureHandle texture) {
         sceneTextures.put(slot, texture);
     }
