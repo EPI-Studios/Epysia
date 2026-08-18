@@ -59,12 +59,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.ui.kit.Fields;
-import javax.lang.model.SourceVersion;
 import fr.epistudio.epysia.editor.ui.kit.Texts;
 
 public final class InspectorView {
@@ -91,8 +89,7 @@ public final class InspectorView {
     private final ImString componentSearch = new ImString(SEARCH_CAPACITY);
     private final AddComponentBrowser addComponentBrowser;
     private Optional<GameObject> addComponentTarget = Optional.empty();
-    private final NameDialog scriptNameDialog = new NameDialog("##new-script-name");
-    private final BiConsumer<String, GameObject> onCreateScriptForObject;
+    private final Consumer<GameObject> onRequestNewScript;
     private final Supplier<Optional<Path>> selectedAssetPath;
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
@@ -103,7 +100,7 @@ public final class InspectorView {
     private final SurfaceUniformRows spriteUniformRows;
 
     public InspectorView(InspectorDependencies dependencies, AssetPicker assetPicker,
-                         BiConsumer<String, GameObject> onCreateScriptForObject,
+                         Consumer<GameObject> onRequestNewScript,
                          Consumer<Path> onOpenGraph,
                          Supplier<Optional<Path>> selectedAssetPath,
                          AtlasInspectorSection atlasSection,
@@ -140,7 +137,7 @@ public final class InspectorView {
                 new RigidBodyLiveSection(),
                 new NavMeshSurfaceSection(dependencies::engineServices),
                 () -> playModeActive));
-        this.onCreateScriptForObject = onCreateScriptForObject;
+        this.onRequestNewScript = onRequestNewScript;
         this.selectedAssetPath = selectedAssetPath;
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
@@ -182,7 +179,6 @@ public final class InspectorView {
         propertyRows.pruneStaleKeys();
         assetPicker.render();
         removeConfirm.render();
-        scriptNameDialog.render();
         addComponentTarget.ifPresent(addComponentBrowser::render);
         ImGui.end();
     }
@@ -489,34 +485,13 @@ public final class InspectorView {
     private void renderNewScriptOption(GameObject gameObject) {
         if (ImGui.selectable(I18n.label(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT,
                 "inspector-new-script"))) {
-            scriptNameDialog.open(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT_CLASS_NAME),
-                    "MyBehaviour", name -> requestScriptCreation(name, gameObject));
             ImGui.closeCurrentPopup();
+            onRequestNewScript.accept(gameObject);
         }
     }
 
     private void requestNewScript() {
-        addComponentTarget.ifPresent(target -> scriptNameDialog.open(
-                I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_NEW_SCRIPT_CLASS_NAME), "MyBehaviour",
-                name -> requestScriptCreation(name, target)));
-    }
-
-    private void requestScriptCreation(String requestedName, GameObject gameObject) {
-        String className = pascalCase(requestedName);
-        if (!SourceVersion.isName(className)) {
-            notifier.show(I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_TOAST_INVALID_CLASS_NAME,
-                    requestedName));
-            return;
-        }
-        onCreateScriptForObject.accept(className, gameObject);
-    }
-
-    private static String pascalCase(String name) {
-        String trimmed = name.trim();
-        if (trimmed.isEmpty()) {
-            return trimmed;
-        }
-        return trimmed.substring(0, 1).toUpperCase(Locale.ROOT) + trimmed.substring(1);
+        addComponentTarget.ifPresent(onRequestNewScript);
     }
 
     private void addComponentToTarget(ComponentRegistry.Entry entry) {

@@ -168,6 +168,9 @@ public final class EditorView implements FrameView {
     private final MeshBakeDialog meshBakeDialog;
     private final ExportGameDialog exportGameDialog;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
+    private final NewScriptDialog newScriptDialog =
+            new NewScriptDialog(SCRIPT_LANGUAGES, this::createNewScript);
+    private Optional<GameObject> scriptTarget = Optional.empty();
     private final ThumbnailCache thumbnailCache;
     private final ImagePreviewTexture imagePreview;
     private final MeshThumbnailer meshThumbnailer;
@@ -231,7 +234,7 @@ public final class EditorView implements FrameView {
         this.inspectorView = new InspectorView(
                 new InspectorDependencies(active, componentRegistry, toasts, icons, thumbnailCache,
                         project, objectFactory, sceneHost.engine()),
-                new AssetPicker(project), this::createScriptAndAttach,
+                new AssetPicker(project), this::promptNewScriptFor,
                 graphEditorView::open, this::selectedBrowserAssetPath,
                 new AtlasInspectorSection(spriteEditorWindow::open),
                 new TextureInspectorSection(imagePreview, this::onTextureFilterChanged),
@@ -512,6 +515,7 @@ public final class EditorView implements FrameView {
         meshBakeDialog.render();
         exportGameDialog.render();
         nameDialog.render();
+        newScriptDialog.render();
         renderAboutPopup();
         renderCloseScenePopup();
     }
@@ -585,12 +589,9 @@ public final class EditorView implements FrameView {
     }
 
     private void renderFileScriptItems() {
-        for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
-            String label = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT)
-                    + " (" + language.displayName() + ")###menu-file-new-script-" + language.displayName();
-            if (ImGui.menuItem(label)) {
-                promptNewScript(language);
-            }
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT,
+                "menu-file-new-script"))) {
+            promptNewScript();
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_RELOAD_SCRIPTS,
                 "menu-file-reload-scripts"))) {
@@ -1424,18 +1425,17 @@ public final class EditorView implements FrameView {
                 .orElseGet(() -> new InstantiatePrefabCommand(prefabPath, new Vector3f())));
     }
 
-    private void promptNewScript(ScriptLanguage language) {
-        nameDialog.open(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NEW_SCRIPT_TITLE, language.displayName()),
-                I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCRIPT_DEFAULT_NAME),
-                requestedName -> createNewScript(language, requestedName));
+    private void promptNewScript() {
+        scriptTarget = Optional.empty();
+        newScriptDialog.open();
     }
 
-    private void createNewScript(ScriptLanguage language, String requestedName) {
-        String className = requestedName.trim();
-        if (!isScriptClassName(className)) {
-            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_INVALID_SCRIPT_NAME, requestedName));
-            return;
-        }
+    private void promptNewScriptFor(GameObject target) {
+        scriptTarget = Optional.of(target);
+        newScriptDialog.open();
+    }
+
+    private void createNewScript(ScriptLanguage language, String className) {
         try {
             Files.createDirectories(project.scriptsDirectory());
             Path target = project.scriptsDirectory().resolve(className + language.sourceExtension());
@@ -1445,8 +1445,9 @@ public final class EditorView implements FrameView {
                 return;
             }
             Files.writeString(target, language.behaviourTemplate(className));
-            scriptEditorView.open(target);
             reloadScripts();
+            scriptTarget.ifPresent(owner -> attachScriptComponent(className, owner));
+            scriptEditorView.open(target);
         } catch (IOException error) {
             toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_CREATION_FAILED,
                     error.getMessage()));
@@ -1458,26 +1459,6 @@ public final class EditorView implements FrameView {
             return false;
         }
         return name.chars().allMatch(Character::isJavaIdentifierPart);
-    }
-
-    private void createScriptAndAttach(String className, GameObject target) {
-        try {
-            Files.createDirectories(project.scriptsDirectory());
-            ScriptLanguage language = SCRIPT_LANGUAGES.defaultLanguage();
-            Path file = project.scriptsDirectory().resolve(className + language.sourceExtension());
-            if (Files.exists(file)) {
-                toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_ALREADY_EXISTS, className));
-                scriptEditorView.open(file);
-                return;
-            }
-            Files.writeString(file, language.behaviourTemplate(className));
-            reloadScripts();
-            attachScriptComponent(className, target);
-            scriptEditorView.open(file);
-        } catch (IOException error) {
-            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_CREATION_FAILED,
-                    error.getMessage()));
-        }
     }
 
     private void attachScriptComponent(String className, GameObject target) {
