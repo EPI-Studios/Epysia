@@ -6,7 +6,8 @@ import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.physics.api.JointDescriptor;
 import org.joml.Vector3fc;
 
-@EpysiaComponent(name = "Collider Pair Filter", category = "Physics")
+@EpysiaComponent(name = "Collider Pair Filter", category = "Physics",
+        description = "Stops two bodies from colliding with each other while both stay solid.")
 @RequiresComponent(Transform3D.class)
 public final class ColliderPairFilter extends JointComponent {
     @Override

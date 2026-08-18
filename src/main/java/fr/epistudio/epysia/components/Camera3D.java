@@ -9,7 +9,8 @@ import org.joml.Vector3f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Camera 3D", category = "Rendering")
+@EpysiaComponent(name = "Camera 3D", category = "Rendering",
+        description = "Renders the scene from this object. One camera is primary at a time.")
 @RequiresComponent(Transform3D.class)
 public final class Camera3D extends Component {
 

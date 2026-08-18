@@ -5,7 +5,8 @@ import org.joml.Vector2f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Spot Light 2D", category = "Rendering")
+@EpysiaComponent(name = "Spot Light 2D", category = "Rendering",
+        description = "Cone of 2D light with an angle and a range you can set.")
 @RequiresComponent(Transform2D.class)
 public final class SpotLight2D extends Light2D {
     @Export(label = "Range", min = 0.0f, max = 500.0f, step = 0.1f)

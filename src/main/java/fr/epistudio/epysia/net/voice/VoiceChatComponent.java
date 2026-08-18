@@ -7,7 +7,8 @@ import fr.epistudio.epysia.components.RequiresComponent;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.net.replication.NetworkObject;
 
-@EpysiaComponent(name = "Voice Chat", category = "Networking")
+@EpysiaComponent(name = "Voice Chat", category = "Networking",
+        description = "Captures the owner's microphone and plays other peers back in 3D.")
 @RequiresComponent(NetworkObject.class)
 public final class VoiceChatComponent extends Component {
     @Export(label = "Follow Network Owner")

@@ -316,6 +316,10 @@ public final class HierarchyView {
         if (dropped != null) {
             reparentOnto(dropped, row.gameObject());
         }
+        String prefabPath = ImGui.acceptDragDropPayload(AssetMimeTypes.PREFAB, String.class);
+        if (prefabPath != null) {
+            history().execute(new InstantiatePrefabCommand(Path.of(prefabPath), row.gameObject()));
+        }
         ImGui.endDragDropTarget();
     }
 

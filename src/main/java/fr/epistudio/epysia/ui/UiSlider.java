@@ -6,7 +6,8 @@ import org.joml.Vector4f;
 
 import java.util.function.Consumer;
 
-@EpysiaComponent(name = "Ui Slider", category = "UI")
+@EpysiaComponent(name = "Ui Slider", category = "UI",
+        description = "Drag handle returning a value between a minimum and a maximum.")
 public final class UiSlider extends UiElement {
     private static final float TRACK_HEIGHT_RATIO = 0.35f;
     private static final float KNOB_WIDTH = 10.0f;

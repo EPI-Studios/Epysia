@@ -12,7 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-@EpysiaComponent(name = "Transform 3D", category = "Core")
+@EpysiaComponent(name = "Transform 3D", category = "Core",
+        description = "Position, rotation and scale in the world. Every 3D object needs one.")
 public final class Transform3D extends Component {
     @Export(label = "Position")
     private final Vector3f position = new Vector3f();

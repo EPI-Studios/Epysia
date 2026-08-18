@@ -8,7 +8,8 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-@EpysiaComponent(name = "Joint Socket", category = "Animation")
+@EpysiaComponent(name = "Joint Socket", category = "Animation",
+        description = "Pins this object to a skeleton joint, for a weapon held in a hand.")
 @RequiresComponent(Transform3D.class)
 public final class JointSocket extends Component {
 

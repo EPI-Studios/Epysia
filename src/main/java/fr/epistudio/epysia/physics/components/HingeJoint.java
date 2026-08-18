@@ -11,7 +11,8 @@ import org.joml.Vector3fc;
 
 import java.util.Objects;
 
-@EpysiaComponent(name = "Hinge Joint", category = "Physics")
+@EpysiaComponent(name = "Hinge Joint", category = "Physics",
+        description = "Rotation around one axis, with limits and a motor. Doors and wheels.")
 @RequiresComponent(Transform3D.class)
 public final class HingeJoint extends JointComponent {
     @Export(label = "Axis")

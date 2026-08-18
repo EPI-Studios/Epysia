@@ -27,6 +27,9 @@ public final class AssetScanner {
 
     public static List<AssetEntry> listDirectory(Path directory) throws IOException {
         List<AssetEntry> entries = new ArrayList<>();
+        for (Path child : listSubdirectories(directory)) {
+            entries.add(AssetEntry.folder(child, modifiedMillisOf(child)));
+        }
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, Files::isRegularFile)) {
             for (Path path : stream) {
                 toEntry(path).ifPresent(entries::add);

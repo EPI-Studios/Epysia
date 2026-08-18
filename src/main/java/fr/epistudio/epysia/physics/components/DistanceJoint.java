@@ -10,7 +10,8 @@ import org.joml.Vector3fc;
 
 import java.util.Objects;
 
-@EpysiaComponent(name = "Distance Joint", category = "Physics")
+@EpysiaComponent(name = "Distance Joint", category = "Physics",
+        description = "Holds two bodies a set distance apart, rigidly or on a spring.")
 @RequiresComponent(Transform3D.class)
 public final class DistanceJoint extends JointComponent {
     @Export(label = "Length", min = 0.0f, step = 0.1f)

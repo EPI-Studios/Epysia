@@ -9,6 +9,7 @@ public final class AssetTypeIcons {
 
     public static EditorIcon iconFor(AssetType type) {
         return switch (type) {
+            case FOLDER -> EditorIcon.FOLDER;
             case MESH -> EditorIcon.MESH;
             case PRESET -> EditorIcon.MESH_INSTANCE_3D;
             case TEXTURE -> EditorIcon.TEXTURE_2D;

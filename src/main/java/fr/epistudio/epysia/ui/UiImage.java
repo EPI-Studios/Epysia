@@ -4,7 +4,8 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import org.joml.Vector4f;
 
-@EpysiaComponent(name = "Ui Image", category = "UI")
+@EpysiaComponent(name = "Ui Image", category = "UI",
+        description = "Draws a texture inside the element, with a tint.")
 public final class UiImage extends UiElement {
     @Export(label = "Texture", assetExtensions = {".png", ".jpg", ".jpeg", ".tga", ".bmp"})
     private String texturePath = "";

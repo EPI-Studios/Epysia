@@ -80,7 +80,8 @@ public final class ScriptModule {
                 Class<? extends IComponent> componentClass = (Class<? extends IComponent>) raw;
                 EpysiaComponent annotation = componentClass.getAnnotation(EpysiaComponent.class);
                 discovered.add(new DiscoveredComponent(componentClass,
-                        annotation.name(), annotation.category(), annotation.icon()));
+                        annotation.name(), annotation.category(), annotation.icon(),
+                        annotation.description()));
             }
         }
         return discovered;

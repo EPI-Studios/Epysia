@@ -6,7 +6,8 @@ import org.joml.Vector4f;
 
 import java.util.function.Consumer;
 
-@EpysiaComponent(name = "Ui Button", category = "UI")
+@EpysiaComponent(name = "Ui Button", category = "UI",
+        description = "Clickable region that reports when it is pressed and released.")
 public final class UiButton extends UiElement {
     @Export(label = "Idle", color = true)
     private final Vector4f idleColor = new Vector4f(0.18f, 0.18f, 0.22f, 0.95f);

@@ -5,7 +5,8 @@ import fr.epistudio.epysia.exceptions.EpysiaException;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-@EpysiaComponent(name = "Directional Light", category = "Lighting")
+@EpysiaComponent(name = "Directional Light", category = "Lighting",
+        description = "Sunlight with a single direction, the usual source of outdoor shadows.")
 public final class DirectionalLight extends Light {
     private static final Vector3f LOCAL_FORWARD = new Vector3f(0.0f, 0.0f, -1.0f);
 

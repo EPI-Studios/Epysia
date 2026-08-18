@@ -12,16 +12,27 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public final class InstantiatePrefabCommand implements EditorCommand {
 
     private final Path prefabPath;
     private final Vector3f spawnPosition;
+    private final Optional<GameObject> parent;
     private final List<GameObject> instantiated = new ArrayList<>();
 
     public InstantiatePrefabCommand(Path prefabPath, Vector3f spawnPosition) {
+        this(prefabPath, spawnPosition, Optional.empty());
+    }
+
+    public InstantiatePrefabCommand(Path prefabPath, GameObject parent) {
+        this(prefabPath, new Vector3f(), Optional.of(parent));
+    }
+
+    private InstantiatePrefabCommand(Path prefabPath, Vector3f spawnPosition, Optional<GameObject> parent) {
         this.prefabPath = prefabPath;
         this.spawnPosition = new Vector3f(spawnPosition);
+        this.parent = parent;
     }
 
     @Override
@@ -33,6 +44,7 @@ public final class InstantiatePrefabCommand implements EditorCommand {
                 context.scene().addGameObject(gameObject);
             }
             context.scene().advanceTick();
+            parent.ifPresent(owner -> instantiated.get(0).setParent(owner));
         }
         context.selection().select(instantiated.get(0));
     }
@@ -46,6 +58,10 @@ public final class InstantiatePrefabCommand implements EditorCommand {
             throw new UncheckedIOException(error);
         }
         collectSubtree(root, instantiated);
+        if (parent.isPresent()) {
+            PrefabInstantiator.attachTo(parent.get(), root);
+            return;
+        }
         root.getComponent(Transform3D.class).ifPresent(transform ->
                 transform.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z));
     }

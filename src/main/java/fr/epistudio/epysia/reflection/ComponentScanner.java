@@ -46,7 +46,8 @@ public final class ComponentScanner {
                 componentClass,
                 annotation.name(),
                 annotation.category(),
-                annotation.icon());
+                annotation.icon(),
+                annotation.description());
     }
 
     private static int compareEntries(DiscoveredComponent left, DiscoveredComponent right) {

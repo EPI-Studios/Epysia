@@ -14,7 +14,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-@EpysiaComponent(name = "Sprite Flipbook", category = "Rendering")
+@EpysiaComponent(name = "Sprite Flipbook", category = "Rendering",
+        description = "Plays a row of atlas frames on the sprite at a fixed rate.")
 @RequiresComponent(SpriteRenderer.class)
 public final class SpriteFlipbook extends Component {
 

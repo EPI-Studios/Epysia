@@ -6,7 +6,8 @@ import org.joml.Vector2f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Follow Transform 2D", category = "Transform")
+@EpysiaComponent(name = "Follow Transform 2D", category = "Transform",
+        description = "Keeps this object on a 2D target, with an offset and damping.")
 @RequiresComponent(Transform2D.class)
 public final class FollowTransform2D extends Component {
 

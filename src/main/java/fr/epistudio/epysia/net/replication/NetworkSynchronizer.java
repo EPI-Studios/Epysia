@@ -8,7 +8,8 @@ import fr.epistudio.epysia.components.RequiresComponent;
 import java.util.ArrayList;
 import java.util.List;
 
-@EpysiaComponent(name = "Network Synchronizer", category = "Networking")
+@EpysiaComponent(name = "Network Synchronizer", category = "Networking",
+        description = "Replicates the fields you list from the server to every client.")
 @RequiresComponent(NetworkObject.class)
 public final class NetworkSynchronizer extends Component {
     @Export(label = "Properties")

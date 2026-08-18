@@ -9,7 +9,8 @@ import org.joml.Vector3fc;
 import java.util.ArrayList;
 import java.util.List;
 
-@EpysiaComponent(name = "Particle Effect", category = "Effects")
+@EpysiaComponent(name = "Particle Effect", category = "Effects",
+        description = "Emits and simulates particles from a VFX asset.")
 public final class ParticleEffect extends Component {
     public enum SizeUnit {
         WORLD,

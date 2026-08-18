@@ -6,7 +6,8 @@ import org.joml.Vector4f;
 
 import java.util.function.Consumer;
 
-@EpysiaComponent(name = "Ui Check Box", category = "UI")
+@EpysiaComponent(name = "Ui Check Box", category = "UI",
+        description = "Two state box the player can toggle.")
 public final class UiCheckBox extends UiElement {
     private static final float CHECK_INSET = 0.25f;
 

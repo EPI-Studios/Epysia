@@ -106,6 +106,12 @@ public final class GamepadPoller {
         gamepad.setAxis(trigger, (pressed - triggerDeadzone) / (1.0f - triggerDeadzone));
     }
 
+    public void releaseAll() {
+        for (GamepadState gamepad : gamepads) {
+            gamepad.setConnected(false, "");
+        }
+    }
+
     public void advanceFrame() {
         for (GamepadState gamepad : gamepads) {
             gamepad.advanceFrame();

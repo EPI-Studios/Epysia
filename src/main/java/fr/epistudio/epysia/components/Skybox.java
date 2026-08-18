@@ -6,7 +6,8 @@ import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.render.environment.SkyMode;
 import fr.epistudio.epysia.render.environment.SkySource;
 
-@EpysiaComponent(name = "Skybox", category = "Rendering")
+@EpysiaComponent(name = "Skybox", category = "Rendering",
+        description = "Background and ambient light for the scene, procedural or from a cubemap.")
 public final class Skybox extends Component {
 
     @Export(label = "Mode")

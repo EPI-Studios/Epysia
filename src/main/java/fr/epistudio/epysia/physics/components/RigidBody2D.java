@@ -7,7 +7,8 @@ import fr.epistudio.epysia.physics.api.BodyHandle;
 import fr.epistudio.epysia.physics.api.DynamicProperties;
 import fr.epistudio.epysia.physics.api.RigidBodyKind;
 
-@EpysiaComponent(name = "Rigid Body 2D", category = "Physics")
+@EpysiaComponent(name = "Rigid Body 2D", category = "Physics",
+        description = "Body driven by the 2D solver. Needs a Collider 2D on the same object.")
 public final class RigidBody2D extends Component {
     @Export(label = "Kind")
     private RigidBodyKind kind = RigidBodyKind.DYNAMIC;

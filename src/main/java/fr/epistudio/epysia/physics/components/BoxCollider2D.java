@@ -6,7 +6,8 @@ import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 
-@EpysiaComponent(name = "Box Collider 2D", category = "Physics")
+@EpysiaComponent(name = "Box Collider 2D", category = "Physics",
+        description = "Rectangular collision shape.")
 public final class BoxCollider2D extends Collider2D {
 
     @Export(label = "Half Extent X", min = 0.01f, step = 0.05f)

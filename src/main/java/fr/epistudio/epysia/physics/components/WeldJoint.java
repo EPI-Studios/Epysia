@@ -9,7 +9,8 @@ import org.joml.Vector3fc;
 
 import java.util.Objects;
 
-@EpysiaComponent(name = "Weld Joint", category = "Physics")
+@EpysiaComponent(name = "Weld Joint", category = "Physics",
+        description = "Locks two bodies together, rigidly or with some give.")
 @RequiresComponent(Transform3D.class)
 public final class WeldJoint extends JointComponent {
     @Export(label = "Linear Hertz", min = 0.0f, step = 0.1f)

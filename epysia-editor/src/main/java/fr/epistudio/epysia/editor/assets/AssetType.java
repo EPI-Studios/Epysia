@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.editor.assets;
 
 public enum AssetType {
+    FOLDER("Folders"),
     PRESET("Presets"),
     MESH("Meshes"),
     TEXTURE("Textures"),

@@ -12,8 +12,17 @@ public record AssetEntry(String displayName, String assetPath, AssetType type,
         return new AssetEntry(label, presetPath, AssetType.PRESET, 0L, 0L);
     }
 
+    public static AssetEntry folder(Path directory, long modifiedMillis) {
+        return new AssetEntry(directory.getFileName().toString(),
+                directory.toAbsolutePath().toString(), AssetType.FOLDER, 0L, modifiedMillis);
+    }
+
     public boolean isBuiltin() {
         return type == AssetType.PRESET;
+    }
+
+    public boolean isFolder() {
+        return type == AssetType.FOLDER;
     }
 
     public Path path() {
@@ -21,7 +30,7 @@ public record AssetEntry(String displayName, String assetPath, AssetType type,
     }
 
     public String formattedSize() {
-        if (isBuiltin()) {
+        if (isBuiltin() || isFolder()) {
             return "";
         }
         double size = byteSize;

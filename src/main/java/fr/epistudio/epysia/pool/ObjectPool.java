@@ -92,6 +92,21 @@ public final class ObjectPool {
         return spawned;
     }
 
+    public GameObject spawnUnder(GameObject parent) {
+        GameObject spawned = takeIdle();
+        PrefabInstantiator.attachTo(parent, spawned);
+        activate(spawned);
+        live.add(spawned);
+        dispatchSpawn(spawned);
+        return spawned;
+    }
+
+    public GameObject spawnUnder(GameObject parent, Vector3fc localPosition) {
+        GameObject spawned = spawnUnder(parent);
+        placeAt(spawned, localPosition);
+        return spawned;
+    }
+
     public boolean despawn(GameObject gameObject) {
         if (gameObject == null || !live.remove(gameObject)) {
             return false;
@@ -146,6 +161,10 @@ public final class ObjectPool {
 
     private static void deactivate(GameObject gameObject) {
         gameObject.setActive(false);
+        Transform3D transform = gameObject.transform3DOrNull();
+        if (transform != null) {
+            transform.detachFromParent();
+        }
     }
 
     private void dispatchSpawn(GameObject gameObject) {

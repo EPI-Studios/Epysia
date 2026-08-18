@@ -5,19 +5,26 @@ import kotlin.KotlinVersion;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 
 public final class IdeProjectWriter {
 
     private static final String BUILD_FILENAME = "build.gradle";
     private static final String SETTINGS_FILENAME = "settings.gradle";
+    private static final String PROPERTIES_FILENAME = "gradle.properties";
+    private static final String GITIGNORE_FILENAME = ".gitignore";
+    private static final String CLASSPATH_PROPERTY = "epysiaEngineClasspath";
     private static final int JAVA_LANGUAGE_VERSION = 25;
     private static final String INDENT = "    ";
+    private static final List<String> IGNORED_PATHS = List.of(
+            ".epysia/", ".gradle/", "build/", "out/", ".idea/", "*.iml", PROPERTIES_FILENAME);
 
     private IdeProjectWriter() {
     }
@@ -27,6 +34,8 @@ public final class IdeProjectWriter {
         try {
             Files.writeString(root.resolve(SETTINGS_FILENAME), settingsScript(project));
             Files.writeString(root.resolve(BUILD_FILENAME), buildScript(project));
+            writeEngineClasspath(root);
+            writeGitignore(root);
             return Optional.empty();
         } catch (IOException failure) {
             return Optional.of("Could not write the IDE project files: " + failure.getMessage());
@@ -43,6 +52,7 @@ public final class IdeProjectWriter {
         appendPlugins(script, usesKotlin);
         appendToolchain(script);
         appendSourceSets(script, usesKotlin);
+        appendEngineClasspath(script);
         appendDependencies(script);
         return script.toString();
     }
@@ -87,22 +97,18 @@ public final class IdeProjectWriter {
         line(script, 2, "}");
     }
 
+    private static void appendEngineClasspath(StringBuilder script) {
+        line(script, 0, "def engineClasspath = providers.gradleProperty('" + CLASSPATH_PROPERTY + "')");
+        line(script, 2, ".getOrElse('').split(File.pathSeparator).findAll { !it.isEmpty() }");
+        script.append('\n');
+    }
+
     private static void appendDependencies(StringBuilder script) {
         line(script, 0, "dependencies {");
-        line(script, 1, "implementation files(");
-        appendEngineClasspath(script);
-        line(script, 1, ")");
+        line(script, 1, "implementation files(engineClasspath)");
         appendLibraryTree(script, Project.LIBRARIES_DIRECTORY_NAME);
         appendLibraryTree(script, Project.LIBRARIES_CACHE_DIRECTORY_NAME);
         line(script, 0, "}");
-    }
-
-    private static void appendEngineClasspath(StringBuilder script) {
-        List<Path> entries = engineClasspath();
-        for (int index = 0; index < entries.size(); index++) {
-            String separator = index < entries.size() - 1 ? "," : "";
-            line(script, 2, "'" + quoted(entries.get(index).toString()) + "'" + separator);
-        }
     }
 
     private static void appendLibraryTree(StringBuilder script, String directory) {
@@ -111,6 +117,23 @@ public final class IdeProjectWriter {
 
     private static void line(StringBuilder script, int depth, String text) {
         script.append(INDENT.repeat(depth)).append(text).append('\n');
+    }
+
+    private static void writeEngineClasspath(Path root) throws IOException {
+        Properties properties = new Properties();
+        properties.setProperty(CLASSPATH_PROPERTY, String.join(File.pathSeparator,
+                engineClasspath().stream().map(Path::toString).toList()));
+        try (Writer writer = Files.newBufferedWriter(root.resolve(PROPERTIES_FILENAME))) {
+            properties.store(writer, "Written by the Epysia editor. Machine specific, do not commit.");
+        }
+    }
+
+    private static void writeGitignore(Path root) throws IOException {
+        Path file = root.resolve(GITIGNORE_FILENAME);
+        if (Files.exists(file)) {
+            return;
+        }
+        Files.writeString(file, String.join("\n", IGNORED_PATHS) + "\n");
     }
 
     private static List<Path> engineClasspath() {

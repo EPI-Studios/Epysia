@@ -14,7 +14,8 @@ import org.joml.Vector3fc;
 
 import java.util.List;
 
-@EpysiaComponent(name = "Character Controller", category = "Physics")
+@EpysiaComponent(name = "Character Controller", category = "Physics",
+        description = "Moves a capsule along the ground and up steps without being pushed by physics.")
 @RequiresComponent(Transform3D.class)
 public class CharacterControllerComponent extends Component {
 
@@ -22,9 +23,9 @@ public class CharacterControllerComponent extends Component {
     private static final float CEILING_NORMAL_LIMIT = 0.5f;
 
     @Export(label = "Capsule Radius", min = 0.05f, max = 2.0f, step = 0.05f)
-    private float capsuleRadius = 0.3f;
+    private float capsuleRadius = 0.5f;
     @Export(label = "Capsule Half Height", min = 0.0f, max = 4.0f, step = 0.05f)
-    private float capsuleHalfHeight = 0.2f;
+    private float capsuleHalfHeight = 1.0f;
     @Export(label = "Move Speed", min = 0.0f, max = 50.0f, step = 0.1f)
     private float moveSpeedMetersPerSecond = 5.0f;
     @Export(label = "Jump Speed", min = 0.0f, max = 30.0f, step = 0.1f)

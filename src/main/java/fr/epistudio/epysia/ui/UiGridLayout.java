@@ -5,7 +5,8 @@ import fr.epistudio.epysia.components.Export;
 
 import java.util.List;
 
-@EpysiaComponent(name = "Ui Grid Layout", category = "UI")
+@EpysiaComponent(name = "Ui Grid Layout", category = "UI",
+        description = "Places child elements in rows and columns of fixed cells.")
 public final class UiGridLayout extends UiLayout {
 
     @Export(label = "Cell width", step = 1.0f)

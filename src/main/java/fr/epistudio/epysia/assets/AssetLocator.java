@@ -45,6 +45,11 @@ public final class AssetLocator {
         };
     }
 
+    public Optional<Path> file(String reference) {
+        Optional<Path> onDisk = asPath(reference).filter(Files::isRegularFile);
+        return onDisk.isPresent() ? onDisk : AssetUri.parse(reference).flatMap(this::file);
+    }
+
     private static Optional<Path> asPath(String text) {
         try {
             return Optional.of(Path.of(text));

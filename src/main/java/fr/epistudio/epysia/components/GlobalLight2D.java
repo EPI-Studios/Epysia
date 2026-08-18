@@ -2,7 +2,8 @@ package fr.epistudio.epysia.components;
 
 import org.joml.Vector3f;
 
-@EpysiaComponent(name = "Global Light 2D", category = "Rendering")
+@EpysiaComponent(name = "Global Light 2D", category = "Rendering",
+        description = "Sunlight for a 2D scene, applied everywhere from one direction.")
 public final class GlobalLight2D extends Light2D {
 
     @Export(label = "Direction X", min = -1.0f, max = 1.0f, step = 0.01f)

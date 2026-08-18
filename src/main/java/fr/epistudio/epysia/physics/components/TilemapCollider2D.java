@@ -18,7 +18,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-@EpysiaComponent(name = "Tilemap Collider 2D", category = "Physics")
+@EpysiaComponent(name = "Tilemap Collider 2D", category = "Physics",
+        description = "Builds collision from the solid tiles of a tilemap.")
 @RequiresComponent(Transform2D.class)
 public final class TilemapCollider2D extends Collider2D {
 

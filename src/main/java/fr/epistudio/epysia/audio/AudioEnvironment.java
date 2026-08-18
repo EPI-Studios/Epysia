@@ -5,7 +5,8 @@ import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 
-@EpysiaComponent(name = "Audio Environment", category = "Audio")
+@EpysiaComponent(name = "Audio Environment", category = "Audio",
+        description = "Reverb and occlusion of the space around the listener.")
 public final class AudioEnvironment extends Component {
 
     public enum Space {
