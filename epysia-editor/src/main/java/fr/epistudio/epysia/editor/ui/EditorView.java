@@ -9,6 +9,7 @@ import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.commands.CommandRegistry;
 import fr.epistudio.epysia.editor.commands.EditorCommand;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
+import fr.epistudio.epysia.editor.assets.ProceduralTexturePreview;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.SamplerFilter;
@@ -167,6 +168,7 @@ public final class EditorView implements FrameView {
     private final LibrariesSection librariesSection;
     private final MeshBakeDialog meshBakeDialog;
     private final ExportGameDialog exportGameDialog;
+    private final ProceduralTexturePreview proceduralPreview;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
     private final NewScriptDialog newScriptDialog =
             new NewScriptDialog(SCRIPT_LANGUAGES, this::createNewScript);
@@ -220,6 +222,7 @@ public final class EditorView implements FrameView {
                 thumbnailCache, this::onShaderGraphGenerated, shaderGraphPreviews, vfxPreviewPanel,
                 new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
                 this::onShaderNodePreviewsToggled, this::projectActionNames);
+        this.proceduralPreview = new ProceduralTexturePreview(sceneHost.backend());
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
         this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, tileBrush);
@@ -238,6 +241,7 @@ public final class EditorView implements FrameView {
                 graphEditorView::open, this::selectedBrowserAssetPath,
                 new AtlasInspectorSection(spriteEditorWindow::open),
                 new TextureInspectorSection(imagePreview, this::onTextureFilterChanged),
+                new ProceduralTextureSection(proceduralPreview, toasts, this::onProceduralTextureSaved),
                 tilemapDockView::focus);
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
@@ -1626,6 +1630,11 @@ public final class EditorView implements FrameView {
     private void onViewportTuningChanged(float overlayThickness, float gridFadeDistance) {
         viewportView.setOverlayThicknessMultiplier(overlayThickness);
         viewportView.setGridFadeDistance(gridFadeDistance);
+    }
+
+    private void onProceduralTextureSaved(Path file) {
+        sceneHost.engine().assets().invalidate(project.locator().fromFile(file));
+        sceneHost.requestViewportRedraw();
     }
 
     private void onTextureFilterChanged(Path textureFile) {

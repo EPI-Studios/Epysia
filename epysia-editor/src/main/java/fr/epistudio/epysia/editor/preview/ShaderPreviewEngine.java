@@ -5,6 +5,9 @@ import java.util.Map;
 import fr.epistudio.epysia.EpysiaEngine;
 import fr.epistudio.epysia.assets.loaders.MeshAssetLoader;
 import fr.epistudio.epysia.assets.loaders.TextureAssetLoader;
+import fr.epistudio.epysia.assets.procedural.CurveTextureLoader;
+import fr.epistudio.epysia.assets.procedural.GradientTextureLoader;
+import fr.epistudio.epysia.assets.procedural.NoiseTextureLoader;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.editor.gl.GlStateSnapshot;
 import fr.epistudio.epysia.render.backend.RenderSurface;
@@ -51,6 +54,9 @@ public final class ShaderPreviewEngine {
         engine.initialize();
         engine.assets().register(new MeshAssetLoader(BuiltinMeshes.uploadAll(backend)));
         engine.assets().register(new TextureAssetLoader());
+        engine.assets().register(new NoiseTextureLoader());
+        engine.assets().register(new GradientTextureLoader());
+        engine.assets().register(new CurveTextureLoader());
         initialized = true;
     }
 

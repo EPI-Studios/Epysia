@@ -7,7 +7,8 @@ public final class AssetFileNames {
 
     public static final List<String> KNOWN_EXTENSIONS = List.of(
             ".surf.glsl", ".fog.glsl", ".post.glsl", ".vert.glsl", ".frag.glsl", ".comp.glsl", ".glsl",
-            ".epymaterial", ".epygraph", ".epyscene", ".epyprefab", ".epyinstances", ".java");
+            ".epymaterial", ".epygraph", ".epyscene", ".epyprefab", ".epyinstances", ".java",
+            ".epynoise", ".epygradient", ".epycurve");
 
     private AssetFileNames() {
     }

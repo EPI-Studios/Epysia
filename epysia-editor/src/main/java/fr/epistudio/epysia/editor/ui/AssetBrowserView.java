@@ -14,6 +14,9 @@ import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.SpriteAtlasFactory;
 import fr.epistudio.epysia.editor.assets.SpriteTilemapFactory;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.assets.procedural.CurveTextureLoader;
+import fr.epistudio.epysia.assets.procedural.GradientTextureLoader;
+import fr.epistudio.epysia.assets.procedural.NoiseTextureLoader;
 import fr.epistudio.epysia.editor.icons.AssetTypeIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -514,6 +517,7 @@ public final class AssetBrowserView {
 
     private List<NewAssetDialog.AssetKind> assetKinds() {
         List<NewAssetDialog.AssetKind> kinds = new ArrayList<>(fixedAssetKinds());
+        kinds.addAll(proceduralAssetKinds());
         for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
             kinds.add(kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SCRIPT,
                             language.displayName()),
@@ -554,6 +558,40 @@ public final class AssetBrowserView {
         Path scripts = project.scriptsDirectory();
         Path target = targetDirectory();
         return target.toAbsolutePath().startsWith(scripts.toAbsolutePath()) ? target : scripts;
+    }
+
+    private List<NewAssetDialog.AssetKind> proceduralAssetKinds() {
+        return List.of(
+                kind("Noise Texture", "Textures",
+                        "texture de bruit générée, bouclable, utilisable partout",
+                        EditorIcon.TEXTURE_2D, "MyNoise",
+                        name -> createProcedural(name, NoiseTextureLoader.EXTENSION)),
+                kind("Gradient Texture", "Textures",
+                        "dégradé de couleurs cuit en texture",
+                        EditorIcon.TEXTURE_2D, "MyGradient",
+                        name -> createProcedural(name, GradientTextureLoader.EXTENSION)),
+                kind("Curve Texture", "Textures",
+                        "courbe cuite en rampe de gris",
+                        EditorIcon.TEXTURE_2D, "MyCurve",
+                        name -> createProcedural(name, CurveTextureLoader.EXTENSION)));
+    }
+
+    private void createProcedural(String requestedName, String extension) {
+        String name = assetBaseName(requestedName);
+        if (name.isEmpty()) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_FILE_NAME,
+                    requestedName));
+            return;
+        }
+        try {
+            Path file = targetDirectory().resolve(name + extension);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, ProceduralDocumentModel.defaultDocument(extension));
+            refresh();
+        } catch (IOException | InvalidPathException error) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_COULD_NOT_LIST_DIRECTORY,
+                    error.getMessage()));
+        }
     }
 
     private List<NewAssetDialog.AssetKind> fixedAssetKinds() {

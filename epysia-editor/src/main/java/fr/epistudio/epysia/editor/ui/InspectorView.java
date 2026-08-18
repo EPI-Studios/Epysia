@@ -93,6 +93,7 @@ public final class InspectorView {
     private final Supplier<Optional<Path>> selectedAssetPath;
     private final AtlasInspectorSection atlasSection;
     private final TextureInspectorSection textureSection;
+    private final ProceduralTextureSection proceduralSection;
     private final EngineServices engineServices;
     private PrefabRefresher prefabRefresher;
     private PrefabFieldApplier fieldApplier;
@@ -105,6 +106,7 @@ public final class InspectorView {
                          Supplier<Optional<Path>> selectedAssetPath,
                          AtlasInspectorSection atlasSection,
                          TextureInspectorSection textureSection,
+                         ProceduralTextureSection proceduralSection,
                          Runnable openTilemapDock) {
         Supplier<SceneDocument> activeDocument = dependencies.activeDocument();
         Project project = dependencies.project();
@@ -141,6 +143,7 @@ public final class InspectorView {
         this.selectedAssetPath = selectedAssetPath;
         this.atlasSection = atlasSection;
         this.textureSection = textureSection;
+        this.proceduralSection = proceduralSection;
         this.engineServices = dependencies.engineServices();
         this.addComponentBrowser = new AddComponentBrowser(this.componentRegistry, this.icons,
                 this::addComponentToTarget, this::requestNewScript);
@@ -238,7 +241,9 @@ public final class InspectorView {
 
     private boolean renderAssetSections() {
         Optional<Path> selectedAsset = selectedAssetPath.get();
-        return textureSection.render(selectedAsset) || atlasSection.render(selectedAsset);
+        return proceduralSection.render(selectedAsset)
+                || textureSection.render(selectedAsset)
+                || atlasSection.render(selectedAsset);
     }
 
     private void renderEmpty() {

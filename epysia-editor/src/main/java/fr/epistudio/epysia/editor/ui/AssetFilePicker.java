@@ -34,7 +34,7 @@ public final class AssetFilePicker {
     private static final float LIST_HEIGHT = 440.0f;
     private static final float PREVIEW_SIZE = 88.0f;
     private static final float TILE_PADDING = 12.0f;
-    private static final Set<String> PREVIEWABLE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
+    private static final Set<String> PREVIEWABLE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp", ".epynoise", ".epygradient", ".epycurve");
     private static final Set<String> EXCLUDED_DIRECTORIES =
             Set.of("build", ".gradle", ".git", ".idea", "target", ".worktrees", ".epysia");
 
