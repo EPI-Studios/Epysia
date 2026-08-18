@@ -20,6 +20,50 @@ public final class AssetRefFields {
         releaseFrom(holder, new IdentityHashMap<>(), 0);
     }
 
+    public static boolean releaseMatching(Object holder, String storedPath) {
+        List<AssetRef<?>> matches = new ArrayList<>();
+        collectMatching(holder, storedPath, matches, new IdentityHashMap<>(), 0);
+        for (AssetRef<?> reference : matches) {
+            reference.release();
+        }
+        return !matches.isEmpty();
+    }
+
+    private static void collectMatching(Object holder, String storedPath, List<AssetRef<?>> matches,
+                                        Map<Object, Boolean> visited, int depth) {
+        if (holder == null || depth > MAXIMUM_DEPTH || visited.put(holder, Boolean.TRUE) != null) {
+            return;
+        }
+        for (Field field : fieldsOf(holder.getClass())) {
+            collectValue(read(holder, field), storedPath, matches, visited, depth + 1);
+        }
+    }
+
+    private static void collectValue(Object value, String storedPath, List<AssetRef<?>> matches,
+                                     Map<Object, Boolean> visited, int depth) {
+        if (value instanceof AssetRef<?> reference) {
+            if (reference.path().equals(storedPath)) {
+                matches.add(reference);
+            }
+            return;
+        }
+        if (value instanceof Iterable<?> items) {
+            for (Object item : items) {
+                collectValue(item, storedPath, matches, visited, depth + 1);
+            }
+            return;
+        }
+        if (value instanceof Map<?, ?> entries) {
+            for (Object item : entries.values()) {
+                collectValue(item, storedPath, matches, visited, depth + 1);
+            }
+            return;
+        }
+        if (value != null && value.getClass().isRecord()) {
+            collectMatching(value, storedPath, matches, visited, depth);
+        }
+    }
+
     private static void releaseFrom(Object holder, Map<Object, Boolean> visited, int depth) {
         if (holder == null || depth > MAXIMUM_DEPTH || visited.put(holder, Boolean.TRUE) != null) {
             return;

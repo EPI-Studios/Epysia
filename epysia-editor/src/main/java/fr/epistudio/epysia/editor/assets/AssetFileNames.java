@@ -10,7 +10,28 @@ public final class AssetFileNames {
             ".epymaterial", ".epygraph", ".epyscene", ".epyprefab", ".epyinstances", ".java",
             ".epynoise", ".epygradient", ".epycurve");
 
+    private static final List<String> WATCHED_EXTENSIONS = List.of(
+            ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr", ".ktx2", ".dds",
+            ".gltf", ".glb", ".obj", ".fbx", ".epymesh", ".wav", ".ogg", ".mp3");
+    private static final List<String> IGNORED_DIRECTORIES = List.of(
+            ".epysia", ".git", ".gradle", "build", "out");
+
     private AssetFileNames() {
+    }
+
+    public static boolean isWatchable(java.nio.file.Path file) {
+        for (java.nio.file.Path part : file) {
+            if (IGNORED_DIRECTORIES.contains(part.toString())) {
+                return false;
+            }
+        }
+        String fileName = file.getFileName().toString().toLowerCase(Locale.ROOT);
+        for (String extension : WATCHED_EXTENSIONS) {
+            if (fileName.endsWith(extension)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static String extensionOf(String fileName) {

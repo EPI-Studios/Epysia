@@ -9,6 +9,7 @@ import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.commands.CommandRegistry;
 import fr.epistudio.epysia.editor.commands.EditorCommand;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
+import fr.epistudio.epysia.editor.assets.AssetReloadService;
 import fr.epistudio.epysia.editor.assets.ProceduralTexturePreview;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.render.backend.RenderBackend;
@@ -168,6 +169,7 @@ public final class EditorView implements FrameView {
     private final LibrariesSection librariesSection;
     private final MeshBakeDialog meshBakeDialog;
     private final ExportGameDialog exportGameDialog;
+    private final AssetReloadService assetReloads;
     private final ProceduralTexturePreview proceduralPreview;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
     private final NewScriptDialog newScriptDialog =
@@ -223,6 +225,8 @@ public final class EditorView implements FrameView {
                 new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
                 this::onShaderNodePreviewsToggled, this::projectActionNames);
         this.proceduralPreview = new ProceduralTexturePreview(sceneHost.backend());
+        this.assetReloads = new AssetReloadService(project.rootDirectory(), sceneHost::engine,
+                workspace::documents);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
         this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, tileBrush);
@@ -389,6 +393,7 @@ public final class EditorView implements FrameView {
         advanceEditModeAnimation(deltaSeconds);
         tickEditorComponents(deltaSeconds);
         pollBackgroundState(deltaSeconds);
+        pollAssetChanges(deltaSeconds);
         renderMainMenuBar();
         renderHostWindow();
         renderPanels(deltaSeconds);
@@ -403,6 +408,21 @@ public final class EditorView implements FrameView {
             return;
         }
         sceneHost.advanceAnimation(deltaSeconds);
+    }
+
+    private void pollAssetChanges(float deltaSeconds) {
+        if (playSession.isActive() || playController.isRunning()) {
+            return;
+        }
+        List<Path> reloaded = assetReloads.poll(deltaSeconds);
+        if (reloaded.isEmpty()) {
+            return;
+        }
+        sceneHost.requestViewportRedraw();
+        toasts.show(reloaded.size() == 1
+                ? I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_ASSET_RELOADED,
+                        reloaded.get(0).getFileName())
+                : I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_ASSETS_RELOADED, reloaded.size()));
     }
 
     private void tickEditorComponents(float deltaSeconds) {
