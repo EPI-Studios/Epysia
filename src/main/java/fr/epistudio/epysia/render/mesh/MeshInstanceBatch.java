@@ -92,7 +92,7 @@ final class MeshInstanceBatch {
     }
 
     void add(UploadedSubmesh addedSubmesh, PerSubmesh perSubmesh, Matrix4f model, long depthBits,
-             boolean visible) {
+             boolean visible, int layer) {
         submesh = addedSubmesh;
         representative = perSubmesh;
         if (visibleCount + culledCount == 0) {
@@ -100,12 +100,12 @@ final class MeshInstanceBatch {
         }
         if (visible) {
             ensureVisibleCapacity(visibleCount + 1);
-            writeInstance(instanceData, visibleCount, model);
+            writeInstance(instanceData, visibleCount, model, layer);
             visibleCount++;
             minDepthBits = Math.min(minDepthBits, depthBits);
         } else {
             ensureCulledCapacity(culledCount + 1);
-            writeInstance(culledData, culledCount, model);
+            writeInstance(culledData, culledCount, model, layer);
             culledCount++;
         }
         transformHash = ShadowSignatures.mixMatrix(transformHash, model);
@@ -236,11 +236,12 @@ final class MeshInstanceBatch {
         culledCapacity = grown;
     }
 
-    private void writeInstance(ByteBuffer target, int index, Matrix4f model) {
+    private void writeInstance(ByteBuffer target, int index, Matrix4f model, int layer) {
         int base = index * MeshShaderBindings.INSTANCE_TRANSFORM_BYTES;
         model.get(base, target);
         model.normal(scratchNormal);
         scratchNormal.get(base + 64, target);
+        target.putFloat(base + MeshShaderBindings.INSTANCE_LAYER_BYTE_OFFSET, layer);
     }
 
     ByteBuffer instancePayload() {

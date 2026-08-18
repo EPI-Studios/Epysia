@@ -106,6 +106,8 @@ public final class ProbeRadianceCapture {
     }
 
     public void bindStages(EpysiaEngine engine, Vector3f clearColor) {
+        engine.bindStageTarget(RenderPasses.PREPASS_3D, faceTarget,
+                PassClear.color(clearColor.x, clearColor.y, clearColor.z));
         engine.bindStageTarget(RenderPasses.OPAQUE_3D, faceTarget,
                 PassClear.color(clearColor.x, clearColor.y, clearColor.z));
         engine.bindStageTarget(RenderPasses.TRANSPARENT_3D, faceTarget, PassClear.none());

@@ -67,6 +67,7 @@ final class SsaoPass {
     private BindingSetHandle horizontalBlurBindings;
     private BindingSetHandle verticalBlurBindings;
     private boolean fullResolution;
+    private TextureHandle sceneNormal;
 
     SsaoPass(ShaderLoader shaderLoader, FullscreenQuad quad, PostProcessSettings settings) {
         this.shaderLoader = shaderLoader;
@@ -74,17 +75,20 @@ final class SsaoPass {
         this.settings = settings;
     }
 
-    void initialize(RenderBackend backend, TextureHandle sceneDepth, int width, int height) {
+    void initialize(RenderBackend backend, TextureHandle sceneDepth, TextureHandle sceneNormal,
+                    int width, int height) {
         this.backend = backend;
         ssaoUbo = backend.createBuffer(new BufferDescriptor(BufferUsage.UNIFORM,
                 BufferUtils.createByteBuffer(SSAO_UBO_SIZE), true));
         ssaoPipeline = createPipeline("postfx/ssao.frag.glsl", ssaoLayout());
         horizontalBlurPipeline = createPipeline("postfx/ssao_blur_horizontal.frag.glsl", blurLayout());
         verticalBlurPipeline = createPipeline("postfx/ssao_blur_vertical.frag.glsl", blurLayout());
+        this.sceneNormal = sceneNormal;
         createTargets(sceneDepth, width, height);
     }
 
-    void onResize(TextureHandle sceneDepth, int width, int height) {
+    void onResize(TextureHandle sceneDepth, TextureHandle sceneNormal, int width, int height) {
+        this.sceneNormal = sceneNormal;
         destroyTargets();
         createTargets(sceneDepth, width, height);
     }
@@ -108,7 +112,8 @@ final class SsaoPass {
         uboScratch.position(128);
         uboScratch.putFloat(settings.ambientOcclusionRadius()).putFloat(settings.ambientOcclusionIntensity())
                 .putFloat(SELF_OCCLUSION_BIAS).putFloat(settings.ambientOcclusionPower());
-        uboScratch.putFloat(camera.nearPlane()).putFloat(camera.farPlane()).putFloat(0.0f).putFloat(0.0f);
+        uboScratch.putFloat(camera.nearPlane()).putFloat(camera.farPlane())
+                .putFloat(sceneNormal == null ? 0.0f : 1.0f).putFloat(0.0f);
         uboScratch.flip();
         backend.writeBuffer(ssaoUbo, uboScratch, 0L);
     }
@@ -150,7 +155,8 @@ final class SsaoPass {
     private void createBindings(TextureHandle sceneDepth) {
         ssaoBindings = backend.createBindingSet(new BindingSetDescriptor(ssaoLayout(), List.of(
                 new Binding(0, new SampledTextureBinding(sceneDepth)),
-                new Binding(1, UniformBufferBinding.whole(ssaoUbo, SSAO_UBO_SIZE))
+                new Binding(1, UniformBufferBinding.whole(ssaoUbo, SSAO_UBO_SIZE)),
+                new Binding(2, new SampledTextureBinding(sceneNormal == null ? sceneDepth : sceneNormal))
         )));
         horizontalBlurBindings = createBlurBindings(rawTexture, sceneDepth);
         verticalBlurBindings = createBlurBindings(horizontalTexture, sceneDepth);
@@ -167,7 +173,8 @@ final class SsaoPass {
     private BindingSetLayout ssaoLayout() {
         return new BindingSetLayout(List.of(
                 new BindingSlot(0, BindingType.SAMPLED_TEXTURE_2D),
-                new BindingSlot(1, BindingType.UNIFORM_BUFFER)));
+                new BindingSlot(1, BindingType.UNIFORM_BUFFER),
+                new BindingSlot(2, BindingType.SAMPLED_TEXTURE_2D)));
     }
 
     private BindingSetLayout blurLayout() {

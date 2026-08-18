@@ -10,6 +10,10 @@ public final class RenderLayers {
     private RenderLayers() {
     }
 
+    public static int primaryLayer(int layerMask) {
+        return layerMask == 0 ? 0 : Integer.numberOfTrailingZeros(layerMask);
+    }
+
     public static boolean intersects(int layerMask, int cullMask) {
         return (layerMask & cullMask) != 0;
     }

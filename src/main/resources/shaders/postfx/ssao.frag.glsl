@@ -2,6 +2,7 @@
 in vec2 vertexUv;
 
 layout(binding = 0) uniform sampler2D sceneDepth;
+layout(binding = 2) uniform sampler2D sceneNormal;
 
 layout(std140, binding = 1) uniform SsaoUbo {
     mat4 viewProjection;
@@ -67,7 +68,9 @@ void main() {
         return;
     }
     vec3 worldPosition = reconstructWorld(vertexUv, rawDepth);
-    vec3 normal = normalize(cross(dFdx(worldPosition), dFdy(worldPosition)));
+    vec3 normal = ssao.cameraDepth.z > 0.5
+            ? normalize(texture(sceneNormal, vertexUv).xyz)
+            : normalize(cross(dFdx(worldPosition), dFdy(worldPosition)));
     float referenceDepth = linearizeDepth(rawDepth);
     float rotation = interleavedGradientNoise(gl_FragCoord.xy) * FULL_TURN;
     mat3 basis = buildBasis(normal);

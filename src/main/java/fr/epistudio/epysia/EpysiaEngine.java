@@ -44,6 +44,7 @@ import fr.epistudio.epysia.render.backend.TextureHandle;
 import fr.epistudio.epysia.profiling.FrameProfiler;
 import fr.epistudio.epysia.render.postfx.PostEffects;
 import fr.epistudio.epysia.render.postfx.PostProcessSettings;
+import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.render.postfx.PostProcessSystem;
 import fr.epistudio.epysia.render.postfx.ScenePostEffects;
 import fr.epistudio.epysia.render.text.FontRegistry;
@@ -248,7 +249,17 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
         for (GameSystem system : gameSystems) {
             system.initialize(this);
         }
+        linkDepthPrepassToTargets();
         initialized = true;
+    }
+
+    private void linkDepthPrepassToTargets() {
+        if (!hasRenderSystem(MeshRenderSystem.class) || !hasRenderSystem(PostProcessSystem.class)) {
+            return;
+        }
+        MeshRenderSystem meshes = renderSystem(MeshRenderSystem.class);
+        PostProcessSystem post = renderSystem(PostProcessSystem.class);
+        meshes.onDepthPrepassChanged(post::setPrepassWritesDepth);
     }
 
     public void tick(InputState input, float deltaTimeSeconds) {

@@ -94,6 +94,9 @@ public final class PostProcessSystem implements RenderSystem {
     private TextureHandle opaqueDepthTexture;
     private TextureHandle sceneDepthTexture;
     private RenderTargetHandle sceneTarget;
+    private TextureHandle sceneNormalTexture;
+    private RenderTargetHandle prepassTarget;
+    private boolean prepassWritesDepth;
     private TextureHandle ldrColorTexture;
     private RenderTargetHandle ldrTarget;
     private PipelineHandle tonemapPipeline;
@@ -153,7 +156,7 @@ public final class PostProcessSystem implements RenderSystem {
         tonemapPipeline = backend.createPipeline(buildTonemapDescriptor());
         antiAliasPipeline = backend.createPipeline(buildPipelineDescriptor(DEFAULT_VERTEX_PATH, FXAA_FRAGMENT_PATH, antiAliasLayout()));
         blitPipeline = backend.createPipeline(buildPipelineDescriptor(DEFAULT_VERTEX_PATH, BLIT_FRAGMENT_PATH, antiAliasLayout()));
-        ssao.initialize(backend, sceneDepthTexture, width, height);
+        ssao.initialize(backend, sceneDepthTexture, activeNormalTexture(), width, height);
         bloom.initialize(backend, sceneColorTexture, width, height);
         effectChain.initialize(backend);
         effectChain.configure(sceneColorTexture, sceneDepthTexture, ldrColorTexture, width, height);
@@ -174,7 +177,7 @@ public final class PostProcessSystem implements RenderSystem {
         backend.destroy(antiAliasBindings);
         destroyTargets();
         createTargets(targetWidth, targetHeight);
-        ssao.onResize(sceneDepthTexture, targetWidth, targetHeight);
+        ssao.onResize(sceneDepthTexture, activeNormalTexture(), targetWidth, targetHeight);
         bloom.onResize(sceneColorTexture, targetWidth, targetHeight);
         effectChain.configure(sceneColorTexture, sceneDepthTexture, ldrColorTexture, targetWidth, targetHeight);
         createBindings();
@@ -270,7 +273,7 @@ public final class PostProcessSystem implements RenderSystem {
         if (ssao.matchesResolutionMode()) {
             return;
         }
-        ssao.onResize(sceneDepthTexture, targetWidth, targetHeight);
+        ssao.onResize(sceneDepthTexture, activeNormalTexture(), targetWidth, targetHeight);
         backend.destroy(tonemapBindings);
         backend.destroy(antiAliasBindings);
         createBindings();
@@ -399,6 +402,10 @@ public final class PostProcessSystem implements RenderSystem {
                 TextureUsage.SAMPLED, upscaleFilter()));
         opaqueDepthTexture = backend.createTexture(new TextureDescriptor(width, height,
                 TextureFormat.DEPTH32F, TextureUsage.SAMPLED_DEPTH_ATTACHMENT));
+        sceneNormalTexture = backend.createTexture(new TextureDescriptor(width, height,
+                TextureFormat.RGBA16F, TextureUsage.SAMPLED, SamplerFilter.NEAREST));
+        prepassTarget = backend.createRenderTarget(new RenderTargetDescriptor(
+                width, height, List.of(sceneNormalTexture), Optional.of(sceneDepthTexture)));
         publishSceneTextures();
     }
 
@@ -409,6 +416,9 @@ public final class PostProcessSystem implements RenderSystem {
         stageConfigurer.publishSceneTexture(SceneTexture.OPAQUE_COLOR, opaqueColorTexture);
         stageConfigurer.publishSceneTexture(SceneTexture.OPAQUE_DEPTH, opaqueDepthTexture);
         stageConfigurer.publishSceneTexture(SceneTexture.SCENE_DEPTH, sceneDepthTexture);
+        if (prepassWritesDepth) {
+            stageConfigurer.publishSceneTexture(SceneTexture.SCENE_NORMAL, sceneNormalTexture);
+        }
     }
 
     private void captureOpaqueScene() {
@@ -417,6 +427,8 @@ public final class PostProcessSystem implements RenderSystem {
     }
 
     private void destroyTargets() {
+        backend.destroy(prepassTarget);
+        backend.destroy(sceneNormalTexture);
         backend.destroy(sceneTarget);
         backend.destroy(sceneColorTexture);
         backend.destroy(sceneDepthTexture);
@@ -512,13 +524,39 @@ public final class PostProcessSystem implements RenderSystem {
     }
 
     private void bindStageTargets() {
-        PassClear sceneClear = PassClear.color(appliedClearColor.x, appliedClearColor.y, appliedClearColor.z);
+        PassClear sceneClear = opaqueClear();
         PassClear sceneNoClear = PassClear.none();
+        stageConfigurer.bindStageTarget(RenderPasses.PREPASS_3D, prepassTarget,
+                PassClear.color(0.0f, 0.0f, 0.0f));
         stageConfigurer.bindStageTarget(RenderPasses.OPAQUE_3D, sceneTarget, sceneClear);
         stageConfigurer.bindStageTarget(RenderPasses.VIEW_MODEL_3D, sceneTarget, PassClear.depthOnly());
         stageConfigurer.bindStageTarget(RenderPasses.TRANSPARENT_3D, sceneTarget, sceneNoClear);
         stageConfigurer.bindStageTarget(RenderPasses.WORLD_2D, sceneTarget, sceneNoClear);
         stageConfigurer.bindStageTarget(RenderPasses.POST, RenderTargetHandle.SCREEN, PassClear.color(0.0f, 0.0f, 0.0f));
+    }
+
+    private TextureHandle activeNormalTexture() {
+        return prepassWritesDepth ? sceneNormalTexture : null;
+    }
+
+    private PassClear opaqueClear() {
+        if (prepassWritesDepth) {
+            return new PassClear(true, false, appliedClearColor.x, appliedClearColor.y,
+                    appliedClearColor.z, 1.0f, 1.0f);
+        }
+        return PassClear.color(appliedClearColor.x, appliedClearColor.y, appliedClearColor.z);
+    }
+
+    public void setPrepassWritesDepth(boolean writes) {
+        if (prepassWritesDepth == writes) {
+            return;
+        }
+        prepassWritesDepth = writes;
+        if (stageConfigurer != null) {
+            publishSceneTextures();
+            bindStageTargets();
+            ssao.onResize(sceneDepthTexture, activeNormalTexture(), targetWidth, targetHeight);
+        }
     }
 
     private void writeUbo(Camera3D camera, float alpha) {

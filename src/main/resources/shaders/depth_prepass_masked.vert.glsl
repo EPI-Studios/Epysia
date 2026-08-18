@@ -9,6 +9,7 @@ out vec2 vertexUv;
 out vec3 vertexWorldPosition;
 out vec3 vertexWorldNormal;
 flat out int surfaceInstanceIndex;
+flat out float vertexRenderLayer;
 
 // SURFACE_FUNCTIONS
 
@@ -21,5 +22,6 @@ void main() {
     // SURFACE_VERTEX_CALL
     vertexWorldPosition = worldPosition.xyz;
     vertexWorldNormal = normalize(mat3(OBJECT_NORMAL_MATRIX) * inNormal);
+    vertexRenderLayer = OBJECT_NORMAL_MATRIX[3].w;
     gl_Position = frame.cameraViewProjection * worldPosition;
 }

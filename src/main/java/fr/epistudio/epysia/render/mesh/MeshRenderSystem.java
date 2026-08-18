@@ -88,6 +88,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -248,6 +249,8 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     private LitMaterial fallback;
 
     private StageConfigurer stageConfigurer;
+    private Consumer<Boolean> depthPrepassListener = enabled -> {
+    };
     private TextureHandle lastOpaqueColorTexture;
     private boolean frontToBackOpaque =
             Boolean.parseBoolean(System.getProperty("epysia.render.frontToBack", "true"));
@@ -754,12 +757,14 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private PipelineHandle createDepthPrepassPipeline() {
-        VertexLayout layout = new VertexLayout(
-                List.of(new VertexAttribute(0, VertexFormat.FLOAT3, 0)), MeshShaderBindings.VERTEX_STRIDE);
+        VertexLayout layout = new VertexLayout(List.of(
+                new VertexAttribute(0, VertexFormat.FLOAT3, 0),
+                new VertexAttribute(1, VertexFormat.FLOAT3, 12),
+                new VertexAttribute(2, VertexFormat.FLOAT2, 24)), MeshShaderBindings.VERTEX_STRIDE);
         return backend.createPipeline(new PipelineDescriptor(
                 new ShaderSource(shaderLoader.load(DEPTH_PREPASS_VERTEX_PATH).source(),
                         shaderLoader.load(DEPTH_PREPASS_FRAGMENT_PATH).source()),
-                layout, RenderState.OPAQUE_3D.withoutColorWrite(), shadowCascades.bindingLayout()));
+                layout, RenderState.OPAQUE_3D, shadowCascades.bindingLayout()));
     }
 
     private PipelineHandle createMaskedDepthPrepassPipeline() {
@@ -770,7 +775,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         return backend.createPipeline(new PipelineDescriptor(
                 new ShaderSource(shaderLoader.load(MASKED_DEPTH_PREPASS_VERTEX_PATH).source(),
                         shaderLoader.load(MASKED_DEPTH_PREPASS_FRAGMENT_PATH).source()),
-                layout, RenderState.OPAQUE_3D.withoutColorWrite(), shadowCascades.maskedBindingLayout()));
+                layout, RenderState.OPAQUE_3D, shadowCascades.maskedBindingLayout()));
     }
 
     public void applyTuning(RenderTuning tuning) {
@@ -846,6 +851,12 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
 
     public void setDepthPrepassEnabled(boolean enabled) {
         this.depthPrepassEnabled = enabled;
+        depthPrepassListener.accept(enabled);
+    }
+
+    public void onDepthPrepassChanged(Consumer<Boolean> listener) {
+        this.depthPrepassListener = listener;
+        listener.accept(depthPrepassEnabled);
     }
 
     public boolean depthPrepassEnabled() {
@@ -862,7 +873,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         PipelineHandle pipeline = variants.pipelineFor(
                 MaterialPipelineCache.surfaceShaderPathOf(material), false, false, colored,
                 material.doubleSided());
-        frame.submit(RenderPasses.OPAQUE_3D, new DrawCommand(pipeline, submesh.handle(), bindings,
+        frame.submit(RenderPasses.PREPASS_3D, new DrawCommand(pipeline, submesh.handle(), bindings,
                 depthBits, instanceCount));
     }
 
@@ -1374,6 +1385,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             return;
         }
         long depthBits = viewDepthBits(modelMatrix);
+        int layer = RenderLayers.primaryLayer(renderer.layerMask());
         long transformHash = ShadowSignatures.mixMatrix(ShadowSignatures.seed(), modelMatrix);
         if (visible) {
             submittedThisFrame++;
@@ -1391,7 +1403,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
             }
             if (!viewModel && !mesh.skinned() && !depthPrepassEnabled
                     && mesh.arenaBacked() && !perSubmesh.material().blended() && visible
-                    && addToMultiDrawGroup(mesh, submesh, perSubmesh, modelMatrix, depthBits)) {
+                    && addToMultiDrawGroup(mesh, submesh, perSubmesh, modelMatrix, depthBits, layer)) {
                 if (castsShadows) {
                     writeObjectUboIfChanged(perSubmesh.modelSlot(), modelMatrix, transformHash);
                     submitShadowCasters(submesh, perSubmesh,
@@ -1404,7 +1416,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
                     && instanceBatches.add(submesh, perSubmesh,
                             materialStates.snapshotFor(perSubmesh, materialCache, surfaceUniforms),
                             modelMatrix, depthBits, visible, castsShadows, mesh.vertexColored(),
-                            scratchCasterMin, scratchCasterMax, cullBounds)) {
+                            scratchCasterMin, scratchCasterMax, cullBounds, layer)) {
                 continue;
             }
             writeObjectUboIfChanged(perSubmesh.modelSlot(), modelMatrix, transformHash);
@@ -1818,10 +1830,15 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private void writeObjectUboIfChanged(ObjectUniformSlot slot, Matrix4f model, long transformHash) {
+        writeObjectUboIfChanged(slot, model, transformHash, 0);
+    }
+
+    private void writeObjectUboIfChanged(ObjectUniformSlot slot, Matrix4f model, long transformHash,
+                                         int layer) {
         if (!slot.needsWrite(transformHash)) {
             return;
         }
-        packObjectUbo(model);
+        packObjectUbo(model, layer);
         objectUniforms().write(slot, scratchObjectUbo, transformHash);
     }
 
@@ -1863,11 +1880,12 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         backend.writeBuffer(frameUboWriter.handle(), scratchFrameViewProjection, 0L);
     }
 
-    private void packObjectUbo(Matrix4f model) {
+    private void packObjectUbo(Matrix4f model, int layer) {
         scratchObjectUbo.clear();
         model.get(0, scratchObjectUbo);
         model.normal(scratchNormalMatrix);
         scratchNormalMatrix.get(64, scratchObjectUbo);
+        scratchObjectUbo.putFloat(MeshShaderBindings.INSTANCE_LAYER_BYTE_OFFSET, layer);
         scratchObjectUbo.position(0);
         scratchObjectUbo.limit(MeshShaderBindings.OBJECT_UBO_SIZE);
     }
@@ -1923,7 +1941,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
     }
 
     private boolean addToMultiDrawGroup(UploadedMesh mesh, UploadedSubmesh submesh, PerSubmesh perSubmesh,
-                                        Matrix4f modelMatrix, long depthBits) {
+                                        Matrix4f modelMatrix, long depthBits, int layer) {
         if (!multiDrawEnabled || mesh.arenaPlacement().isEmpty() || perSubmesh.lightmapUvs().isPresent()) {
             return false;
         }
@@ -1936,7 +1954,7 @@ public final class MeshRenderSystem implements RenderSystem, ProfiledRenderSyste
         if (!group.hasBindings()) {
             adoptMultiDrawBindings(group, perSubmesh, mesh.vertexColored());
         }
-        group.append(mesh.arenaPlacement().get().allocation(), modelMatrix, depthBits);
+        group.append(mesh.arenaPlacement().get().allocation(), modelMatrix, depthBits, layer);
         return true;
     }
 
