@@ -18,6 +18,9 @@ public final class ExportValidation {
     }
 
     private static final String WINE = "wine";
+    private static final String CONTENT_DIRECTORY = "content";
+    private static final String SCENES_DIRECTORY = "scenes";
+    private static final String SCRIPTS_OUTPUT = ".epysia/scripts-out";
     private static final float SMOKE_SECONDS = 4.0f;
     private static final long TIMEOUT_SECONDS = 180L;
     private static final int TAIL_LINES = 12;
@@ -25,12 +28,15 @@ public final class ExportValidation {
     private ExportValidation() {
     }
 
-    public static Report run(Path gameRoot, TargetPlatform platform, String launcherName) {
+    public static Report run(Path gameRoot, TargetPlatform platform, String launcherName,
+                             String sceneFileName) {
         Optional<Path> launcher = locateLauncher(gameRoot, platform, launcherName);
         if (launcher.isEmpty()) {
             return Report.skipped("launcher not found under " + gameRoot);
         }
-        Optional<List<String>> command = commandFor(launcher.get(), platform);
+        Path content = gameRoot.relativize(platform.layout(gameRoot, launcherName).applicationDirectory()
+                .resolve(CONTENT_DIRECTORY));
+        Optional<List<String>> command = commandFor(launcher.get(), platform, content, sceneFileName);
         if (command.isEmpty()) {
             return Report.skipped("wine is not installed, the Windows build was not started");
         }
@@ -45,7 +51,8 @@ public final class ExportValidation {
         return Optional.empty();
     }
 
-    private static Optional<List<String>> commandFor(Path launcher, TargetPlatform platform) {
+    private static Optional<List<String>> commandFor(Path launcher, TargetPlatform platform,
+                                                     Path content, String sceneFileName) {
         List<String> command = new ArrayList<>();
         if (platform != GameExporter.hostPlatform()) {
             if (platform != TargetPlatform.WINDOWS || !wineAvailable()) {
@@ -54,6 +61,12 @@ public final class ExportValidation {
             command.add(WINE);
         }
         command.add(launcher.toAbsolutePath().toString());
+        command.add("--scene");
+        command.add(content.resolve(SCENES_DIRECTORY).resolve(sceneFileName).toString());
+        command.add("--project");
+        command.add(content.toString());
+        command.add("--precompiled-scripts");
+        command.add(content.resolve(SCRIPTS_OUTPUT).toString());
         command.add("--validate");
         command.add(Float.toString(SMOKE_SECONDS));
         return Optional.of(command);

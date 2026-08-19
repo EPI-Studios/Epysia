@@ -23,7 +23,7 @@ public final class ProjectStore {
 
     private static final Set<String> MARKER_KEYS =
             Set.of("name", "engineVersion", "layerNames", "collisionMatrix", "quality", "inputActions",
-                    "network", "steam", "render");
+                    "network", "steam", "render", "release");
 
     public static final String CURRENT_ENGINE_VERSION = "0.1";
     private static final String RECENTS_FILENAME = "recents.json";
@@ -206,6 +206,7 @@ public final class ProjectStore {
         writeNetworkKeys(writer, readNetwork(project));
         writeSteamKeys(writer, readSteam(project));
         writeRenderKeys(writer, readRender(project));
+        writeReleaseKeys(writer, readRelease(project));
         writer.key("inputActions");
         new InputActionsJsonCodec().write(writer,
                 pendingInputActions == null ? readInputActions(project) : pendingInputActions);
@@ -468,6 +469,34 @@ public final class ProjectStore {
         }
     }
 
+    public ReleaseSettings readRelease(Project project) {
+        if (pendingRelease != null) {
+            return pendingRelease;
+        }
+        Map<String, Object> root = readMarkerRoot(project);
+        if (!(root.get("release") instanceof Map<?, ?> release)) {
+            return ReleaseSettings.defaults();
+        }
+        return new ReleaseSettings(release.get("version") instanceof String version
+                ? version
+                : ReleaseSettings.DEFAULT_VERSION).sanitized();
+    }
+
+    public void writeRelease(Project project, ReleaseSettings release) throws IOException {
+        pendingRelease = release.sanitized();
+        try {
+            writeMarker(project, readSettings(project), readQuality(project));
+        } finally {
+            pendingRelease = null;
+        }
+    }
+
+    private void writeReleaseKeys(JsonWriter writer, ReleaseSettings release) {
+        writer.key("release").beginObject()
+                .key("version").valueString(release.version())
+                .endObject();
+    }
+
     private void writeRenderKeys(JsonWriter writer, RenderSettings render) {
         writer.key("render").beginObject()
                 .key("api").valueString(render.api().id())
@@ -498,6 +527,7 @@ public final class ProjectStore {
     private NetworkSettings pendingNetwork;
     private SteamSettings pendingSteam;
     private RenderSettings pendingRender;
+    private ReleaseSettings pendingRelease;
 
     private static float numberAt(List<?> values, int index, float fallback) {
         return values.get(index) instanceof Number number ? number.floatValue() : fallback;
