@@ -5,6 +5,7 @@ import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.gpu.GpuLauncher;
+import fr.epistudio.epysia.render.NativeStack;
 import fr.epistudio.epysia.gpu.GpuPreference;
 import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.diagnostics.CrashReporter;
@@ -58,6 +59,7 @@ public final class GameLauncher {
     }
 
     public static void main(String[] args) {
+        NativeStack.widen();
         GameSettings settings = loadGameSettings();
         GraphicsApi.select(settings.renderApi());
         GpuLauncher.enforce(GpuPreference.fromId(parseStringOr(args, "--gpu", settings.gpuAdapter())));

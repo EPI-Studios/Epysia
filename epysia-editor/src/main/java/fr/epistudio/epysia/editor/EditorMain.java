@@ -14,6 +14,7 @@ import fr.epistudio.epysia.logging.ConsoleLogger;
 import fr.epistudio.epysia.editor.preferences.EditorPreferences;
 import fr.epistudio.epysia.editor.ui.ProjectSelectorView;
 import fr.epistudio.epysia.gpu.GpuLauncher;
+import fr.epistudio.epysia.render.NativeStack;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
@@ -48,6 +49,7 @@ public final class EditorMain {
     private double lastFrameSeconds;
 
     public static void main(String[] arguments) {
+        NativeStack.widen();
         CrashReporter.install(EditorPreferences.defaultFile().getParent(),
                 new ConsoleLogger(System.err));
         GpuLauncher.enforce(EditorPreferences.load(EditorPreferences.defaultFile()).gpuPreference());
