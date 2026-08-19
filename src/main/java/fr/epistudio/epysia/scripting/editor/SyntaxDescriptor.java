@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.scripting.editor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public record SyntaxDescriptor(
@@ -10,7 +11,10 @@ public record SyntaxDescriptor(
         Set<String> declarationKeywords,
         String lineComment,
         String importStatementSuffix,
-        Set<String> implicitPackages
+        Set<String> implicitPackages,
+        List<String> globalNames,
+        Map<String, String> receiverTypes,
+        Map<String, List<String>> receiverExtras
 ) {
 
     public enum Style {
@@ -22,20 +26,8 @@ public record SyntaxDescriptor(
         keywords = List.copyOf(keywords);
         declarationKeywords = Set.copyOf(declarationKeywords);
         implicitPackages = Set.copyOf(implicitPackages);
-    }
-
-    public static SyntaxDescriptor curlyBrace(String displayName, List<String> keywords,
-                                             Set<String> declarationKeywords,
-                                             String importStatementSuffix,
-                                             Set<String> implicitPackages) {
-        return new SyntaxDescriptor(displayName, Style.CURLY_BRACE, keywords, declarationKeywords,
-                "//", importStatementSuffix, implicitPackages);
-    }
-
-    public static SyntaxDescriptor indented(String displayName, List<String> keywords,
-                                            Set<String> declarationKeywords,
-                                            Set<String> implicitPackages) {
-        return new SyntaxDescriptor(displayName, Style.INDENTED, keywords, declarationKeywords,
-                "#", "", implicitPackages);
+        globalNames = List.copyOf(globalNames);
+        receiverTypes = Map.copyOf(receiverTypes);
+        receiverExtras = Map.copyOf(receiverExtras);
     }
 }

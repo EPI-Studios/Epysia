@@ -1,0 +1,31 @@
+{
+  "displayName": "Kotlin",
+  "style": "curly-brace",
+  "lineComment": "//",
+  "importStatementSuffix": "",
+  "keywords": [
+    "abstract", "actual", "annotation", "as", "break", "by", "catch", "class", "companion",
+    "const", "constructor", "continue", "crossinline", "data", "delegate", "do", "dynamic",
+    "else", "enum", "expect", "external", "false", "field", "file", "final", "finally", "for",
+    "fun", "get", "if", "import", "in", "infix", "init", "inline", "inner", "interface",
+    "internal", "is", "lateinit", "noinline", "null", "object", "open", "operator", "out",
+    "override", "package", "param", "private", "property", "protected", "public", "receiver",
+    "reified", "return", "sealed", "set", "setparam", "super", "suspend", "tailrec", "this",
+    "throw", "true", "try", "typealias", "typeof", "val", "value", "var", "vararg", "when",
+    "where", "while"
+  ],
+  "declarationKeywords": [
+    "abstract", "actual", "annotation", "class", "companion", "const", "crossinline", "data",
+    "enum", "expect", "external", "final", "fun", "infix", "init", "inline", "inner",
+    "interface", "internal", "lateinit", "noinline", "object", "open", "operator", "out",
+    "override", "private", "protected", "public", "reified", "sealed", "suspend", "tailrec",
+    "typealias", "val", "var", "vararg"
+  ],
+  "implicitPackages": [
+    "kotlin", "kotlin.annotation", "kotlin.collections", "kotlin.comparisons", "kotlin.io",
+    "kotlin.jvm", "kotlin.ranges", "kotlin.sequences", "kotlin.text", "java.lang"
+  ],
+  "globalNames": [],
+  "receiverTypes": {},
+  "receiverExtras": {}
+}
