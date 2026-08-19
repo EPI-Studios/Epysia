@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -25,7 +26,8 @@ public final class IdeProjectWriter {
     private static final int JAVA_LANGUAGE_VERSION = 25;
     private static final String INDENT = "    ";
     private static final List<String> IGNORED_PATHS = List.of(
-            ".epysia/", ".gradle/", "build/", "out/", ".idea/", "*.iml", PROPERTIES_FILENAME);
+            ".epysia/", ".gradle/", "build/", "out/", ".idea/", "*.iml", "*.pyi",
+            PROPERTIES_FILENAME);
 
     private IdeProjectWriter() {
     }
@@ -41,9 +43,19 @@ public final class IdeProjectWriter {
             Files.writeString(root.resolve(BUILD_FILENAME), buildScript(project, languages));
             writeEngineClasspath(root);
             writeGitignore(root);
+            writeStubs(project, languages);
             return Optional.empty();
         } catch (IOException failure) {
             return Optional.of("Could not write the IDE project files: " + failure.getMessage());
+        }
+    }
+
+    private static void writeStubs(Project project, ScriptLanguages languages) throws IOException {
+        for (ScriptLanguage language : languages.languages()) {
+            for (Map.Entry<String, String> stub : language.projectStubs().entrySet()) {
+                Files.createDirectories(project.scriptsDirectory());
+                Files.writeString(project.scriptsDirectory().resolve(stub.getKey()), stub.getValue());
+            }
         }
     }
 

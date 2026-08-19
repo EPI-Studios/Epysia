@@ -66,6 +66,10 @@ public final class ScriptSyntaxes {
         return matching(path).orElse(plainText);
     }
 
+    public Optional<Completions> completionsFor(Path path) {
+        return syntaxFor(path).flatMap(ScriptSyntax::completions);
+    }
+
     public Optional<ImportStyle> importStyleFor(Path path) {
         return syntaxFor(path).map(ScriptSyntax::importStyle);
     }

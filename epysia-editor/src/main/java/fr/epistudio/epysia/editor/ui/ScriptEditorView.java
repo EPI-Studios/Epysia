@@ -5,6 +5,8 @@ import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
+import fr.epistudio.epysia.editor.scripteditor.CompletionContext;
+import fr.epistudio.epysia.editor.scripteditor.Completions;
 import fr.epistudio.epysia.editor.scripteditor.CompletionEngine;
 import fr.epistudio.epysia.editor.scripteditor.CompletionKind;
 import fr.epistudio.epysia.editor.scripteditor.CompletionPopup;
@@ -116,6 +118,10 @@ public final class ScriptEditorView {
         syntaxes.release();
         syntaxes = discovered;
         diagnosticPattern = diagnosticPatternFor(syntaxes);
+    }
+
+    private Completions completionsFor(Path path) {
+        return syntaxes.completionsFor(path).orElse(completionEngine);
     }
 
     private void applySymbols(JavaSymbols javaSymbols) {
@@ -440,12 +446,13 @@ public final class ScriptEditorView {
         editor.getMainCursorPosition(cursorPosition);
         String lineText = editor.getLineText(cursorPosition.line);
         int cursorIndex = characterIndexForColumn(lineText, cursorPosition.column);
-        CompletionEngine.Context context = completionEngine.contextAt(lineText, cursorIndex);
-        if (!trigger.forced() && !completionEngine.shouldTrigger(context)) {
+        Completions completions = completionsFor(path);
+        CompletionContext context = completions.contextAt(lineText, cursorIndex);
+        if (!trigger.forced() && !completions.shouldTrigger(context)) {
             completionPopup.hide();
             return;
         }
-        List<CompletionSymbol> candidates = completionEngine.candidates(context, editor.getText(),
+        List<CompletionSymbol> candidates = completions.candidates(context, editor.getText(),
                 syntaxes.importStyleFor(path).orElse(PLAIN_IMPORT_STYLE));
         completionPopup.show(candidates, completionAnchorX(editor, origin.x()),
                 completionAnchorY(editor, origin.y()));
@@ -456,7 +463,7 @@ public final class ScriptEditorView {
         editor.getMainCursorPosition(cursorPosition);
         String lineText = editor.getLineText(cursorPosition.line);
         int cursorIndex = characterIndexForColumn(lineText, cursorPosition.column);
-        CompletionEngine.Context context = completionEngine.contextAt(lineText, cursorIndex);
+        CompletionContext context = completionsFor(path).contextAt(lineText, cursorIndex);
         int replacedLength = context.importPath().orElse(context.prefix()).length();
         if (replacedLength > 0) {
             editor.selectRegion(cursorPosition.line, cursorPosition.column - replacedLength,

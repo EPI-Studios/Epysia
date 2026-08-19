@@ -6,6 +6,7 @@ import imgui.extension.texteditor.TextEditorLanguage;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public final class DescriptorScriptSyntax implements ScriptSyntax {
@@ -34,6 +35,14 @@ public final class DescriptorScriptSyntax implements ScriptSyntax {
         plainKeywords.removeAll(descriptor.declarationKeywords());
         return CurlyBraceLanguage.create(descriptor.displayName(), plainKeywords,
                 descriptor.declarationKeywords(), symbols, descriptor.lineComment());
+    }
+
+    @Override
+    public Optional<Completions> completions() {
+        if (descriptor.globalNames().isEmpty() && descriptor.receiverTypes().isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new MemberCompletions(descriptor));
     }
 
     @Override

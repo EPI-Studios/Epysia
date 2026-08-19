@@ -64,7 +64,7 @@ final class CompletionChainTest {
                 root.resolve("missing-scripts-out"));
         CompletionEngine engine = new CompletionEngine(symbols);
         String line = "        " + expression;
-        CompletionEngine.Context context = engine.contextAt(line, line.length());
+        CompletionContext context = engine.contextAt(line, line.length());
         return engine.candidates(context, SCRIPT, IMPORT_STYLE).stream()
                 .map(CompletionSymbol::name)
                 .toList();
