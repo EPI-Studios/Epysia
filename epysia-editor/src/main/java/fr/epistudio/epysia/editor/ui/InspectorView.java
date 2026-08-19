@@ -270,9 +270,7 @@ public final class InspectorView {
         }
         ImGui.sameLine();
         int componentCount = gameObject.components().size();
-        Texts.muted(componentCount <= 1
-                ? I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_SINGULAR, componentCount)
-                : I18n.translate(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT_PLURAL, componentCount));
+        Texts.muted(I18n.plural(TextKey.EDITOR_INSPECTOR_VIEW_COMPONENT_COUNT, componentCount));
         Category.draw(gameObject.name(), 0);
         renderKeepOnSceneChange(gameObject);
         renderPrefabSection(gameObject);
