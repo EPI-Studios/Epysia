@@ -1,33 +1,24 @@
 package fr.epistudio.epysia.lang.python;
 
+import fr.epistudio.epysia.scripting.compile.BehaviourTemplate;
 import fr.epistudio.epysia.scripting.compile.ScriptCompileResult;
 import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
 import fr.epistudio.epysia.scripting.editor.SyntaxDescriptor;
+import fr.epistudio.epysia.scripting.editor.SyntaxDescriptorFile;
 import fr.epistudio.epysia.scripting.foreign.ForeignScriptRuntime;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 public final class PythonScriptLanguage implements ScriptLanguage {
 
     private static final int ORDER = 30;
-    private static final String TEMPLATE = """
-            from epysia import Behaviour, component, export
-
-
-            @component(name="%s", category="Scripts")
-            class %s(Behaviour):
-
-                speed = export(1.0, label="Speed")
-
-                def on_start(self):
-                    pass
-
-                def on_update(self, input, delta_seconds):
-                    pass
-            """;
+    private static final String STUB_FILENAME = "epysia.pyi";
+    private static final String TEMPLATE_RESOURCE = "templates/Behaviour.py";
+    private static final String SYNTAX_RESOURCE = "syntax/python.epysyntax";
 
     private final PythonRuntime runtime = new PythonRuntime();
 
@@ -48,7 +39,8 @@ public final class PythonScriptLanguage implements ScriptLanguage {
 
     @Override
     public String behaviourTemplate(String className) {
-        return TEMPLATE.formatted(className, className);
+        return BehaviourTemplate.loadedFrom(PythonScriptLanguage.class, TEMPLATE_RESOURCE)
+                .rendered(className);
     }
 
     @Override
@@ -58,8 +50,12 @@ public final class PythonScriptLanguage implements ScriptLanguage {
 
     @Override
     public Optional<SyntaxDescriptor> syntax() {
-        return Optional.of(SyntaxDescriptor.indented("Python", PythonSyntax.KEYWORDS,
-                PythonSyntax.DECLARATIONS, PythonSyntax.IMPLICIT_PACKAGES));
+        return Optional.of(SyntaxDescriptorFile.read(PythonScriptLanguage.class, SYNTAX_RESOURCE));
+    }
+
+    @Override
+    public Map<String, String> projectStubs() {
+        return Map.of(STUB_FILENAME, PythonStubs.generate());
     }
 
     @Override

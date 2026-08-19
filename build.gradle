@@ -15,6 +15,10 @@ java {
     }
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs << '-parameters'
+}
+
 application {
     mainClass = 'fr.epistudio.epysia.GameLauncher'
 }

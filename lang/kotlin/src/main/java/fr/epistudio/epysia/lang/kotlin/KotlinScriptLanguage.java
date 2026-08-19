@@ -1,8 +1,10 @@
 package fr.epistudio.epysia.lang.kotlin;
 
+import fr.epistudio.epysia.scripting.compile.BehaviourTemplate;
 import fr.epistudio.epysia.scripting.compile.ScriptCompileResult;
 import fr.epistudio.epysia.scripting.compile.ScriptLanguage;
 import fr.epistudio.epysia.scripting.editor.SyntaxDescriptor;
+import fr.epistudio.epysia.scripting.editor.SyntaxDescriptorFile;
 import org.jetbrains.kotlin.cli.common.ExitCode;
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments;
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity;
@@ -22,26 +24,8 @@ public final class KotlinScriptLanguage implements ScriptLanguage {
     public static final int ORDER = 10;
     private static final String JVM_TARGET = "21";
 
-    private static final String TEMPLATE = """
-            import fr.epistudio.epysia.EngineServices
-            import fr.epistudio.epysia.components.EpysiaComponent
-            import fr.epistudio.epysia.components.Export
-            import fr.epistudio.epysia.input.InputState
-            import fr.epistudio.epysia.scripting.Behaviour
-
-            @EpysiaComponent(name = "%s", category = "Scripts")
-            class %s : Behaviour() {
-
-                @field:Export(label = "Speed")
-                private var speed = 1.0f
-
-                override fun onStart(services: EngineServices) {
-                }
-
-                override fun onUpdate(input: InputState, deltaTimeSeconds: Float) {
-                }
-            }
-            """;
+    private static final String TEMPLATE_RESOURCE = "templates/Behaviour.kt";
+    private static final String SYNTAX_RESOURCE = "syntax/kotlin.epysyntax";
 
     @Override
     public String displayName() {
@@ -60,7 +44,8 @@ public final class KotlinScriptLanguage implements ScriptLanguage {
 
     @Override
     public String behaviourTemplate(String className) {
-        return TEMPLATE.formatted(className, className);
+        return BehaviourTemplate.loadedFrom(KotlinScriptLanguage.class, TEMPLATE_RESOURCE)
+                .rendered(className);
     }
 
     @Override
@@ -70,8 +55,7 @@ public final class KotlinScriptLanguage implements ScriptLanguage {
 
     @Override
     public Optional<SyntaxDescriptor> syntax() {
-        return Optional.of(SyntaxDescriptor.curlyBrace("Kotlin",
-                KotlinSyntax.KEYWORDS, KotlinSyntax.DECLARATIONS, "", KotlinSyntax.IMPLICIT_PACKAGES));
+        return Optional.of(SyntaxDescriptorFile.read(KotlinScriptLanguage.class, SYNTAX_RESOURCE));
     }
 
     @Override

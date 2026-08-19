@@ -139,15 +139,15 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          ./gradlew :epysia-lang-kotlin:shadowJar :epysia-lang-kotlin:runtimeArchive \
-            :epysia-lang-python:packArchive \
+          ./gradlew :lang:kotlin:shadowJar :lang:kotlin:runtimeArchive \
+            :lang:python:packArchive \
             -PreleaseVersion=${{ steps.version.outputs.value }}
           mkdir -p dist
-          cp epysia-lang-kotlin/build/libs/epysia-lang-kotlin.jar \
+          cp lang/kotlin/build/libs/epysia-lang-kotlin.jar \
             "dist/epysia-lang-kotlin-${{ steps.version.outputs.value }}.jar"
-          cp epysia-lang-kotlin/build/runtime/epysia-lang-kotlin-runtime.jar \
+          cp lang/kotlin/build/runtime/epysia-lang-kotlin-runtime.jar \
             "dist/epysia-lang-kotlin-runtime-${{ steps.version.outputs.value }}.jar"
-          cp epysia-lang-python/build/pack/epysia-lang-python.zip \
+          cp lang/python/build/pack/epysia-lang-python.zip \
             "dist/epysia-lang-python-${{ steps.version.outputs.value }}.zip"
 
       - name: Write language pack catalogue

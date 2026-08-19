@@ -20,10 +20,6 @@ java {
 
 dependencies {
     compileOnly rootProject
-    testImplementation rootProject
-    testImplementation platform('org.junit:junit-bom:6.0.0')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     implementation 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.20'
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.20'
 }
@@ -32,10 +28,6 @@ shadowJar {
     archiveBaseName = 'epysia-lang-kotlin'
     archiveClassifier = ''
     mergeServiceFiles()
-}
-
-test {
-    useJUnitPlatform()
 }
 
 build.dependsOn shadowJar

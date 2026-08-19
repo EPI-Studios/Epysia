@@ -11,10 +11,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -42,14 +44,28 @@ public final class ScriptLanguages {
     }
 
     private static ScriptLanguages discoverWith(ClassLoader loader) {
-        List<ScriptLanguage> discovered = new ArrayList<>();
-        ServiceLoader.load(ScriptLanguage.class, loader).forEach(discovered::add);
+        List<ScriptLanguage> discovered = usableLanguages(loader);
         if (discovered.stream().noneMatch(language -> language instanceof JavaScriptLanguage)) {
             discovered.add(new JavaScriptLanguage());
         }
         List<ScriptLanguage> compileOrder = new ArrayList<>(discovered);
         compileOrder.sort(Comparator.comparingInt(ScriptLanguage::order));
         return new ScriptLanguages(List.copyOf(compileOrder), List.copyOf(discovered));
+    }
+
+    private static List<ScriptLanguage> usableLanguages(ClassLoader loader) {
+        List<ScriptLanguage> usable = new ArrayList<>();
+        Iterator<ScriptLanguage> candidates = ServiceLoader.load(ScriptLanguage.class, loader).iterator();
+        while (true) {
+            try {
+                if (!candidates.hasNext()) {
+                    return usable;
+                }
+                usable.add(candidates.next());
+            } catch (ServiceConfigurationError | NoClassDefFoundError unusable) {
+                return usable;
+            }
+        }
     }
 
     public List<ScriptLanguage> languages() {
