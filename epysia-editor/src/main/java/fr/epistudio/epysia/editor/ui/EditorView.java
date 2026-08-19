@@ -50,7 +50,6 @@ import fr.epistudio.epysia.editor.scripts.IdeLauncher;
 import fr.epistudio.epysia.editor.scripts.IdeProjectWriter;
 import fr.epistudio.epysia.editor.scripts.ScriptService;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
-import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.SpriteRenderer;
@@ -58,6 +57,7 @@ import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphSystem;
+import fr.epistudio.epysia.editor.ui.files.FileBrowser;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.input.action.InputAction;
 import fr.epistudio.epysia.i18n.TextKey;
@@ -126,6 +126,7 @@ public final class EditorView implements FrameView {
             | ImGuiWindowFlags.NoSavedSettings;
 
 
+    private final FileBrowser browser;
     private final Project project;
     private final ComponentRegistry componentRegistry;
     private final ProjectStore projectStore;
@@ -262,11 +263,12 @@ public final class EditorView implements FrameView {
                 this::onNetworkSaved, this::onSteamSaved, this::onRenderSaved,
                 this::onViewportTuningChanged, icons);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
-        this.librariesSection = new LibrariesSection(toasts, this::reloadScripts);
+        this.browser = new FileBrowser(icons);
+        this.librariesSection = new LibrariesSection(icons, toasts, this::reloadScripts);
         this.scriptingSection = new ScriptingSection(toasts, this::reloadScripts);
         this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView, panelTimings);
         this.lightingView = new LightingView(sceneHost, active, project.rootDirectory());
-        this.exportGameDialog = new ExportGameDialog(project, toasts);
+        this.exportGameDialog = new ExportGameDialog(project, toasts, icons);
         shell.setFileDropHandler(assetBrowserView::importExternalFiles);
         finishSetup();
     }
@@ -549,6 +551,7 @@ public final class EditorView implements FrameView {
         newScriptDialog.render();
         renderAboutPopup();
         renderCloseScenePopup();
+        browser.render();
     }
 
     private void renderMainMenuBar() {
@@ -1302,10 +1305,8 @@ public final class EditorView implements FrameView {
     }
 
     private void openSceneDialog() {
-        FileDialogs.pickFile(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_TITLE),
-                        project.scenesDirectory(), "*" + Project.SCENE_EXTENSION,
-                        I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_FILTER))
-                .ifPresent(this::openScenePath);
+        browser.chooseFile(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_TITLE),
+                project.scenesDirectory(), Set.of(Project.SCENE_EXTENSION), this::openScenePath);
     }
 
     private void openScenePath(Path path) {

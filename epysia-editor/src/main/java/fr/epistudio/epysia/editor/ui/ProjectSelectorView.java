@@ -8,7 +8,7 @@ import fr.epistudio.epysia.editor.icons.ProjectIcons;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorMotion;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
-import fr.epistudio.epysia.editor.shell.FileDialogs;
+import fr.epistudio.epysia.editor.ui.files.FileBrowser;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
@@ -73,6 +73,7 @@ public final class ProjectSelectorView implements FrameView {
     private static final int FILTER_PINNED = 1;
     private static final int FILTER_BROKEN = 2;
 
+    private final FileBrowser browser;
     private final ProjectStore store;
     private final Notifier notifier;
     private final IconWidgets icons;
@@ -93,7 +94,8 @@ public final class ProjectSelectorView implements FrameView {
         this.notifier = notifier;
         this.icons = icons;
         this.onProjectOpened = onProjectOpened;
-        this.newProjectDialog = new NewProjectDialog(store, notifier, onProjectOpened);
+        this.browser = new FileBrowser(icons);
+        this.newProjectDialog = new NewProjectDialog(store, notifier, icons, onProjectOpened);
         reloadRecents();
     }
 
@@ -125,6 +127,7 @@ public final class ProjectSelectorView implements FrameView {
         }
         newProjectDialog.render();
         renderClearConfirm();
+        browser.render();
         ImGui.end();
     }
 
@@ -445,10 +448,8 @@ public final class ProjectSelectorView implements FrameView {
     }
 
     private void pickProjectFolder() {
-        Optional<Path> picked = FileDialogs.pickFolder(I18n.translate(
-                        TextKey.EDITOR_PROJECT_SELECTOR_VIEW_OPEN_PROJECT_FOLDER),
-                Path.of(System.getProperty("user.home")));
-        picked.ifPresent(this::openFolder);
+        browser.chooseFolder(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_OPEN_PROJECT_FOLDER),
+                Path.of(System.getProperty("user.home")), this::openFolder);
     }
 
     private void openFolder(Path folder) {

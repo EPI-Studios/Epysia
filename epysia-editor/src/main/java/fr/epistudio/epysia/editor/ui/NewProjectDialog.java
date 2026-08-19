@@ -3,7 +3,8 @@ package fr.epistudio.epysia.editor.ui;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
-import fr.epistudio.epysia.editor.shell.FileDialogs;
+import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.ui.files.FileBrowser;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
@@ -29,6 +30,7 @@ public final class NewProjectDialog {
     private static final int NAME_CAPACITY = 128;
     private static final int PATH_CAPACITY = 512;
 
+    private final FileBrowser browser;
     private final ProjectStore store;
     private final Notifier notifier;
     private final Consumer<Project> onCreated;
@@ -36,7 +38,9 @@ public final class NewProjectDialog {
     private final ImString parentInput = new ImString(System.getProperty("user.home"), PATH_CAPACITY);
     private boolean openRequested;
 
-    public NewProjectDialog(ProjectStore store, Notifier notifier, Consumer<Project> onCreated) {
+    public NewProjectDialog(ProjectStore store, Notifier notifier, IconWidgets icons,
+                            Consumer<Project> onCreated) {
+        this.browser = new FileBrowser(icons);
         this.store = store;
         this.notifier = notifier;
         this.onCreated = onCreated;
@@ -59,6 +63,7 @@ public final class NewProjectDialog {
         }
         renderFields();
         renderValidationAndButtons();
+        browser.render();
         ImGui.endPopup();
     }
 
@@ -78,8 +83,8 @@ public final class NewProjectDialog {
     private void browseParent() {
         Path start = currentParent().filter(Files::isDirectory)
                 .orElse(Path.of(System.getProperty("user.home")));
-        FileDialogs.pickFolder(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_CHOOSE_PARENT_FOLDER), start)
-                .ifPresent(path -> parentInput.set(path.toString()));
+        browser.chooseFolder(I18n.translate(TextKey.EDITOR_NEW_PROJECT_DIALOG_CHOOSE_PARENT_FOLDER),
+                start, path -> parentInput.set(path.toString()));
     }
 
     private void renderValidationAndButtons() {

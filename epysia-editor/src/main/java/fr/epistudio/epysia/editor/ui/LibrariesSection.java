@@ -1,11 +1,12 @@
 package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.icons.IconWidgets;
+import fr.epistudio.epysia.editor.ui.files.FileBrowser;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.scripts.LibraryResolutionTask;
-import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.project.ProjectDependencies;
 import fr.epistudio.epysia.project.ProjectLibraries;
@@ -23,19 +24,21 @@ import java.util.jar.JarFile;
 public final class LibrariesSection {
 
     private static final String PICK_TITLE = "Add library";
-    private static final String PICK_PATTERN = "*" + ProjectLibraries.ARCHIVE_SUFFIX;
-    private static final String PICK_DESCRIPTION = "Jar archives";
+    private static final java.util.Set<String> ARCHIVE_EXTENSIONS =
+            java.util.Set.of(ProjectLibraries.ARCHIVE_SUFFIX);
     private static final long BYTES_PER_KILOBYTE = 1024L;
     private static final int COORDINATE_CAPACITY = 160;
     private static final float COORDINATE_INPUT_WIDTH = 320.0f;
 
+    private final FileBrowser browser;
     private final Notifier notifier;
     private final Runnable onLibrariesChanged;
     private final LibraryResolutionTask resolution = new LibraryResolutionTask();
     private final ImString coordinateInput = new ImString(COORDINATE_CAPACITY);
     private Optional<Path> pendingRemoval = Optional.empty();
 
-    public LibrariesSection(Notifier notifier, Runnable onLibrariesChanged) {
+    public LibrariesSection(IconWidgets icons, Notifier notifier, Runnable onLibrariesChanged) {
+        this.browser = new FileBrowser(icons);
         this.notifier = notifier;
         this.onLibrariesChanged = onLibrariesChanged;
     }
@@ -46,6 +49,7 @@ public final class LibrariesSection {
         renderDependencies(project);
         ImGui.separator();
         renderArchives(project);
+        browser.render();
     }
 
     private void renderArchives(Project project) {
@@ -158,12 +162,11 @@ public final class LibrariesSection {
     }
 
     private void addLibrary(Project project) {
-        Optional<Path> picked = FileDialogs.pickFile(PICK_TITLE, project.rootDirectory(),
-                PICK_PATTERN, PICK_DESCRIPTION);
-        if (picked.isEmpty()) {
-            return;
-        }
-        Path source = picked.get();
+        browser.chooseFile(PICK_TITLE, project.rootDirectory(), ARCHIVE_EXTENSIONS,
+                source -> acceptLibrary(project, source));
+    }
+
+    private void acceptLibrary(Project project, Path source) {
         Optional<String> rejection = rejectionFor(project, source);
         if (rejection.isPresent()) {
             notifier.show(rejection.get());
