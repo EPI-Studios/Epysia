@@ -4,7 +4,8 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import org.joml.Vector4f;
 
-@EpysiaComponent(name = "Ui Label", category = "UI")
+@EpysiaComponent(name = "Ui Label", category = "UI",
+        description = "Draws a line of text with the element's font and color.")
 public final class UiLabel extends UiElement {
     @Export(label = "Text")
     private String text = "Label";

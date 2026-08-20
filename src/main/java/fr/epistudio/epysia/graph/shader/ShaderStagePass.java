@@ -766,13 +766,34 @@ final class ShaderStagePass {
     }
 
     private static String statementBody(String code, PinType outputType) {
+        if (!code.contains(";")) {
+            return "return " + constructed(code, outputType) + ";";
+        }
+        if (isSingleReturn(code)) {
+            return "return " + constructed(returnedExpression(code), outputType) + ";";
+        }
         if (code.contains("return")) {
             return code;
         }
-        if (!code.contains(";")) {
-            return "return (" + code + ");";
-        }
         return ShaderExpression.glslType(outputType) + " result = "
                 + ShaderExpression.glslType(outputType) + "(0.0);\n" + code + "\nreturn result;";
+    }
+
+    private static boolean isSingleReturn(String code) {
+        String trimmed = code.strip();
+        return trimmed.startsWith("return ") && trimmed.endsWith(";")
+                && trimmed.indexOf(';') == trimmed.length() - 1;
+    }
+
+    private static String returnedExpression(String code) {
+        String trimmed = code.strip();
+        return trimmed.substring("return ".length(), trimmed.length() - 1).strip();
+    }
+
+    private static String constructed(String expression, PinType outputType) {
+        if (outputType == PinType.FLOAT) {
+            return "(" + expression + ")";
+        }
+        return ShaderExpression.glslType(outputType) + "(" + expression + ")";
     }
 }

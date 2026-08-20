@@ -51,8 +51,6 @@ dependencies {
 
     implementation 'de.javagl:jgltf-model:2.0.4'
     implementation 'org.apache.maven.resolver:maven-resolver-supplier:1.9.22'
-    implementation 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.20'
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.20'
 
     testImplementation platform('org.junit:junit-bom:6.0.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -63,12 +61,10 @@ dependencies {
     implementation 'org.lwjgl:lwjgl-glfw'
     implementation 'org.lwjgl:lwjgl-opengl'
     implementation 'org.lwjgl:lwjgl-stb'
-    implementation 'org.lwjgl:lwjgl-tinyfd'
     runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
     runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
-    runtimeOnly "org.lwjgl:lwjgl-tinyfd::${lwjglNatives}"
 }
 
 application {

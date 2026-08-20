@@ -14,7 +14,8 @@ import java.util.Optional;
 import fr.epistudio.epysia.render.material.LitMaterial;
 import fr.epistudio.epysia.render.texture.Texture2D;
 
-@EpysiaComponent(name = "Multi Mesh Renderer", category = "Rendering")
+@EpysiaComponent(name = "Multi Mesh Renderer", category = "Rendering",
+        description = "Draws thousands of copies of one mesh in a single call.")
 public final class MultiMeshRenderer extends Component implements MeshRenderSource {
 
     private static final int MATRIX_FLOAT_COUNT = 16;

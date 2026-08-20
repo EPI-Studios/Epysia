@@ -25,6 +25,9 @@ public final class Reflection {
     }
 
     public static List<ExportedProperty> scan(Object owner) {
+        if (owner instanceof DynamicProperties dynamic) {
+            return dynamic.exportedProperties();
+        }
         List<ExportedProperty> properties = new ArrayList<>();
         Class<?> currentClass = owner.getClass();
         while (currentClass != null && currentClass != Object.class) {

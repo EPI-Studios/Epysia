@@ -27,6 +27,9 @@ public final class AssetScanner {
 
     public static List<AssetEntry> listDirectory(Path directory) throws IOException {
         List<AssetEntry> entries = new ArrayList<>();
+        for (Path child : listSubdirectories(directory)) {
+            entries.add(AssetEntry.folder(child, modifiedMillisOf(child)));
+        }
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, Files::isRegularFile)) {
             for (Path path : stream) {
                 toEntry(path).ifPresent(entries::add);
@@ -114,6 +117,9 @@ public final class AssetScanner {
         }
         if (lower.endsWith(".glsl") || lower.endsWith(".vert") || lower.endsWith(".frag")) {
             return AssetType.SHADER;
+        }
+        if (lower.endsWith(".epynoise") || lower.endsWith(".epygradient") || lower.endsWith(".epycurve")) {
+            return AssetType.TEXTURE;
         }
         if (lower.endsWith(".epyprefab")) {
             return AssetType.PREFAB;

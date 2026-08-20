@@ -19,20 +19,30 @@ public final class EventBus {
     }
 
     private final Map<Class<?>, List<Registration<?>>> byEventType = new HashMap<>();
-    private final Deque<Object> deferred = new ArrayDeque<>();
+    private final Deque<Pending> deferred = new ArrayDeque<>();
 
     public <T> EventSubscription subscribe(Class<T> eventType, Consumer<T> listener) {
-        return subscribe(eventType, listener, null);
+        return subscribe(eventType, listener, null, null);
     }
 
     public <T> EventSubscription subscribe(IComponent owner, Class<T> eventType,
                                            Consumer<T> listener) {
-        return subscribe(eventType, listener, owner);
+        return subscribe(eventType, listener, owner, null);
+    }
+
+    public <T> EventSubscription subscribeFrom(Object sender, Class<T> eventType,
+                                               Consumer<T> listener) {
+        return subscribe(eventType, listener, null, sender);
+    }
+
+    public <T> EventSubscription subscribeFrom(IComponent owner, Object sender, Class<T> eventType,
+                                               Consumer<T> listener) {
+        return subscribe(eventType, listener, owner, sender);
     }
 
     private <T> EventSubscription subscribe(Class<T> eventType, Consumer<T> listener,
-                                            IComponent owner) {
-        Registration<T> registration = new Registration<>(listener, owner);
+                                            IComponent owner, Object sender) {
+        Registration<T> registration = new Registration<>(listener, owner, sender);
         byEventType.computeIfAbsent(eventType, type -> new ArrayList<>()).add(registration);
         return () -> remove(eventType, registration);
     }
@@ -45,12 +55,18 @@ public final class EventBus {
     }
 
     public void publish(Object event) {
+        publishFrom(null, event);
+    }
+
+    public void publishFrom(Object sender, Object event) {
         List<Registration<?>> registrations = byEventType.get(event.getClass());
         if (registrations == null || registrations.isEmpty()) {
             return;
         }
         for (Registration<?> registration : List.copyOf(registrations)) {
-            deliver(registration, event, registrations);
+            if (registration.accepts(sender)) {
+                deliver(registration, event, registrations);
+            }
         }
     }
 
@@ -65,12 +81,17 @@ public final class EventBus {
     }
 
     public void post(Object event) {
-        deferred.add(event);
+        postFrom(null, event);
+    }
+
+    public void postFrom(Object sender, Object event) {
+        deferred.add(new Pending(sender, event));
     }
 
     public void deliverDeferred() {
         while (!deferred.isEmpty()) {
-            publish(deferred.poll());
+            Pending pending = deferred.poll();
+            publishFrom(pending.sender(), pending.event());
         }
     }
 
@@ -84,9 +105,16 @@ public final class EventBus {
         deferred.clear();
     }
 
-    private record Registration<T>(Consumer<T> listener, IComponent owner) {
+    private record Registration<T>(Consumer<T> listener, IComponent owner, Object sender) {
         boolean isDead() {
             return owner != null && !owner.isAlive();
         }
+
+        boolean accepts(Object publisher) {
+            return sender == null || sender == publisher;
+        }
+    }
+
+    private record Pending(Object sender, Object event) {
     }
 }

@@ -1,0 +1,39 @@
+{
+  "displayName": "Python",
+  "style": "indented",
+  "lineComment": "#",
+  "importStatementSuffix": "",
+  "keywords": [
+    "and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def", "del",
+    "elif", "else", "except", "False", "finally", "for", "from", "global", "if", "import", "in",
+    "is", "lambda", "match", "None", "nonlocal", "not", "or", "pass", "raise", "return", "self",
+    "True", "try", "while", "with", "yield"
+  ],
+  "declarationKeywords": [
+    "async", "class", "def", "from", "global", "import", "lambda", "nonlocal"
+  ],
+  "implicitPackages": ["builtins", "java.lang"],
+  "globalNames": [
+    "Behaviour", "Vec3", "component", "export", "ZERO", "UP", "RIGHT", "FORWARD"
+  ],
+  "receiverTypes": {
+    "self.transform": "fr.epistudio.epysia.components.transforms.Transform3D",
+    "self.object": "fr.epistudio.epysia.gameobjects.GameObject",
+    "self.services": "fr.epistudio.epysia.EngineServices",
+    "input": "fr.epistudio.epysia.input.InputState"
+  },
+  "receiverExtras": {
+    "self": [
+      "position", "transform", "object", "services", "game_object", "find",
+      "on_start", "on_update", "on_fixed_update", "on_destroy"
+    ],
+    "self.transform": [
+      "position", "scale", "world_position", "move", "rotate", "look_at"
+    ],
+    "self.position": ["x", "y", "z", "length", "normalized", "dot", "cross"],
+    "input": [
+      "key", "key_pressed", "key_released", "mouse", "mouse_pressed", "cursor",
+      "mouse_delta", "scroll"
+    ]
+  }
+}

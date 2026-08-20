@@ -5,7 +5,8 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import fr.epistudio.epysia.components.IComponent;
 
-@EpysiaComponent(name = "Network Object", category = "Networking")
+@EpysiaComponent(name = "Network Object", category = "Networking",
+        description = "Gives the object a network identity and an owner. Every replicated object needs one.")
 public final class NetworkObject extends Component {
     public static final int SERVER_PEER = 0;
     public static final int UNASSIGNED_ID = 0;

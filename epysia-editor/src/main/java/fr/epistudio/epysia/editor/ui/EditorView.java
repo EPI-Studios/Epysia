@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.inspector.InspectorDependencies;
+import fr.epistudio.epysia.editor.ui.settings.ScriptingSection;
 import fr.epistudio.epysia.editor.ui.kit.Toggles;
 import fr.epistudio.epysia.editor.ui.kit.Toolbars;
 import fr.epistudio.epysia.assets.AssetUri;
@@ -9,6 +10,8 @@ import fr.epistudio.epysia.editor.assets.ImagePreviewTexture;
 import fr.epistudio.epysia.editor.commands.CommandRegistry;
 import fr.epistudio.epysia.editor.commands.EditorCommand;
 import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
+import fr.epistudio.epysia.editor.assets.AssetReloadService;
+import fr.epistudio.epysia.editor.assets.ProceduralTexturePreview;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
 import fr.epistudio.epysia.render.backend.RenderBackend;
 import fr.epistudio.epysia.render.backend.SamplerFilter;
@@ -37,6 +40,7 @@ import fr.epistudio.epysia.editor.preview.ShaderGraphPreviewService;
 import fr.epistudio.epysia.editor.preview.VfxPreviewPanel;
 import fr.epistudio.epysia.gpu.GpuLauncher;
 import fr.epistudio.epysia.editor.runtime.EditorCamera;
+import fr.epistudio.epysia.editor.runtime.ToolScriptTicker;
 import fr.epistudio.epysia.editor.runtime.EditorScene3DHost;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.scene.SceneDocument;
@@ -46,7 +50,6 @@ import fr.epistudio.epysia.editor.scripts.IdeLauncher;
 import fr.epistudio.epysia.editor.scripts.IdeProjectWriter;
 import fr.epistudio.epysia.editor.scripts.ScriptService;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
-import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.editor.shell.ImGuiShell;
 import fr.epistudio.epysia.components.MeshRenderer;
 import fr.epistudio.epysia.components.SpriteRenderer;
@@ -54,6 +57,7 @@ import fr.epistudio.epysia.components.TilemapRenderer;
 import fr.epistudio.epysia.components.transforms.Transform2D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.graph.GraphSystem;
+import fr.epistudio.epysia.editor.ui.files.FileBrowser;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.input.action.InputAction;
 import fr.epistudio.epysia.i18n.TextKey;
@@ -111,7 +115,6 @@ public final class EditorView implements FrameView {
     private static final String PREFAB_EXTENSION = ".epyprefab";
     private static final String ABOUT_POPUP_ID = "about-epysia";
     private static final String CLOSE_SCENE_POPUP_ID = "close-scene-unsaved-changes";
-    private static final ScriptLanguages SCRIPT_LANGUAGES = ScriptLanguages.discover();
     private static final Set<String> SHADER_FILE_EXTENSIONS = Set.of(".glsl", ".vert", ".frag");
     private static final int HOST_WINDOW_FLAGS = ImGuiWindowFlags.NoTitleBar
             | ImGuiWindowFlags.NoCollapse
@@ -123,6 +126,7 @@ public final class EditorView implements FrameView {
             | ImGuiWindowFlags.NoSavedSettings;
 
 
+    private final FileBrowser browser;
     private final Project project;
     private final ComponentRegistry componentRegistry;
     private final ProjectStore projectStore;
@@ -165,9 +169,16 @@ public final class EditorView implements FrameView {
     private final SettingsDialog settingsDialog;
     private final PostEffectsSection settingsPostEffectsSection;
     private final LibrariesSection librariesSection;
+    private final ScriptingSection scriptingSection;
     private final MeshBakeDialog meshBakeDialog;
     private final ExportGameDialog exportGameDialog;
+    private final ToolScriptTicker toolScripts = new ToolScriptTicker();
+    private final AssetReloadService assetReloads;
+    private final ProceduralTexturePreview proceduralPreview;
     private final NameDialog nameDialog = new NameDialog("##editor-name-dialog");
+    private final NewScriptDialog newScriptDialog =
+            new NewScriptDialog(this::scriptLanguages, this::createNewScript);
+    private Optional<GameObject> scriptTarget = Optional.empty();
     private final ThumbnailCache thumbnailCache;
     private final ImagePreviewTexture imagePreview;
     private final MeshThumbnailer meshThumbnailer;
@@ -216,7 +227,10 @@ public final class EditorView implements FrameView {
         this.graphEditorView = new GraphEditorView(componentRegistry, toasts, active,
                 thumbnailCache, this::onShaderGraphGenerated, shaderGraphPreviews, vfxPreviewPanel,
                 new AssetPicker(project), () -> preferences.shaderNodePreviewsEnabled(),
-                this::onShaderNodePreviewsToggled, this::projectActionNames);
+                this::onShaderNodePreviewsToggled, this::projectActionNames, icons);
+        this.proceduralPreview = new ProceduralTexturePreview(sceneHost.backend());
+        this.assetReloads = new AssetReloadService(project.rootDirectory(), sceneHost::engine,
+                workspace::documents);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
                 this::onScriptMessage, sceneHost::applyProjectRenderSetups);
         this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, tileBrush);
@@ -231,10 +245,11 @@ public final class EditorView implements FrameView {
         this.inspectorView = new InspectorView(
                 new InspectorDependencies(active, componentRegistry, toasts, icons, thumbnailCache,
                         project, objectFactory, sceneHost.engine()),
-                new AssetPicker(project), this::createScriptAndAttach,
+                new AssetPicker(project), this::promptNewScriptFor,
                 graphEditorView::open, this::selectedBrowserAssetPath,
                 new AtlasInspectorSection(spriteEditorWindow::open),
                 new TextureInspectorSection(imagePreview, this::onTextureFilterChanged),
+                new ProceduralTextureSection(proceduralPreview, toasts, this::onProceduralTextureSaved),
                 tilemapDockView::focus);
         this.consoleView = new ConsoleView(playController, editorConsole, project.scriptsDirectory(),
                 location -> scriptEditorView.open(location.file(), location.line()));
@@ -242,15 +257,18 @@ public final class EditorView implements FrameView {
         this.assetBrowserView = new AssetBrowserView(project, toasts, icons, thumbnailCache, meshThumbnailer,
                 scriptEditorView::open, meshBakeDialog::openFor,
                 this::instantiatePrefabAtOrigin, this::openScenePath, this::attachScriptToSelected,
-                graphEditorView::open, spriteEditorWindow::open, importPipeline);
+                graphEditorView::open, spriteEditorWindow::open, importPipeline,
+                this::scriptLanguages);
         this.settingsDialog = new SettingsDialog(this::onSettingsSaved, this::onPreferencesSaved,
                 this::onNetworkSaved, this::onSteamSaved, this::onRenderSaved,
                 this::onViewportTuningChanged, icons);
         this.settingsPostEffectsSection = new PostEffectsSection(project, thumbnailCache);
-        this.librariesSection = new LibrariesSection(toasts, this::reloadScripts);
+        this.browser = new FileBrowser(icons);
+        this.librariesSection = new LibrariesSection(icons, toasts, this::reloadScripts);
+        this.scriptingSection = new ScriptingSection(toasts, this::reloadScripts);
         this.profilerView = new ProfilerView(sceneHost, shell, active, viewportView, panelTimings);
         this.lightingView = new LightingView(sceneHost, active, project.rootDirectory());
-        this.exportGameDialog = new ExportGameDialog(project, toasts);
+        this.exportGameDialog = new ExportGameDialog(project, toasts, icons);
         shell.setFileDropHandler(assetBrowserView::importExternalFiles);
         finishSetup();
     }
@@ -382,6 +400,7 @@ public final class EditorView implements FrameView {
         advanceEditModeAnimation(deltaSeconds);
         tickEditorComponents(deltaSeconds);
         pollBackgroundState(deltaSeconds);
+        pollAssetChanges(deltaSeconds);
         renderMainMenuBar();
         renderHostWindow();
         renderPanels(deltaSeconds);
@@ -398,18 +417,35 @@ public final class EditorView implements FrameView {
         sceneHost.advanceAnimation(deltaSeconds);
     }
 
+    private void pollAssetChanges(float deltaSeconds) {
+        if (playSession.isActive() || playController.isRunning()) {
+            return;
+        }
+        List<Path> reloaded = assetReloads.poll(deltaSeconds);
+        if (reloaded.isEmpty()) {
+            return;
+        }
+        sceneHost.requestViewportRedraw();
+        toasts.show(reloaded.size() == 1
+                ? I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_ASSET_RELOADED,
+                        reloaded.get(0).getFileName())
+                : I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_ASSETS_RELOADED, reloaded.size()));
+    }
+
     private void tickEditorComponents(float deltaSeconds) {
         if (playSession.isActive() || playController.isRunning()) {
+            toolScripts.reset();
             return;
         }
         Scene scene = workspace.active().scene();
         List<EditorTickable> tickables = List.copyOf(scene.componentsOf(EditorTickable.class));
-        if (tickables.isEmpty()) {
-            return;
-        }
         sceneHost.engine().backgroundTasks().deliverCompleted();
         for (EditorTickable tickable : tickables) {
             tickEditorComponent(tickable, deltaSeconds);
+        }
+        boolean toolsRan = toolScripts.tick(scene, sceneHost.engine(), deltaSeconds, toasts::show);
+        if (tickables.isEmpty() && !toolsRan) {
+            return;
         }
         scene.advanceTick();
         sceneHost.requestViewportRedraw();
@@ -512,8 +548,10 @@ public final class EditorView implements FrameView {
         meshBakeDialog.render();
         exportGameDialog.render();
         nameDialog.render();
+        newScriptDialog.render();
         renderAboutPopup();
         renderCloseScenePopup();
+        browser.render();
     }
 
     private void renderMainMenuBar() {
@@ -585,12 +623,9 @@ public final class EditorView implements FrameView {
     }
 
     private void renderFileScriptItems() {
-        for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
-            String label = I18n.translate(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT)
-                    + " (" + language.displayName() + ")###menu-file-new-script-" + language.displayName();
-            if (ImGui.menuItem(label)) {
-                promptNewScript(language);
-            }
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_NEW_SCRIPT,
+                "menu-file-new-script"))) {
+            promptNewScript();
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_FILE_RELOAD_SCRIPTS,
                 "menu-file-reload-scripts"))) {
@@ -1136,9 +1171,7 @@ public final class EditorView implements FrameView {
 
     private String objectCountLabel() {
         int count = workspace.active().scene().gameObjects().size();
-        String label = I18n.translate(count == 1
-                ? TextKey.EDITOR_EDITOR_VIEW_STATUS_OBJECT_COUNT_ONE
-                : TextKey.EDITOR_EDITOR_VIEW_STATUS_OBJECT_COUNT_MANY, count);
+        String label = I18n.plural(TextKey.EDITOR_EDITOR_VIEW_STATUS_OBJECT_COUNT, count);
         int selectedCount = workspace.active().selection().count();
         if (selectedCount > 1) {
             return label + "  |  " + I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_SELECTED_COUNT,
@@ -1270,10 +1303,8 @@ public final class EditorView implements FrameView {
     }
 
     private void openSceneDialog() {
-        FileDialogs.pickFile(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_TITLE),
-                        project.scenesDirectory(), "*" + Project.SCENE_EXTENSION,
-                        I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_FILTER))
-                .ifPresent(this::openScenePath);
+        browser.chooseFile(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_OPEN_SCENE_DIALOG_TITLE),
+                project.scenesDirectory(), Set.of(Project.SCENE_EXTENSION), this::openScenePath);
     }
 
     private void openScenePath(Path path) {
@@ -1403,11 +1434,7 @@ public final class EditorView implements FrameView {
     }
 
     private Optional<String> readPrefabText(String prefabSource) {
-        Path direct = Path.of(prefabSource);
-        Optional<Path> file = Files.isRegularFile(direct)
-                ? Optional.of(direct)
-                : AssetUri.parse(prefabSource).flatMap(uri -> project.locator().file(uri));
-        return file.flatMap(EditorView::readFileQuietly);
+        return project.locator().file(prefabSource).flatMap(EditorView::readFileQuietly);
     }
 
     private static Optional<String> readFileQuietly(Path path) {
@@ -1419,21 +1446,22 @@ public final class EditorView implements FrameView {
     }
 
     private void instantiatePrefabAtOrigin(Path prefabPath) {
-        history().execute(new InstantiatePrefabCommand(prefabPath, new Vector3f()));
+        history().execute(workspace.active().selection().get()
+                .map(parent -> new InstantiatePrefabCommand(prefabPath, parent))
+                .orElseGet(() -> new InstantiatePrefabCommand(prefabPath, new Vector3f())));
     }
 
-    private void promptNewScript(ScriptLanguage language) {
-        nameDialog.open(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_NEW_SCRIPT_TITLE, language.displayName()),
-                I18n.translate(TextKey.EDITOR_EDITOR_VIEW_SCRIPT_DEFAULT_NAME),
-                requestedName -> createNewScript(language, requestedName));
+    private void promptNewScript() {
+        scriptTarget = Optional.empty();
+        newScriptDialog.open();
     }
 
-    private void createNewScript(ScriptLanguage language, String requestedName) {
-        String className = requestedName.trim();
-        if (!isScriptClassName(className)) {
-            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_INVALID_SCRIPT_NAME, requestedName));
-            return;
-        }
+    private void promptNewScriptFor(GameObject target) {
+        scriptTarget = Optional.of(target);
+        newScriptDialog.open();
+    }
+
+    private void createNewScript(ScriptLanguage language, String className) {
         try {
             Files.createDirectories(project.scriptsDirectory());
             Path target = project.scriptsDirectory().resolve(className + language.sourceExtension());
@@ -1443,8 +1471,9 @@ public final class EditorView implements FrameView {
                 return;
             }
             Files.writeString(target, language.behaviourTemplate(className));
-            scriptEditorView.open(target);
             reloadScripts();
+            scriptTarget.ifPresent(owner -> attachScriptComponent(className, owner));
+            scriptEditorView.open(target);
         } catch (IOException error) {
             toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_CREATION_FAILED,
                     error.getMessage()));
@@ -1456,26 +1485,6 @@ public final class EditorView implements FrameView {
             return false;
         }
         return name.chars().allMatch(Character::isJavaIdentifierPart);
-    }
-
-    private void createScriptAndAttach(String className, GameObject target) {
-        try {
-            Files.createDirectories(project.scriptsDirectory());
-            ScriptLanguage language = SCRIPT_LANGUAGES.defaultLanguage();
-            Path file = project.scriptsDirectory().resolve(className + language.sourceExtension());
-            if (Files.exists(file)) {
-                toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_ALREADY_EXISTS, className));
-                scriptEditorView.open(file);
-                return;
-            }
-            Files.writeString(file, language.behaviourTemplate(className));
-            reloadScripts();
-            attachScriptComponent(className, target);
-            scriptEditorView.open(file);
-        } catch (IOException error) {
-            toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SCRIPT_CREATION_FAILED,
-                    error.getMessage()));
-        }
     }
 
     private void attachScriptComponent(String className, GameObject target) {
@@ -1505,7 +1514,7 @@ public final class EditorView implements FrameView {
     }
 
     private void attachScriptToSelected(Path scriptPath) {
-        String className = SCRIPT_LANGUAGES.baseNameOf(scriptPath);
+        String className = scriptLanguages().baseNameOf(scriptPath);
         Optional<GameObject> selected = workspace.active().selection().get();
         if (selected.isEmpty()) {
             toasts.show(I18n.translate(TextKey.EDITOR_EDITOR_VIEW_TOAST_SELECT_GAMEOBJECT_FIRST));
@@ -1530,7 +1539,7 @@ public final class EditorView implements FrameView {
 
     private void onScriptFileSaved(Path savedFile) {
         String name = savedFile.getFileName().toString().toLowerCase(Locale.ROOT);
-        if (SCRIPT_LANGUAGES.sourceExtensions().stream().anyMatch(name::endsWith)) {
+        if (scriptLanguages().sourceExtensions().stream().anyMatch(name::endsWith)) {
             reloadScripts();
         }
         if (SHADER_FILE_EXTENSIONS.stream().anyMatch(name::endsWith)) {
@@ -1544,6 +1553,10 @@ public final class EditorView implements FrameView {
         refreshScriptSymbols();
         assetBrowserView.refreshAssets();
         graphEditorView.refreshReflectionNodes();
+    }
+
+    private ScriptLanguages scriptLanguages() {
+        return scriptService.languages();
     }
 
     private void refreshScriptSymbols() {
@@ -1573,6 +1586,7 @@ public final class EditorView implements FrameView {
                 () -> workspace.active().scene().postEffects(),
                 () -> workspace.active().markDirty());
         settingsDialog.attachLibraries(librariesSection);
+        settingsDialog.attachScripting(scriptingSection);
         settingsDialog.openFor(projectStore.readSettings(project), preferences, project,
                 projectStore.readQuality(project), projectStore.readInputActions(project),
                 projectStore.readNetwork(project), projectStore.readSteam(project),
@@ -1647,6 +1661,11 @@ public final class EditorView implements FrameView {
     private void onViewportTuningChanged(float overlayThickness, float gridFadeDistance) {
         viewportView.setOverlayThicknessMultiplier(overlayThickness);
         viewportView.setGridFadeDistance(gridFadeDistance);
+    }
+
+    private void onProceduralTextureSaved(Path file) {
+        sceneHost.engine().assets().invalidate(project.locator().fromFile(file));
+        sceneHost.requestViewportRedraw();
     }
 
     private void onTextureFilterChanged(Path textureFile) {

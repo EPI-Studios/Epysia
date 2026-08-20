@@ -11,7 +11,8 @@ import org.joml.Vector3fc;
 
 import java.util.Objects;
 
-@EpysiaComponent(name = "Slider Joint", category = "Physics")
+@EpysiaComponent(name = "Slider Joint", category = "Physics",
+        description = "Movement locked to one axis, with optional limits and a motor.")
 @RequiresComponent(Transform3D.class)
 public final class SliderJoint extends JointComponent {
     @Export(label = "Axis")

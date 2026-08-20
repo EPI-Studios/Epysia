@@ -10,7 +10,8 @@ import org.joml.Vector3fc;
 
 import java.util.Objects;
 
-@EpysiaComponent(name = "Ball Joint", category = "Physics")
+@EpysiaComponent(name = "Ball Joint", category = "Physics",
+        description = "Free rotation around one point, with an optional cone limit.")
 @RequiresComponent(Transform3D.class)
 public final class BallJoint extends JointComponent {
     @Export(label = "Use Cone Limit")

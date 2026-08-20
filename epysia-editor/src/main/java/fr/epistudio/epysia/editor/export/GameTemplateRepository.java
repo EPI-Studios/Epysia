@@ -10,7 +10,9 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -30,8 +32,11 @@ public final class GameTemplateRepository {
         this.cacheRoot = cacheRoot;
     }
 
-    public Path resolve(TargetPlatform platform, String version, String repository, ExportProgress progress)
-            throws IOException {
+    public Path resolve(TargetPlatform platform, String version, String repository,
+                        Optional<Path> localArchive, ExportProgress progress) throws IOException {
+        if (localArchive.isPresent()) {
+            return unpackLocal(platform, localArchive.get(), progress);
+        }
         Path destination = cacheRoot.resolve(platform.identifier()).resolve(version);
         if (containsFiles(destination)) {
             progress.report(ExportStage.UNPACKING_TEMPLATE, 1.0f);
@@ -41,6 +46,35 @@ public final class GameTemplateRepository {
         unzip(archive, destination, progress);
         Files.deleteIfExists(archive);
         return destination;
+    }
+
+    public Path prefetch(String version, String repository, ExportProgress progress) throws IOException {
+        for (TargetPlatform platform : TargetPlatform.values()) {
+            resolve(platform, version, repository, Optional.empty(), progress);
+        }
+        return cacheRoot;
+    }
+
+    private Path unpackLocal(TargetPlatform platform, Path archive, ExportProgress progress)
+            throws IOException {
+        if (!Files.isRegularFile(archive)) {
+            throw new IOException("No template archive at " + archive);
+        }
+        Path destination = cacheRoot.resolve("local").resolve(platform.identifier());
+        deleteRecursively(destination);
+        unzip(archive, destination, progress);
+        return destination;
+    }
+
+    private static void deleteRecursively(Path directory) throws IOException {
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(directory)) {
+            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
     }
 
     private static boolean containsFiles(Path directory) throws IOException {

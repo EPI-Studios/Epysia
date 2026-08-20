@@ -1,6 +1,8 @@
 rootProject.name = 'Epysia'
 
 include 'epysia-editor'
+include 'lang:kotlin'
+include 'lang:python'
 def box3dLocation = [
         file('box3d-java'),
         file('../box3d-java'),

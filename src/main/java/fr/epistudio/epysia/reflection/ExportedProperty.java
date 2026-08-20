@@ -28,16 +28,24 @@ public final class ExportedProperty {
 
     private final Object owner;
     private final Field field;
-    private final Export annotation;
+    private final PropertyBinding binding;
     private final Kind kind;
     private final String label;
 
     public ExportedProperty(Object owner, Field field, Export annotation, Kind kind) {
         this.owner = owner;
         this.field = field;
-        this.annotation = annotation;
+        this.binding = new FieldBinding(owner, field, annotation);
         this.kind = kind;
         this.label = annotation.label().isEmpty() ? prettify(field.getName()) : annotation.label();
+    }
+
+    public ExportedProperty(Object owner, PropertyBinding binding, Kind kind) {
+        this.owner = owner;
+        this.field = null;
+        this.binding = binding;
+        this.kind = kind;
+        this.label = binding.label().isEmpty() ? prettify(binding.name()) : binding.label();
     }
 
     public String label() {
@@ -49,67 +57,47 @@ public final class ExportedProperty {
     }
 
     public float min() {
-        return annotation.min();
+        return binding.min();
     }
 
     public float max() {
-        return annotation.max();
+        return binding.max();
     }
 
     public float step() {
-        return annotation.step();
+        return binding.step();
     }
 
     public boolean isColor() {
-        return annotation.color();
+        return binding.color();
     }
 
     public String[] assetExtensions() {
-        return annotation.assetExtensions();
+        return binding.assetExtensions();
     }
 
     public boolean isLayerMask() {
-        return annotation.layerMask();
+        return binding.layerMask();
     }
 
     public Object read() {
-        try {
-            return field.get(owner);
-        } catch (IllegalAccessException exception) {
-            throw new RuntimeException("Cannot read field " + field.getName(), exception);
-        }
+        return binding.read();
     }
 
     public void writeFloat(float value) {
-        try {
-            field.setFloat(owner, value);
-        } catch (IllegalAccessException exception) {
-            throw new RuntimeException("Cannot write float " + field.getName(), exception);
-        }
+        binding.write(value);
     }
 
     public void writeInt(int value) {
-        try {
-            field.setInt(owner, value);
-        } catch (IllegalAccessException exception) {
-            throw new RuntimeException("Cannot write int " + field.getName(), exception);
-        }
+        binding.write(value);
     }
 
     public void writeBoolean(boolean value) {
-        try {
-            field.setBoolean(owner, value);
-        } catch (IllegalAccessException exception) {
-            throw new RuntimeException("Cannot write boolean " + field.getName(), exception);
-        }
+        binding.write(value);
     }
 
     public void writeObject(Object value) {
-        try {
-            field.set(owner, value);
-        } catch (IllegalAccessException exception) {
-            throw new RuntimeException("Cannot write object " + field.getName(), exception);
-        }
+        binding.write(value);
     }
 
     public Object owner() {
@@ -117,23 +105,23 @@ public final class ExportedProperty {
     }
 
     public String fieldName() {
-        return field.getName();
+        return binding.name();
     }
 
     public Class<?> fieldType() {
-        return field.getType();
+        return binding.type();
     }
 
     public Optional<Class<?>> elementType() {
-        return Reflection.elementTypeOf(field);
+        return field == null ? binding.elementType() : Reflection.elementTypeOf(field);
     }
 
     public boolean isHiddenInEditor() {
-        return field.isAnnotationPresent(HiddenInEditor.class);
+        return binding.hidden();
     }
 
     public Object[] enumConstants() {
-        Class<?> type = field.getType();
+        Class<?> type = binding.type();
         if (!type.isEnum()) {
             return new Object[0];
         }

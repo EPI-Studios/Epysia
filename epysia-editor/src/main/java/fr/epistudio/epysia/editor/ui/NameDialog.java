@@ -1,10 +1,9 @@
 package fr.epistudio.epysia.editor.ui;
 
-import fr.epistudio.epysia.editor.shell.EditorScale;
+import fr.epistudio.epysia.editor.ui.kit.Dialogs;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImString;
 
 import java.util.function.Consumer;
@@ -12,7 +11,7 @@ import java.util.function.Consumer;
 public final class NameDialog {
 
     private static final int NAME_CAPACITY = 256;
-    private static final float FIELD_WIDTH = 320.0f;
+    private static final float DIALOG_WIDTH = 400.0f;
 
     private final String popupId;
     private final ImString nameInput = new ImString(NAME_CAPACITY);
@@ -39,13 +38,14 @@ public final class NameDialog {
             ImGui.openPopup(popupId);
             openRequested = false;
         }
-        if (!ImGui.beginPopupModal(popupId, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (!Dialogs.begin(popupId, DIALOG_WIDTH)) {
             return;
         }
-        ImGui.textUnformatted(title);
+        Dialogs.title(title);
         renderField();
-        renderButtons();
-        ImGui.endPopup();
+        Dialogs.gap();
+        renderFooter();
+        Dialogs.end();
     }
 
     private void renderField() {
@@ -53,28 +53,33 @@ public final class NameDialog {
             ImGui.setKeyboardFocusHere();
             focusRequested = false;
         }
-        ImGui.setNextItemWidth(EditorScale.of(FIELD_WIDTH));
-        if (TextFields.inputSubmitted("##name", nameInput)) {
+        if (TextFields.underlinedSubmitted("##name", "", nameInput, ImGui.getContentRegionAvailX())) {
             accept();
         }
     }
 
-    private void renderButtons() {
-        if (ImGui.button(I18n.label(TextKey.EDITOR_NAME_DIALOG_OK, "name-dialog-ok"))) {
-            accept();
+    private void renderFooter() {
+        Dialogs.alignFooter(2);
+        if (Dialogs.button(I18n.label(TextKey.EDITOR_NAME_DIALOG_CANCEL, "name-dialog-cancel"))) {
+            ImGui.closeCurrentPopup();
         }
         ImGui.sameLine();
-        if (ImGui.button(I18n.label(TextKey.EDITOR_NAME_DIALOG_CANCEL, "name-dialog-cancel"))) {
-            ImGui.closeCurrentPopup();
+        if (Dialogs.primaryButton(I18n.label(TextKey.EDITOR_NAME_DIALOG_OK, "name-dialog-ok"),
+                !trimmedName().isEmpty())) {
+            accept();
         }
     }
 
     private void accept() {
-        String value = nameInput.get().replace("\0", "").strip();
+        String value = trimmedName();
         if (value.isEmpty()) {
             return;
         }
         ImGui.closeCurrentPopup();
         onAccept.accept(value);
+    }
+
+    private String trimmedName() {
+        return nameInput.get().replace("\0", "").strip();
     }
 }

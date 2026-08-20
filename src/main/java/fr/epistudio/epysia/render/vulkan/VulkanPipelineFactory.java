@@ -300,13 +300,19 @@ public final class VulkanPipelineFactory {
     }
 
     private static int sourceFactorOf(BlendMode blendMode) {
-        return blendMode == BlendMode.ADDITIVE ? VK10.VK_BLEND_FACTOR_ONE
-                : VK10.VK_BLEND_FACTOR_SRC_ALPHA;
+        return switch (blendMode) {
+            case ADDITIVE -> VK10.VK_BLEND_FACTOR_ONE;
+            case MULTIPLY -> VK10.VK_BLEND_FACTOR_DST_COLOR;
+            default -> VK10.VK_BLEND_FACTOR_SRC_ALPHA;
+        };
     }
 
     private static int destinationFactorOf(BlendMode blendMode) {
-        return blendMode == BlendMode.ADDITIVE ? VK10.VK_BLEND_FACTOR_ONE
-                : VK10.VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        return switch (blendMode) {
+            case ADDITIVE -> VK10.VK_BLEND_FACTOR_ONE;
+            case MULTIPLY -> VK10.VK_BLEND_FACTOR_ZERO;
+            default -> VK10.VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        };
     }
 
     private static VkPipelineDynamicStateCreateInfo dynamicState(MemoryStack stack) {

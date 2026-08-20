@@ -7,7 +7,8 @@ import fr.epistudio.epysia.components.RequiresComponent;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
-@EpysiaComponent(name = "Volumetric Renderer", category = "Rendering")
+@EpysiaComponent(name = "Volumetric Renderer", category = "Rendering",
+        description = "Ray marches a density volume into lit smoke or fog.")
 @RequiresComponent(DensityVolume.class)
 public final class VolumetricRenderer extends Component {
     @Export(label = "Albedo", color = true)

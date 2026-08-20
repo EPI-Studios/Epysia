@@ -5,7 +5,8 @@ import fr.epistudio.epysia.components.Export;
 
 import java.util.List;
 
-@EpysiaComponent(name = "Ui List Layout", category = "UI")
+@EpysiaComponent(name = "Ui List Layout", category = "UI",
+        description = "Stacks child elements in a row or a column with even spacing.")
 public final class UiListLayout extends UiLayout {
 
     @Export(label = "Direction")

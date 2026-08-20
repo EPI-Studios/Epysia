@@ -14,7 +14,8 @@ import fr.epistudio.epysia.physics.api.CharacterContact;
 import fr.epistudio.epysia.physics.api.ShapeDescriptor;
 import fr.epistudio.epysia.physics.box3d.Box3dCharacterController;
 
-@EpysiaComponent(name = "Character Controller 2D", category = "Physics")
+@EpysiaComponent(name = "Character Controller 2D", category = "Physics",
+        description = "Moves a 2D body along the ground and up slopes without being pushed by physics.")
 @RequiresComponent(Transform2D.class)
 public final class CharacterController2D extends Component {
     private static final float BASE_GRAVITY = -9.81f;

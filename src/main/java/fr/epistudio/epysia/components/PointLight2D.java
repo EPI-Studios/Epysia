@@ -5,7 +5,8 @@ import org.joml.Vector2f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Point Light 2D", category = "Rendering")
+@EpysiaComponent(name = "Point Light 2D", category = "Rendering",
+        description = "Round light that fades over its range and lights 2D sprites.")
 @RequiresComponent(Transform2D.class)
 public final class PointLight2D extends Light2D {
     @Export(label = "Range", min = 0.0f, max = 500.0f, step = 0.1f)

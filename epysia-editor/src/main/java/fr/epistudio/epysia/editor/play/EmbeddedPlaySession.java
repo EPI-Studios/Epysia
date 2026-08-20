@@ -206,6 +206,7 @@ public final class EmbeddedPlaySession {
     }
 
     private void resetSystems() {
+        engine().hudEntries().clear();
         Optional.ofNullable(engine().systems().get(ScriptDispatcherSystem.class))
                 .ifPresent(ScriptDispatcherSystem::resetForPlaySession);
         Optional.ofNullable(engine().systems().get(PhysicsSystem.class))

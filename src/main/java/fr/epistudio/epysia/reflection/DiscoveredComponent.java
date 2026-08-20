@@ -6,6 +6,7 @@ public record DiscoveredComponent(
         Class<? extends IComponent> componentClass,
         String displayName,
         String category,
-        String icon
+        String icon,
+        String description
 ) {
 }

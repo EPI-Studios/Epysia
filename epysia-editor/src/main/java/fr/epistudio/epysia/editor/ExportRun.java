@@ -13,7 +13,8 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 public record ExportRun(Path projectDirectory, Path outputDirectory, String title,
-                        String sceneFileName, TargetPlatform platform, Optional<Path> iconFile) {
+                        String sceneFileName, TargetPlatform platform, Optional<Path> iconFile,
+                        Optional<Path> templateArchive) {
 
     private static final String EXPORT_FLAG = "--export";
     private static final String PROJECT_FLAG = "--project";
@@ -21,6 +22,7 @@ public record ExportRun(Path projectDirectory, Path outputDirectory, String titl
     private static final String SCENE_FLAG = "--scene";
     private static final String PLATFORM_FLAG = "--platform";
     private static final String ICON_FLAG = "--icon";
+    private static final String TEMPLATE_FLAG = "--template";
 
     public static Optional<ExportRun> parse(String[] arguments) {
         Optional<String> output = valueOf(arguments, EXPORT_FLAG);
@@ -33,15 +35,17 @@ public record ExportRun(Path projectDirectory, Path outputDirectory, String titl
                 valueOf(arguments, TITLE_FLAG).orElse("Epysia Game"),
                 valueOf(arguments, SCENE_FLAG).orElse("main.epyscene"),
                 platformOf(valueOf(arguments, PLATFORM_FLAG).orElse("linux-x64")),
-                valueOf(arguments, ICON_FLAG).map(Path::of)));
+                valueOf(arguments, ICON_FLAG).map(Path::of),
+                valueOf(arguments, TEMPLATE_FLAG).map(Path::of)));
     }
 
     public void run() throws IOException {
         Project project = new ProjectStore()
                 .readProjectFromDisk(projectDirectory, System.currentTimeMillis())
                 .orElseThrow(() -> new EpysiaException("No Epysia project at " + projectDirectory));
-        ExportRequest request = new ExportRequest(outputDirectory, title, sceneFileName, platform,
-                GpuPreference.fromId("system"), iconFile);
+        ExportRequest request = new ExportRequest(outputDirectory, title,
+                new ProjectStore().readRelease(project).version(), sceneFileName, platform,
+                GpuPreference.fromId("system"), iconFile, templateArchive);
         Path result = new GameExporter(project).export(request,
                 (stage, completion) -> System.out.println("[export] " + stage + " " + Math.round(completion * 100) + "%"));
         System.out.println("[export] wrote " + result);

@@ -14,6 +14,9 @@ import fr.epistudio.epysia.editor.assets.MeshThumbnailer;
 import fr.epistudio.epysia.editor.assets.SpriteAtlasFactory;
 import fr.epistudio.epysia.editor.assets.SpriteTilemapFactory;
 import fr.epistudio.epysia.editor.assets.ThumbnailCache;
+import fr.epistudio.epysia.assets.procedural.CurveTextureLoader;
+import fr.epistudio.epysia.assets.procedural.GradientTextureLoader;
+import fr.epistudio.epysia.assets.procedural.NoiseTextureLoader;
 import fr.epistudio.epysia.editor.icons.AssetTypeIcons;
 import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
@@ -24,12 +27,15 @@ import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.ui.kit.Breadcrumb;
+import fr.epistudio.epysia.editor.ui.kit.Disabled;
 import fr.epistudio.epysia.editor.ui.kit.SearchField;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
 import imgui.ImGui;
 import imgui.flag.ImGuiMouseButton;
+import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiPopupFlags;
 import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImString;
@@ -62,6 +68,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class AssetBrowserView {
 
@@ -99,7 +106,6 @@ public final class AssetBrowserView {
     private static final String EFFECTS_CATEGORY = "Effects";
     private static final String VFX_GRAPH_TEMPLATE_RESOURCE = "/templates/NewVfxGraph.epygraph";
 
-    private static final ScriptLanguages SCRIPT_LANGUAGES = ScriptLanguages.discover();
     private static final String VERTEX_SHADER_SUFFIX = ".vert.glsl";
     private static final String FRAGMENT_SHADER_SUFFIX = ".frag.glsl";
     private static final String SURFACE_SHADER_SUFFIX = ".surf.glsl";
@@ -114,6 +120,7 @@ public final class AssetBrowserView {
 
     private final Project project;
     private final Notifier notifier;
+    private final Supplier<ScriptLanguages> scriptLanguages;
     private final IconWidgets icons;
     private final ThumbnailCache thumbnails;
     private final MeshThumbnailer meshThumbnails;
@@ -139,6 +146,7 @@ public final class AssetBrowserView {
     private final ImString searchInput = new ImString(SEARCH_CAPACITY);
     private final AssetEntryGrid grid;
     private Path currentDirectory;
+    private boolean revealCurrentDirectory;
     private String selectedPath = "";
     private boolean initialized;
 
@@ -147,7 +155,9 @@ public final class AssetBrowserView {
                             Consumer<Path> onOpenScript, Consumer<Path> onBakeMesh,
                             Consumer<Path> onInstantiatePrefab, Consumer<Path> onOpenScene,
                             Consumer<Path> onAttachScript, Consumer<Path> onOpenGraph,
-                            Consumer<Path> onOpenAtlas, AssetImportPipeline importPipeline) {
+                            Consumer<Path> onOpenAtlas, AssetImportPipeline importPipeline,
+                            Supplier<ScriptLanguages> scriptLanguages) {
+        this.scriptLanguages = scriptLanguages;
         this.project = project;
         this.notifier = notifier;
         this.icons = icons;
@@ -256,8 +266,28 @@ public final class AssetBrowserView {
             refresh();
         }
         ImGui.sameLine();
+        renderUpButton();
+        ImGui.sameLine();
         renderBreadcrumb();
         renderSearchField();
+    }
+
+    private void renderUpButton() {
+        Optional<Path> parent = parentDirectory();
+        Disabled.push(parent.isEmpty());
+        boolean clicked = ImGui.arrowButton("##assets-up", ImGuiDir.Up);
+        Disabled.pop(parent.isEmpty());
+        if (clicked) {
+            parent.ifPresent(this::navigateTo);
+        }
+    }
+
+    private Optional<Path> parentDirectory() {
+        if (showingBuiltins || currentDirectory.equals(project.rootDirectory())) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(currentDirectory.getParent())
+                .filter(parent -> parent.startsWith(project.rootDirectory()));
     }
 
     private void renderBreadcrumb() {
@@ -322,6 +352,7 @@ public final class AssetBrowserView {
         ImGui.separator();
         renderBuiltinFolderNode();
         ImGui.endChild();
+        revealCurrentDirectory = false;
     }
 
     private void renderBuiltinFolderNode() {
@@ -347,7 +378,11 @@ public final class AssetBrowserView {
         if (directory.equals(project.rootDirectory())) {
             flags |= ImGuiTreeNodeFlags.DefaultOpen;
         }
-        boolean opened = ImGui.treeNodeEx(directory.toString(), flags, label);
+        if (revealCurrentDirectory && currentDirectory.startsWith(directory)) {
+            ImGui.setNextItemOpen(true, ImGuiCond.Always);
+        }
+        boolean opened = ImGui.treeNodeEx(directory.toString(), flags, iconSpacing() + label);
+        paintFolderIcon();
         acceptAssetDrop(directory);
         if (ImGui.isItemClicked() && !ImGui.isItemToggledOpen()) {
             navigateTo(directory);
@@ -356,6 +391,22 @@ public final class AssetBrowserView {
             renderChildFolders(directory);
             ImGui.treePop();
         }
+    }
+
+    private void paintFolderIcon() {
+        float size = EditorStyle.iconSizeSmall();
+        float left = ImGui.getItemRectMinX() + ImGui.getTextLineHeight()
+                + EditorStyle.framePaddingX() * 2.0f;
+        float top = ImGui.getItemRectMinY()
+                + (ImGui.getItemRectMaxY() - ImGui.getItemRectMinY() - size) * 0.5f;
+        ImGui.getWindowDrawList().addImage(icons.atlasTextureId(EditorIcon.FOLDER), left, top,
+                left + size, top + size);
+    }
+
+    private static String iconSpacing() {
+        float spaceWidth = Math.max(1.0f, ImGui.calcTextSizeX(" "));
+        float needed = EditorStyle.iconSizeSmall() + EditorStyle.innerSpacing();
+        return " ".repeat((int) Math.ceil(needed / spaceWidth));
     }
 
     private void renderChildFolders(Path directory) {
@@ -443,6 +494,9 @@ public final class AssetBrowserView {
             query.setTypeFilter(null);
         }
         for (AssetType type : AssetType.values()) {
+            if (type == AssetType.FOLDER) {
+                continue;
+            }
             if (ImGui.selectable(I18n.label(assetTypeKey(type), "asset-type-" + type.name()),
                     query.typeFilter().orElse(null) == type)) {
                 query.setTypeFilter(type);
@@ -466,7 +520,8 @@ public final class AssetBrowserView {
 
     private List<NewAssetDialog.AssetKind> assetKinds() {
         List<NewAssetDialog.AssetKind> kinds = new ArrayList<>(fixedAssetKinds());
-        for (ScriptLanguage language : SCRIPT_LANGUAGES.authoringOrder()) {
+        kinds.addAll(proceduralAssetKinds());
+        for (ScriptLanguage language : scriptLanguages.get().authoringOrder()) {
             kinds.add(kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SCRIPT,
                             language.displayName()),
                     I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SCRIPTING),
@@ -506,6 +561,40 @@ public final class AssetBrowserView {
         Path scripts = project.scriptsDirectory();
         Path target = targetDirectory();
         return target.toAbsolutePath().startsWith(scripts.toAbsolutePath()) ? target : scripts;
+    }
+
+    private List<NewAssetDialog.AssetKind> proceduralAssetKinds() {
+        return List.of(
+                kind("Noise Texture", "Textures",
+                        "texture de bruit générée, bouclable, utilisable partout",
+                        EditorIcon.TEXTURE_2D, "MyNoise",
+                        name -> createProcedural(name, NoiseTextureLoader.EXTENSION)),
+                kind("Gradient Texture", "Textures",
+                        "dégradé de couleurs cuit en texture",
+                        EditorIcon.TEXTURE_2D, "MyGradient",
+                        name -> createProcedural(name, GradientTextureLoader.EXTENSION)),
+                kind("Curve Texture", "Textures",
+                        "courbe cuite en rampe de gris",
+                        EditorIcon.TEXTURE_2D, "MyCurve",
+                        name -> createProcedural(name, CurveTextureLoader.EXTENSION)));
+    }
+
+    private void createProcedural(String requestedName, String extension) {
+        String name = assetBaseName(requestedName);
+        if (name.isEmpty()) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_INVALID_FILE_NAME,
+                    requestedName));
+            return;
+        }
+        try {
+            Path file = targetDirectory().resolve(name + extension);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, ProceduralDocumentModel.defaultDocument(extension));
+            refresh();
+        } catch (IOException | InvalidPathException error) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_COULD_NOT_LIST_DIRECTORY,
+                    error.getMessage()));
+        }
     }
 
     private List<NewAssetDialog.AssetKind> fixedAssetKinds() {
@@ -948,6 +1037,7 @@ public final class AssetBrowserView {
     private void activateEntry(AssetEntry entry) {
         Path path = Path.of(entry.assetPath());
         switch (entry.type()) {
+            case FOLDER -> navigateTo(path);
             case SCRIPT, SHADER -> onOpenScript.accept(path);
             case ATLAS -> onOpenAtlas.accept(path);
             case PREFAB -> onInstantiatePrefab.accept(path);
@@ -1170,6 +1260,7 @@ public final class AssetBrowserView {
     private void navigateTo(Path directory) {
         showingBuiltins = false;
         currentDirectory = directory;
+        revealCurrentDirectory = true;
         refresh();
     }
 
@@ -1255,6 +1346,7 @@ public final class AssetBrowserView {
             case CLIP -> TextKey.EDITOR_ASSET_TYPE_CLIPS;
             case ATLAS -> TextKey.EDITOR_ASSET_TYPE_ATLASES;
             case OTHER -> TextKey.EDITOR_ASSET_TYPE_OTHER;
+            case FOLDER -> TextKey.EDITOR_ASSET_TYPE_FOLDERS;
         };
     }
 
@@ -1269,7 +1361,7 @@ public final class AssetBrowserView {
             case MATERIAL -> AssetMimeTypes.MATERIAL;
             case CLIP -> AssetMimeTypes.CLIP;
             case ATLAS -> AssetMimeTypes.ATLAS;
-            case SCENE, SCRIPT, OTHER -> AssetMimeTypes.NONE;
+            case SCENE, SCRIPT, OTHER, FOLDER -> AssetMimeTypes.NONE;
         };
     }
 

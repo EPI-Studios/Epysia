@@ -7,6 +7,7 @@ public final class MeshShaderBindings {
     public static final int CLUSTER_COUNT_SSBO_BINDING = 1;
     public static final int CLUSTER_INDEX_SSBO_BINDING = 2;
     public static final int OBJECT_UBO_BINDING = 1;
+    public static final int INSTANCE_LAYER_BYTE_OFFSET = 124;
     public static final int INSTANCE_SSBO_BINDING = 3;
     public static final int JOINT_PALETTE_SSBO_BINDING = 4;
     public static final int PROBE_SSBO_BINDING = 5;

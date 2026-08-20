@@ -5,6 +5,8 @@ import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
 import fr.epistudio.epysia.editor.notify.Notifier;
+import fr.epistudio.epysia.editor.scripteditor.CompletionContext;
+import fr.epistudio.epysia.editor.scripteditor.Completions;
 import fr.epistudio.epysia.editor.scripteditor.CompletionEngine;
 import fr.epistudio.epysia.editor.scripteditor.CompletionKind;
 import fr.epistudio.epysia.editor.scripteditor.CompletionPopup;
@@ -14,6 +16,7 @@ import fr.epistudio.epysia.editor.scripteditor.ImportStyle;
 import fr.epistudio.epysia.editor.scripteditor.JavaSymbols;
 import fr.epistudio.epysia.editor.scripteditor.ScriptSyntaxes;
 import fr.epistudio.epysia.project.ProjectLibraries;
+import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 import fr.epistudio.epysia.editor.shell.EditorStyle;
 import fr.epistudio.epysia.editor.ui.kit.Chips;
 import fr.epistudio.epysia.editor.ui.kit.DocumentTabs;
@@ -86,8 +89,8 @@ public final class ScriptEditorView {
     private final ComponentRegistry componentRegistry;
     private CompletionEngine completionEngine;
     private final CompletionPopup completionPopup = new CompletionPopup();
-    private final ScriptSyntaxes syntaxes = ScriptSyntaxes.discover();
-    private final Pattern diagnosticPattern = diagnosticPatternFor(syntaxes);
+    private ScriptSyntaxes syntaxes = ScriptSyntaxes.discover();
+    private Pattern diagnosticPattern = diagnosticPatternFor(syntaxes);
     private final Map<Path, OpenScript> openScripts = new LinkedHashMap<>();
     private final List<Diagnostic> diagnostics = new ArrayList<>();
     private final TextEditorCursorPosition cursorPosition = new TextEditorCursorPosition();
@@ -106,8 +109,19 @@ public final class ScriptEditorView {
     }
 
     public void refreshSymbols(ProjectLibraries libraries, Path compiledScriptsDirectory) {
+        adoptSyntaxes(ScriptSyntaxes.discover(ScriptLanguages.discover(libraries)));
         applySymbols(new JavaSymbols(componentRegistry, libraries, compiledScriptsDirectory));
         openScripts.forEach((path, script) -> script.editor().setLanguage(syntaxes.definitionFor(path)));
+    }
+
+    private void adoptSyntaxes(ScriptSyntaxes discovered) {
+        syntaxes.release();
+        syntaxes = discovered;
+        diagnosticPattern = diagnosticPatternFor(syntaxes);
+    }
+
+    private Completions completionsFor(Path path) {
+        return syntaxes.completionsFor(path).orElse(completionEngine);
     }
 
     private void applySymbols(JavaSymbols javaSymbols) {
@@ -432,12 +446,13 @@ public final class ScriptEditorView {
         editor.getMainCursorPosition(cursorPosition);
         String lineText = editor.getLineText(cursorPosition.line);
         int cursorIndex = characterIndexForColumn(lineText, cursorPosition.column);
-        CompletionEngine.Context context = completionEngine.contextAt(lineText, cursorIndex);
-        if (!trigger.forced() && !completionEngine.shouldTrigger(context)) {
+        Completions completions = completionsFor(path);
+        CompletionContext context = completions.contextAt(lineText, cursorIndex);
+        if (!trigger.forced() && !completions.shouldTrigger(context)) {
             completionPopup.hide();
             return;
         }
-        List<CompletionSymbol> candidates = completionEngine.candidates(context, editor.getText(),
+        List<CompletionSymbol> candidates = completions.candidates(context, editor.getText(),
                 syntaxes.importStyleFor(path).orElse(PLAIN_IMPORT_STYLE));
         completionPopup.show(candidates, completionAnchorX(editor, origin.x()),
                 completionAnchorY(editor, origin.y()));
@@ -448,7 +463,7 @@ public final class ScriptEditorView {
         editor.getMainCursorPosition(cursorPosition);
         String lineText = editor.getLineText(cursorPosition.line);
         int cursorIndex = characterIndexForColumn(lineText, cursorPosition.column);
-        CompletionEngine.Context context = completionEngine.contextAt(lineText, cursorIndex);
+        CompletionContext context = completionsFor(path).contextAt(lineText, cursorIndex);
         int replacedLength = context.importPath().orElse(context.prefix()).length();
         if (replacedLength > 0) {
             editor.selectRegion(cursorPosition.line, cursorPosition.column - replacedLength,

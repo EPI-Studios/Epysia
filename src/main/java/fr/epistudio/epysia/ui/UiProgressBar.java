@@ -4,7 +4,8 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import org.joml.Vector4f;
 
-@EpysiaComponent(name = "Ui Progress Bar", category = "UI")
+@EpysiaComponent(name = "Ui Progress Bar", category = "UI",
+        description = "Fills a bar from a value between zero and one.")
 public final class UiProgressBar extends UiElement {
     @Export(label = "Value", min = 0.0f, max = 1.0f, step = 0.01f)
     private float value;

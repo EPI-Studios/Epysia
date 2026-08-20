@@ -11,7 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-@EpysiaComponent(name = "Graph", category = "Logic")
+@EpysiaComponent(name = "Graph", category = "Logic",
+        description = "Runs a logic graph asset on this object.")
 public final class GraphComponent extends Component implements PhysicsEventListener {
 
     @Export(label = "Graph Path")

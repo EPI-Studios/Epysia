@@ -18,7 +18,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-@EpysiaComponent(name = "Mesh Renderer", category = "Rendering")
+@EpysiaComponent(name = "Mesh Renderer", category = "Rendering",
+        description = "Draws one mesh with one material.")
 @RequiresComponent(Transform3D.class)
 public final class MeshRenderer extends Component implements MeshRenderSource {
 

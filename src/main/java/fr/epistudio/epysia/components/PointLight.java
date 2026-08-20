@@ -4,7 +4,8 @@ import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.exceptions.EpysiaException;
 import org.joml.Vector3f;
 
-@EpysiaComponent(name = "Point Light", category = "Lighting")
+@EpysiaComponent(name = "Point Light", category = "Lighting",
+        description = "Light radiating in every direction, fading over its range.")
 public final class PointLight extends Light {
 
     @Export(label = "Range", min = 0.0f, max = 200.0f, step = 0.1f)

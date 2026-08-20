@@ -12,7 +12,8 @@ import org.joml.Vector4f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Sprite Renderer", category = "Rendering")
+@EpysiaComponent(name = "Sprite Renderer", category = "Rendering",
+        description = "Draws a texture or an atlas region as a flat 2D quad.")
 @RequiresComponent(Transform2D.class)
 public final class SpriteRenderer extends Component implements SurfaceUniformHost {
 

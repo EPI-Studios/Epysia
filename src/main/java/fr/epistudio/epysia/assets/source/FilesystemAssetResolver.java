@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.assets.source;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Optional;
 
@@ -13,9 +14,20 @@ public final class FilesystemAssetResolver implements AssetResolver {
 
     @Override
     public Optional<AssetSource> resolve(String name) {
-        Path candidate = Path.of(name);
+        Path candidate = asPath(name).orElse(null);
+        if (candidate == null) {
+            return Optional.empty();
+        }
         Path target = candidate.isAbsolute() ? candidate : baseDirectory.resolve(candidate);
         return Optional.of(new FilesystemAssetSource(target));
+    }
+
+    private static Optional<Path> asPath(String name) {
+        try {
+            return Optional.of(Path.of(name));
+        } catch (InvalidPathException unusableOnThisFilesystem) {
+            return Optional.empty();
+        }
     }
 
     @Override

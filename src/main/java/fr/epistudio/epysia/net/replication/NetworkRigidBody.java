@@ -16,7 +16,8 @@ import org.joml.Vector3f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Network Rigid Body", category = "Networking")
+@EpysiaComponent(name = "Network Rigid Body", category = "Networking",
+        description = "Replicates a rigid body's motion and smooths it out on the clients.")
 @RequiresComponent(NetworkObject.class)
 public final class NetworkRigidBody extends Component {
     private static final float POSITION_PRECISION = 0.001f;

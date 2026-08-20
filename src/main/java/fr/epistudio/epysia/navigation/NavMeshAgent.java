@@ -10,7 +10,8 @@ import org.joml.Vector3f;
 import java.util.ArrayList;
 import java.util.List;
 
-@EpysiaComponent(name = "Nav Mesh Agent", category = "Navigation")
+@EpysiaComponent(name = "Nav Mesh Agent", category = "Navigation",
+        description = "Walks the baked navigation mesh toward a destination, avoiding other agents.")
 @RequiresComponent(Transform3D.class)
 public final class NavMeshAgent extends Component {
 

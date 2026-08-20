@@ -5,7 +5,8 @@ import fr.epistudio.epysia.exceptions.EpysiaException;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-@EpysiaComponent(name = "Spot Light", category = "Lighting")
+@EpysiaComponent(name = "Spot Light", category = "Lighting",
+        description = "Cone of light aimed down the object's forward axis.")
 public final class SpotLight extends Light {
 
     private static final Vector3f LOCAL_FORWARD = new Vector3f(0.0f, 0.0f, -1.0f);

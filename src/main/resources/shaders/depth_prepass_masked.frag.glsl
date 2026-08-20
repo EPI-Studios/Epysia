@@ -5,6 +5,7 @@ in vec2 vertexUv;
 in vec3 vertexWorldPosition;
 in vec3 vertexWorldNormal;
 flat in int surfaceInstanceIndex;
+flat in float vertexRenderLayer;
 
 layout(std140, binding = 3) uniform MaskedMaterialUbo {
     vec3 baseColor;
@@ -27,6 +28,8 @@ layout(binding = 0) uniform sampler2D albedo;
 
 #include "lib/uv_mapping.glsl"
 
+layout(location = 0) out vec4 outNormalLayer;
+
 // SURFACE_FUNCTIONS
 
 void main() {
@@ -34,4 +37,5 @@ void main() {
     if (materialTexture(albedo, vertexUv).a < material.alphaCutoff) {
         discard;
     }
+    outNormalLayer = vec4(normalize(vertexWorldNormal), vertexRenderLayer);
 }

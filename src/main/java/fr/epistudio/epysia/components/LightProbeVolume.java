@@ -9,7 +9,8 @@ import org.joml.Vector3f;
 
 import java.util.Optional;
 
-@EpysiaComponent(name = "Light Probe Volume", category = "Rendering")
+@EpysiaComponent(name = "Light Probe Volume", category = "Rendering",
+        description = "Bakes indirect light into a grid so moving objects pick it up.")
 @RequiresComponent(Transform3D.class)
 public final class LightProbeVolume extends Component {
 

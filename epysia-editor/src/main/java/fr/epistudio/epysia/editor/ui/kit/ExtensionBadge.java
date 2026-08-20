@@ -14,6 +14,7 @@ public final class ExtensionBadge {
     private static final float PADDING_Y = 1.0f;
     private static final float CORNER_ROUNDING = 2.0f;
     private static final float BOTTOM_INSET = 4.0f;
+    private static final float CORNER_RATIO = 0.45f;
     private static final int PALETTE_MASK = 0x7FFFFFFF;
 
     private static final int[] PALETTE = {
@@ -38,9 +39,21 @@ public final class ExtensionBadge {
         float paddingY = EditorScale.of(PADDING_Y);
         float badgeWidth = textSize.x + paddingX * 2.0f;
         float badgeHeight = textSize.y + paddingY * 2.0f;
+        if (badgeWidth > iconSize || badgeHeight > iconSize) {
+            paintCorner(iconX, iconY, iconSize, colorFor(label));
+            return;
+        }
         float left = iconX + (iconSize - badgeWidth) * 0.5f;
         float top = iconY + iconSize - badgeHeight - EditorScale.of(BOTTOM_INSET);
         paint(label, left, top, badgeWidth, badgeHeight, paddingX, paddingY, colorFor(label));
+    }
+
+    private static void paintCorner(float iconX, float iconY, float iconSize, int color) {
+        float size = iconSize * CORNER_RATIO;
+        float left = iconX + iconSize - size;
+        float top = iconY + iconSize - size;
+        ImGui.getWindowDrawList().addRectFilled(left, top, left + size, top + size, color,
+                EditorScale.of(CORNER_ROUNDING));
     }
 
     private static void paint(String label, float left, float top, float width, float height,

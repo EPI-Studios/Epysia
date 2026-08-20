@@ -10,22 +10,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class CompletionEngine {
-
-    public record Context(String prefix, Optional<String> receiver, Optional<String> importPath) {
-
-        public Context(String prefix, Optional<String> receiver) {
-            this(prefix, receiver, Optional.empty());
-        }
-
-        public boolean isMember() {
-            return receiver.isPresent();
-        }
-
-        public boolean isImport() {
-            return importPath.isPresent();
-        }
-    }
+public final class CompletionEngine implements Completions {
 
     private record ResolvedType(String name, Optional<String> element) {
     }
@@ -50,12 +35,12 @@ public final class CompletionEngine {
         this.symbols = symbols;
     }
 
-    public Context contextAt(String lineText, int cursorIndex) {
+    public CompletionContext contextAt(String lineText, int cursorIndex) {
         int end = Math.min(Math.max(cursorIndex, 0), lineText.length());
         Matcher importMatcher = IMPORT_LINE_PATTERN.matcher(lineText.substring(0, end));
         if (importMatcher.matches()) {
             String importPath = importMatcher.group(2);
-            return new Context(wordSuffixOf(importPath), Optional.empty(), Optional.of(importPath));
+            return new CompletionContext(wordSuffixOf(importPath), Optional.empty(), Optional.of(importPath));
         }
         int start = end;
         while (start > 0 && isWordCharacter(lineText.charAt(start - 1))) {
@@ -63,18 +48,20 @@ public final class CompletionEngine {
         }
         String prefix = lineText.substring(start, end);
         if (start > 0 && lineText.charAt(start - 1) == '.') {
-            return new Context(prefix, Optional.of(ReceiverChain.expressionBefore(lineText, start - 1)));
+            return new CompletionContext(prefix, Optional.of(ReceiverChain.expressionBefore(lineText, start - 1)));
         }
-        return new Context(prefix, Optional.empty());
+        return new CompletionContext(prefix, Optional.empty());
     }
 
-    public boolean shouldTrigger(Context context) {
+    @Override
+    public boolean shouldTrigger(CompletionContext context) {
         return context.isImport()
                 || context.isMember()
                 || context.prefix().length() >= MINIMUM_PREFIX_LENGTH;
     }
 
-    public List<CompletionSymbol> candidates(Context context, String fullText, ImportStyle style) {
+    @Override
+    public List<CompletionSymbol> candidates(CompletionContext context, String fullText, ImportStyle style) {
         if (context.isImport()) {
             return importPool(context.importPath().orElse(""), style);
         }

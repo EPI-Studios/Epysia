@@ -2,7 +2,8 @@ package fr.epistudio.epysia.editor.ui;
 
 final class GraphCanvasZoom {
 
-    static final float MINIMUM_FACTOR = 0.3f;
+    static final float MINIMUM_FACTOR = 0.45f;
+    static final float LOW_DETAIL_FACTOR = 0.7f;
     static final float MAXIMUM_FACTOR = 2.5f;
     static final float DEFAULT_FACTOR = 1.0f;
     static final float FIT_MARGIN = 40.0f;
@@ -19,6 +20,10 @@ final class GraphCanvasZoom {
 
     int percentage() {
         return Math.round(factor * 100.0f);
+    }
+
+    boolean lowDetail() {
+        return factor < LOW_DETAIL_FACTOR;
     }
 
     boolean atDefault() {

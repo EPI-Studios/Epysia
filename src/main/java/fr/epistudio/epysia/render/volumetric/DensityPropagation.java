@@ -7,7 +7,8 @@ import fr.epistudio.epysia.components.RequiresComponent;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
-@EpysiaComponent(name = "Density Propagation", category = "Rendering")
+@EpysiaComponent(name = "Density Propagation", category = "Rendering",
+        description = "Grows a volume's density over time so smoke expands and settles.")
 @RequiresComponent(DensityVolume.class)
 public final class DensityPropagation extends Component implements DensitySource {
     @Export(label = "Max Radius", min = 0.1f, max = 100.0f, step = 0.1f)

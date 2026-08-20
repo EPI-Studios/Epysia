@@ -3,9 +3,9 @@ package fr.epistudio.epysia.editor.ui.settings;
 import fr.epistudio.epysia.editor.icons.IconWidgets;
 import fr.epistudio.epysia.editor.icons.ProjectIcons;
 import fr.epistudio.epysia.editor.shell.EditorScale;
-import fr.epistudio.epysia.editor.shell.FileDialogs;
 import fr.epistudio.epysia.editor.ui.IconCropDialog;
 import fr.epistudio.epysia.editor.ui.kit.Texts;
+import fr.epistudio.epysia.editor.ui.files.FileBrowser;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.project.Project;
@@ -19,14 +19,16 @@ import java.util.Optional;
 public final class ProjectIconSection {
 
     private static final float PREVIEW_SIZE = 48.0f;
-    private static final String FILTER_PATTERN = "*.png";
+    private static final java.util.Set<String> ICON_EXTENSIONS = java.util.Set.of(".png");
 
+    private final FileBrowser browser;
     private final ProjectIcons icons = new ProjectIcons();
     private final IconCropDialog cropDialog;
     private Path pending = Path.of("");
 
     public ProjectIconSection(IconWidgets iconWidgets) {
         this.cropDialog = new IconCropDialog(iconWidgets, this::onWritten, this::onFailed);
+        this.browser = new FileBrowser(iconWidgets);
     }
     private String message = "";
 
@@ -40,6 +42,7 @@ public final class ProjectIconSection {
         if (ImGui.button(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_CHOOSE_ICON))) {
             choose(project);
         }
+        browser.render();
         if (texture.isPresent()) {
             ImGui.sameLine();
             if (ImGui.button(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_REMOVE_ICON))) {
@@ -67,10 +70,8 @@ public final class ProjectIconSection {
     }
 
     private void choose(Project project) {
-        FileDialogs.pickFile(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_PICK_ICON_TITLE),
-                        project.rootDirectory(), FILTER_PATTERN,
-                        I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_PICK_ICON_FILTER))
-                .ifPresent(source -> write(project, source));
+        browser.chooseFile(I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_PICK_ICON_TITLE),
+                project.rootDirectory(), ICON_EXTENSIONS, source -> write(project, source));
     }
 
     private void write(Project project, Path source) {

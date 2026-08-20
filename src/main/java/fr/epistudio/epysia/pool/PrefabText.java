@@ -1,7 +1,6 @@
 package fr.epistudio.epysia.pool;
 
 import fr.epistudio.epysia.EngineServices;
-import fr.epistudio.epysia.assets.AssetUri;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,12 +17,7 @@ final class PrefabText {
     }
 
     private static Optional<Path> resolve(EngineServices services, String prefabPath) {
-        Path direct = Path.of(prefabPath);
-        if (Files.isRegularFile(direct)) {
-            return Optional.of(direct);
-        }
-        return AssetUri.parse(prefabPath)
-                .flatMap(uri -> services.assets().locator().file(uri));
+        return services.assets().locator().file(prefabPath);
     }
 
     private static Optional<String> readFile(Path path) {

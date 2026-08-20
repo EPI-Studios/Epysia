@@ -97,6 +97,39 @@ public final class I18n {
         ).format(arguments);
     }
 
+    public static String plural(
+            final TextKey baseKey,
+            final long count
+    ) {
+        Objects.requireNonNull(
+                baseKey,
+                "Translation key cannot be null."
+        );
+
+        return translate(
+                pluralKey(baseKey.key(), count),
+                count
+        );
+    }
+
+    private static String pluralKey(
+            final String baseKey,
+            final long count
+    ) {
+        final PluralCategory category = PluralRules.categoryOf(
+                state.locale(),
+                count
+        );
+
+        final String wanted = baseKey + "." + category.suffix();
+
+        if (state.translations().containsKey(wanted)) {
+            return wanted;
+        }
+
+        return baseKey + "." + PluralCategory.OTHER.suffix();
+    }
+
     public static String label(
             final TextKey key,
             final String stableId

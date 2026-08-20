@@ -9,6 +9,7 @@ import fr.epistudio.epysia.editor.ui.settings.CollisionMatrixSection;
 import fr.epistudio.epysia.editor.ui.settings.InputActionsSection;
 import fr.epistudio.epysia.editor.ui.settings.NetworkSection;
 import fr.epistudio.epysia.editor.ui.settings.ProjectIconSection;
+import fr.epistudio.epysia.editor.ui.settings.ScriptingSection;
 import fr.epistudio.epysia.editor.ui.settings.SteamSection;
 import fr.epistudio.epysia.editor.ui.settings.ViewportSection;
 import fr.epistudio.epysia.editor.ui.settings.WindowSection;
@@ -169,6 +170,7 @@ public final class SettingsDialog implements SettingsChrome {
     private Optional<MeshRenderSystem> meshRenderSystem = Optional.empty();
     private Optional<PostEffectsSection> postEffectsSection = Optional.empty();
     private Optional<LibrariesSection> librariesSection = Optional.empty();
+    private Optional<ScriptingSection> scriptingSection = Optional.empty();
     private Optional<Supplier<PostEffectStack>> globalPostEffectStack = Optional.empty();
     private Runnable onPostEffectsChanged = () -> {
     };
@@ -215,6 +217,10 @@ public final class SettingsDialog implements SettingsChrome {
 
     public void attachLibraries(LibrariesSection section) {
         librariesSection = Optional.of(section);
+    }
+
+    public void attachScripting(ScriptingSection section) {
+        scriptingSection = Optional.of(section);
     }
 
     public void attachPostEffects(PostEffectsSection section, Supplier<PostEffectStack> stack, Runnable onChanged) {
@@ -557,6 +563,7 @@ public final class SettingsDialog implements SettingsChrome {
         built.add(new Category("Application", "General", this::renderApplicationCategory));
         built.add(new Category("Application", "Project", this::renderProjectIdentity));
         built.add(new Category("Application", "Libraries", this::renderLibrariesCategory));
+        built.add(new Category("Application", "Scripting", this::renderScriptingCategory));
         built.add(new Category("Display", "Window", this::renderWindowCategory));
         built.add(new Category("Display", "Stretch", this::renderStretchCategory));
         built.add(new Category("Input", "Actions", this::renderInputActionsCategory));
@@ -593,6 +600,17 @@ public final class SettingsDialog implements SettingsChrome {
             return;
         }
         librariesSection.get().render(project);
+    }
+
+    private void renderScriptingCategory() {
+        if (filtering() || scriptingSection.isEmpty()) {
+            return;
+        }
+        if (project == null) {
+            hint(TextKey.EDITOR_SETTINGS_DIALOG_NO_PROJECT);
+            return;
+        }
+        scriptingSection.get().render(project);
     }
 
     private void renderProjectIdentity() {

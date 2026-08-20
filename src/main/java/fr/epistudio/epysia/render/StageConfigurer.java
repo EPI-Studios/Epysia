@@ -1,6 +1,7 @@
 package fr.epistudio.epysia.render;
 
 import fr.epistudio.epysia.render.backend.PassClear;
+import fr.epistudio.epysia.assets.AssetRegistry;
 import fr.epistudio.epysia.render.backend.RenderTargetHandle;
 import fr.epistudio.epysia.render.backend.TextureHandle;
 
@@ -16,6 +17,10 @@ public interface StageConfigurer {
     }
 
     default void publishSceneTexture(SceneTexture slot, TextureHandle texture) {
+    }
+
+    default Optional<AssetRegistry> assetRegistry() {
+        return Optional.empty();
     }
 
     default Optional<TextureHandle> sceneTexture(SceneTexture slot) {

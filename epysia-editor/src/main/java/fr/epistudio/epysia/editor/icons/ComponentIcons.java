@@ -85,11 +85,15 @@ public final class ComponentIcons {
     }
 
     public static EditorIcon forComponent(IComponent component) {
-        EditorIcon mapped = BY_SIMPLE_NAME.get(component.getClass().getSimpleName());
+        return forComponentClass(component.getClass());
+    }
+
+    public static EditorIcon forComponentClass(Class<? extends IComponent> componentClass) {
+        EditorIcon mapped = BY_SIMPLE_NAME.get(componentClass.getSimpleName());
         if (mapped != null) {
             return mapped;
         }
-        return component instanceof Behaviour ? EditorIcon.SCRIPT : EditorIcon.NODE_3D;
+        return Behaviour.class.isAssignableFrom(componentClass) ? EditorIcon.SCRIPT : EditorIcon.NODE_3D;
     }
 
     public static EditorIcon forGameObject(GameObject gameObject) {

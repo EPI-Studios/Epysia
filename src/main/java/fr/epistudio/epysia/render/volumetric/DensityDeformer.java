@@ -10,7 +10,8 @@ import org.joml.Vector3fc;
 import java.util.ArrayList;
 import java.util.List;
 
-@EpysiaComponent(name = "Density Deformer", category = "Rendering")
+@EpysiaComponent(name = "Density Deformer", category = "Rendering",
+        description = "Carves a volume's density with moving shapes, for smoke pushed aside.")
 @RequiresComponent(DensityVolume.class)
 public final class DensityDeformer extends Component {
     public static final int HARD_LIMIT = 256;

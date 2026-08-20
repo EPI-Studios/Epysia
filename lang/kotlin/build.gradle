@@ -1,0 +1,50 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'henkelmax.public'
+        url = 'https://maven.maxhenkel.de/repository/public'
+        content { includeGroupByRegex 'de\\.maxhenkel.*' }
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+dependencies {
+    compileOnly rootProject
+    implementation 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.20'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.20'
+}
+
+shadowJar {
+    archiveBaseName = 'epysia-lang-kotlin'
+    archiveClassifier = ''
+    mergeServiceFiles()
+}
+
+build.dependsOn shadowJar
+
+configurations {
+    scriptRuntime
+}
+
+dependencies {
+    scriptRuntime 'org.jetbrains.kotlin:kotlin-stdlib:2.2.20'
+}
+
+tasks.register('runtimeArchive', Jar) {
+    archiveBaseName = 'epysia-lang-kotlin-runtime'
+    archiveClassifier = ''
+    destinationDirectory = layout.buildDirectory.dir('runtime')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({ configurations.scriptRuntime.collect { it.directory ? it : zipTree(it) } })
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/versions/9/module-info.class'
+}

@@ -4,7 +4,8 @@ import fr.epistudio.epysia.components.Component;
 import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 
-@EpysiaComponent(name = "Audio Source", category = "Audio")
+@EpysiaComponent(name = "Audio Source", category = "Audio",
+        description = "Plays a sound from this object's position.")
 public final class AudioSourceComponent extends Component {
 
     private AudioBuffer buffer;

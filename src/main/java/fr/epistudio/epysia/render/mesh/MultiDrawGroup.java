@@ -90,7 +90,7 @@ public final class MultiDrawGroup {
         return bytes.flip();
     }
 
-    public void append(ArenaMesh allocation, Matrix4f model, long depthBits) {
+    public void append(ArenaMesh allocation, Matrix4f model, long depthBits, int layer) {
         int slot = allocations.size();
         allocations.add(allocation);
         minimumDepthBits = Math.min(minimumDepthBits, depthBits);
@@ -98,6 +98,7 @@ public final class MultiDrawGroup {
         model.get(base, transformStaging);
         model.normal(scratchNormal);
         scratchNormal.get(base + 64, transformStaging);
+        transformStaging.putFloat(base + MeshShaderBindings.INSTANCE_LAYER_BYTE_OFFSET, layer);
     }
 
     public boolean hasBindings() {

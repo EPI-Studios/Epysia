@@ -4,7 +4,8 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.Export;
 import org.joml.Vector4f;
 
-@EpysiaComponent(name = "Ui Scroll View", category = "UI")
+@EpysiaComponent(name = "Ui Scroll View", category = "UI",
+        description = "Clips its children and scrolls them with the wheel or a drag.")
 public final class UiScrollView extends UiElement {
     private static final float DEFAULT_SPEED = 40.0f;
 

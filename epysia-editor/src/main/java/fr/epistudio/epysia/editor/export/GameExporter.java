@@ -27,6 +27,7 @@ import java.util.zip.ZipOutputStream;
 public final class GameExporter {
 
     private static final String STEAM_APP_ID_FILE = "steam_appid.txt";
+    private static final String VERSION_FILE = "version.txt";
 
     private static final String TEMPLATE_LAUNCHER_NAME = "EpysiaGame";
     private static final String CONTENT_DIRECTORY = "content";
@@ -53,17 +54,20 @@ public final class GameExporter {
 
     public Path export(ExportRequest request, ExportProgress progress) throws IOException {
         requireOutsideProject(request.outputDirectory());
-        Path template = templates.resolve(request.platform(), buildInfo.version(), buildInfo.repository(), progress);
+        Path template = templates.resolve(request.platform(), buildInfo.version(),
+                buildInfo.repository(), request.templateArchive(), progress);
         String name = sanitizeFileName(request.title());
-        Path gameRoot = request.outputDirectory().resolve(name);
+        String release = name + "-" + request.version();
+        Path gameRoot = request.outputDirectory().resolve(release);
         copyDirectory(template, gameRoot, progress, ExportStage.COPYING_TEMPLATE);
         TemplateLayout layout = request.platform().layout(gameRoot, TEMPLATE_LAUNCHER_NAME);
         refreshEngineJar(layout.applicationDirectory(), request.platform());
         injectContent(layout.applicationDirectory().resolve(CONTENT_DIRECTORY), progress);
         Optional<String> icon = installIcon(request, layout, gameRoot, name);
         finalizeLauncher(request, layout, name, icon);
+        Files.writeString(gameRoot.resolve(VERSION_FILE), request.version() + System.lineSeparator());
         progress.report(ExportStage.WRITING_LAUNCHER, 1.0f);
-        archive(gameRoot, request.platform(), name, progress);
+        archive(gameRoot, request.platform(), release, progress);
         validate(request, gameRoot, name, progress);
         return gameRoot;
     }
@@ -71,7 +75,7 @@ public final class GameExporter {
     private void validate(ExportRequest request, Path gameRoot, String name, ExportProgress progress)
             throws IOException {
         progress.report(ExportStage.VALIDATING, 0.0f);
-        ExportValidation.Report report = ExportValidation.run(gameRoot, request.platform(), name);
+        ExportValidation.Report report = ExportValidation.run(gameRoot, request.platform(), name, request.sceneFileName());
         progress.report(ExportStage.VALIDATING, 1.0f);
         if (!report.survived()) {
             throw new IOException("The exported game failed its headless smoke run.\n" + report.detail());

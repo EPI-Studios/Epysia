@@ -17,6 +17,7 @@ import fr.epistudio.epysia.exceptions.EpysiaException;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import fr.epistudio.epysia.assets.AssetLocator;
+import fr.epistudio.epysia.assets.AssetPaths;
 import fr.epistudio.epysia.editor.assets.EditorAssetPaths;
 import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.scene.serialization.MaterialJsonCodec;
@@ -61,7 +62,7 @@ public final class MaterialsSection {
     private static final float FLOAT_DRAG_STEP = 0.05f;
     private static final float SHADER_PATH_BUTTON_WIDTH = 180.0f;
     private static final Set<String> UNIT_RANGE_FIELDS = Set.of("metallic", "roughness", "alphaCutoff");
-    private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp");
+    private static final Set<String> TEXTURE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".tga", ".bmp", ".epynoise", ".epygradient", ".epycurve");
     private static final Set<String> SHADER_EXTENSIONS = Set.of(".glsl", ".vert", ".frag");
     private static final Set<String> SURFACE_SHADER_EXTENSIONS = Set.of(".surf.glsl");
     private static final Set<String> MATERIAL_EXTENSIONS = Set.of(".epymaterial");
@@ -192,7 +193,7 @@ public final class MaterialsSection {
         ImGui.pushID("material-asset");
         String label = material.assetPath().isEmpty()
                 ? I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_INLINE)
-                : Path.of(material.assetPath()).getFileName().toString();
+                : AssetPaths.fileNameOf(material.assetPath());
         if (ImGui.button(label, EditorScale.of(SHADER_PATH_BUTTON_WIDTH), 0.0f)) {
             filePicker.open(MATERIAL_EXTENSIONS, false, path -> assignAssetMaterial(path, replace));
         }
@@ -220,7 +221,7 @@ public final class MaterialsSection {
 
     private Material readAssetMaterial(String path) {
         try {
-            Material material = materialCodec.readSingle(Files.readString(Path.of(path)))
+            Material material = materialCodec.readSingle(Files.readString(fileOf(path)))
                     .orElseThrow(() -> new EpysiaException("Not a material document: " + path));
             material.setAssetPath(path);
             savedDocuments.put(path, materialCodec.writeSingle(material));
@@ -352,7 +353,7 @@ public final class MaterialsSection {
         if (currentPath.isEmpty()) {
             return I18n.translate(TextKey.EDITOR_MATERIALS_SECTION_NONE);
         }
-        return Path.of(currentPath).getFileName().toString();
+        return AssetPaths.fileNameOf(currentPath);
     }
 
     private void acceptShaderDrop(String currentPath, Consumer<String> onPathChosen) {
@@ -378,8 +379,12 @@ public final class MaterialsSection {
             return samplerCache;
         }
         samplerCachePath = material.fragmentShaderPath();
-        samplerCache = parseSamplers(Path.of(material.fragmentShaderPath()));
+        samplerCache = parseSamplers(fileOf(material.fragmentShaderPath()));
         return samplerCache;
+    }
+
+    private Path fileOf(String reference) {
+        return locator.file(reference).orElseGet(() -> Path.of(AssetPaths.fileNameOf(reference)));
     }
 
     private static Map<String, Integer> parseSamplers(Path fragmentPath) {
@@ -602,7 +607,7 @@ public final class MaterialsSection {
             return;
         }
         ImGui.sameLine();
-        Texts.muted(Path.of(currentPath).getFileName().toString());
+        Texts.muted(AssetPaths.fileNameOf(currentPath));
         ImGui.sameLine();
         if (ImGui.smallButton(I18n.label(TextKey.EDITOR_MATERIALS_SECTION_CLEAR,
                 "materials-texture-clear-" + field.getName()))) {

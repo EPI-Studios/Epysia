@@ -1,5 +1,6 @@
 package fr.epistudio.epysia.editor.ui;
 
+import fr.epistudio.epysia.assets.AssetPaths;
 import fr.epistudio.epysia.editor.shell.EditorScale;
 import fr.epistudio.epysia.editor.command.EditorHistory;
 import fr.epistudio.epysia.editor.inspector.AssetMimeTypes;
@@ -149,7 +150,7 @@ public final class SurfaceUniformRows {
     }
 
     private static String textureButtonLabel(String currentPath) {
-        return currentPath.isEmpty() ? "None" : Path.of(currentPath).getFileName().toString();
+        return currentPath.isEmpty() ? "None" : AssetPaths.fileNameOf(currentPath);
     }
 
     private void renderFloat(SurfaceUniformHost material, ShaderUniformDeclaration declaration) {

@@ -12,7 +12,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-@EpysiaComponent(name = "Animator", category = "Animation")
+@EpysiaComponent(name = "Animator", category = "Animation",
+        description = "Plays skeletal clips on this object and blends between them.")
 public final class Animator extends Component {
     @Export(label = "Clip")
     private String clipPath = "";

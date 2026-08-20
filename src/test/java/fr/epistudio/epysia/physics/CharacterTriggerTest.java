@@ -80,6 +80,27 @@ class CharacterTriggerTest {
     }
 
     @Test
+    void aColliderParentedToAWalkingCharacterWalksWithIt() {
+        GameObject head = new GameObject("head");
+        Transform3D headTransform = head.addComponent(new Transform3D().setPosition(0.0f, 2.0f, 0.0f));
+        headTransform.setParent(playerTransform);
+        head.addComponent(new BoxCollider().setHalfExtents(0.4f, 0.4f, 0.4f));
+        scene.addGameObject(head);
+
+        walkForward(90);
+
+        float travelledX = headTransform.worldPosition(new Vector3f()).x;
+        assertTrue(travelledX > 2.0f, "the child transform must follow the character");
+        assertTrue(colliderStandsAt(travelledX), "the child collider must follow the character");
+        assertTrue(!colliderStandsAt(0.0f), "the child collider must not stay where it spawned");
+    }
+
+    private boolean colliderStandsAt(float x) {
+        return physics.raycast(new Vector3f(x, 6.0f, 0.0f), new Vector3f(0.0f, -1.0f, 0.0f), 4.0f)
+                .isPresent();
+    }
+
+    @Test
     void aCharacterReportsWhatItStandsOn() {
         walkForward(10);
 
