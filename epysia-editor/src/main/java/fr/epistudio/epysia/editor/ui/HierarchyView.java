@@ -43,6 +43,9 @@ import org.joml.Vector3f;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Locale;
@@ -54,6 +57,7 @@ import fr.epistudio.epysia.editor.icons.EditorIcon;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
 import fr.epistudio.epysia.editor.scene.UniqueObjectName;
 import fr.epistudio.epysia.editor.ui.kit.SearchField;
+import fr.epistudio.epysia.editor.ui.kit.Disclosure;
 import fr.epistudio.epysia.editor.ui.kit.Texts;
 
 public final class HierarchyView {
@@ -99,6 +103,7 @@ public final class HierarchyView {
     private final ImString filterInput = new ImString(FILTER_CAPACITY);
     private final IconWidgets icons;
     private final List<Row> rows = new ArrayList<>();
+    private final Set<UUID> collapsed = new HashSet<>();
     private GameObject renameTarget;
     private boolean renameFocusRequested;
     private int newObjectCounter;
@@ -192,6 +197,7 @@ public final class HierarchyView {
         ImGui.pushID(widgetIdOf(row.gameObject()));
         drawIndentGuides(row.depth());
         ImGui.indent(row.depth() * EditorStyle.indentSpacing() + 1.0f);
+        renderDisclosure(row);
         icons.drawInline(ComponentIcons.forGameObject(row.gameObject()), EditorStyle.iconSizeSmall());
         if (renameTarget == row.gameObject()) {
             renderRenameField();
@@ -200,6 +206,19 @@ public final class HierarchyView {
         }
         ImGui.unindent(row.depth() * EditorStyle.indentSpacing() + 1.0f);
         ImGui.popID();
+    }
+
+    private void renderDisclosure(Row row) {
+        float size = EditorStyle.iconSizeSmall();
+        if (!row.hasChildren()) {
+            Disclosure.spacer(size);
+            ImGui.sameLine();
+            return;
+        }
+        if (Disclosure.arrow("##fold", !isCollapsed(row.gameObject()), size)) {
+            toggleCollapsed(row.gameObject());
+        }
+        ImGui.sameLine();
     }
 
     private String widgetIdOf(GameObject gameObject) {
@@ -497,6 +516,11 @@ public final class HierarchyView {
         return false;
     }
 
+    private void adopt(GameObject parent, GameObject child) {
+        history().execute(new ReparentCommand(child, Optional.of(parent)));
+        collapsed.remove(parent.id());
+    }
+
     private void unparent(GameObject target) {
         if (!hasParent(target)) {
             return;
@@ -564,16 +588,34 @@ public final class HierarchyView {
     }
 
     private void appendDescendants(GameObject gameObject, Transform3D transform, int depth) {
-        rows.add(new Row(gameObject, depth));
+        boolean hasChildren = !transform.children().isEmpty();
+        rows.add(new Row(gameObject, depth, hasChildren));
+        if (hasChildren && isCollapsed(gameObject)) {
+            return;
+        }
         for (Transform3D child : transform.children()) {
             child.owner().ifPresent(childOwner -> appendDescendants(childOwner, child, depth + 1));
         }
     }
 
     private void appendPlanarDescendants(GameObject gameObject, Transform2D transform, int depth) {
-        rows.add(new Row(gameObject, depth));
+        boolean hasChildren = !transform.children().isEmpty();
+        rows.add(new Row(gameObject, depth, hasChildren));
+        if (hasChildren && isCollapsed(gameObject)) {
+            return;
+        }
         for (Transform2D child : transform.children()) {
             child.owner().ifPresent(childOwner -> appendPlanarDescendants(childOwner, child, depth + 1));
+        }
+    }
+
+    private boolean isCollapsed(GameObject gameObject) {
+        return collapsed.contains(gameObject.id());
+    }
+
+    private void toggleCollapsed(GameObject gameObject) {
+        if (!collapsed.add(gameObject.id())) {
+            collapsed.remove(gameObject.id());
         }
     }
 
@@ -718,6 +760,10 @@ public final class HierarchyView {
         notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_DELETED, targets.size()));
     }
 
-    private record Row(GameObject gameObject, int depth) {
+    private record Row(GameObject gameObject, int depth, boolean hasChildren) {
+
+        private Row(GameObject gameObject, int depth) {
+            this(gameObject, depth, false);
+        }
     }
 }
