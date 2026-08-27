@@ -59,6 +59,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.stream.Stream;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -146,6 +147,7 @@ public final class AssetBrowserView {
     private boolean showingBuiltins;
     private final ImString searchInput = new ImString(SEARCH_CAPACITY);
     private final AssetEntryGrid grid;
+    private boolean showingForeignFiles;
     private Path currentDirectory;
     private boolean revealCurrentDirectory;
     private String selectedPath = "";
@@ -239,6 +241,7 @@ public final class AssetBrowserView {
         renderFolderTreeColumn();
         ImGui.sameLine();
         renderEntryList();
+        handleDeleteShortcut();
         nameDialog.render();
         newAssetDialog.render();
         deleteConfirm.render();
@@ -437,10 +440,20 @@ public final class AssetBrowserView {
         ImGui.beginChild("##asset-entries", 0.0f, 0.0f, true);
         renderViewControls();
         ImGui.separator();
-        grid.render(query.apply(new ArrayList<>(entries)), this::activateEntry, this::decorateEntry);
+        grid.render(listedEntries(), this::activateEntry, this::decorateEntry);
         ImGui.dummy(0.0f, EditorScale.of(ENTRY_LIST_BOTTOM_PADDING));
         renderBrowserContextMenu();
         ImGui.endChild();
+    }
+
+    private List<AssetEntry> listedEntries() {
+        List<AssetEntry> listed = query.apply(new ArrayList<>(entries));
+        if (showingForeignFiles) {
+            return listed;
+        }
+        return listed.stream()
+                .filter(entry -> entry.type() != AssetType.OTHER)
+                .toList();
     }
 
     private void decorateEntry(AssetEntry entry) {
@@ -452,6 +465,14 @@ public final class AssetBrowserView {
         boolean gridMode = grid.mode() == AssetEntryGrid.Mode.GRID;
         if (icons.toggleButton("assets-grid", EditorIcon.GRID, EditorStyle.iconSizeSmall(), gridMode)) {
             grid.setMode(gridMode ? AssetEntryGrid.Mode.LIST : AssetEntryGrid.Mode.GRID);
+        }
+        ImGui.sameLine();
+        if (icons.toggleButton("assets-foreign", EditorIcon.VISIBILITY_VISIBLE,
+                EditorStyle.iconSizeSmall(), showingForeignFiles)) {
+            showingForeignFiles = !showingForeignFiles;
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_SHOW_FOREIGN_FILES));
         }
         ImGui.sameLine();
         renderSortCombo();
@@ -1233,6 +1254,71 @@ public final class AssetBrowserView {
         ImGui.endDragDropTarget();
     }
 
+    private void handleDeleteShortcut() {
+        if (!ImGui.isWindowFocused(imgui.flag.ImGuiFocusedFlags.RootAndChildWindows)
+                || !ImGui.isKeyPressed(imgui.flag.ImGuiKey.Delete)) {
+            return;
+        }
+        askDeleteSelection();
+    }
+
+    private void askDeleteSelection() {
+        List<Path> targets = selectedFiles();
+        if (targets.isEmpty()) {
+            return;
+        }
+        deleteConfirm.open(deletionMessage(targets), () -> deleteAll(targets));
+    }
+
+    private String deletionMessage(List<Path> targets) {
+        if (targets.size() == 1) {
+            return I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_DELETE_FILE_MESSAGE,
+                    targets.getFirst().getFileName());
+        }
+        return I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_DELETE_MANY_MESSAGE, targets.size());
+    }
+
+    private List<Path> selectedFiles() {
+        List<Path> targets = new ArrayList<>();
+        for (String assetPath : grid.selection()) {
+            Path candidate = Path.of(assetPath);
+            if (Files.exists(candidate)) {
+                targets.add(candidate);
+            }
+        }
+        return targets;
+    }
+
+    private void deleteAll(List<Path> targets) {
+        targets.forEach(this::deleteQuietly);
+        notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_DELETED_MANY,
+                targets.size()));
+        grid.clearSelection();
+        refresh();
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            deleteRecursively(path);
+            AssetMetaFile.deleteAlongside(path);
+        } catch (IOException error) {
+            notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_DELETE_FAILED,
+                    error.getMessage()));
+        }
+    }
+
+    private static void deleteRecursively(Path path) throws IOException {
+        if (!Files.isDirectory(path)) {
+            Files.deleteIfExists(path);
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(path)) {
+            for (Path entry : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(entry);
+            }
+        }
+    }
+
     private void deleteFile(Path path) {
         try {
             Files.deleteIfExists(path);
@@ -1347,6 +1433,7 @@ public final class AssetBrowserView {
             case MATERIAL -> TextKey.EDITOR_ASSET_TYPE_MATERIALS;
             case CLIP -> TextKey.EDITOR_ASSET_TYPE_CLIPS;
             case ATLAS -> TextKey.EDITOR_ASSET_TYPE_ATLASES;
+            case FONT -> TextKey.EDITOR_ASSET_TYPE_FONTS;
             case OTHER -> TextKey.EDITOR_ASSET_TYPE_OTHER;
             case FOLDER -> TextKey.EDITOR_ASSET_TYPE_FOLDERS;
         };
@@ -1363,7 +1450,7 @@ public final class AssetBrowserView {
             case MATERIAL -> AssetMimeTypes.MATERIAL;
             case CLIP -> AssetMimeTypes.CLIP;
             case ATLAS -> AssetMimeTypes.ATLAS;
-            case SCENE, SCRIPT, OTHER, FOLDER -> AssetMimeTypes.NONE;
+            case SCENE, SCRIPT, FONT, OTHER, FOLDER -> AssetMimeTypes.NONE;
         };
     }
 

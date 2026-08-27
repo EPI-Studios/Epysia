@@ -22,7 +22,7 @@ public final class AssetTypeIcons {
             case GRAPH -> EditorIcon.GRAPH_EDIT;
             case CLIP -> EditorIcon.ANIMATION;
             case AUDIO -> EditorIcon.AUDIO_STREAM;
-            case OTHER -> EditorIcon.FILE;
+            case FONT, OTHER -> EditorIcon.FILE;
         };
     }
 }

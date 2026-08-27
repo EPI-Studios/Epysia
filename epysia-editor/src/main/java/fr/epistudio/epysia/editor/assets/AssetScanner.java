@@ -112,8 +112,11 @@ public final class AssetScanner {
 
     public static AssetType classify(String name) {
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".java")) {
+        if (lower.endsWith(".java") || lower.endsWith(".kt") || lower.endsWith(".py")) {
             return AssetType.SCRIPT;
+        }
+        if (lower.endsWith(".ttf") || lower.endsWith(".otf")) {
+            return AssetType.FONT;
         }
         if (lower.endsWith(".glsl") || lower.endsWith(".vert") || lower.endsWith(".frag")) {
             return AssetType.SHADER;
