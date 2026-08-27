@@ -354,6 +354,12 @@ public final class HierarchyView {
     }
 
     private void renderContextMenuItems(GameObject target) {
+        if (ImGui.beginMenu(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_ADD_CHILD,
+                "hierarchy-add-child"))) {
+            creationMenu.renderItems(spawnPoint.get(), created -> adopt(target, created));
+            ImGui.endMenu();
+        }
+        ImGui.separator();
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_HIERARCHY_VIEW_RENAME,
                 "hierarchy-rename"), "F2")) {
             beginRename(target);

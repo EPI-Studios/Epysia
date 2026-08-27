@@ -2,12 +2,14 @@ package fr.epistudio.epysia.editor.ui;
 
 import fr.epistudio.epysia.editor.scene.EditorPrimitives;
 import fr.epistudio.epysia.editor.scene.GameObjectFactory;
+import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.i18n.I18n;
 import fr.epistudio.epysia.i18n.TextKey;
 import imgui.ImGui;
 import org.joml.Vector3f;
 
 import java.util.List;
+import java.util.function.Consumer;
 import fr.epistudio.epysia.ui.UiButton;
 import fr.epistudio.epysia.ui.UiImage;
 import fr.epistudio.epysia.ui.UiLabel;
@@ -23,22 +25,27 @@ public final class GameObjectCreationMenu {
     }
 
     public void renderItems(Vector3f spawnPoint) {
-        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CREATE_EMPTY,
-                "create-empty"))) {
-            objectFactory.createEmpty(spawnPoint);
-        }
-        ImGui.separator();
-        renderPrimitiveItems(spawnPoint);
-        ImGui.separator();
-        renderPlanarItems(spawnPoint);
-        ImGui.separator();
-        renderLightAndCameraItems(spawnPoint);
-        ImGui.separator();
-        renderUiItems();
-        renderModulePrimitives(spawnPoint);
+        renderItems(spawnPoint, created -> {
+        });
     }
 
-    private void renderModulePrimitives(Vector3f spawnPoint) {
+    public void renderItems(Vector3f spawnPoint, Consumer<GameObject> onCreated) {
+        if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CREATE_EMPTY,
+                "create-empty"))) {
+            onCreated.accept(objectFactory.createEmpty(spawnPoint));
+        }
+        ImGui.separator();
+        renderPrimitiveItems(spawnPoint, onCreated);
+        ImGui.separator();
+        renderPlanarItems(spawnPoint, onCreated);
+        ImGui.separator();
+        renderLightAndCameraItems(spawnPoint, onCreated);
+        ImGui.separator();
+        renderUiItems(onCreated);
+        renderModulePrimitives(spawnPoint, onCreated);
+    }
+
+    private void renderModulePrimitives(Vector3f spawnPoint, Consumer<GameObject> onCreated) {
         List<EditorPrimitives.Entry> entries = objectFactory.modulePrimitives();
         if (entries.isEmpty()) {
             return;
@@ -46,78 +53,78 @@ public final class GameObjectCreationMenu {
         ImGui.separator();
         for (EditorPrimitives.Entry entry : entries) {
             if (ImGui.menuItem(entry.displayName())) {
-                objectFactory.createModulePrimitive(entry, spawnPoint);
+                onCreated.accept(objectFactory.createModulePrimitive(entry, spawnPoint));
             }
         }
     }
 
-    private void renderUiItems() {
+    private void renderUiItems(Consumer<GameObject> onCreated) {
         if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_CANVAS))) {
-            objectFactory.createUiCanvas();
+            onCreated.accept(objectFactory.createUiCanvas());
         }
         if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_PANEL))) {
-            objectFactory.createUiElement("Panel", new UiPanel());
+            onCreated.accept(objectFactory.createUiElement("Panel", new UiPanel()));
         }
         if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_LABEL))) {
-            objectFactory.createUiElement("Label", new UiLabel());
+            onCreated.accept(objectFactory.createUiElement("Label", new UiLabel()));
         }
         if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_BUTTON))) {
-            objectFactory.createUiElement("Button", new UiButton());
+            onCreated.accept(objectFactory.createUiElement("Button", new UiButton()));
         }
         if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_IMAGE))) {
-            objectFactory.createUiElement("Image", new UiImage());
+            onCreated.accept(objectFactory.createUiElement("Image", new UiImage()));
         }
         if (ImGui.menuItem(I18n.translate(TextKey.EDITOR_GAME_OBJECT_MENU_UI_TEXT_FIELD))) {
-            objectFactory.createUiElement("Text Field", new UiTextField());
+            onCreated.accept(objectFactory.createUiElement("Text Field", new UiTextField()));
         }
     }
 
-    private void renderPrimitiveItems(Vector3f spawnPoint) {
+    private void renderPrimitiveItems(Vector3f spawnPoint, Consumer<GameObject> onCreated) {
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CUBE, "create-cube"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.CUBE, spawnPoint);
+            onCreated.accept(objectFactory.createPrimitive(GameObjectFactory.Primitive.CUBE, spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_PLANE, "create-plane"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.PLANE, spawnPoint);
+            onCreated.accept(objectFactory.createPrimitive(GameObjectFactory.Primitive.PLANE, spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CAPSULE, "create-capsule"))) {
-            objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawnPoint);
+            onCreated.accept(objectFactory.createPrimitive(GameObjectFactory.Primitive.CAPSULE, spawnPoint));
         }
     }
 
-    private void renderPlanarItems(Vector3f spawnPoint) {
+    private void renderPlanarItems(Vector3f spawnPoint, Consumer<GameObject> onCreated) {
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_GAME_OBJECT_MENU_SPRITE_2D, "create-sprite-2d"))) {
-            objectFactory.createSprite(spawnPoint);
+            onCreated.accept(objectFactory.createSprite(spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_GAME_OBJECT_MENU_TILEMAP, "create-tilemap"))) {
-            objectFactory.createTilemap(spawnPoint);
+            onCreated.accept(objectFactory.createTilemap(spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_GAME_OBJECT_MENU_POINT_LIGHT_2D, "create-point-light-2d"))) {
-            objectFactory.createPointLight2D(spawnPoint);
+            onCreated.accept(objectFactory.createPointLight2D(spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_GAME_OBJECT_MENU_SPOT_LIGHT_2D, "create-spot-light-2d"))) {
-            objectFactory.createSpotLight2D(spawnPoint);
+            onCreated.accept(objectFactory.createSpotLight2D(spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_GAME_OBJECT_MENU_GLOBAL_LIGHT_2D, "create-global-light-2d"))) {
-            objectFactory.createGlobalLight2D(spawnPoint);
+            onCreated.accept(objectFactory.createGlobalLight2D(spawnPoint));
         }
     }
 
-    private void renderLightAndCameraItems(Vector3f spawnPoint) {
+    private void renderLightAndCameraItems(Vector3f spawnPoint, Consumer<GameObject> onCreated) {
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_DIRECTIONAL_LIGHT,
                 "create-directional-light"))) {
-            objectFactory.createDirectionalLight(spawnPoint);
+            onCreated.accept(objectFactory.createDirectionalLight(spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_POINT_LIGHT,
                 "create-point-light"))) {
-            objectFactory.createPointLight(spawnPoint);
+            onCreated.accept(objectFactory.createPointLight(spawnPoint));
         }
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_SPOT_LIGHT,
                 "create-spot-light"))) {
-            objectFactory.createSpotLight(spawnPoint);
+            onCreated.accept(objectFactory.createSpotLight(spawnPoint));
         }
         ImGui.separator();
         if (ImGui.menuItem(I18n.label(TextKey.EDITOR_EDITOR_VIEW_MENU_GAMEOBJECT_CAMERA, "create-camera"))) {
-            objectFactory.createCamera(spawnPoint);
+            onCreated.accept(objectFactory.createCamera(spawnPoint));
         }
     }
 }

@@ -437,6 +437,7 @@ public enum TextKey {
     EDITOR_HIERARCHY_VIEW_EMPTY("editor.hierarchy-view.empty"),
     EDITOR_HIERARCHY_VIEW_EMPTY_HELP_1("editor.hierarchy-view.empty-help-1"),
     EDITOR_HIERARCHY_VIEW_EMPTY_HELP_2("editor.hierarchy-view.empty-help-2"),
+    EDITOR_HIERARCHY_VIEW_ADD_CHILD("editor.hierarchy-view.add-child"),
     EDITOR_HIERARCHY_VIEW_RENAME("editor.hierarchy-view.rename"),
     EDITOR_HIERARCHY_VIEW_DUPLICATE("editor.hierarchy-view.duplicate"),
     EDITOR_HIERARCHY_VIEW_UNPARENT("editor.hierarchy-view.unparent"),
