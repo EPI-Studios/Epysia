@@ -116,6 +116,8 @@ public final class AssetBrowserView {
     private static final String VERTEX_SHADER_TEMPLATE_RESOURCE = "/templates/NewShader.vert.glsl";
     private static final String FRAGMENT_SHADER_TEMPLATE_RESOURCE = "/templates/NewShader.frag.glsl";
     private static final String SURFACE_SHADER_TEMPLATE_RESOURCE = "/templates/NewSurfaceShader.surf.glsl";
+    private static final String SPRITE_SURFACE_SHADER_TEMPLATE_RESOURCE =
+            "/templates/NewSpriteSurfaceShader.surf.glsl";
     private static final String POST_EFFECT_TEMPLATE_RESOURCE = "/templates/NewPostEffect.post.glsl";
     private static final String FOG_SHADER_TEMPLATE_RESOURCE = "/templates/NewFogShader.fog.glsl";
 
@@ -633,6 +635,10 @@ public final class AssetBrowserView {
                         I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SHADERS),
                         I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SURFACE_SHADER_DESCRIPTION),
                         EditorIcon.MESH, "MySurfaceShader", this::createSurfaceShader),
+                kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SPRITE_SURFACE_SHADER),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SHADERS),
+                        I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SPRITE_SURFACE_SHADER_DESCRIPTION),
+                        EditorIcon.SPRITE_2D, "MySpriteSurface", this::createSpriteSurfaceShader),
                 kind(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_GRAPH),
                         I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_CATEGORY_SHADERS),
                         I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_GRAPH_DESCRIPTION),
@@ -835,6 +841,10 @@ public final class AssetBrowserView {
         createShaderAsset(requestedName, this::writeSurfaceShader);
     }
 
+    private void createSpriteSurfaceShader(String requestedName) {
+        createShaderAsset(requestedName, this::writeSpriteSurfaceShader);
+    }
+
     private void createShaderPair(String requestedName) {
         createShaderAsset(requestedName, this::writeShaderPair);
     }
@@ -860,7 +870,15 @@ public final class AssetBrowserView {
         Path write(String name) throws IOException;
     }
 
+    private Path writeSpriteSurfaceShader(String name) throws IOException {
+        return writeSurfaceTemplate(name, SPRITE_SURFACE_SHADER_TEMPLATE_RESOURCE);
+    }
+
     private Path writeSurfaceShader(String name) throws IOException {
+        return writeSurfaceTemplate(name, SURFACE_SHADER_TEMPLATE_RESOURCE);
+    }
+
+    private Path writeSurfaceTemplate(String name, String templateResource) throws IOException {
         Path directory = targetDirectory();
         Files.createDirectories(directory);
         Path surfaceFile = directory.resolve(name + SURFACE_SHADER_SUFFIX);
@@ -868,7 +886,7 @@ public final class AssetBrowserView {
             throw new IOException(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SHADER_ALREADY_EXISTS,
                     name));
         }
-        Files.writeString(surfaceFile, loadTemplate(SURFACE_SHADER_TEMPLATE_RESOURCE));
+        Files.writeString(surfaceFile, loadTemplate(templateResource));
         notifier.show(I18n.translate(TextKey.EDITOR_ASSET_BROWSER_VIEW_TOAST_SURFACE_SHADER_CREATED, name));
         return surfaceFile;
     }

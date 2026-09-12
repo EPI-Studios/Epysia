@@ -56,6 +56,8 @@ public enum TextKey {
     EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_MATERIAL_DESCRIPTION("editor.asset-browser-view.asset-kind.material.description"),
     EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SURFACE_SHADER("editor.asset-browser-view.asset-kind.surface-shader"),
     EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SURFACE_SHADER_DESCRIPTION("editor.asset-browser-view.asset-kind.surface-shader.description"),
+    EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SPRITE_SURFACE_SHADER("editor.asset-browser-view.asset-kind.sprite-surface-shader"),
+    EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SPRITE_SURFACE_SHADER_DESCRIPTION("editor.asset-browser-view.asset-kind.sprite-surface-shader.description"),
     EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_GRAPH("editor.asset-browser-view.asset-kind.shader-graph"),
     EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_GRAPH_DESCRIPTION("editor.asset-browser-view.asset-kind.shader-graph.description"),
     EDITOR_ASSET_BROWSER_VIEW_ASSET_KIND_SHADER_PAIR("editor.asset-browser-view.asset-kind.shader-pair"),

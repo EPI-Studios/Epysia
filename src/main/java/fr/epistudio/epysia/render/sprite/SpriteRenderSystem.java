@@ -111,6 +111,7 @@ public final class SpriteRenderSystem implements RenderSystem {
     private final ShaderLoader shaderLoader;
     private final ShaderWatcher shaderWatcher;
     private final Set<PipelineKey> staleKeys = ConcurrentHashMap.newKeySet();
+    private final Set<PipelineKey> rejectedKeys = ConcurrentHashMap.newKeySet();
     private final MeshRenderSystem meshRenderSystem;
     private final Logger logger;
     private final List<SpriteEntry> entries = new ArrayList<>();
@@ -364,6 +365,7 @@ public final class SpriteRenderSystem implements RenderSystem {
         uniformBindingsBySprite.clear();
         for (PipelineKey key : Set.copyOf(staleKeys)) {
             staleKeys.remove(key);
+            rejectedKeys.remove(key);
             parsedByKey.remove(key);
             PipelineHandle previous = pipelinesByKey.remove(key);
             if (previous != null) {
@@ -375,11 +377,31 @@ public final class SpriteRenderSystem implements RenderSystem {
 
     private PipelineHandle pipelineFor(SpriteRenderer sprite) {
         String surfacePath = sprite.surfaceShaderPath();
-        if (surfacePath.isEmpty()) {
-            return sprite.lit() ? litPipeline : pipeline;
+        PipelineKey key = new PipelineKey(surfacePath, sprite.lit());
+        if (surfacePath.isEmpty() || rejectedKeys.contains(key)) {
+            return fallbackPipeline(sprite);
         }
-        return pipelinesByKey.computeIfAbsent(new PipelineKey(surfacePath, sprite.lit()),
-                key -> createSurfacePipeline(key));
+        PipelineHandle existing = pipelinesByKey.get(key);
+        return existing == null ? buildOrReject(key, sprite) : existing;
+    }
+
+    private PipelineHandle buildOrReject(PipelineKey key, SpriteRenderer sprite) {
+        try {
+            PipelineHandle built = createSurfacePipeline(key);
+            pipelinesByKey.put(key, built);
+            return built;
+        } catch (RuntimeException rejected) {
+            rejectedKeys.add(key);
+            parsedByKey.remove(key);
+            logger.error("[SpriteRenderSystem] " + key.surfaceShaderPath()
+                    + " is not a sprite surface shader, the sprite keeps the default one: "
+                    + rejected.getMessage());
+            return fallbackPipeline(sprite);
+        }
+    }
+
+    private PipelineHandle fallbackPipeline(SpriteRenderer sprite) {
+        return sprite.lit() ? litPipeline : pipeline;
     }
 
     private PipelineHandle createSurfacePipeline(PipelineKey key) {
