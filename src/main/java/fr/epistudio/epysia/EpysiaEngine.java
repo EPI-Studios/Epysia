@@ -242,7 +242,7 @@ public final class EpysiaEngine implements StageConfigurer, EngineServices, Scen
     public void initialize() {
         MainThread.adopt();
         fontRegistry = new FontRegistry(renderBackend);
-        fontRegistry.load(FontRegistry.DEFAULT_NAME, "fonts/AdwaitaMono-Regular.ttf", 24.0f);
+        fontRegistry.load(FontRegistry.DEFAULT_NAME, FontRegistry.DEFAULT_FONT_RESOURCE, 24.0f);
         for (RenderSystem system : renderSystems) {
             system.initialize(renderBackend, this);
         }
