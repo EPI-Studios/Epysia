@@ -125,6 +125,37 @@ import static org.lwjgl.opengl.GL32.glFenceSync;
 import static org.lwjgl.opengl.GL44.GL_MAP_COHERENT_BIT;
 import static org.lwjgl.opengl.GL44.GL_MAP_PERSISTENT_BIT;
 import static org.lwjgl.opengl.GL44.glBufferStorage;
+import static org.lwjgl.opengl.GL45.glCreateBuffers;
+import static org.lwjgl.opengl.GL45.glGetNamedBufferSubData;
+import static org.lwjgl.opengl.GL45.glMapNamedBufferRange;
+import static org.lwjgl.opengl.GL45.glNamedBufferData;
+import static org.lwjgl.opengl.GL45.glNamedBufferStorage;
+import static org.lwjgl.opengl.GL45.glNamedBufferSubData;
+import static org.lwjgl.opengl.GL45.glUnmapNamedBuffer;
+import static org.lwjgl.opengl.GL45.glCreateTextures;
+import static org.lwjgl.opengl.GL45.glGenerateTextureMipmap;
+import static org.lwjgl.opengl.GL45.glGetTextureImage;
+import static org.lwjgl.opengl.GL45.glTextureParameterf;
+import static org.lwjgl.opengl.GL45.glTextureParameteri;
+import static org.lwjgl.opengl.GL45.glTextureStorage2D;
+import static org.lwjgl.opengl.GL45.glTextureStorage3D;
+import static org.lwjgl.opengl.GL45.glTextureSubImage2D;
+import static org.lwjgl.opengl.GL45.glCheckNamedFramebufferStatus;
+import static org.lwjgl.opengl.GL45.glCreateFramebuffers;
+import static org.lwjgl.opengl.GL45.glCreateVertexArrays;
+import static org.lwjgl.opengl.GL45.glEnableVertexArrayAttrib;
+import static org.lwjgl.opengl.GL45.glNamedFramebufferDrawBuffer;
+import static org.lwjgl.opengl.GL45.glNamedFramebufferReadBuffer;
+import static org.lwjgl.opengl.GL45.glNamedFramebufferTexture;
+import static org.lwjgl.opengl.GL45.glNamedFramebufferTextureLayer;
+import static org.lwjgl.opengl.GL45.glVertexArrayAttribBinding;
+import static org.lwjgl.opengl.GL45.glVertexArrayAttribFormat;
+import static org.lwjgl.opengl.GL45.glVertexArrayAttribIFormat;
+import static org.lwjgl.opengl.GL45.glVertexArrayBindingDivisor;
+import static org.lwjgl.opengl.GL44.glBindTextures;
+import org.lwjgl.opengl.NVShaderBufferLoad;
+import org.lwjgl.opengl.NVUniformBufferUnifiedMemory;
+import org.lwjgl.opengl.NVVertexBufferUnifiedMemory;
 import static org.lwjgl.opengl.GL30.GL_MAP_WRITE_BIT;
 import static org.lwjgl.opengl.GL15.glGenBuffers;
 import static org.lwjgl.opengl.GL20.GL_COMPILE_STATUS;
@@ -222,6 +253,9 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private PipelineResource currentPipeline;
     private RenderState appliedRenderState;
     private boolean persistentMappingSupported;
+    private boolean directStateAccessSupported;
+    private boolean multiBindSupported;
+    private boolean unifiedUniformMemorySupported;
     private int ringFrameSlot;
     private int uniformOverrideSlot = -1;
     private BufferResource uniformOverrideBuffer;
@@ -240,6 +274,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private static final String DEBUG_PROPERTY = "epysia.gl.debug";
     private static final String GPU_PROFILING_PROPERTY = "epysia.gpu.profiling";
     private static final String SYNCHRONOUS_DEBUG_PROPERTY = "epysia.gl.debug.synchronous";
+    private static final String DIRECT_STATE_ACCESS_DISABLED_PROPERTY = "epysia.gl.directStateAccess.disabled";
+    private static final int DIRECT_WRITE_BYTE_LIMIT = 2048;
+    private static final String MULTI_BIND_DISABLED_PROPERTY = "epysia.gl.multiBind.disabled";
+    private static final String UNIFIED_MEMORY_ENABLED_PROPERTY = "epysia.gl.unifiedMemory.enabled";
+    private static final int NO_TEXTURE_RANGE = -1;
     private static final int PROFILE_FRAME_LAG = 4;
     private static final int MAX_PROFILE_SECTIONS = 32;
     private final int[][] profileQueries = new int[PROFILE_FRAME_LAG][MAX_PROFILE_SECTIONS];
@@ -263,11 +302,50 @@ public final class OpenGlRenderBackend implements RenderBackend {
         installDebugCallback(capabilities);
         persistentMappingSupported = (capabilities.OpenGL44 || capabilities.GL_ARB_buffer_storage)
                 && !Boolean.getBoolean("epysia.ring.disabled");
+        directStateAccessSupported = (capabilities.OpenGL45 || capabilities.GL_ARB_direct_state_access)
+                && !Boolean.getBoolean(DIRECT_STATE_ACCESS_DISABLED_PROPERTY);
+        multiBindSupported = (capabilities.OpenGL44 || capabilities.GL_ARB_multi_bind)
+                && !Boolean.getBoolean(MULTI_BIND_DISABLED_PROPERTY);
+        enableUnifiedUniformMemory(capabilities);
         glEnable(GL32.GL_TEXTURE_CUBE_MAP_SEAMLESS);
         screenWidth = surface.framebufferWidth();
         screenHeight = surface.framebufferHeight();
         glViewport(0, 0, screenWidth, screenHeight);
         allocateProfileQueries();
+    }
+
+    private void enableUnifiedUniformMemory(GLCapabilities capabilities) {
+        unifiedUniformMemorySupported = capabilities.GL_NV_uniform_buffer_unified_memory
+                && capabilities.GL_NV_vertex_buffer_unified_memory
+                && capabilities.GL_NV_shader_buffer_load
+                && Boolean.getBoolean(UNIFIED_MEMORY_ENABLED_PROPERTY);
+        if (unifiedUniformMemorySupported) {
+            GL11.glEnableClientState(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_UNIFIED_NV);
+        }
+    }
+
+    private long[] makeUniformBufferResident(int glTarget, int[] bufferIds) {
+        if (!unifiedUniformMemorySupported || glTarget != GL_UNIFORM_BUFFER) {
+            return new long[0];
+        }
+        long[] addresses = new long[bufferIds.length];
+        long[] queried = new long[1];
+        for (int slot = 0; slot < bufferIds.length; slot++) {
+            NVShaderBufferLoad.glMakeNamedBufferResidentNV(bufferIds[slot], GL15.GL_READ_ONLY);
+            NVShaderBufferLoad.glGetNamedBufferParameterui64vNV(bufferIds[slot],
+                    NVShaderBufferLoad.GL_BUFFER_GPU_ADDRESS_NV, queried);
+            addresses[slot] = queried[0];
+        }
+        return addresses;
+    }
+
+    private void makeBufferNonResident(BufferResource resource) {
+        if (!resource.resident()) {
+            return;
+        }
+        for (int bufferId : resource.bufferIds()) {
+            NVShaderBufferLoad.glMakeNamedBufferNonResidentNV(bufferId);
+        }
     }
 
     private void allocateProfileQueries() {
@@ -347,11 +425,23 @@ public final class OpenGlRenderBackend implements RenderBackend {
             buffers.put(id, createRingBuffer(glTarget, descriptor.data()));
             return new BufferHandle(id);
         }
+        int bufferId = allocateBuffer(glTarget, descriptor.data(), glUsage);
+        int[] bufferIds = {bufferId};
+        buffers.put(id, BufferResource.single(bufferIds, makeUniformBufferResident(glTarget, bufferIds),
+                glTarget, descriptor.data().remaining(), glUsage));
+        return new BufferHandle(id);
+    }
+
+    private int allocateBuffer(int glTarget, ByteBuffer data, int glUsage) {
+        if (directStateAccessSupported) {
+            int bufferId = glCreateBuffers();
+            glNamedBufferData(bufferId, data, glUsage);
+            return bufferId;
+        }
         int bufferId = glGenBuffers();
         glBindBuffer(glTarget, bufferId);
-        glBufferData(glTarget, descriptor.data(), glUsage);
-        buffers.put(id, BufferResource.single(bufferId, glTarget, descriptor.data().remaining(), glUsage));
-        return new BufferHandle(id);
+        glBufferData(glTarget, data, glUsage);
+        return bufferId;
     }
 
     @Override
@@ -398,6 +488,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public void readBuffer(BufferHandle handle, ByteBuffer destination, long byteOffset) {
         BufferResource resource = requireBuffer(handle);
+        if (directStateAccessSupported) {
+            glGetNamedBufferSubData(resource.bufferId(), byteOffset, destination);
+            return;
+        }
         glBindBuffer(resource.glTarget(), resource.bufferId());
         GL15.glGetBufferSubData(resource.glTarget(), byteOffset, destination);
     }
@@ -451,6 +545,9 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private int createVertexArrayObject(VertexLayout layout, VertexLayout instanceLayout) {
+        if (directStateAccessSupported) {
+            return createVertexArrayObjectNamed(layout, instanceLayout);
+        }
         int vao = glGenVertexArrays();
         glBindVertexArray(vao);
         for (VertexAttribute attribute : layout.attributes()) {
@@ -468,6 +565,36 @@ public final class OpenGlRenderBackend implements RenderBackend {
         }
         glBindVertexArray(0);
         return vao;
+    }
+
+    private int createVertexArrayObjectNamed(VertexLayout layout, VertexLayout instanceLayout) {
+        int vao = glCreateVertexArrays();
+        for (VertexAttribute attribute : layout.attributes()) {
+            glEnableVertexArrayAttrib(vao, attribute.location());
+            namedAttributeFormat(vao, attribute);
+            glVertexArrayAttribBinding(vao, attribute.location(), VERTEX_BINDING_INDEX);
+        }
+        if (instanceLayout != null) {
+            for (VertexAttribute attribute : instanceLayout.attributes()) {
+                glEnableVertexArrayAttrib(vao, attribute.location());
+                namedAttributeFormat(vao, attribute);
+                glVertexArrayAttribBinding(vao, attribute.location(), INSTANCE_BINDING_INDEX);
+            }
+            glVertexArrayBindingDivisor(vao, INSTANCE_BINDING_INDEX, 1);
+        }
+        return vao;
+    }
+
+    private void namedAttributeFormat(int vao, VertexAttribute attribute) {
+        if (attribute.format().integer()) {
+            glVertexArrayAttribIFormat(vao, attribute.location(),
+                    attribute.format().componentCount(),
+                    attribute.format().wideInteger() ? GL11.GL_UNSIGNED_INT : GL11.GL_UNSIGNED_SHORT,
+                    attribute.byteOffset());
+            return;
+        }
+        glVertexArrayAttribFormat(vao, attribute.location(),
+                attribute.format().componentCount(), GL11.GL_FLOAT, false, attribute.byteOffset());
     }
 
     private void attributeFormat(VertexAttribute attribute) {
@@ -562,34 +689,41 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public TextureHandle createTexture(TextureDescriptor descriptor) {
-        int textureId = glGenTextures();
         int glTarget = textureTargetToGl(descriptor.kind());
-        glBindTexture(glTarget, textureId);
-        configureTextureStorage(glTarget, descriptor);
-        configureTextureSamplerState(glTarget, descriptor);
+        int textureId = createTextureObject(glTarget);
+        TextureMutator mutator = textureMutator(textureId, glTarget);
+        configureTextureStorage(mutator, descriptor);
+        configureTextureSamplerState(mutator, descriptor);
         long id = nextId.getAndIncrement();
         textures.put(id, new TextureResource(textureId, descriptor.width(), descriptor.height(), descriptor.format(), descriptor.kind()));
         return new TextureHandle(id);
     }
 
-    private void configureTextureStorage(int glTarget, TextureDescriptor descriptor) {
-        int internalFormat = internalFormatToGl(descriptor.format());
-        switch (descriptor.kind()) {
-            case TEXTURE_2D -> allocateTexture2dStorage(descriptor, internalFormat);
-            case CUBEMAP -> GL42.glTexStorage2D(glTarget, descriptor.mipLevels(),
-                    internalFormat, descriptor.width(), descriptor.height());
-            case TEXTURE_3D, ARRAY_2D -> GL42.glTexStorage3D(glTarget, descriptor.mipLevels(),
-                    internalFormat, descriptor.width(), descriptor.height(), descriptor.layers());
+    private int createTextureObject(int glTarget) {
+        if (directStateAccessSupported) {
+            return glCreateTextures(glTarget);
         }
+        int textureId = glGenTextures();
+        glBindTexture(glTarget, textureId);
+        return textureId;
     }
 
-    private void allocateTexture2dStorage(TextureDescriptor descriptor, int internalFormat) {
-        int pixelFormat = pixelFormatToGl(descriptor.format());
-        int pixelType = pixelTypeToGl(descriptor.format());
-        for (int level = 0; level < Math.max(1, descriptor.mipLevels()); level++) {
-            glTexImage2D(GL_TEXTURE_2D, level, internalFormat,
-                    Math.max(1, descriptor.width() >> level), Math.max(1, descriptor.height() >> level),
-                    0, pixelFormat, pixelType, (ByteBuffer) null);
+    private TextureMutator textureMutator(int textureId, int glTarget) {
+        if (directStateAccessSupported) {
+            return new NamedTextureMutator(textureId);
+        }
+        glBindTexture(glTarget, textureId);
+        return new BoundTextureMutator(glTarget);
+    }
+
+    private void configureTextureStorage(TextureMutator mutator, TextureDescriptor descriptor) {
+        int internalFormat = internalFormatToGl(descriptor.format());
+        int levels = Math.max(1, descriptor.mipLevels());
+        switch (descriptor.kind()) {
+            case TEXTURE_2D, CUBEMAP -> mutator.storage2d(levels, internalFormat,
+                    descriptor.width(), descriptor.height());
+            case TEXTURE_3D, ARRAY_2D -> mutator.storage3d(levels, internalFormat,
+                    descriptor.width(), descriptor.height(), descriptor.layers());
         }
     }
 
@@ -623,30 +757,30 @@ public final class OpenGlRenderBackend implements RenderBackend {
         };
     }
 
-    private void configureTextureSamplerState(int glTarget, TextureDescriptor descriptor) {
+    private void configureTextureSamplerState(TextureMutator mutator, TextureDescriptor descriptor) {
         boolean nearest = descriptor.samplerFilter() == SamplerFilter.NEAREST;
         int magFilter = nearest ? GL_NEAREST : GL_LINEAR;
         int mipmapMinFilter = nearest ? GL11.GL_NEAREST_MIPMAP_LINEAR
                 : GL11.GL_LINEAR_MIPMAP_LINEAR;
         int minFilter = descriptor.mipLevels() > 1 ? mipmapMinFilter : magFilter;
         int wrapMode = wrapToGl(descriptor.wrap());
-        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, minFilter);
-        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, magFilter);
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, wrapMode);
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, wrapMode);
+        mutator.parameterInt(GL_TEXTURE_MIN_FILTER, minFilter);
+        mutator.parameterInt(GL_TEXTURE_MAG_FILTER, magFilter);
+        mutator.parameterInt(GL_TEXTURE_WRAP_S, wrapMode);
+        mutator.parameterInt(GL_TEXTURE_WRAP_T, wrapMode);
         if (descriptor.kind() == TextureKind.TEXTURE_3D) {
-            glTexParameteri(glTarget, GL12.GL_TEXTURE_WRAP_R, wrapMode);
+            mutator.parameterInt(GL12.GL_TEXTURE_WRAP_R, wrapMode);
         } else if (descriptor.kind() != TextureKind.TEXTURE_2D) {
-            glTexParameteri(glTarget, GL12.GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+            mutator.parameterInt(GL12.GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         }
         if (descriptor.format() == TextureFormat.DEPTH32F && descriptor.usage() == TextureUsage.SAMPLED_DEPTH_SHADOW) {
-            glTexParameteri(glTarget, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-            glTexParameteri(glTarget, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+            mutator.parameterInt(GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+            mutator.parameterInt(GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
         }
-        configureAnisotropy(glTarget, descriptor);
+        configureAnisotropy(mutator, descriptor);
     }
 
-    private void configureAnisotropy(int glTarget, TextureDescriptor descriptor) {
+    private void configureAnisotropy(TextureMutator mutator, TextureDescriptor descriptor) {
         if (descriptor.mipLevels() <= 1 || descriptor.samplerFilter() == SamplerFilter.NEAREST) {
             return;
         }
@@ -656,7 +790,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         }
         int requested = Math.min(descriptor.anisotropy(), supported);
         if (requested > TextureDescriptor.NO_ANISOTROPY) {
-            glTexParameterf(glTarget, GL_TEXTURE_MAX_ANISOTROPY_EXT, requested);
+            mutator.parameterFloat(GL_TEXTURE_MAX_ANISOTROPY_EXT, requested);
         }
     }
 
@@ -688,42 +822,72 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     @Override
     public RenderTargetHandle createRenderTarget(RenderTargetDescriptor descriptor) {
-        int fboId = glGenFramebuffers();
-        glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-        attachColorTextures(descriptor);
-        descriptor.depthAttachment().ifPresent(depth -> attachDepthTexture(descriptor, depth));
+        int fboId = createFramebufferObject();
+        attachColorTextures(fboId, descriptor);
+        descriptor.depthAttachment().ifPresent(depth -> attachDepthTexture(fboId, descriptor, depth));
         if (descriptor.colorAttachments().isEmpty()) {
-            glDrawBuffer(GL_NONE);
-            glReadBuffer(GL_NONE);
+            disableColorBuffers(fboId);
         }
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            throw new EpysiaException("Render target framebuffer is incomplete.");
-        }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        verifyFramebufferComplete(fboId);
         long id = nextId.getAndIncrement();
         renderTargets.put(id, new RenderTargetResource(fboId, descriptor.width(), descriptor.height()));
         return new RenderTargetHandle(id);
     }
 
-    private void attachColorTextures(RenderTargetDescriptor descriptor) {
+    private int createFramebufferObject() {
+        if (directStateAccessSupported) {
+            return glCreateFramebuffers();
+        }
+        int fboId = glGenFramebuffers();
+        glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+        return fboId;
+    }
+
+    private void disableColorBuffers(int fboId) {
+        if (directStateAccessSupported) {
+            glNamedFramebufferDrawBuffer(fboId, GL_NONE);
+            glNamedFramebufferReadBuffer(fboId, GL_NONE);
+            return;
+        }
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+    }
+
+    private void verifyFramebufferComplete(int fboId) {
+        int status = directStateAccessSupported
+                ? glCheckNamedFramebufferStatus(fboId, GL_FRAMEBUFFER)
+                : glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            throw new EpysiaException("Render target framebuffer is incomplete.");
+        }
+        if (!directStateAccessSupported) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+    }
+
+    private void attachColorTextures(int fboId, RenderTargetDescriptor descriptor) {
         int attachmentIndex = 0;
         for (TextureHandle color : descriptor.colorAttachments()) {
             TextureResource resource = requireTexture(color);
-            attachTexture(GL_COLOR_ATTACHMENT0 + attachmentIndex, resource,
+            attachTexture(fboId, GL_COLOR_ATTACHMENT0 + attachmentIndex, resource,
                     descriptor.colorLayer(), descriptor.colorMipLevel());
             attachmentIndex++;
         }
     }
 
-    private void attachDepthTexture(RenderTargetDescriptor descriptor, TextureHandle depth) {
+    private void attachDepthTexture(int fboId, RenderTargetDescriptor descriptor, TextureHandle depth) {
         TextureResource resource = requireTexture(depth);
         int attachment = resource.format() == TextureFormat.DEPTH32F_STENCIL8
                 ? GL_DEPTH_STENCIL_ATTACHMENT
                 : GL_DEPTH_ATTACHMENT;
-        attachTexture(attachment, resource, descriptor.depthLayer(), 0);
+        attachTexture(fboId, attachment, resource, descriptor.depthLayer(), 0);
     }
 
-    private void attachTexture(int attachmentPoint, TextureResource resource, int layer, int mipLevel) {
+    private void attachTexture(int fboId, int attachmentPoint, TextureResource resource, int layer, int mipLevel) {
+        if (directStateAccessSupported) {
+            attachTextureNamed(fboId, attachmentPoint, resource, layer, mipLevel);
+            return;
+        }
         switch (resource.kind()) {
             case TEXTURE_2D -> glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentPoint,
                     GL_TEXTURE_2D, resource.textureId(), mipLevel);
@@ -735,6 +899,15 @@ public final class OpenGlRenderBackend implements RenderBackend {
         }
     }
 
+    private void attachTextureNamed(int fboId, int attachmentPoint, TextureResource resource, int layer, int mipLevel) {
+        switch (resource.kind()) {
+            case TEXTURE_2D -> glNamedFramebufferTexture(fboId, attachmentPoint,
+                    resource.textureId(), mipLevel);
+            case CUBEMAP, ARRAY_2D -> glNamedFramebufferTextureLayer(fboId, attachmentPoint,
+                    resource.textureId(), mipLevel, Math.max(layer, 0));
+        }
+    }
+
     @Override
     public BindingSetHandle createBindingSet(BindingSetDescriptor descriptor) {
         List<ResolvedBinding> resolved = new ArrayList<>(descriptor.bindings().size());
@@ -742,8 +915,29 @@ public final class OpenGlRenderBackend implements RenderBackend {
             resolved.add(resolveBinding(binding));
         }
         long id = nextId.getAndIncrement();
-        bindingSets.put(id, new BindingSetResource(resolved));
+        bindingSets.put(id, buildBindingSet(resolved));
         return new BindingSetHandle(id);
+    }
+
+    private BindingSetResource buildBindingSet(List<ResolvedBinding> resolved) {
+        int firstSlot = Integer.MAX_VALUE;
+        int lastSlot = NO_TEXTURE_RANGE;
+        for (ResolvedBinding binding : resolved) {
+            if (binding instanceof ResolvedTexture texture) {
+                firstSlot = Math.min(firstSlot, texture.slot());
+                lastSlot = Math.max(lastSlot, texture.slot());
+            }
+        }
+        if (!multiBindSupported || lastSlot == NO_TEXTURE_RANGE) {
+            return new BindingSetResource(resolved, NO_TEXTURE_RANGE, new int[0]);
+        }
+        int[] textureIds = new int[lastSlot - firstSlot + 1];
+        for (ResolvedBinding binding : resolved) {
+            if (binding instanceof ResolvedTexture texture) {
+                textureIds[texture.slot() - firstSlot] = texture.textureId();
+            }
+        }
+        return new BindingSetResource(resolved, firstSlot, textureIds);
     }
 
     private ResolvedBinding resolveBinding(Binding binding) {
@@ -781,6 +975,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
             mapping.put(data.duplicate());
             return;
         }
+        if (directStateAccessSupported && data.remaining() <= DIRECT_WRITE_BYTE_LIMIT) {
+            glNamedBufferSubData(resource.bufferId(), byteOffset, data);
+            return;
+        }
         glBindBuffer(resource.glTarget(), resource.bufferId());
         glBufferSubData(resource.glTarget(), byteOffset, data);
     }
@@ -798,6 +996,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public void writeTexture(TextureHandle handle, ByteBuffer rgbaPixels) {
         TextureResource resource = requireTexture(handle);
+        if (directStateAccessSupported) {
+            glTextureSubImage2D(resource.textureId(), 0, 0, 0, resource.width(), resource.height(),
+                    GL_RGBA, GL_UNSIGNED_BYTE, rgbaPixels);
+            return;
+        }
         glBindTexture(GL_TEXTURE_2D, resource.textureId());
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, resource.width(), resource.height(), GL_RGBA, GL_UNSIGNED_BYTE, rgbaPixels);
     }
@@ -805,6 +1008,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public void writeTexture(TextureHandle handle, java.nio.FloatBuffer rgbaPixels) {
         TextureResource resource = requireTexture(handle);
+        if (directStateAccessSupported) {
+            glTextureSubImage2D(resource.textureId(), 0, 0, 0, resource.width(), resource.height(),
+                    GL_RGBA, GL_FLOAT, rgbaPixels);
+            return;
+        }
         glBindTexture(GL_TEXTURE_2D, resource.textureId());
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, resource.width(), resource.height(),
                 GL_RGBA, GL_FLOAT, rgbaPixels);
@@ -813,6 +1021,10 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public void generateMipmaps(TextureHandle handle) {
         TextureResource resource = requireTexture(handle);
+        if (directStateAccessSupported) {
+            glGenerateTextureMipmap(resource.textureId());
+            return;
+        }
         glBindTexture(GL_TEXTURE_2D, resource.textureId());
         GL30.glGenerateMipmap(GL_TEXTURE_2D);
     }
@@ -820,6 +1032,11 @@ public final class OpenGlRenderBackend implements RenderBackend {
     @Override
     public void readTextureLevel(TextureHandle handle, int mipLevel, java.nio.FloatBuffer destination) {
         TextureResource resource = requireTexture(handle);
+        if (directStateAccessSupported) {
+            glGetTextureImage(resource.textureId(), mipLevel,
+                    pixelFormatToGl(resource.format()), GL_FLOAT, destination);
+            return;
+        }
         int glTarget = textureTargetToGl(resource.kind());
         glBindTexture(glTarget, resource.textureId());
         GL11.glGetTexImage(glTarget, mipLevel,
@@ -904,8 +1121,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
         uniformOverrideOffset = byteOffset;
         uniformOverrideSize = byteSize;
         currentBindingSetId = 0L;
-        glBindBufferRange(GL_UNIFORM_BUFFER, slot,
-                uniformOverrideBuffer.bufferId(ringFrameSlot), byteOffset, byteSize);
+        bindUniformRange(slot, uniformOverrideBuffer, byteOffset, byteSize);
     }
 
     @Override
@@ -916,13 +1132,22 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private void destroyBufferResource(BufferResource resource) {
+        makeBufferNonResident(resource);
         for (int bufferId : resource.bufferIds()) {
             if (resource.ringBuffered()) {
-                glBindBuffer(resource.glTarget(), bufferId);
-                glUnmapBuffer(resource.glTarget());
+                unmapBuffer(resource.glTarget(), bufferId);
             }
             glDeleteBuffers(bufferId);
         }
+    }
+
+    private void unmapBuffer(int glTarget, int bufferId) {
+        if (directStateAccessSupported) {
+            glUnmapNamedBuffer(bufferId);
+            return;
+        }
+        glBindBuffer(glTarget, bufferId);
+        glUnmapBuffer(glTarget);
     }
 
     @Override
@@ -1396,8 +1621,17 @@ public final class OpenGlRenderBackend implements RenderBackend {
             return;
         }
         BindingSetResource resource = requireBindingSet(handle);
+        if (resource.firstTextureSlot() == NO_TEXTURE_RANGE) {
+            for (ResolvedBinding binding : resource.bindings()) {
+                applyResolvedBinding(binding);
+            }
+            return;
+        }
+        glBindTextures(resource.firstTextureSlot(), resource.textureIds());
         for (ResolvedBinding binding : resource.bindings()) {
-            applyResolvedBinding(binding);
+            if (!(binding instanceof ResolvedTexture)) {
+                applyResolvedBinding(binding);
+            }
         }
     }
 
@@ -1405,11 +1639,9 @@ public final class OpenGlRenderBackend implements RenderBackend {
         switch (binding) {
             case ResolvedUbo ubo -> {
                 if (ubo.slot() == uniformOverrideSlot) {
-                    glBindBufferRange(GL_UNIFORM_BUFFER, ubo.slot(),
-                            uniformOverrideBuffer.bufferId(ringFrameSlot), uniformOverrideOffset, uniformOverrideSize);
+                    bindUniformRange(ubo.slot(), uniformOverrideBuffer, uniformOverrideOffset, uniformOverrideSize);
                 } else {
-                    glBindBufferRange(GL_UNIFORM_BUFFER, ubo.slot(),
-                            ubo.buffer().bufferId(ringFrameSlot), ubo.offset(), ubo.size());
+                    bindUniformRange(ubo.slot(), ubo.buffer(), ubo.offset(), ubo.size());
                 }
             }
             case ResolvedStorageImage image -> GL42.glBindImageTexture(
@@ -1421,6 +1653,16 @@ public final class OpenGlRenderBackend implements RenderBackend {
                 glBindTexture(texture.glTarget(), texture.textureId());
             }
         }
+    }
+
+    private void bindUniformRange(int slot, BufferResource buffer, long byteOffset, long byteSize) {
+        if (buffer.resident()) {
+            NVVertexBufferUnifiedMemory.glBufferAddressRangeNV(
+                    NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_ADDRESS_NV, slot,
+                    buffer.gpuAddress(ringFrameSlot) + byteOffset, byteSize);
+            return;
+        }
+        glBindBufferRange(GL_UNIFORM_BUFFER, slot, buffer.bufferId(ringFrameSlot), byteOffset, byteSize);
     }
 
     private void applyDepthTest(DepthTest depthTest) {
@@ -1487,12 +1729,31 @@ public final class OpenGlRenderBackend implements RenderBackend {
         int[] bufferIds = new int[BufferResource.RING_SLOTS];
         ByteBuffer[] mappings = new ByteBuffer[BufferResource.RING_SLOTS];
         for (int slot = 0; slot < BufferResource.RING_SLOTS; slot++) {
-            bufferIds[slot] = glGenBuffers();
-            glBindBuffer(glTarget, bufferIds[slot]);
-            glBufferStorage(glTarget, initialData.duplicate(), storageFlags);
-            mappings[slot] = glMapBufferRange(glTarget, 0L, byteSize, storageFlags);
+            bufferIds[slot] = allocateRingSlot(glTarget, initialData.duplicate(), storageFlags);
+            mappings[slot] = mapRingSlot(glTarget, bufferIds[slot], byteSize, storageFlags);
         }
-        return BufferResource.ring(bufferIds, mappings, glTarget, byteSize);
+        return BufferResource.ring(bufferIds, mappings,
+                makeUniformBufferResident(glTarget, bufferIds), glTarget, byteSize);
+    }
+
+    private int allocateRingSlot(int glTarget, ByteBuffer initialData, int storageFlags) {
+        if (directStateAccessSupported) {
+            int bufferId = glCreateBuffers();
+            glNamedBufferStorage(bufferId, initialData, storageFlags);
+            return bufferId;
+        }
+        int bufferId = glGenBuffers();
+        glBindBuffer(glTarget, bufferId);
+        glBufferStorage(glTarget, initialData, storageFlags);
+        return bufferId;
+    }
+
+    private ByteBuffer mapRingSlot(int glTarget, int bufferId, int byteSize, int storageFlags) {
+        if (directStateAccessSupported) {
+            return glMapNamedBufferRange(bufferId, 0L, byteSize, storageFlags);
+        }
+        glBindBuffer(glTarget, bufferId);
+        return glMapBufferRange(glTarget, 0L, byteSize, storageFlags);
     }
 
     private static boolean isDynamicUsage(BufferUsage usage) {
@@ -1555,19 +1816,17 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
     public void updateTextureFilter(TextureHandle handle, SamplerFilter filter) {
         TextureResource resource = requireTexture(handle);
-        int glTarget = textureTargetToGl(resource.kind());
-        glBindTexture(glTarget, resource.textureId());
+        TextureMutator mutator = textureMutator(resource.textureId(), textureTargetToGl(resource.kind()));
         int glFilter = filter == SamplerFilter.NEAREST ? GL_NEAREST : GL_LINEAR;
-        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, glFilter);
-        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, glFilter);
+        mutator.parameterInt(GL_TEXTURE_MIN_FILTER, glFilter);
+        mutator.parameterInt(GL_TEXTURE_MAG_FILTER, glFilter);
     }
 
     public void updateTextureWrap(TextureHandle handle, TextureWrap wrap) {
         TextureResource resource = requireTexture(handle);
-        int glTarget = textureTargetToGl(resource.kind());
-        glBindTexture(glTarget, resource.textureId());
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, wrapToGl(wrap));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, wrapToGl(wrap));
+        TextureMutator mutator = textureMutator(resource.textureId(), textureTargetToGl(resource.kind()));
+        mutator.parameterInt(GL_TEXTURE_WRAP_S, wrapToGl(wrap));
+        mutator.parameterInt(GL_TEXTURE_WRAP_T, wrapToGl(wrap));
     }
 
     @Override
@@ -1624,24 +1883,36 @@ public final class OpenGlRenderBackend implements RenderBackend {
 
         private final int[] bufferIds;
         private final ByteBuffer[] mappings;
+        private final long[] gpuAddresses;
         private final int glTarget;
         private final int byteSize;
         private final int glUsage;
 
-        private BufferResource(int[] bufferIds, ByteBuffer[] mappings, int glTarget, int byteSize, int glUsage) {
+        private BufferResource(int[] bufferIds, ByteBuffer[] mappings, long[] gpuAddresses,
+                               int glTarget, int byteSize, int glUsage) {
             this.bufferIds = bufferIds;
             this.mappings = mappings;
+            this.gpuAddresses = gpuAddresses;
             this.glTarget = glTarget;
             this.byteSize = byteSize;
             this.glUsage = glUsage;
         }
 
-        static BufferResource single(int bufferId, int glTarget, int byteSize, int glUsage) {
-            return new BufferResource(new int[]{bufferId}, new ByteBuffer[0], glTarget, byteSize, glUsage);
+        static BufferResource single(int[] bufferIds, long[] gpuAddresses, int glTarget, int byteSize, int glUsage) {
+            return new BufferResource(bufferIds, new ByteBuffer[0], gpuAddresses, glTarget, byteSize, glUsage);
         }
 
-        static BufferResource ring(int[] bufferIds, ByteBuffer[] mappings, int glTarget, int byteSize) {
-            return new BufferResource(bufferIds, mappings, glTarget, byteSize, GL_DYNAMIC_DRAW);
+        static BufferResource ring(int[] bufferIds, ByteBuffer[] mappings, long[] gpuAddresses,
+                                   int glTarget, int byteSize) {
+            return new BufferResource(bufferIds, mappings, gpuAddresses, glTarget, byteSize, GL_DYNAMIC_DRAW);
+        }
+
+        boolean resident() {
+            return gpuAddresses.length > 0;
+        }
+
+        long gpuAddress(int frameSlot) {
+            return gpuAddresses[frameSlot % gpuAddresses.length];
         }
 
         boolean ringBuffered() {
@@ -1683,7 +1954,7 @@ public final class OpenGlRenderBackend implements RenderBackend {
     private record RenderTargetResource(int fboId, int width, int height) {
     }
 
-    private record BindingSetResource(List<ResolvedBinding> bindings) {
+    private record BindingSetResource(List<ResolvedBinding> bindings, int firstTextureSlot, int[] textureIds) {
     }
 
     private sealed interface ResolvedBinding permits ResolvedUbo, ResolvedStorage, ResolvedTexture, ResolvedStorageImage {
@@ -1700,5 +1971,54 @@ public final class OpenGlRenderBackend implements RenderBackend {
     }
 
     private record ResolvedTexture(int slot, int textureId, int glTarget) implements ResolvedBinding {
+    }
+
+    private sealed interface TextureMutator permits BoundTextureMutator, NamedTextureMutator {
+
+        void storage2d(int levels, int internalFormat, int width, int height);
+
+        void storage3d(int levels, int internalFormat, int width, int height, int depth);
+
+        void parameterInt(int name, int value);
+
+        void parameterFloat(int name, float value);
+    }
+
+    private record BoundTextureMutator(int glTarget) implements TextureMutator {
+
+        public void storage2d(int levels, int internalFormat, int width, int height) {
+            GL42.glTexStorage2D(glTarget, levels, internalFormat, width, height);
+        }
+
+        public void storage3d(int levels, int internalFormat, int width, int height, int depth) {
+            GL42.glTexStorage3D(glTarget, levels, internalFormat, width, height, depth);
+        }
+
+        public void parameterInt(int name, int value) {
+            glTexParameteri(glTarget, name, value);
+        }
+
+        public void parameterFloat(int name, float value) {
+            glTexParameterf(glTarget, name, value);
+        }
+    }
+
+    private record NamedTextureMutator(int textureId) implements TextureMutator {
+
+        public void storage2d(int levels, int internalFormat, int width, int height) {
+            glTextureStorage2D(textureId, levels, internalFormat, width, height);
+        }
+
+        public void storage3d(int levels, int internalFormat, int width, int height, int depth) {
+            glTextureStorage3D(textureId, levels, internalFormat, width, height, depth);
+        }
+
+        public void parameterInt(int name, int value) {
+            glTextureParameteri(textureId, name, value);
+        }
+
+        public void parameterFloat(int name, float value) {
+            glTextureParameterf(textureId, name, value);
+        }
     }
 }
