@@ -1,0 +1,24 @@
+{
+  "displayName": "Rust",
+  "style": "curly-brace",
+  "lineComment": "//",
+  "importStatementSuffix": ";",
+  "keywords": [
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
+    "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
+    "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
+    "trait", "true", "type", "unsafe", "use", "where", "while"
+  ],
+  "declarationKeywords": [
+    "const", "enum", "fn", "impl", "let", "mod", "static", "struct", "trait", "type", "use"
+  ],
+  "implicitPackages": [],
+  "globalNames": [
+    "Behaviour", "epysia_component", "export", "Transform", "Input", "Vec3"
+  ],
+  "receiverTypes": {},
+  "receiverExtras": {
+    "transform": ["position", "scale", "world_position", "translate"],
+    "input": ["key", "key_pressed", "key_released", "mouse", "mouse_pressed", "cursor", "mouse_delta", "scroll"]
+  }
+}
