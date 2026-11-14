@@ -30,6 +30,17 @@ class LegacyAssetReferencesTest {
     }
 
     @Test
+    void anAbsolutePathFromAMovedProjectIsFoundInsideTheCurrentOne(@TempDir Path root) throws IOException {
+        Path texture = root.resolve("assets").resolve("textures").resolve("hero.png");
+        Files.createDirectories(texture.getParent());
+        Files.writeString(texture, "");
+        AssetLocator locator = AssetLocator.forProject(root);
+        String savedOnAnotherMachine = "C:\\Users\\someone\\Epysia\\2dGame\\assets\\textures\\hero.png";
+        assertEquals("res://assets/textures/hero.png",
+                LegacyAssetReferences.interpretWithoutMigration(savedOnAnotherMachine, locator).toString());
+    }
+
+    @Test
     void filterPrefixesAreStrippedFromTheStoredPath(@TempDir Path root) throws IOException {
         Path texture = root.resolve("hero.png");
         Files.writeString(texture, "");

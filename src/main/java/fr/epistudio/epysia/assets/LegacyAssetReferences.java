@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 public final class LegacyAssetReferences {
 
@@ -16,6 +17,8 @@ public final class LegacyAssetReferences {
             "clamp:", Map.entry(TextureImportSettings.WRAP_KEY, TextureImportSettings.WRAP_CLAMP),
             "mirror:", Map.entry(TextureImportSettings.WRAP_KEY, TextureImportSettings.WRAP_MIRROR),
             "srgb:", Map.entry(TextureImportSettings.COLOR_SPACE_KEY, TextureImportSettings.COLOR_SPACE_SRGB));
+
+    private static final Pattern WINDOWS_DRIVE = Pattern.compile("[A-Za-z]:[\\\\/]");
 
     private LegacyAssetReferences() {
     }
@@ -69,12 +72,27 @@ public final class LegacyAssetReferences {
         if (canonical.isPresent()) {
             return canonical.get();
         }
-        Optional<Path> candidate = asPath(remainder);
-        if (candidate.isPresent() && candidate.get().isAbsolute()) {
-            return locator.fromFile(candidate.get());
+        if (looksAbsolute(remainder)) {
+            return locateAbsolute(remainder, locator);
         }
         AssetUri projectCandidate = AssetUri.project(remainder);
         return locator.exists(projectCandidate) ? projectCandidate : AssetUri.engine(remainder);
+    }
+
+    public static boolean looksAbsolute(String path) {
+        boolean absoluteHere = asPath(path).filter(Path::isAbsolute).isPresent();
+        return absoluteHere || WINDOWS_DRIVE.matcher(path).lookingAt() || path.startsWith("/");
+    }
+
+    private static AssetUri locateAbsolute(String remainder, AssetLocator locator) {
+        Optional<AssetUri> onThisMachine = asPath(remainder)
+                .filter(Path::isAbsolute)
+                .map(locator::fromFile);
+        return onThisMachine
+                .filter(locator::exists)
+                .or(() -> locator.trailingPathInProject(remainder))
+                .or(() -> onThisMachine)
+                .orElseGet(() -> new AssetUri(AssetScheme.SYSTEM, remainder));
     }
 
     private static Optional<Path> asPath(String remainder) {

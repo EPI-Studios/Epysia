@@ -7,6 +7,7 @@ import fr.epistudio.epysia.assets.source.FilesystemAssetSource;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Optional;
 
 public final class AssetLocator {
@@ -43,6 +44,18 @@ public final class AssetLocator {
             case SYSTEM -> asPath(uri.path());
             case PROJECT -> asPath(uri.path()).flatMap(relative -> projectRoot.map(root -> root.resolve(relative)));
         };
+    }
+
+    public Optional<AssetUri> trailingPathInProject(String absolutePath) {
+        String[] segments = absolutePath.replace('\\', '/').split("/");
+        for (int first = 1; first < segments.length; first++) {
+            String trailing = String.join("/", Arrays.copyOfRange(segments, first, segments.length));
+            AssetUri candidate = AssetUri.project(trailing);
+            if (exists(candidate)) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
     }
 
     public Optional<Path> file(String reference) {

@@ -1,7 +1,5 @@
 package fr.epistudio.epysia.assets;
 
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
 import java.util.Optional;
 
 public final class NestedAssetPaths {
@@ -20,17 +18,9 @@ public final class NestedAssetPaths {
         }
         String remainder = LegacyAssetReferences.stripPrefixes(storedPath);
         String prefix = storedPath.substring(0, storedPath.length() - remainder.length());
-        if (isAbsolute(remainder)) {
+        if (LegacyAssetReferences.looksAbsolute(remainder)) {
             return storedPath;
         }
         return prefix + origin.resolveRelative(remainder);
-    }
-
-    private static boolean isAbsolute(String candidate) {
-        try {
-            return Path.of(candidate).isAbsolute();
-        } catch (InvalidPathException malformed) {
-            return false;
-        }
     }
 }
