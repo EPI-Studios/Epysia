@@ -15,6 +15,12 @@ public final class UiButton extends UiElement {
     private final Vector4f hoverColor = new Vector4f(0.28f, 0.28f, 0.34f, 0.95f);
     @Export(label = "Pressed", color = true)
     private final Vector4f pressedColor = new Vector4f(0.4f, 0.4f, 0.5f, 0.95f);
+    @Export(label = "Corner radius", min = 0.0f, step = 1.0f)
+    private float cornerRadius;
+    @Export(label = "Border size", min = 0.0f, step = 1.0f)
+    private float borderSize;
+    @Export(label = "Border color", color = true)
+    private final Vector4f borderColor = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
 
     private boolean hovered;
     private boolean pressed;
@@ -62,9 +68,25 @@ public final class UiButton extends UiElement {
         return true;
     }
 
+    public float cornerRadius() {
+        return cornerRadius;
+    }
+
+    public UiButton setCornerRadius(float radius) {
+        cornerRadius = Math.max(radius, 0.0f);
+        return this;
+    }
+
+    public UiButton setBorder(float size, UiColor color) {
+        borderSize = Math.max(size, 0.0f);
+        UiColors.copyInto(color, borderColor);
+        return this;
+    }
+
     @Override
     protected void paint(UiPainter painter) {
-        painter.fillRect(computedRect(), currentColor());
+        painter.fillRoundedRect(computedRect(), cornerRadius, currentColor());
+        painter.strokeRoundedRect(computedRect(), cornerRadius, borderSize, UiColors.of(borderColor));
     }
 
     @Override

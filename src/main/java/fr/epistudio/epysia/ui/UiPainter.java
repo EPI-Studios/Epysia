@@ -5,6 +5,10 @@ import fr.epistudio.epysia.render.backend.TextureHandle;
 public interface UiPainter {
     void fillRect(UiRect rect, UiColor color);
 
+    void fillRoundedRect(UiRect rect, float radius, UiColor color);
+
+    void strokeRoundedRect(UiRect rect, float radius, float thickness, UiColor color);
+
     void drawImage(UiRect rect, String texturePath, float uvMinX, float uvMinY,
                    float uvMaxX, float uvMaxY, UiColor tint);
 

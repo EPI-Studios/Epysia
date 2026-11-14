@@ -156,6 +156,90 @@ public final class UiDrawList {
         appendIndices(base);
     }
 
+    public void addConvexPolygon(float[] points, float fringe, UiColor color) {
+        int pointCount = points.length / 2;
+        reserve(pointCount * 2, (pointCount - 2) * 3 + pointCount * 6);
+        float[] normals = vertexNormals(points, false);
+        int inner = vertexCount;
+        appendOffsetRing(points, normals, -fringe * 0.5f, color, color.alpha());
+        int outer = vertexCount;
+        appendOffsetRing(points, normals, fringe * 0.5f, color, 0.0f);
+        for (int index = 2; index < pointCount; index++) {
+            appendTriangle(inner, inner + index - 1, inner + index);
+        }
+        appendBand(inner, outer, pointCount);
+    }
+
+    public void addRing(float[] outerPoints, float[] innerPoints, float fringe, UiColor color) {
+        int pointCount = outerPoints.length / 2;
+        reserve(pointCount * 4, pointCount * 18);
+        float[] outerNormals = vertexNormals(outerPoints, false);
+        float[] innerNormals = vertexNormals(innerPoints, true);
+        int outerFade = vertexCount;
+        appendOffsetRing(outerPoints, outerNormals, fringe * 0.5f, color, 0.0f);
+        int outerSolid = vertexCount;
+        appendOffsetRing(outerPoints, outerNormals, -fringe * 0.5f, color, color.alpha());
+        int innerSolid = vertexCount;
+        appendOffsetRing(innerPoints, innerNormals, -fringe * 0.5f, color, color.alpha());
+        int innerFade = vertexCount;
+        appendOffsetRing(innerPoints, innerNormals, fringe * 0.5f, color, 0.0f);
+        appendBand(outerSolid, outerFade, pointCount);
+        appendBand(innerSolid, outerSolid, pointCount);
+        appendBand(innerFade, innerSolid, pointCount);
+    }
+
+    private void appendOffsetRing(float[] points, float[] normals, float distance, UiColor color, float alpha) {
+        UiColor faded = new UiColor(color.red(), color.green(), color.blue(), alpha);
+        for (int index = 0; index < points.length; index += 2) {
+            float x = points[index] + normals[index] * distance;
+            float y = points[index + 1] + normals[index + 1] * distance;
+            appendVertex(x, y, 0.5f, 0.5f, faded);
+        }
+    }
+
+    private void appendBand(int firstRing, int secondRing, int pointCount) {
+        for (int index = 0; index < pointCount; index++) {
+            int next = (index + 1) % pointCount;
+            appendTriangle(firstRing + index, firstRing + next, secondRing + next);
+            appendTriangle(firstRing + index, secondRing + next, secondRing + index);
+        }
+    }
+
+    private static float[] vertexNormals(float[] points, boolean inward) {
+        int pointCount = points.length / 2;
+        float[] edgeNormals = new float[pointCount * 2];
+        for (int index = 0; index < pointCount; index++) {
+            int next = (index + 1) % pointCount;
+            float deltaX = points[next * 2] - points[index * 2];
+            float deltaY = points[next * 2 + 1] - points[index * 2 + 1];
+            float length = (float) Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            float inverse = length > 0.0f ? 1.0f / length : 0.0f;
+            edgeNormals[index * 2] = deltaY * inverse;
+            edgeNormals[index * 2 + 1] = -deltaX * inverse;
+        }
+        float sign = inward ? -1.0f : 1.0f;
+        float[] normals = new float[pointCount * 2];
+        for (int index = 0; index < pointCount; index++) {
+            int previous = (index + pointCount - 1) % pointCount;
+            float averageX = (edgeNormals[previous * 2] + edgeNormals[index * 2]) * 0.5f;
+            float averageY = (edgeNormals[previous * 2 + 1] + edgeNormals[index * 2 + 1]) * 0.5f;
+            float lengthSquared = Math.max(averageX * averageX + averageY * averageY, 0.000001f);
+            float stretch = Math.min(1.0f / lengthSquared, 100.0f);
+            normals[index * 2] = averageX * stretch * sign;
+            normals[index * 2 + 1] = averageY * stretch * sign;
+        }
+        return normals;
+    }
+
+    private void appendTriangle(int first, int second, int third) {
+        putIndex(first);
+        putIndex(second);
+        putIndex(third);
+        if (!commands.isEmpty()) {
+            commands.get(commands.size() - 1).indexCount += 3;
+        }
+    }
+
     private void appendVertex(float x, float y, float u, float v, UiColor color) {
         int offset = vertexCount * VERTEX_BYTES;
         float localX = x - pivotX;
@@ -187,10 +271,14 @@ public final class UiDrawList {
     }
 
     private void reserve() {
-        if ((vertexCount + VERTICES_PER_QUAD) * VERTEX_BYTES > vertices.capacity()) {
+        reserve(VERTICES_PER_QUAD, INDICES_PER_QUAD);
+    }
+
+    private void reserve(int extraVertices, int extraIndices) {
+        while ((vertexCount + extraVertices) * VERTEX_BYTES > vertices.capacity()) {
             vertices = grow(vertices, vertexCount * VERTEX_BYTES);
         }
-        if ((indexCount + INDICES_PER_QUAD) * Integer.BYTES > indices.capacity()) {
+        while ((indexCount + extraIndices) * Integer.BYTES > indices.capacity()) {
             indices = grow(indices, indexCount * Integer.BYTES);
         }
     }

@@ -69,6 +69,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
     private final EpysiaEngine engine;
     private final UiDrawList drawList = new UiDrawList();
     private final UiClipStack clipStack = new UiClipStack();
+    private float canvasScale = 1.0f;
     private final Map<UiShader, PipelineHandle> customPipelines = new HashMap<>();
     private final Map<TextureHandle, BindingSetHandle> bindingSets = new HashMap<>();
     private final Map<String, TextureHandle> texturesByPath = new HashMap<>();
@@ -258,7 +259,8 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
     private void collectCanvas(UiCanvas canvas) {
         lastCanvasCount++;
         canvas.layout(window.framebufferWidth(), window.framebufferHeight());
-        drawList.setScale(canvas.scaleFactor());
+        canvasScale = canvas.scaleFactor();
+        drawList.setScale(canvasScale);
         clipStack.reset(canvas.viewport());
         clipStack.setScale(canvas.scaleFactor());
         activePipeline = defaultPipeline;
@@ -311,6 +313,39 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         }
         drawList.setState(activePipeline, whiteTexture, clipStack.current());
         drawList.addQuad(rect, 0.0f, 0.0f, 1.0f, 1.0f, color);
+    }
+
+    @Override
+    public void fillRoundedRect(UiRect rect, float radius, UiColor color) {
+        float clamped = UiRoundedRect.clampRadius(rect, radius);
+        if (clamped <= 0.0f) {
+            fillRect(rect, color);
+            return;
+        }
+        if (color.alpha() <= 0.0f) {
+            return;
+        }
+        int segments = UiRoundedRect.segmentsFor(clamped * canvasScale);
+        drawList.setState(activePipeline, whiteTexture, clipStack.current());
+        drawList.addConvexPolygon(UiRoundedRect.path(rect, clamped, segments), onePixel(), color);
+    }
+
+    @Override
+    public void strokeRoundedRect(UiRect rect, float radius, float thickness, UiColor color) {
+        if (thickness <= 0.0f || color.alpha() <= 0.0f) {
+            return;
+        }
+        float outerRadius = UiRoundedRect.clampRadius(rect, radius);
+        UiRect inner = UiRoundedRect.inset(rect, thickness);
+        float innerRadius = Math.max(outerRadius - thickness, 0.0f);
+        int segments = UiRoundedRect.segmentsFor(outerRadius * canvasScale);
+        drawList.setState(activePipeline, whiteTexture, clipStack.current());
+        drawList.addRing(UiRoundedRect.path(rect, outerRadius, segments),
+                UiRoundedRect.path(inner, innerRadius, segments), onePixel(), color);
+    }
+
+    private float onePixel() {
+        return canvasScale > 0.0f ? 1.0f / canvasScale : 1.0f;
     }
 
     @Override
