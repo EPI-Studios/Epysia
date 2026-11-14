@@ -1,6 +1,7 @@
 package fr.epistudio.epysia;
 
 import fr.epistudio.epysia.assets.AssetDatabase;
+import fr.epistudio.epysia.components.Camera2D;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
@@ -266,7 +267,8 @@ public final class GameLauncher {
 
     private static void ensureCameraExists(Scene scene) {
         for (GameObject gameObject : scene.gameObjects()) {
-            if (gameObject.getComponent(Camera3D.class).isPresent()) {
+            if (gameObject.getComponent(Camera3D.class).isPresent()
+                    || gameObject.getComponent(Camera2D.class).isPresent()) {
                 return;
             }
         }

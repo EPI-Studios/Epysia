@@ -2,6 +2,7 @@ package fr.epistudio.epysia.editor.play;
 
 import fr.epistudio.epysia.EpysiaEngine;
 import fr.epistudio.epysia.audio.AudioSystem;
+import fr.epistudio.epysia.components.Camera2D;
 import fr.epistudio.epysia.components.Camera3D;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.editor.log.EditorConsole;
@@ -241,7 +242,9 @@ public final class EmbeddedPlaySession {
     private void warnIfNoActiveCamera() {
         Scene scene = playingDocument.scene();
         for (GameObject gameObject : scene.gameObjects()) {
-            if (gameObject.getComponent(Camera3D.class).filter(Camera3D::active).isPresent()) {
+            boolean spatialCamera = gameObject.getComponent(Camera3D.class).filter(Camera3D::active).isPresent();
+            boolean planarCamera = gameObject.getComponent(Camera2D.class).filter(Camera2D::active).isPresent();
+            if (spatialCamera || planarCamera) {
                 return;
             }
         }

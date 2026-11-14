@@ -51,6 +51,7 @@ public final class ComponentIcons {
             Map.entry("MeshRenderer", EditorIcon.MESH_INSTANCE_3D),
             Map.entry("MultiMeshRenderer", EditorIcon.MESH_INSTANCE_3D),
             Map.entry("Camera3D", EditorIcon.CAMERA_3D),
+            Map.entry("Camera2D", EditorIcon.CAMERA_3D),
             Map.entry("DirectionalLight", EditorIcon.DIRECTIONAL_LIGHT_3D),
             Map.entry("PointLight", EditorIcon.OMNI_LIGHT_3D),
             Map.entry("SpotLight", EditorIcon.SPOT_LIGHT_3D),
