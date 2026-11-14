@@ -66,6 +66,13 @@ public final class UiLabel extends UiElement {
     }
 
     @Override
+    protected UiContentSize contentSize(UiTextMeasurer textMeasurer, UiRect rect) {
+        boolean wrapsAtWidth = autowrap != UiAutowrap.OFF && !automaticSize().growsWidth();
+        float wrapWidth = wrapsAtWidth ? rect.width() : 0.0f;
+        return UiTextLayout.measure(textMeasurer, text, fontStyle(), wrapWidth, autowrap);
+    }
+
+    @Override
     protected void paint(UiPainter painter) {
         if (text.isEmpty()) {
             return;

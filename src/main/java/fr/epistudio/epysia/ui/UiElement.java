@@ -29,8 +29,11 @@ public abstract class UiElement extends Component {
     private boolean visible = true;
     @Export(label = "Clip children")
     private boolean clipChildren;
+    @Export(label = "Automatic size")
+    private UiAutomaticSize automaticSize = UiAutomaticSize.NONE;
 
     private UiRect computedRect = new UiRect(0.0f, 0.0f, 0.0f, 0.0f);
+    private transient UiTextMeasurer measurer = UiTextMeasurer.NONE;
 
     public Vector4f position() {
         return position;
@@ -131,13 +134,74 @@ public abstract class UiElement extends Component {
         return false;
     }
 
+    public UiAutomaticSize automaticSize() {
+        return automaticSize;
+    }
+
+    public UiElement setAutomaticSize(UiAutomaticSize value) {
+        automaticSize = value;
+        return this;
+    }
+
     public final void layout(UiRect parentRect) {
+        layout(parentRect, UiTextMeasurer.NONE);
+    }
+
+    public final void layout(UiRect parentRect, UiTextMeasurer textMeasurer) {
+        measurer = textMeasurer;
         computedRect = computeRect(parentRect);
+        if (automaticSize != UiAutomaticSize.NONE) {
+            computedRect = grownToFit(computedRect, contentSize(measurer, computedRect));
+        }
+        layoutChildren();
+        growToChildren();
+    }
+
+    private void layoutChildren() {
         UiRect childParentRect = childParentRect();
         for (UiElement child : children()) {
-            child.layout(childParentRect);
+            child.layout(childParentRect, measurer);
         }
         onChildrenLaidOut();
+    }
+
+    private void growToChildren() {
+        if (automaticSize == UiAutomaticSize.NONE) {
+            return;
+        }
+        UiRect grown = grownToFit(computedRect, childrenExtent());
+        if (!grown.equals(computedRect)) {
+            computedRect = grown;
+            layoutChildren();
+        }
+    }
+
+    protected UiContentSize contentSize(UiTextMeasurer textMeasurer, UiRect rect) {
+        return UiContentSize.NONE;
+    }
+
+    private UiContentSize childrenExtent() {
+        float right = 0.0f;
+        float bottom = 0.0f;
+        for (UiElement child : children()) {
+            if (!child.visible()) {
+                continue;
+            }
+            UiRect childRect = child.computedRect();
+            right = Math.max(right, childRect.x() + childRect.width() - computedRect.x());
+            bottom = Math.max(bottom, childRect.y() + childRect.height() - computedRect.y());
+        }
+        UiLayout layout = layoutOrNull();
+        float padding = layout == null ? 0.0f : layout.padding();
+        return new UiContentSize(right + padding, bottom + padding);
+    }
+
+    private UiRect grownToFit(UiRect rect, UiContentSize content) {
+        float width = automaticSize.growsWidth() ? Math.max(rect.width(), content.width()) : rect.width();
+        float height = automaticSize.growsHeight() ? Math.max(rect.height(), content.height()) : rect.height();
+        float x = rect.x() - (width - rect.width()) * anchorPoint.x();
+        float y = rect.y() - (height - rect.height()) * anchorPoint.y();
+        return new UiRect(x, y, width, height);
     }
 
     protected UiRect childParentRect() {
@@ -158,11 +222,7 @@ public abstract class UiElement extends Component {
 
     final void placeAt(UiRect rect) {
         computedRect = rect;
-        UiRect childParentRect = childParentRect();
-        for (UiElement child : children()) {
-            child.layout(childParentRect);
-        }
-        onChildrenLaidOut();
+        layoutChildren();
     }
 
     protected UiRect computeRect(UiRect parentRect) {

@@ -258,7 +258,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
 
     private void collectCanvas(UiCanvas canvas) {
         lastCanvasCount++;
-        canvas.layout(window.framebufferWidth(), window.framebufferHeight());
+        canvas.layout(window.framebufferWidth(), window.framebufferHeight(), this);
         canvasScale = canvas.scaleFactor();
         drawList.setScale(canvasScale);
         clipStack.reset(canvas.viewport());

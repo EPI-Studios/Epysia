@@ -9,7 +9,7 @@ public final class UiTextLayout {
     private UiTextLayout() {
     }
 
-    public static List<String> lines(UiPainter painter, String text, UiFontStyle style,
+    public static List<String> lines(UiTextMeasurer painter, String text, UiFontStyle style,
                                      float maxWidth, UiAutowrap autowrap) {
         List<String> result = new ArrayList<>();
         for (String paragraph : text.split("\n", -1)) {
@@ -22,7 +22,7 @@ public final class UiTextLayout {
         return result;
     }
 
-    private static List<String> wrapParagraph(UiPainter painter, String paragraph, UiFontStyle style,
+    private static List<String> wrapParagraph(UiTextMeasurer painter, String paragraph, UiFontStyle style,
                                               float maxWidth, UiAutowrap autowrap) {
         List<String> lines = new ArrayList<>();
         StringBuilder current = new StringBuilder();
@@ -57,6 +57,17 @@ public final class UiTextLayout {
         }
         pieces.add(paragraph.substring(start));
         return pieces;
+    }
+
+    public static UiContentSize measure(UiTextMeasurer painter, String text, UiFontStyle style,
+                                        float maxWidth, UiAutowrap autowrap) {
+        List<String> lines = lines(painter, text, style, maxWidth, autowrap);
+        float widest = 0.0f;
+        for (String line : lines) {
+            widest = Math.max(widest, painter.measureTextWidth(line, style));
+        }
+        float lineHeight = painter.lineHeight(style) * LINE_SPACING;
+        return new UiContentSize(widest, lineHeight * lines.size());
     }
 
     public static void draw(UiPainter painter, UiRect rect, String text, UiFontStyle style, UiColor color,

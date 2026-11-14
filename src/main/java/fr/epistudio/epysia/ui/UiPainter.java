@@ -2,7 +2,7 @@ package fr.epistudio.epysia.ui;
 
 import fr.epistudio.epysia.render.backend.TextureHandle;
 
-public interface UiPainter {
+public interface UiPainter extends UiTextMeasurer {
     void fillRect(UiRect rect, UiColor color);
 
     void fillRoundedRect(UiRect rect, float radius, UiColor color);
@@ -16,10 +16,6 @@ public interface UiPainter {
                      float uvMaxX, float uvMaxY, UiColor tint);
 
     void drawText(float x, float y, String text, UiFontStyle style, UiColor color);
-
-    float measureTextWidth(String text, UiFontStyle style);
-
-    float lineHeight(UiFontStyle style);
 
     UiImageSize imageSize(String texturePath);
 }

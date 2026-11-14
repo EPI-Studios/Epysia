@@ -50,11 +50,11 @@ public final class UiCanvas extends Component {
         return found;
     }
 
-    public void layout(float width, float height) {
+    public void layout(float width, float height, UiTextMeasurer textMeasurer) {
         scaleFactor = computeScaleFactor(width, height);
         viewport = new UiRect(0.0f, 0.0f, width / scaleFactor, height / scaleFactor);
         for (UiElement root : roots()) {
-            root.layout(viewport);
+            root.layout(viewport, textMeasurer);
         }
     }
 

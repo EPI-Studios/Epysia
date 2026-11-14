@@ -136,6 +136,26 @@ class UiLayoutTest {
         assertEquals(77.0f, first.computedRect().y(), TOLERANCE, "on both axes");
     }
 
+    @Test
+    void aMenuGrowsWithItsItemsAndKeepsItsAnchor() {
+        UiPanel menu = container(new UiListLayout().setSpacing(10.0f));
+        menu.setSize(0.0f, 120.0f, 0.0f, 0.0f);
+        menu.setPosition(0.0f, 400.0f, 0.0f, 300.0f);
+        menu.setAnchorPoint(0.5f, 1.0f);
+        menu.setAutomaticSize(UiAutomaticSize.Y);
+        child(menu, 100.0f, 40.0f);
+        UiPanel last = child(menu, 100.0f, 40.0f);
+
+        menu.layout(SCREEN);
+
+        assertEquals(120.0f, menu.computedRect().width(), TOLERANCE, "only the height grows");
+        assertEquals(90.0f, menu.computedRect().height(), TOLERANCE, "two items and one gap");
+        assertEquals(300.0f, menu.computedRect().y() + menu.computedRect().height(), TOLERANCE,
+                "a bottom anchor grows upward");
+        assertEquals(300.0f, last.computedRect().y() + last.computedRect().height(), TOLERANCE,
+                "the items follow the grown frame");
+    }
+
     private static UiPanel container(UiLayout layout) {
         GameObject object = new GameObject("container");
         object.addComponent(new Transform3D());
