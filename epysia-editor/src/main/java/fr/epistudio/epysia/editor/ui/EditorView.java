@@ -235,7 +235,7 @@ public final class EditorView implements FrameView {
         this.assetReloads = new AssetReloadService(project.rootDirectory(), sceneHost::engine,
                 workspace::documents);
         this.scriptService = new ScriptService(project, componentRegistry, serializer, workspace,
-                this::onScriptMessage, sceneHost::applyProjectRenderSetups);
+                this::onScriptMessage, sceneHost::applyProjectRenderSetups, sceneHost::useAutoloads);
         this.tilePalettePanel = new TilePalettePanel(sceneHost.backend(), sceneHost.engine(), active, tileBrush);
         this.viewportView = new ViewportView(sceneHost, editorCamera, active, gizmoState,
                 shell.windowHandle(), playSession, icons, objectFactory, importPipeline, tilePalettePanel);

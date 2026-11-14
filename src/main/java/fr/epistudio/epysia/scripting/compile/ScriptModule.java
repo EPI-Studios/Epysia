@@ -4,6 +4,7 @@ import fr.epistudio.epysia.components.EpysiaComponent;
 import fr.epistudio.epysia.components.IComponent;
 import fr.epistudio.epysia.project.ProjectLibraries;
 import fr.epistudio.epysia.reflection.DiscoveredComponent;
+import fr.epistudio.epysia.scripting.Autoload;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.scripting.foreign.ForeignClassEmitter;
 import fr.epistudio.epysia.scripting.foreign.ForeignClassLoader;
@@ -29,7 +30,7 @@ public final class ScriptModule {
         ScriptLanguages languages = ScriptLanguages.discover(libraries);
         ScriptCompileResult compiled = languages.compileAll(scriptsDirectory, outputDirectory, libraries);
         if (!compiled.ok()) {
-            return new ScriptLoadResult(false, List.of(), List.of(), compiled.messages(), null);
+            return new ScriptLoadResult(false, List.of(), List.of(), List.of(), compiled.messages(), null);
         }
         ScriptLoadResult scanned = scan(outputDirectory, libraries, compiled.messages());
         if (!scanned.ok()) {
@@ -55,7 +56,7 @@ public final class ScriptModule {
                 components.add(foreignComponentOf(emitter, runtime, type));
             }
         }
-        return new ScriptLoadResult(true, List.copyOf(components), scanned.renderSetups(),
+        return new ScriptLoadResult(true, List.copyOf(components), scanned.renderSetups(), scanned.autoloads(),
                 List.copyOf(messages), scanned.loader());
     }
 
@@ -79,7 +80,7 @@ public final class ScriptModule {
     private static ScriptLoadResult scan(Path classesDirectory, ProjectLibraries libraries, List<String> messages) {
         URL classesUrl = toUrl(classesDirectory);
         if (classesUrl == null) {
-            return new ScriptLoadResult(false, List.of(), List.of(), List.of("Invalid script output path."), null);
+            return new ScriptLoadResult(false, List.of(), List.of(), List.of(), List.of("Invalid script output path."), null);
         }
         List<URL> urls = new ArrayList<>();
         urls.add(classesUrl);
@@ -88,6 +89,7 @@ public final class ScriptModule {
                 ScriptModule.class.getClassLoader());
         try (ScanResult scanned = openScan(loader)) {
             return new ScriptLoadResult(true, discoverComponents(scanned), discoverRenderSetups(scanned),
+                    discoverAutoloads(scanned),
                     messages, loader);
         }
     }
@@ -107,6 +109,17 @@ public final class ScriptModule {
                 continue;
             }
             discovered.add(info.loadClass().asSubclass(ProjectRenderSetup.class));
+        }
+        return discovered;
+    }
+
+    private static List<Class<? extends Autoload>> discoverAutoloads(ScanResult scan) {
+        List<Class<? extends Autoload>> discovered = new ArrayList<>();
+        for (ClassInfo info : scan.getClassesImplementing(Autoload.class.getName())) {
+            if (info.isAbstract() || info.isInterface()) {
+                continue;
+            }
+            discovered.add(info.loadClass().asSubclass(Autoload.class));
         }
         return discovered;
     }

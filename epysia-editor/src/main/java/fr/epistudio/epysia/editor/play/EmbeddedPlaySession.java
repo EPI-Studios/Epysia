@@ -20,6 +20,7 @@ import fr.epistudio.epysia.project.ProjectStore;
 import fr.epistudio.epysia.render.mesh.MeshRenderSystem;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
+import fr.epistudio.epysia.scripting.AutoloadSystem;
 import fr.epistudio.epysia.scripting.ScriptDispatcherSystem;
 
 import java.util.ArrayList;
@@ -103,6 +104,7 @@ public final class EmbeddedPlaySession {
         applyCollisionLayers();
         warnIfNoActiveCamera();
         dispatchLifecycle("onPlayStart", component -> component.onPlayStart(engine()));
+        engine().systems().find(AutoloadSystem.class).ifPresent(AutoloadSystem::start);
         state = State.PLAYING;
         console.system("[play] Embedded play started");
     }
@@ -189,6 +191,7 @@ public final class EmbeddedPlaySession {
     }
 
     private void restoreEditingState() {
+        engine().systems().find(AutoloadSystem.class).ifPresent(AutoloadSystem::stop);
         resetSystems();
         serializer.deserialize(playingDocument.scene(), snapshot, engine());
         applyCollisionLayers();

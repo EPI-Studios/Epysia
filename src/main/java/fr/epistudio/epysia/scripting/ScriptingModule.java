@@ -13,5 +13,6 @@ public final class ScriptingModule implements EngineModule {
     @Override
     public void registerSystems(SystemRegistry registry) {
         registry.add(new ScriptDispatcherSystem());
+        registry.add(new AutoloadSystem());
     }
 }

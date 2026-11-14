@@ -42,6 +42,8 @@ import fr.epistudio.epysia.render.sprite.SpriteRenderSystem;
 import fr.epistudio.epysia.render.sprite.TilemapRenderSystem;
 import fr.epistudio.epysia.render.RenderSystem;
 import fr.epistudio.epysia.scene.Scene;
+import fr.epistudio.epysia.scripting.Autoload;
+import fr.epistudio.epysia.scripting.AutoloadSystem;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.render.decal.DecalRenderSystem;
 import fr.epistudio.epysia.render.volumetric.VolumetricRenderSystem;
@@ -220,6 +222,10 @@ public final class EditorScene3DHost {
         for (Class<? extends ProjectRenderSetup> setupClass : setups) {
             runRenderSetup(setupClass);
         }
+    }
+
+    public void useAutoloads(List<Class<? extends Autoload>> autoloadTypes) {
+        engine.systems().find(AutoloadSystem.class).ifPresent(autoloads -> autoloads.useTypes(autoloadTypes));
     }
 
     private void runRenderSetup(Class<? extends ProjectRenderSetup> setupClass) {

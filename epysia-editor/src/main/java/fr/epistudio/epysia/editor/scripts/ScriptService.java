@@ -8,6 +8,7 @@ import fr.epistudio.epysia.project.Project;
 import fr.epistudio.epysia.reflection.ComponentFieldCodec;
 import fr.epistudio.epysia.reflection.ComponentRegistry;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
+import fr.epistudio.epysia.scripting.Autoload;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.scripting.compile.ScriptLanguages;
 import fr.epistudio.epysia.scripting.compile.ScriptLoadResult;
@@ -33,18 +34,21 @@ public final class ScriptService {
     private final SceneWorkspace workspace;
     private final Consumer<String> log;
     private final Consumer<List<Class<? extends ProjectRenderSetup>>> renderSetupSink;
+    private final Consumer<List<Class<? extends Autoload>>> autoloadSink;
     private long lastSeenStamp;
     private long pendingSinceMillis;
 
     public ScriptService(Project project, ComponentRegistry registry, SceneSerializer serializer,
                          SceneWorkspace workspace, Consumer<String> log,
-                         Consumer<List<Class<? extends ProjectRenderSetup>>> renderSetupSink) {
+                         Consumer<List<Class<? extends ProjectRenderSetup>>> renderSetupSink,
+                         Consumer<List<Class<? extends Autoload>>> autoloadSink) {
         this.project = project;
         this.registry = registry;
         this.serializer = serializer;
         this.workspace = workspace;
         this.log = log;
         this.renderSetupSink = renderSetupSink;
+        this.autoloadSink = autoloadSink;
         this.lastSeenStamp = latestModified(project.scriptsDirectory());
     }
 
@@ -95,8 +99,10 @@ public final class ScriptService {
         result.components().forEach(component -> userTypes.add(component.componentClass().getName()));
         reinstantiate(userTypes);
         renderSetupSink.accept(result.renderSetups());
+        autoloadSink.accept(result.autoloads());
         log.accept("Scripts compiled (" + result.components().size() + " components, "
-                + result.renderSetups().size() + " render setups).");
+                + result.renderSetups().size() + " render setups, "
+                + result.autoloads().size() + " autoloads).");
     }
 
     private void reinstantiate(Set<String> userTypes) {

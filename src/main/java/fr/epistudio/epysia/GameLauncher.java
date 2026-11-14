@@ -36,6 +36,7 @@ import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.scene.SceneLoadMode;
 import fr.epistudio.epysia.scene.SceneLoader;
 import fr.epistudio.epysia.scene.serialization.SceneSerializer;
+import fr.epistudio.epysia.scripting.AutoloadSystem;
 import fr.epistudio.epysia.scripting.ProjectRenderSetup;
 import fr.epistudio.epysia.scripting.compile.ScriptLoadResult;
 import fr.epistudio.epysia.scripting.compile.ScriptModule;
@@ -104,6 +105,8 @@ public final class GameLauncher {
                     logger.info("[scripts] " + message);
                 }
                 registry.setUserComponents(scripts.components());
+                services.systems().find(AutoloadSystem.class)
+                        .ifPresent(autoloads -> autoloads.useTypes(scripts.autoloads()));
                 if (rendering) {
                     runRenderSetups(scripts, services, logger);
                 }
@@ -117,6 +120,7 @@ public final class GameLauncher {
                 ensureCameraExists(services.scene());
             }
             projectRoot.ifPresent(root -> applyProjectSettings(engine, services, root, logger, !rendering));
+            services.systems().find(AutoloadSystem.class).ifPresent(AutoloadSystem::start);
             logger.info("Loaded scene " + scenePath
                     + (projectRoot.isPresent() ? " (project " + projectRoot.get() + ")" : ""));
             startNetworking(services, logger, new NetworkStartup(serverMode, listenServerMode,
