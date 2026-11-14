@@ -249,7 +249,9 @@ public final class GraphEditorView {
 
     private void loadGraph(Path path) {
         try {
-            openGraphs.put(path, new OpenGraph(codec.readFromFile(path)));
+            GraphAsset asset = codec.readFromFile(path);
+            ReflectionNodes.renameLegacyPins(asset, registry.classResolver());
+            openGraphs.put(path, new OpenGraph(asset));
         } catch (IOException | RuntimeException error) {
             notifier.show(I18n.translate(TextKey.EDITOR_GRAPH_EDITOR_VIEW_TOAST_COULD_NOT_OPEN_GRAPH,
                     error.getMessage()));

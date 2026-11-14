@@ -118,6 +118,33 @@ public final class ReflectionNodes {
 
     public static Optional<NodeDefinition> definitionFor(String typeKey,
                                                          GraphNodeRegistry.ClassResolver resolver) {
+        return methodFor(typeKey, resolver).map(ReflectionNodes::definitionForMethod);
+    }
+
+    public static void renameLegacyPins(GraphAsset asset, GraphNodeRegistry.ClassResolver resolver) {
+        for (GraphNode node : asset.nodes()) {
+            methodFor(node.typeKey(), resolver).ifPresent(method -> renameLegacyPins(asset, node, method));
+        }
+    }
+
+    private static void renameLegacyPins(GraphAsset asset, GraphNode node, Method method) {
+        Parameter[] parameters = method.getParameters();
+        for (int index = 0; index < parameters.length; index++) {
+            String legacyName = legacyPinName(parameters[index], index);
+            String currentName = parameterPinName(parameters[index], index);
+            if (legacyName.equals(currentName)) {
+                continue;
+            }
+            if (node.values().containsKey(legacyName) && !node.values().containsKey(currentName)) {
+                node.values().put(currentName, node.values().remove(legacyName));
+            }
+            asset.edges().replaceAll(edge -> edge.toNode() == node.id() && edge.toPin().equals(legacyName)
+                    ? new GraphEdge(edge.fromNode(), edge.fromPin(), edge.toNode(), currentName)
+                    : edge);
+        }
+    }
+
+    private static Optional<Method> methodFor(String typeKey, GraphNodeRegistry.ClassResolver resolver) {
         if (!typeKey.startsWith(TYPE_KEY_PREFIX)) {
             return Optional.empty();
         }
@@ -130,8 +157,7 @@ public final class ReflectionNodes {
         String methodName = typeKey.substring(hashIndex + 1, openIndex);
         String signature = typeKey.substring(openIndex + 1, typeKey.length() - 1);
         return resolver.resolve(className)
-                .flatMap(declaring -> findMethod(declaring, methodName, signature))
-                .map(ReflectionNodes::definitionForMethod);
+                .flatMap(declaring -> findMethod(declaring, methodName, signature));
     }
 
     private static Optional<Method> findMethod(Class<?> declaring, String methodName, String signature) {
@@ -220,6 +246,10 @@ public final class ReflectionNodes {
         if (parameter.isNamePresent()) {
             return prettify(parameter.getName());
         }
+        return legacyPinName(parameter, index);
+    }
+
+    private static String legacyPinName(Parameter parameter, int index) {
         return prettify(parameter.getType().getSimpleName()) + " " + (index + 1);
     }
 

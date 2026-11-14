@@ -176,6 +176,7 @@ public final class GraphSystem implements GameSystem {
         }
         try {
             GraphAsset asset = codec.readFromFile(Path.of(component.graphPath()));
+            ReflectionNodes.renameLegacyPins(asset, interpreter.registry().classResolver());
             GraphInstance instance = new GraphInstance(asset, component.graphPath(),
                     owner.get(), component.variableOverrides());
             instances.put(component, instance);
