@@ -23,6 +23,12 @@ class AssetUriTest {
     }
 
     @Test
+    void aSiblingOfAnAbsoluteFileStaysAbsolute() {
+        AssetUri atlas = AssetUri.parse("file:///home/user/game/hero.epyatlas").orElseThrow();
+        assertEquals("file:///home/user/game/hero.png", atlas.resolveRelative("hero.png").toString());
+    }
+
+    @Test
     void aSchemedRelativePathReplacesTheOrigin() {
         AssetUri atlas = AssetUri.project("atlases/hero.epyatlas");
         assertEquals("engine://shaders/pbr.glsl", atlas.resolveRelative("engine://shaders/pbr.glsl").toString());

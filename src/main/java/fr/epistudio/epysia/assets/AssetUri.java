@@ -72,7 +72,8 @@ public record AssetUri(AssetScheme scheme, String path) {
         }
         String directory = parent().map(AssetUri::path).orElse("");
         String combined = directory.isEmpty() ? relativePath : directory + "/" + relativePath;
-        return new AssetUri(scheme, flatten(combined));
+        String flattened = flatten(combined);
+        return new AssetUri(scheme, combined.startsWith("/") ? "/" + flattened : flattened);
     }
 
     private static String flatten(String combined) {
