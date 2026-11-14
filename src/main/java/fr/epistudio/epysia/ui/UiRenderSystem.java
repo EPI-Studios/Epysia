@@ -1,6 +1,8 @@
 package fr.epistudio.epysia.ui;
 
 import fr.epistudio.epysia.EpysiaEngine;
+import fr.epistudio.epysia.components.Camera3D;
+import fr.epistudio.epysia.components.transforms.Transform3D;
 import fr.epistudio.epysia.gameobjects.GameObject;
 import fr.epistudio.epysia.render.FrameBuilder;
 import fr.epistudio.epysia.render.RenderContext;
@@ -46,10 +48,14 @@ import fr.epistudio.epysia.render.shader.ShaderLoader;
 import fr.epistudio.epysia.render.text.Font;
 import fr.epistudio.epysia.render.text.FontRegistry;
 import fr.epistudio.epysia.scene.Scene;
+import org.joml.Matrix4f;
+import org.joml.Vector2f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import fr.epistudio.epysia.assets.AssetVariant;
@@ -61,13 +67,21 @@ import java.util.Set;
 public final class UiRenderSystem implements RenderSystem, UiPainter {
     private static final String VERTEX_PATH = "ui_image.vert.glsl";
     private static final String FRAGMENT_PATH = "ui_image.frag.glsl";
+    private static final String WORLD_VERTEX_PATH = "ui_world.vert.glsl";
     private static final int UBO_SIZE = 32;
     private static final int INITIAL_QUAD_CAPACITY = 512;
 
     private final ShaderLoader shaderLoader;
     private final RenderSurface window;
     private final EpysiaEngine engine;
-    private final UiDrawList drawList = new UiDrawList();
+    private final UiDrawList screenDrawList = new UiDrawList();
+    private UiDrawList drawList = screenDrawList;
+    private final Map<UiCanvas, UiWorldBatch> worldBatches = new IdentityHashMap<>();
+    private final Set<UiCanvas> worldCanvasesThisFrame = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<WorldPipelineKey, PipelineHandle> worldPipelines = new HashMap<>();
+    private boolean paintingWorld;
+    private DepthTest worldDepthTest = DepthTest.LESS_EQUAL;
+    private long worldOrder;
     private final UiClipStack clipStack = new UiClipStack();
     private float canvasScale = 1.0f;
     private final Map<UiShader, PipelineHandle> customPipelines = new HashMap<>();
@@ -120,13 +134,25 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         return handle;
     }
 
+    private record WorldPipelineKey(String fragmentPath, DepthTest depthTest) {
+    }
+
+    private PipelineHandle worldPipelineFor(String fragmentPath) {
+        return worldPipelines.computeIfAbsent(new WorldPipelineKey(fragmentPath, worldDepthTest),
+                key -> createPipeline(WORLD_VERTEX_PATH, key.fragmentPath(), new RenderState(Topology.TRIANGLES,
+                        key.depthTest(), BlendMode.ALPHA_BLEND, CullMode.NONE, false, false, true)));
+    }
+
     private PipelineHandle createPipeline(String vertexPath, String fragmentPath) {
+        return createPipeline(vertexPath, fragmentPath, new RenderState(Topology.TRIANGLES, DepthTest.DISABLED,
+                BlendMode.ALPHA_BLEND, CullMode.NONE));
+    }
+
+    private PipelineHandle createPipeline(String vertexPath, String fragmentPath, RenderState state) {
         VertexAttribute position = new VertexAttribute(0, VertexFormat.FLOAT2, 0);
         VertexAttribute uv = new VertexAttribute(1, VertexFormat.FLOAT2, 8);
         VertexAttribute color = new VertexAttribute(2, VertexFormat.FLOAT4, 16);
         VertexLayout vertexLayout = new VertexLayout(List.of(position, uv, color), UiDrawList.VERTEX_BYTES);
-        RenderState state = new RenderState(Topology.TRIANGLES, DepthTest.DISABLED,
-                BlendMode.ALPHA_BLEND, CullMode.NONE);
         LoadedShader vertex = shaderLoader.load(vertexPath);
         LoadedShader fragment = shaderLoader.load(fragmentPath);
         return backend.createPipeline(new PipelineDescriptor(
@@ -243,17 +269,97 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         lastCanvasCount = 0;
         lastElementCount = 0;
         lastDrawCount = 0;
-        drawList.clear();
-        clipStack.reset(new UiRect(0.0f, 0.0f, window.framebufferWidth(), window.framebufferHeight()));
+        screenDrawList.clear();
+        worldCanvasesThisFrame.clear();
+        worldOrder = 0L;
         writeUbo();
         for (GameObject gameObject : scene.gameObjects()) {
             lastObjectCount++;
             if (!gameObject.active()) {
                 continue;
             }
-            gameObject.getComponent(UiCanvas.class).filter(UiCanvas::visible).ifPresent(this::collectCanvas);
+            gameObject.getComponent(UiCanvas.class).filter(UiCanvas::visible)
+                    .ifPresent(canvas -> collectAnyCanvas(canvas, frame, context));
         }
         submit(frame);
+        releaseUnusedWorldBatches();
+    }
+
+    private void collectAnyCanvas(UiCanvas canvas, FrameBuilder frame, RenderContext context) {
+        if (!canvas.inWorld()) {
+            collectCanvas(canvas);
+            return;
+        }
+        context.primaryCamera().ifPresent(camera ->
+                collectWorldCanvas(canvas, camera, context.interpolationAlpha(), frame));
+    }
+
+    private void collectWorldCanvas(UiCanvas canvas, Camera3D camera, float alpha, FrameBuilder frame) {
+        Optional<Transform3D> transform = canvas.owner().flatMap(owner -> owner.getComponent(Transform3D.class));
+        if (transform.isEmpty() || UiWorldPlacement.beyondMaxDistance(canvas, transform.get(), camera, alpha)) {
+            return;
+        }
+        lastCanvasCount++;
+        worldCanvasesThisFrame.add(canvas);
+        UiWorldBatch batch = worldBatches.computeIfAbsent(canvas,
+                unused -> new UiWorldBatch(backend, bindingLayout()));
+        paintWorldCanvas(canvas, batch);
+        if (batch.drawList().isEmpty()) {
+            return;
+        }
+        Matrix4f canvasToWorld = UiWorldPlacement.canvasToWorld(canvas, transform.get(), camera, alpha);
+        Matrix4f canvasToClip = new Matrix4f(camera.viewProjection(alpha)).mul(canvasToWorld);
+        Vector2f size = canvas.worldSize();
+        batch.upload(size.x(), size.y(), elapsedSeconds(), canvasToClip);
+        submitWorld(frame, batch);
+    }
+
+    private void paintWorldCanvas(UiCanvas canvas, UiWorldBatch batch) {
+        Vector2f size = canvas.worldSize();
+        drawList = batch.drawList();
+        drawList.clear();
+        paintingWorld = true;
+        worldDepthTest = canvas.alwaysOnTop() ? DepthTest.DISABLED : DepthTest.LESS_EQUAL;
+        canvas.layout(size.x(), size.y(), this);
+        canvasScale = 1.0f;
+        drawList.setScale(1.0f);
+        activePipeline = worldPipelineFor(FRAGMENT_PATH);
+        for (UiElement root : canvas.roots()) {
+            paintElement(root);
+        }
+        paintingWorld = false;
+        drawList = screenDrawList;
+    }
+
+    private void submitWorld(FrameBuilder frame, UiWorldBatch batch) {
+        for (UiDrawList.Command command : batch.drawList().commands()) {
+            if (command.indexCount() == 0) {
+                continue;
+            }
+            worldOrder++;
+            frame.submit(RenderPasses.TRANSPARENT_3D, DrawCommand.range(command.pipeline(), batch.mesh(),
+                    batch.bindingsFor(command.texture()), worldOrder, command.firstIndex(),
+                    command.indexCount(), ScissorRect.disabled()));
+            lastDrawCount++;
+        }
+    }
+
+    private void releaseUnusedWorldBatches() {
+        worldBatches.entrySet().removeIf(entry -> {
+            if (worldCanvasesThisFrame.contains(entry.getKey())) {
+                return false;
+            }
+            entry.getValue().destroy();
+            return true;
+        });
+    }
+
+    private float elapsedSeconds() {
+        return (System.nanoTime() - startNanos) / 1_000_000_000.0f;
+    }
+
+    private ScissorRect currentScissor() {
+        return paintingWorld ? ScissorRect.disabled() : clipStack.current();
     }
 
     private void collectCanvas(UiCanvas canvas) {
@@ -278,7 +384,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         activePipeline = element.shader().map(this::pipelineFor).orElse(activePipeline);
         boolean rotated = pushRotationOf(element);
         element.paintInto(this);
-        boolean clipped = element.clipChildren() && clipStack.push(element.computedRect());
+        boolean clipped = !paintingWorld && element.clipChildren() && clipStack.push(element.computedRect());
         for (UiElement child : element.children()) {
             paintElement(child);
         }
@@ -302,6 +408,9 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
     }
 
     private PipelineHandle pipelineFor(UiShader shader) {
+        if (paintingWorld) {
+            return worldPipelineFor(shader.fragmentPath());
+        }
         return customPipelines.computeIfAbsent(shader,
                 requested -> createPipeline(requested.vertexPath(), requested.fragmentPath()));
     }
@@ -311,7 +420,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         if (color.alpha() <= 0.0f) {
             return;
         }
-        drawList.setState(activePipeline, whiteTexture, clipStack.current());
+        drawList.setState(activePipeline, whiteTexture, currentScissor());
         drawList.addQuad(rect, 0.0f, 0.0f, 1.0f, 1.0f, color);
     }
 
@@ -326,7 +435,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
             return;
         }
         int segments = UiRoundedRect.segmentsFor(clamped * canvasScale);
-        drawList.setState(activePipeline, whiteTexture, clipStack.current());
+        drawList.setState(activePipeline, whiteTexture, currentScissor());
         drawList.addConvexPolygon(UiRoundedRect.path(rect, clamped, segments), onePixel(), color);
     }
 
@@ -339,7 +448,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         UiRect inner = UiRoundedRect.inset(rect, thickness);
         float innerRadius = Math.max(outerRadius - thickness, 0.0f);
         int segments = UiRoundedRect.segmentsFor(outerRadius * canvasScale);
-        drawList.setState(activePipeline, whiteTexture, clipStack.current());
+        drawList.setState(activePipeline, whiteTexture, currentScissor());
         drawList.addRing(UiRoundedRect.path(rect, outerRadius, segments),
                 UiRoundedRect.path(inner, innerRadius, segments), onePixel(), color);
     }
@@ -354,7 +463,7 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
         if (texture == null || tint.alpha() <= 0.0f) {
             return;
         }
-        drawList.setState(activePipeline, texture, clipStack.current());
+        drawList.setState(activePipeline, texture, currentScissor());
         drawList.addQuad(rect, uvMinX, uvMinY, uvMaxX, uvMaxY, tint);
     }
 
@@ -364,13 +473,13 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
             return;
         }
         Font font = fontFor(style);
-        drawList.setState(activePipeline, font.atlasTexture(), clipStack.current());
+        drawList.setState(activePipeline, font.atlasTexture(), currentScissor());
         UiTextShaper.appendText(drawList, font, text, x, y, style.magnification(), color);
     }
 
     private void writeUbo() {
         uboScratch.clear();
-        float timeSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0f;
+        float timeSeconds = elapsedSeconds();
         uboScratch.putFloat(window.framebufferWidth()).putFloat(window.framebufferHeight())
                 .putFloat(0.0f).putFloat(0.0f);
         uboScratch.putFloat(timeSeconds).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
@@ -379,12 +488,12 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
     }
 
     private void submit(FrameBuilder frame) {
-        if (drawList.isEmpty()) {
+        if (screenDrawList.isEmpty()) {
             return;
         }
         uploadGeometry();
         long order = 1L;
-        for (UiDrawList.Command command : drawList.commands()) {
+        for (UiDrawList.Command command : screenDrawList.commands()) {
             if (command.indexCount() == 0) {
                 continue;
             }
@@ -397,8 +506,8 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
     }
 
     private void uploadGeometry() {
-        ByteBuffer vertexData = drawList.vertexData();
-        ByteBuffer indexData = drawList.indexData();
+        ByteBuffer vertexData = screenDrawList.vertexData();
+        ByteBuffer indexData = screenDrawList.indexData();
         int requiredQuads = indexData.remaining() / (UiDrawList.INDICES_PER_QUAD * Integer.BYTES);
         if (requiredQuads > quadCapacity) {
             allocateGeometry(Math.max(requiredQuads, quadCapacity * 2));
@@ -424,6 +533,14 @@ public final class UiRenderSystem implements RenderSystem, UiPainter {
             backend.destroy(pipeline);
         }
         customPipelines.clear();
+        for (UiWorldBatch batch : worldBatches.values()) {
+            batch.destroy();
+        }
+        worldBatches.clear();
+        for (PipelineHandle pipeline : worldPipelines.values()) {
+            backend.destroy(pipeline);
+        }
+        worldPipelines.clear();
         releaseGeometry();
         backend.destroy(whiteTexture);
         backend.destroy(defaultPipeline);

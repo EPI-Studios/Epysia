@@ -8,6 +8,10 @@ import fr.epistudio.epysia.input.MouseButton;
 import fr.epistudio.epysia.scene.Scene;
 import fr.epistudio.epysia.window.Window;
 
+import fr.epistudio.epysia.components.Camera3D;
+import org.joml.Matrix4f;
+import org.joml.Vector2f;
+
 import java.util.Optional;
 import fr.epistudio.epysia.components.transforms.Transform3D;
 
@@ -49,8 +53,11 @@ public final class UiInputSystem implements GameSystem {
     private UiHit findHit(Scene scene, InputState input) {
         float cursorX = scaleCursor(input.cursorX(), window.framebufferWidth(), window.width());
         float cursorY = scaleCursor(input.cursorY(), window.framebufferHeight(), window.height());
-        UiHit best = new UiHit(null, 0.0f, 0.0f);
+        UiHit best = findWorldHit(scene, cursorX, cursorY);
         for (UiCanvas canvas : scene.componentsOf(UiCanvas.class)) {
+            if (canvas.inWorld()) {
+                continue;
+            }
             float scale = canvas.scaleFactor();
             UiRect viewport = new UiRect(0.0f, 0.0f, window.framebufferWidth() / scale,
                     window.framebufferHeight() / scale);
@@ -62,6 +69,54 @@ public final class UiInputSystem implements GameSystem {
             }
         }
         return best;
+    }
+
+    private UiHit findWorldHit(Scene scene, float cursorX, float cursorY) {
+        UiHit best = new UiHit(null, 0.0f, 0.0f);
+        Optional<Camera3D> camera = firstActiveCamera(scene);
+        if (camera.isEmpty() || window.framebufferWidth() <= 0 || window.framebufferHeight() <= 0) {
+            return best;
+        }
+        float normalizedX = cursorX / window.framebufferWidth() * 2.0f - 1.0f;
+        float normalizedY = 1.0f - cursorY / window.framebufferHeight() * 2.0f;
+        for (UiCanvas canvas : scene.componentsOf(UiCanvas.class)) {
+            if (canvas.inWorld() && canvas.visible()) {
+                UiHit found = worldHit(canvas, camera.get(), normalizedX, normalizedY);
+                best = found.element() != null ? found : best;
+            }
+        }
+        return best;
+    }
+
+    private UiHit worldHit(UiCanvas canvas, Camera3D camera, float normalizedX, float normalizedY) {
+        UiHit missed = new UiHit(null, 0.0f, 0.0f);
+        Optional<Transform3D> transform = canvas.owner().flatMap(owner -> owner.getComponent(Transform3D.class));
+        float alpha = Camera3D.CURRENT_STATE_ALPHA;
+        if (transform.isEmpty() || UiWorldPlacement.beyondMaxDistance(canvas, transform.get(), camera, alpha)) {
+            return missed;
+        }
+        Matrix4f canvasToWorld = UiWorldPlacement.canvasToWorld(canvas, transform.get(), camera, alpha);
+        Matrix4f viewProjection = new Matrix4f(camera.viewProjection(alpha));
+        Optional<Vector2f> point = UiWorldPlacement.canvasPointUnderCursor(canvasToWorld, viewProjection,
+                normalizedX, normalizedY);
+        if (point.isEmpty()) {
+            return missed;
+        }
+        UiHit best = missed;
+        for (UiElement root : canvas.roots()) {
+            UiHit found = UiHitTest.topmost(root, point.get().x(), point.get().y(), canvas.viewport());
+            best = found.element() != null ? found : best;
+        }
+        return best;
+    }
+
+    private static Optional<Camera3D> firstActiveCamera(Scene scene) {
+        for (Camera3D camera : scene.componentsOf(Camera3D.class)) {
+            if (camera.active()) {
+                return Optional.of(camera);
+            }
+        }
+        return Optional.empty();
     }
 
     private float scaleCursor(float value, int framebufferDimension, int logicalDimension) {
