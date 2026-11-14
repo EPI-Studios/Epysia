@@ -82,6 +82,18 @@ class AssetOwnershipTest {
         assertEquals(1, fixture.disposed.size(), "a directly held reference must be released");
     }
 
+    @Test
+    void picksTheLoaderThatOwnsTheExtensionWhenSeveralShareAType(@TempDir Path root) throws IOException {
+        Fixture fixture = Fixture.of(root);
+        fixture.registry.register(new CurveLikeLoader());
+
+        TextureHandle png = fixture.registry.resolve(TextureHandle.class, ALBEDO_PATH).orElseThrow();
+        TextureHandle curve = fixture.registry.resolve(TextureHandle.class, "textures/ramp.epycurve").orElseThrow();
+
+        assertTrue(png.id() != CurveLikeLoader.HANDLE_ID, "a png must not go to a loader registered after the image one");
+        assertEquals(CurveLikeLoader.HANDLE_ID, curve.id());
+    }
+
     private static AssetRef<TextureHandle> referenceTo(Fixture fixture) {
         AssetRef<TextureHandle> reference = new AssetRef<>(TextureHandle.class);
         reference.setPath(ALBEDO_PATH);
@@ -135,6 +147,26 @@ class AssetOwnershipTest {
         @Override
         public void dispose(EngineServices services, TextureHandle value) {
             disposed.add(value);
+        }
+    }
+
+    private static final class CurveLikeLoader implements AssetLoader<TextureHandle> {
+
+        private static final long HANDLE_ID = 0x10000L;
+
+        @Override
+        public Class<TextureHandle> assetType() {
+            return TextureHandle.class;
+        }
+
+        @Override
+        public String[] supportedExtensions() {
+            return new String[]{".epycurve"};
+        }
+
+        @Override
+        public TextureHandle load(EngineServices services, AssetLoadRequest request) {
+            return new TextureHandle(HANDLE_ID);
         }
     }
 

@@ -15,13 +15,14 @@ import java.util.Set;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public final class AssetRegistry {
-    private final Map<Class<?>, AssetLoader<?>> loadersByType = new HashMap<>();
+    private final Map<Class<?>, List<AssetLoader<?>>> loadersByType = new HashMap<>();
     private final Map<String, Entry> cache = new HashMap<>();
     private final Deque<PendingUpload> readyForUpload = new ArrayDeque<>();
     private final Set<String> preloading = new HashSet<>();
@@ -57,22 +58,49 @@ public final class AssetRegistry {
 
     public <T> void register(AssetLoader<T> loader) {
         MainThread.require("AssetRegistry.register");
-        loadersByType.put(loader.assetType(), loader);
+        List<AssetLoader<?>> loaders = loadersByType.computeIfAbsent(loader.assetType(), type -> new ArrayList<>());
+        for (int index = 0; index < loaders.size(); index++) {
+            if (loaders.get(index).getClass() == loader.getClass()) {
+                loaders.set(index, loader);
+                return;
+            }
+        }
+        loaders.add(loader);
     }
 
     @SuppressWarnings("unchecked")
     public <T> Optional<AssetLoader<T>> loaderFor(Class<T> type) {
-        return Optional.ofNullable((AssetLoader<T>) loadersByType.get(type));
+        List<AssetLoader<?>> loaders = loadersByType.getOrDefault(type, List.of());
+        if (loaders.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of((AssetLoader<T>) loaders.getFirst());
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> Optional<AssetLoader<T>> loaderFor(Class<T> type, AssetUri uri) {
+        String fileName = uri.fileName().toLowerCase(Locale.ROOT);
+        for (AssetLoader<?> loader : loadersByType.getOrDefault(type, List.of())) {
+            if (handlesFile(loader, fileName)) {
+                return Optional.of((AssetLoader<T>) loader);
+            }
+        }
+        return loaderFor(type);
+    }
+
+    private static boolean handlesFile(AssetLoader<?> loader, String fileName) {
+        for (String extension : loader.supportedExtensions()) {
+            if (fileName.endsWith(extension.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public List<String> extensionsFor(Class<?> type) {
-        AssetLoader<?> loader = loadersByType.get(type);
-        if (loader == null) {
-            return Collections.emptyList();
-        }
         List<String> out = new ArrayList<>();
-        for (String extension : loader.supportedExtensions()) {
-            out.add(extension);
+        for (AssetLoader<?> loader : loadersByType.getOrDefault(type, List.of())) {
+            Collections.addAll(out, loader.supportedExtensions());
         }
         return out;
     }
@@ -103,12 +131,12 @@ public final class AssetRegistry {
         if (uri.isEmpty() || cache.containsKey(key) || !preloading.add(key)) {
             return;
         }
-        AssetLoader<?> loader = loadersByType.get(type);
-        if (loader == null) {
+        Optional<? extends AssetLoader<?>> loader = loaderFor(type, uri);
+        if (loader.isEmpty()) {
             preloading.remove(key);
             return;
         }
-        submitRead(type, key, loader, new AssetLoadRequest(uri, variant));
+        submitRead(type, key, loader.get(), new AssetLoadRequest(uri, variant));
     }
 
     private void submitRead(Class<?> type, String key, AssetLoader<?> loader,
@@ -217,7 +245,7 @@ public final class AssetRegistry {
     }
 
     private <T> Entry loadEntry(Class<T> type, AssetLoadRequest request) {
-        Optional<AssetLoader<T>> loader = loaderFor(type);
+        Optional<AssetLoader<T>> loader = loaderFor(type, request.uri());
         if (loader.isEmpty()) {
             return null;
         }
@@ -273,8 +301,10 @@ public final class AssetRegistry {
             dispose(entry);
         }
         cache.clear();
-        for (AssetLoader<?> loader : loadersByType.values()) {
-            loader.unloadAll();
+        for (List<AssetLoader<?>> loaders : loadersByType.values()) {
+            for (AssetLoader<?> loader : loaders) {
+                loader.unloadAll();
+            }
         }
     }
 
