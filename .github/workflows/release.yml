@@ -135,6 +135,13 @@ jobs:
             -PreleaseVersion=${{ steps.version.outputs.value }} \
             -PlwjglNatives=${{ matrix.lwjgl }}
 
+      - name: Package installers and template
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+        run: bash packaging/package.sh
+
       - name: Build language packs
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -156,13 +163,6 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: bash packaging/language-packs.sh
-
-      - name: Package installers and template
-        shell: bash
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-          TARGET: ${{ matrix.target }}
-        run: bash packaging/package.sh
 
       - name: Write checksums
         shell: bash
