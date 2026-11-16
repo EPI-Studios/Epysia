@@ -1,0 +1,72 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'henkelmax.public'
+        url = 'https://maven.maxhenkel.de/repository/public'
+        content { includeGroupByRegex 'de\\.maxhenkel.*' }
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+def sdkResourcesDirectory = layout.buildDirectory.dir('generated-resources/sdk')
+
+tasks.register('syncSdkResources', Copy) {
+    from('sdk') {
+        include 'epysia-sdk/**', 'epysia-macros/**'
+        exclude '**/target/**', '**/Cargo.lock'
+    }
+    into sdkResourcesDirectory
+}
+
+sourceSets {
+    main {
+        resources {
+            srcDir sdkResourcesDirectory
+        }
+    }
+}
+
+tasks.named('processResources') {
+    dependsOn 'syncSdkResources'
+}
+
+dependencies {
+    compileOnly 'fr.epistudio:Epysia:1.0-SNAPSHOT'
+    compileOnly 'org.joml:joml:1.10.8'
+    implementation 'org.graalvm.polyglot:polyglot:24.2.1'
+    implementation 'org.graalvm.polyglot:wasm:24.2.1'
+    implementation 'org.graalvm.truffle:truffle-runtime:24.2.1'
+
+    testImplementation 'fr.epistudio:Epysia:1.0-SNAPSHOT'
+    testImplementation 'org.joml:joml:1.10.8'
+    testImplementation platform('org.junit:junit-bom:6.0.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+jar {
+    archiveBaseName = 'epysia-lang-rust'
+}
+
+tasks.register('packArchive', Zip) {
+    archiveBaseName = 'epysia-lang-rust'
+    archiveClassifier = ''
+    destinationDirectory = layout.buildDirectory.dir('pack')
+    from jar
+    from configurations.runtimeClasspath.filter { it.name.endsWith('.jar') }
+}
+
+build.dependsOn packArchive
+
+test {
+    useJUnitPlatform()
+}
