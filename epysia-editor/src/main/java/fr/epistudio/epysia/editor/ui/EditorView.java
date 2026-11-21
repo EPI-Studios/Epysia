@@ -1177,7 +1177,7 @@ public final class EditorView implements FrameView {
         String label = I18n.plural(TextKey.EDITOR_EDITOR_VIEW_STATUS_OBJECT_COUNT, count);
         int selectedCount = workspace.active().selection().count();
         if (selectedCount > 1) {
-            return label + "  |  " + I18n.translate(TextKey.EDITOR_EDITOR_VIEW_STATUS_SELECTED_COUNT,
+            return label + "  |  " + I18n.plural(TextKey.EDITOR_EDITOR_VIEW_STATUS_SELECTED_COUNT,
                     selectedCount);
         }
         return workspace.active().selection().get()

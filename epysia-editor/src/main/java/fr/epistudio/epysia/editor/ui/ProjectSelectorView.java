@@ -497,7 +497,7 @@ public final class ProjectSelectorView implements FrameView {
             return I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_YESTERDAY);
         }
         return daysBetween < 7L
-                ? I18n.translate(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_DAYS_AGO, daysBetween)
+                ? I18n.plural(TextKey.EDITOR_PROJECT_SELECTOR_VIEW_DAYS_AGO_COUNT, daysBetween)
                 : date.format(ABSOLUTE_DATE_FORMAT);
     }
 

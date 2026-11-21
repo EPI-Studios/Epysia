@@ -643,7 +643,7 @@ public final class HierarchyView {
             commands.add(new AddGameObjectCommand(buildCopy(source), targets.size() == 1));
         }
         history().execute(new CompositeCommand("Duplicate " + targets.size() + " object(s)", commands));
-        notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_DUPLICATED, targets.size()));
+        notifier.show(I18n.plural(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_DUPLICATED_COUNT, targets.size()));
     }
 
     private GameObject buildCopy(GameObject source) {
@@ -763,7 +763,7 @@ public final class HierarchyView {
             commands.add(new RemoveGameObjectCommand(target));
         }
         history().execute(new CompositeCommand("Delete " + targets.size() + " object(s)", commands));
-        notifier.show(I18n.translate(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_DELETED, targets.size()));
+        notifier.show(I18n.plural(TextKey.EDITOR_HIERARCHY_VIEW_TOAST_DELETED_COUNT, targets.size()));
     }
 
     private record Row(GameObject gameObject, int depth, boolean hasChildren) {

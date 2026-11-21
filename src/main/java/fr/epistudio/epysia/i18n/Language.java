@@ -12,6 +12,11 @@ public enum Language {
     FRENCH(
             Locale.FRANCE,
             "language.french"
+    ),
+    
+    RUSSIAN(
+            Locale.of("ru"),
+            "language.russian"
     );
 
     private final Locale locale;
